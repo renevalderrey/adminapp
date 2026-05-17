@@ -1,0 +1,21 @@
+# ══════════════════════════════════════════
+# COMPRAFIT · Docker Compose (Isolated)
+# Dedicated PostgreSQL on port 5433
+# ══════════════════════════════════════════
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: comprafit-db-dedicated
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: comprafit
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: comprafit_secure_2025
+    ports:
+      - "5433:5432"
+    volumes:
+      - comprafit_dedicated_data:/var/lib/postgresql/data
+
+volumes:
+  comprafit_dedicated_data:
