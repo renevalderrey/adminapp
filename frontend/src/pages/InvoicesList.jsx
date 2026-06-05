@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
+import { toast } from 'sonner'
 import api from '@/services/api'
 import { printInvoice } from '@/utils/printInvoice'
 import useStore from '@/store/useStore'
@@ -14,28 +15,54 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Calendar, Search, Printer, ShieldCheck, FileText, CloudCog } from 'lucide-react'
+import { Calendar, Search, Printer, ShieldCheck, FileText, CloudCog, Store } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import Pagination from '@/components/Pagination'
 
 const InvoicesList = () => {
   const { settings } = useStore()
+  const empresaActiva = useStore(s => s.empresaActiva)
+
+  const locations = useMemo(() => {
+    const pvs = empresaActiva?.puntosDeVenta || []
+    return [{ value: 'all', label: 'Todas' }, ...pvs.map(pv => ({ value: pv.location, label: pv.name }))]
+  }, [empresaActiva?.puntosDeVenta])
+
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [sales, setSales] = useState([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [location, setLocation] = useState('all')
+  const [page, setPage] = useState(1)
+  const limit = 20
 
   const fetchSales = async () => {
     setLoading(true)
     try {
-      const res = await api.get(`/sales?date=${date}`)
-      if (res.data.ok) setSales(res.data.data)
+      const params = new URLSearchParams({ date, page, limit })
+      if (location !== 'all') params.set('location', location)
+      const res = await api.get(`/sales?${params.toString()}`)
+      if (res.data.ok) {
+        setSales(res.data.data)
+        setTotal(res.data.total || 0)
+      }
     } catch (err) {
-      alert('Error al cargar facturas: ' + err.message)
+      toast.error('Error al cargar facturas: ' + err.message)
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { fetchSales() }, [date])
+  useEffect(() => { setPage(1) }, [date, location])
+
+  useEffect(() => { fetchSales() }, [date, location, page])
 
   const handlePrint = (sale) => {
     const isAfip = !!sale.afip_cae
@@ -63,14 +90,11 @@ const InvoicesList = () => {
       const pv = settings.afip_pv || 1
       const res = await api.get(`/afip/invoice/${sale.afip_type}/${pv}/${sale.afip_nro}/data`)
       const d = res.data.data
-      alert(
-        `✅ COMPROBANTE VALIDADO POR AFIP\n\n` +
-        `Punto de Venta: ${d.PtoVta}\nNro: ${d.CbteDesde}\n` +
-        `Doc Receptor: ${d.DocNro}\nImporte Total: $${d.ImpTotal}\n` +
-        `CAE: ${d.CodAutorizacion}\nVto CAE: ${d.FchVto}\nResultado: ${d.Resultado}`
+      toast.success(
+        `Comprobante validado - CAE: ${d.CodAutorizacion} - Vto: ${d.FchVto}`
       )
     } catch (err) {
-      alert('Error al consultar AFIP: ' + (err.response?.data?.error || err.message))
+      toast.error('Error al consultar AFIP: ' + (err.response?.data?.error || err.message))
     }
   }
 
@@ -103,6 +127,18 @@ const InvoicesList = () => {
             />
           </div>
           <div className="flex items-center gap-2 border rounded-md px-3 py-1.5 bg-muted/50">
+            <Store className="h-4 w-4 text-muted-foreground" />
+            <select
+              value={location}
+              onChange={e => setLocation(e.target.value)}
+              className="border-none bg-transparent text-sm outline-none text-foreground"
+            >
+              {locations.map(loc => (
+                <option key={loc.value} value={loc.value}>{loc.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2 border rounded-md px-3 py-1.5 bg-muted/50">
             <Calendar className="h-4 w-4 text-muted-foreground" />
             <input
               type="date"
@@ -124,65 +160,78 @@ const InvoicesList = () => {
             No hay ventas registradas para esta fecha.
           </CardContent>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>HORA</TableHead>
-                <TableHead>TIPO</TableHead>
-                <TableHead>COMPROBANTE</TableHead>
-                <TableHead>TOTAL</TableHead>
-                <TableHead className="text-right">ACCIONES</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredSales.map(sale => {
-                const isAfip = !!sale.afip_cae
-                return (
-                  <TableRow key={sale.id}>
-                    <TableCell className="font-bold">{sale.time}</TableCell>
-                    <TableCell>
-                      {isAfip ? (
-                        <Badge variant="outline" className="text-green-500 border-green-500/30 gap-1">
-                          <ShieldCheck className="h-3 w-3" /> AFIP
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="gap-1">
-                          <FileText className="h-3 w-3" /> Interno
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {isAfip ? (
-                        <div>
-                          <p className="font-bold text-sm">Nro: {sale.afip_nro}</p>
-                          <p className="text-[11px] text-muted-foreground">CAE: {sale.afip_cae}</p>
-                        </div>
-                      ) : (
-                        <p className="text-muted-foreground text-sm">{sale.notes || sale.id.split('-')[0]}</p>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-black font-mono text-green-500">
-                      ${Number(sale.total).toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex gap-1.5 justify-end">
-                        {isAfip && (
-                          <Button variant="ghost" size="sm" className="text-green-500 text-xs gap-1"
-                            onClick={() => handleVerifyAfip(sale)}>
-                            <CloudCog className="h-3.5 w-3.5" /> Verificar
-                          </Button>
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>HORA</TableHead>
+                  <TableHead>SUCURSAL</TableHead>
+                  <TableHead>TIPO</TableHead>
+                  <TableHead>COMPROBANTE</TableHead>
+                  <TableHead>TOTAL</TableHead>
+                  <TableHead className="text-right">ACCIONES</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredSales.map(sale => {
+                  const isAfip = !!sale.afip_cae
+                  return (
+                      <TableRow key={sale.id}>
+                        <TableCell className="font-bold">{sale.time}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs gap-1 capitalize">
+                            <Store className="h-3 w-3" /> {sale.location || 'general'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                        {isAfip ? (
+                          <Badge variant="outline" className="text-green-500 border-green-500/30 gap-1">
+                            <ShieldCheck className="h-3 w-3" /> AFIP
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="gap-1">
+                            <FileText className="h-3 w-3" /> Interno
+                          </Badge>
                         )}
-                        <Button variant="ghost" size="sm" className="text-xs gap-1"
-                          onClick={() => handlePrint(sale)}>
-                          <Printer className="h-3.5 w-3.5" /> Imprimir
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+                      </TableCell>
+                      <TableCell>
+                        {isAfip ? (
+                          <div>
+                            <p className="font-bold text-sm">Nro: {sale.afip_nro}</p>
+                            <p className="text-[11px] text-muted-foreground">CAE: {sale.afip_cae}</p>
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground text-sm">{sale.notes || sale.id.split('-')[0]}</p>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-black font-mono text-green-500">
+                        ${Number(sale.total).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex gap-1.5 justify-end">
+                          {isAfip && (
+                            <Button variant="ghost" size="sm" className="text-green-500 text-xs gap-1"
+                              onClick={() => handleVerifyAfip(sale)}>
+                              <CloudCog className="h-3.5 w-3.5" /> Verificar
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" className="text-xs gap-1"
+                            onClick={() => handlePrint(sale)}>
+                            <Printer className="h-3.5 w-3.5" /> Imprimir
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+            <Pagination
+              page={page}
+              totalPages={Math.ceil(total / limit)}
+              onPageChange={setPage}
+            />
+          </>
         )}
       </Card>
     </div>

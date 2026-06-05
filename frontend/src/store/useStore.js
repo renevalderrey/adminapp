@@ -15,7 +15,14 @@ const useStore = create((set, get) => ({
     afip_environment: 'homologation',
     tax_condition: 'Monotributo'
   },
-  
+
+  // Empresa / Multi-tenant
+  usuario: null,
+  empresaActiva: null,
+  empresas: [],
+  permisos: [],
+  puntoDeVentaActivo: null,
+
   // Loading states
   loading: false,
   error: null,
@@ -29,26 +36,68 @@ const useStore = create((set, get) => ({
         api.get('/brands'),
         api.get('/settings')
       ]);
-      
-      set({ 
-        products: pd.data.data || [], 
+
+      set({
+        products: pd.data.data || [],
         brands: br.data.data || [],
         settings: { ...get().settings, ...(st.data.data || {}) },
-        loading: false 
+        loading: false
       });
     } catch (err) {
       set({ error: err.message, loading: false });
     }
   },
 
+  // Load empresa context after login
+  loadEmpresaContext: async () => {
+    try {
+      const res = await api.get('/empresas/mi-contexto');
+      if (res.data.ok) {
+        const { usuario, empresaActiva, empresas, permisos } = res.data.data;
+        set({
+          usuario,
+          empresaActiva,
+          empresas,
+          permisos: permisos || [],
+          puntoDeVentaActivo: empresaActiva?.puntosDeVenta?.[0] || null,
+        });
+      }
+    } catch (err) {
+      console.warn('[store] Error loading empresa context:', err.message);
+    }
+  },
+
+  // Switch active empresa
+  setEmpresaActiva: async (empresaId) => {
+    try {
+      const res = await api.put(`/empresas/cambiar-empresa/${empresaId}`);
+      if (res.data.ok) {
+        const empresa = res.data.data;
+        set({
+          empresaActiva: empresa,
+          permisos: empresa.permisos || [],
+          puntoDeVentaActivo: empresa?.puntosDeVenta?.[0] || null,
+        });
+        // Reinitialize data with new empresa context
+        await get().initialize();
+      }
+    } catch (err) {
+      console.warn('[store] Error switching empresa:', err.message);
+    }
+  },
+
+  // Set active punto de venta
+  setPuntoDeVentaActivo: (pv) => {
+    set({ puntoDeVentaActivo: pv });
+  },
+
   // Helper: Price Calculation
   calculatePrices: (product) => {
     const { settings } = get();
     const cost = parseFloat(product.cost) || 0;
-    
-    // Check for product-specific margin override
+
     const margin = product.margin_override ?? settings.margin_efectivo;
-    
+
     const cashPrice = Math.round(cost * (1 + margin / 100));
     const cardPrice = Math.round(cashPrice / (1 - settings.recargo_tarjeta / 100));
     const alliancePrice = Math.round(cashPrice * (1 - settings.descuento_alianza / 100));
@@ -72,11 +121,11 @@ const useStore = create((set, get) => ({
       });
     } else {
       set({
-        cart: [...cart, { 
-          id: product.id, 
-          name: product.name, 
-          price, 
-          qty: 1, 
+        cart: [...cart, {
+          id: product.id,
+          name: product.name,
+          price,
+          qty: 1,
           method,
           base_cash: cashPrice,
           base_card: cardPrice,

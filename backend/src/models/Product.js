@@ -13,6 +13,11 @@ const Product = sequelize.define('Product', {
     autoIncrement: true,
     primaryKey: true,
   },
+  empresa_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+  },
   name: {
     type: DataTypes.STRING(255), // Campo "n" original
     allowNull: false,
@@ -20,7 +25,6 @@ const Product = sequelize.define('Product', {
   sku: {
     type: DataTypes.STRING(100),
     allowNull: true,
-    unique: true,
   },
   cost: {
     type: DataTypes.DECIMAL(12, 2), // Campo "c" original (costo de compra)
@@ -30,7 +34,6 @@ const Product = sequelize.define('Product', {
   brand_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    references: { model: 'brands', key: 'id' },
   },
   // Precios de venta calculados o personalizados
   margin_override: {
@@ -39,6 +42,14 @@ const Product = sequelize.define('Product', {
   },
   price_override: {
     type: DataTypes.DECIMAL(12, 2), // Campo "_precioOv" original (precio manual)
+    allowNull: true,
+  },
+  wholesale_margin: {
+    type: DataTypes.DECIMAL(5, 2), // Porcentaje de margen mayorista
+    allowNull: true,
+  },
+  wholesale_price: {
+    type: DataTypes.DECIMAL(12, 2), // Precio mayorista manual fijo
     allowNull: true,
   },
   category: {
@@ -53,9 +64,11 @@ const Product = sequelize.define('Product', {
 }, {
   tableName: 'products',
   indexes: [
+    { fields: ['empresa_id'] },
     { fields: ['brand_id'] },
     { fields: ['name'] },
     { fields: ['sku'] },
+    { unique: true, fields: ['empresa_id', 'sku'] },
   ],
 });
 

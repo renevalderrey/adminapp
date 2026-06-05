@@ -1,16 +1,60 @@
-// ════════════════════════════════════════════
-//  COMPRAFIT · Rutas: Proveedores
-// ════════════════════════════════════════════
-
 const express = require('express');
 const router = express.Router();
 const { Supplier, SupplierOrder, SupplierMovement, SupplierDocument } = require('../models');
 const sequelize = require('../config/database');
+const purchaseService = require('../services/purchaseService');
+const checkPermission = require('../middleware/checkPermission');
+
+// ── Órdenes de Compra (deben ir ANTES de /:id) ──
+
+// GET /api/suppliers/orders — Lista global de órdenes
+router.get('/orders', checkPermission('ordenes_compra.ver'), async (req, res) => {
+  try {
+    const result = await purchaseService.getOrders({ ...req.query, empresa_id: req.empresaId || 1 });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /api/suppliers/orders/:id — Detalle de orden
+router.get('/orders/:id', checkPermission('ordenes_compra.ver'), async (req, res) => {
+  try {
+    const order = await purchaseService.getOrderDetail(req.params.id);
+    res.json({ ok: true, data: order });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PUT /api/suppliers/orders/:id/receive — Recibir orden
+router.put('/orders/:id/receive', checkPermission('ordenes_compra.recibir'), async (req, res) => {
+  try {
+    const pvId = req.puntoDeVentaId || null;
+    const order = await purchaseService.receiveOrder(req.params.id, req.body.items, req.body.location, pvId);
+    res.json({ ok: true, data: { id: order.id, status: order.status } });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PUT /api/suppliers/orders/:id/cancel — Anular orden
+router.put('/orders/:id/cancel', checkPermission('ordenes_compra.anular'), async (req, res) => {
+  try {
+    const order = await purchaseService.cancelOrder(req.params.id);
+    res.json({ ok: true, data: { id: order.id, status: order.status } });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Proveedores ──
 
 // GET /api/suppliers — Listar todos
-router.get('/', async (req, res) => {
+router.get('/', checkPermission('proveedores.ver'), async (req, res) => {
   try {
     const suppliers = await Supplier.findAll({
+      where: { empresa_id: req.empresaId || 1 },
       include: [
         { model: SupplierMovement, as: 'movements' },
         { model: SupplierDocument, as: 'documents' },
@@ -24,7 +68,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/suppliers/:id — Detalle
-router.get('/:id', async (req, res) => {
+router.get('/:id', checkPermission('proveedores.ver'), async (req, res) => {
   try {
     const supplier = await Supplier.findByPk(req.params.id, {
       include: [
@@ -41,17 +85,29 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/suppliers — Crear proveedor
-router.post('/', async (req, res) => {
+router.post('/', checkPermission('proveedores.crear'), async (req, res) => {
   try {
-    const supplier = await Supplier.create(req.body);
+    const supplier = await Supplier.create({ ...req.body, empresa_id: req.empresaId || 1 });
     res.status(201).json({ ok: true, data: supplier });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-// DELETE /api/suppliers/:id — Eliminar proveedor y sus datos
-router.delete('/:id', async (req, res) => {
+// PUT /api/suppliers/:id — Actualizar proveedor
+router.put('/:id', checkPermission('proveedores.editar'), async (req, res) => {
+  try {
+    const supplier = await Supplier.findByPk(req.params.id);
+    if (!supplier) return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
+    await supplier.update(req.body);
+    res.json({ ok: true, data: supplier });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// DELETE /api/suppliers/:id — Eliminar proveedor
+router.delete('/:id', checkPermission('proveedores.eliminar'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
     await SupplierDocument.destroy({ where: { supplier_id: req.params.id }, transaction: t });
@@ -68,21 +124,10 @@ router.delete('/:id', async (req, res) => {
 
 // ── Pedidos ──
 
-// POST /api/suppliers/:id/orders — Registrar pedido
-router.post('/:id/orders', async (req, res) => {
+// POST /api/suppliers/:id/orders — Crear pedido con items
+router.post('/:id/orders', checkPermission('ordenes_compra.crear'), async (req, res) => {
   try {
-    const { date, total, notes, detail } = req.body;
-    const order = await SupplierOrder.create({
-      supplier_id: req.params.id, date, total, notes, detail,
-    });
-    // Registrar como movimiento tipo "deuda"
-    await SupplierMovement.create({
-      supplier_id: req.params.id,
-      type: 'deuda',
-      date,
-      amount: total,
-      notes: notes || `Pedido #${order.id}`,
-    });
+    const order = await purchaseService.createOrder(req.params.id, req.body, req.empresaId || 1);
     res.status(201).json({ ok: true, data: order });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -92,11 +137,12 @@ router.post('/:id/orders', async (req, res) => {
 // ── Pagos ──
 
 // POST /api/suppliers/:id/payments — Registrar pago
-router.post('/:id/payments', async (req, res) => {
+router.post('/:id/payments', checkPermission('proveedores.crear'), async (req, res) => {
   try {
     const { date, amount, payment_method, notes } = req.body;
     const movement = await SupplierMovement.create({
       supplier_id: req.params.id,
+      empresa_id: req.empresaId || 1,
       type: 'pago',
       date,
       amount,
@@ -109,8 +155,10 @@ router.post('/:id/payments', async (req, res) => {
   }
 });
 
+// ── Movimientos ──
+
 // PUT /api/suppliers/movements/:id — Editar movimiento
-router.put('/movements/:id', async (req, res) => {
+router.put('/movements/:id', checkPermission('proveedores.editar'), async (req, res) => {
   try {
     const movement = await SupplierMovement.findByPk(req.params.id);
     if (!movement) return res.status(404).json({ ok: false, error: 'Movimiento no encontrado' });
@@ -122,7 +170,7 @@ router.put('/movements/:id', async (req, res) => {
 });
 
 // DELETE /api/suppliers/movements/:id — Eliminar movimiento
-router.delete('/movements/:id', async (req, res) => {
+router.delete('/movements/:id', checkPermission('proveedores.eliminar'), async (req, res) => {
   try {
     const deleted = await SupplierMovement.destroy({ where: { id: req.params.id } });
     if (!deleted) return res.status(404).json({ ok: false, error: 'Movimiento no encontrado' });
@@ -135,9 +183,9 @@ router.delete('/movements/:id', async (req, res) => {
 // ── Documentos ──
 
 // POST /api/suppliers/:id/documents
-router.post('/:id/documents', async (req, res) => {
+router.post('/:id/documents', checkPermission('proveedores.editar'), async (req, res) => {
   try {
-    const doc = await SupplierDocument.create({ supplier_id: req.params.id, ...req.body });
+    const doc = await SupplierDocument.create({ supplier_id: req.params.id, empresa_id: req.empresaId || 1, ...req.body });
     res.status(201).json({ ok: true, data: doc });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -145,7 +193,7 @@ router.post('/:id/documents', async (req, res) => {
 });
 
 // DELETE /api/suppliers/documents/:id
-router.delete('/documents/:id', async (req, res) => {
+router.delete('/documents/:id', checkPermission('proveedores.eliminar'), async (req, res) => {
   try {
     const deleted = await SupplierDocument.destroy({ where: { id: req.params.id } });
     if (!deleted) return res.status(404).json({ ok: false, error: 'Documento no encontrado' });

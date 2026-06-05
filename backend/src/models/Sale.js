@@ -12,6 +12,16 @@ const Sale = sequelize.define('Sale', {
     type: DataTypes.STRING(40), // Mantiene el id original para compatibilidad
     primaryKey: true,
   },
+  empresa_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+  },
+  punto_de_venta_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: { model: 'puntos_de_venta', key: 'id' },
+  },
   date: {
     type: DataTypes.DATEONLY, // Campo "fecha"
     allowNull: false,
@@ -59,12 +69,22 @@ const Sale = sequelize.define('Sale', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
+  customer_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  customer_name: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
 }, {
   tableName: 'sales',
   indexes: [
     { fields: ['date'] },
     { fields: ['location'] },
     { fields: ['payment_method'] },
+    { fields: ['empresa_id'] },
+    { fields: ['punto_de_venta_id'] },
   ],
 });
 
@@ -78,7 +98,6 @@ const SaleItem = sequelize.define('SaleItem', {
   sale_id: {
     type: DataTypes.STRING(40),
     allowNull: false,
-    references: { model: 'sales', key: 'id' },
   },
   product_name: {
     type: DataTypes.STRING(255), // Nombre del producto al momento de la venta
@@ -87,7 +106,6 @@ const SaleItem = sequelize.define('SaleItem', {
   product_id: {
     type: DataTypes.INTEGER, // FK opcional al producto (puede no existir si fue eliminado)
     allowNull: true,
-    references: { model: 'products', key: 'id' },
   },
   quantity: {
     type: DataTypes.INTEGER,

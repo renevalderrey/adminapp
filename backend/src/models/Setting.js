@@ -12,8 +12,13 @@ const Setting = sequelize.define('Setting', {
     type: DataTypes.STRING(100),
     primaryKey: true,
   },
+  empresa_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+  },
   value: {
-    type: DataTypes.JSONB, // Almacena cualquier estructura como JSON
+    type: DataTypes.JSONB,
     allowNull: true,
   },
 }, {

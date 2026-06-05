@@ -13,16 +13,25 @@ const Stock = sequelize.define('Stock', {
     autoIncrement: true,
     primaryKey: true,
   },
+  empresa_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+  },
   product_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    references: { model: 'products', key: 'id' },
   },
   // Sucursal: 'general' (Jesús), 'ortiz', 'mayo'
   location: {
     type: DataTypes.STRING(30),
     allowNull: false,
     defaultValue: 'general',
+  },
+  punto_de_venta_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: { model: 'puntos_de_venta', key: 'id' },
   },
   quantity: {
     type: DataTypes.INTEGER, // Campo "cant" original
@@ -34,11 +43,30 @@ const Stock = sequelize.define('Stock', {
     allowNull: false,
     defaultValue: 0,
   },
+  min_stock: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+  },
+  current_batch: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
+  expiration_date: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
+  purchase_date: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
 }, {
   tableName: 'stock',
   indexes: [
-    { unique: true, fields: ['product_id', 'location'] },
+    { unique: true, fields: ['product_id', 'punto_de_venta_id'] },
     { fields: ['location'] },
+    { fields: ['empresa_id'] },
+    { fields: ['punto_de_venta_id'] },
   ],
 });
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import useStore from '@/store/useStore'
 import api from '@/services/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,12 +20,14 @@ import {
 import {
   Plus, Trash2, Store, Users,
 } from 'lucide-react'
+import { useConfirmDialog } from '@/components/ConfirmDialog'
 
 const Expenses = () => {
   const { initialize } = useStore()
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(false)
   const [isAdding, setIsAdding] = useState(false)
+  const { confirm, ConfirmDialog } = useConfirmDialog()
   const [formData, setFormData] = useState({ name: '', amount: '', group: 'gf1' })
 
   const fetchExpenses = async () => {
@@ -50,18 +53,19 @@ const Expenses = () => {
       fetchExpenses()
       initialize()
     } catch (err) {
-      alert('Error: ' + err.message)
+      toast.error('Error: ' + err.message)
     }
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('¿Eliminar este gasto?')) return
+    const ok = await confirm('¿Eliminar este gasto?')
+    if (!ok) return
     try {
       await api.delete(`/expenses/${id}`)
       fetchExpenses()
       initialize()
     } catch (err) {
-      alert('Error: ' + err.message)
+      toast.error('Error: ' + err.message)
     }
   }
 
@@ -189,6 +193,7 @@ const Expenses = () => {
           </form>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog />
     </div>
   )
 }

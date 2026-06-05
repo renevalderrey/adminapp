@@ -4,16 +4,27 @@
 
 const express = require('express');
 const router = express.Router();
+const { Op } = require('sequelize');
 const { Stock, Brand, Product, FixedExpense, Setting } = require('../models');
+const checkPermission = require('../middleware/checkPermission');
 
 // ═══════ STOCK ═══════
 
-// GET /api/stock?location=general — Stock por sucursal
-router.get('/stock', async (req, res) => {
+// GET /api/stock — Stock (filtrado por punto de venta activo)
+router.get('/stock', checkPermission('stock.ver'), async (req, res) => {
   try {
-    const { location } = req.query;
-    const where = {};
-    if (location) where.location = location;
+    const empresaId = req.empresaId || 1;
+    const where = {
+      [Op.or]: [
+        { empresa_id: empresaId },
+        { empresa_id: null },
+      ],
+    };
+    if (req.puntoDeVentaId) {
+      where.punto_de_venta_id = req.puntoDeVentaId;
+    } else if (req.query.location) {
+      where.location = req.query.location;
+    }
 
     const stock = await Stock.findAll({
       where,
@@ -28,7 +39,7 @@ router.get('/stock', async (req, res) => {
 });
 
 // PUT /api/stock/:id — Actualizar cantidad
-router.put('/stock/:id', async (req, res) => {
+router.put('/stock/:id', checkPermission('stock.editar'), async (req, res) => {
   try {
     const stock = await Stock.findByPk(req.params.id);
     if (!stock) return res.status(404).json({ ok: false, error: 'Registro de stock no encontrado' });
@@ -40,17 +51,22 @@ router.put('/stock/:id', async (req, res) => {
 });
 
 // POST /api/stock/bulk — Carga masiva de stock por sucursal
-router.post('/stock/bulk', async (req, res) => {
+router.post('/stock/bulk', checkPermission('stock.editar'), async (req, res) => {
   try {
-    const { items, location } = req.body; // [{ product_id, quantity }]
+    const { items, location } = req.body;
+    const empresaId = req.empresaId || 1;
     if (!Array.isArray(items)) return res.status(400).json({ ok: false, error: 'Formato inválido' });
     const loc = location || 'general';
+    const pvId = req.puntoDeVentaId || null;
 
     let updated = 0;
     for (const item of items) {
+      const where = pvId
+        ? { product_id: item.product_id, punto_de_venta_id: pvId, empresa_id: empresaId }
+        : { product_id: item.product_id, location: loc, empresa_id: empresaId };
       const [stock, created] = await Stock.findOrCreate({
-        where: { product_id: item.product_id, location: loc },
-        defaults: { quantity: item.quantity, available: item.quantity },
+        where,
+        defaults: { quantity: item.quantity, available: item.quantity, location: loc, empresa_id: empresaId, punto_de_venta_id: pvId },
       });
       if (!created) {
         await stock.update({ quantity: item.quantity, available: item.quantity });
@@ -67,9 +83,18 @@ router.post('/stock/bulk', async (req, res) => {
 // ═══════ MARCAS ═══════
 
 // GET /api/brands
-router.get('/brands', async (req, res) => {
+router.get('/brands', checkPermission('products.ver'), async (req, res) => {
   try {
-    const brands = await Brand.findAll({ order: [['name', 'ASC']] });
+    const empresaId = req.empresaId || 1;
+    const brands = await Brand.findAll({
+      where: {
+        [Op.or]: [
+          { empresa_id: empresaId },
+          { empresa_id: null },
+        ],
+      },
+      order: [['name', 'ASC']],
+    });
     res.json({ ok: true, data: brands });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -77,9 +102,9 @@ router.get('/brands', async (req, res) => {
 });
 
 // POST /api/brands
-router.post('/brands', async (req, res) => {
+router.post('/brands', checkPermission('products.crear'), async (req, res) => {
   try {
-    const brand = await Brand.create(req.body);
+    const brand = await Brand.create({ ...req.body, empresa_id: req.empresaId || 1 });
     res.status(201).json({ ok: true, data: brand });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -89,9 +114,15 @@ router.post('/brands', async (req, res) => {
 // ═══════ GASTOS FIJOS ═══════
 
 // GET /api/expenses?group=gf1
-router.get('/expenses', async (req, res) => {
+router.get('/expenses', checkPermission('gastos.ver'), async (req, res) => {
   try {
-    const where = {};
+    const empresaId = req.empresaId || 1;
+    const where = {
+      [Op.or]: [
+        { empresa_id: empresaId },
+        { empresa_id: null },
+      ],
+    };
     if (req.query.group) where.group = req.query.group;
     const expenses = await FixedExpense.findAll({ where, order: [['id', 'ASC']] });
     res.json({ ok: true, data: expenses });
@@ -101,9 +132,9 @@ router.get('/expenses', async (req, res) => {
 });
 
 // POST /api/expenses
-router.post('/expenses', async (req, res) => {
+router.post('/expenses', checkPermission('gastos.crear'), async (req, res) => {
   try {
-    const expense = await FixedExpense.create(req.body);
+    const expense = await FixedExpense.create({ ...req.body, empresa_id: req.empresaId || 1 });
     res.status(201).json({ ok: true, data: expense });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -111,7 +142,7 @@ router.post('/expenses', async (req, res) => {
 });
 
 // PUT /api/expenses/:id
-router.put('/expenses/:id', async (req, res) => {
+router.put('/expenses/:id', checkPermission('gastos.editar'), async (req, res) => {
   try {
     const expense = await FixedExpense.findByPk(req.params.id);
     if (!expense) return res.status(404).json({ ok: false, error: 'Gasto no encontrado' });
@@ -123,7 +154,7 @@ router.put('/expenses/:id', async (req, res) => {
 });
 
 // DELETE /api/expenses/:id
-router.delete('/expenses/:id', async (req, res) => {
+router.delete('/expenses/:id', checkPermission('gastos.eliminar'), async (req, res) => {
   try {
     const deleted = await FixedExpense.destroy({ where: { id: req.params.id } });
     if (!deleted) return res.status(404).json({ ok: false, error: 'Gasto no encontrado' });
@@ -136,11 +167,23 @@ router.delete('/expenses/:id', async (req, res) => {
 // ═══════ SETTINGS ═══════
 
 // GET /api/settings — Todas las configuraciones
-router.get('/settings', async (req, res) => {
+router.get('/settings', checkPermission('config.ver'), async (req, res) => {
   try {
-    const settings = await Setting.findAll();
+    const empresaId = req.empresaId || 1;
+    const settings = await Setting.findAll({
+      where: {
+        [Op.or]: [
+          { empresa_id: empresaId },
+          { empresa_id: null },
+        ],
+      },
+    });
     const obj = {};
     settings.forEach(s => { obj[s.key] = s.value; });
+    const empresa = req.empresa;
+    if (empresa && empresa.settings) {
+      Object.assign(obj, empresa.settings);
+    }
     res.json({ ok: true, data: obj });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -148,9 +191,18 @@ router.get('/settings', async (req, res) => {
 });
 
 // GET /api/settings/:key — Una configuración específica
-router.get('/settings/:key', async (req, res) => {
+router.get('/settings/:key', checkPermission('config.ver'), async (req, res) => {
   try {
-    const setting = await Setting.findByPk(req.params.key);
+    const empresaId = req.empresaId || 1;
+    const setting = await Setting.findOne({
+      where: {
+        key: req.params.key,
+        [Op.or]: [
+          { empresa_id: empresaId },
+          { empresa_id: null },
+        ],
+      },
+    });
     res.json({ ok: true, data: setting ? setting.value : null });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -158,14 +210,73 @@ router.get('/settings/:key', async (req, res) => {
 });
 
 // PUT /api/settings/:key — Guardar configuración
-router.put('/settings/:key', async (req, res) => {
+router.put('/settings/:key', checkPermission('config.editar'), async (req, res) => {
   try {
     const [setting, created] = await Setting.findOrCreate({
-      where: { key: req.params.key },
-      defaults: { value: req.body.value },
+      where: { key: req.params.key, empresa_id: req.empresaId || 1 },
+      defaults: { value: req.body.value, empresa_id: req.empresaId || 1 },
     });
     if (!created) await setting.update({ value: req.body.value });
     res.json({ ok: true, data: setting });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /api/alerts — Alertas de stock mínimo y vencimientos próximos
+router.get('/alerts', checkPermission('stock.ver'), async (req, res) => {
+  try {
+    const sequelize = require('../config/database');
+    const today = new Date().toISOString().split('T')[0];
+    const next30Days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const empresaId = req.empresaId || 1;
+    const empresaOrNull = { [Op.or]: [{ empresa_id: empresaId }, { empresa_id: null }] };
+
+    // Alertas de stock mínimo
+    const lowStock = await Stock.findAll({
+      where: {
+        ...empresaOrNull,
+        quantity: { [Op.lte]: sequelize.col('min_stock') },
+        min_stock: { [Op.gt]: 0 },
+      },
+      include: [{ model: Product, as: 'product' }]
+    });
+
+    // Alertas de vencimiento (próximos 30 días)
+    const expiringStock = await Stock.findAll({
+      where: {
+        ...empresaOrNull,
+        expiration_date: {
+          [Op.between]: [today, next30Days]
+        },
+      },
+      include: [{ model: Product, as: 'product' }]
+    });
+
+    res.json({
+      ok: true,
+      data: {
+        lowStock: lowStock.map(s => ({
+          id: s.id,
+          product_id: s.product_id,
+          product_name: s.product ? s.product.name : 'Desconocido',
+          location: s.location,
+          punto_de_venta_id: s.punto_de_venta_id,
+          quantity: s.quantity,
+          min_stock: s.min_stock
+        })),
+        expiringStock: expiringStock.map(s => ({
+          id: s.id,
+          product_id: s.product_id,
+          product_name: s.product ? s.product.name : 'Desconocido',
+          location: s.location,
+          punto_de_venta_id: s.punto_de_venta_id,
+          quantity: s.quantity,
+          expiration_date: s.expiration_date,
+          current_batch: s.current_batch
+        }))
+      }
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

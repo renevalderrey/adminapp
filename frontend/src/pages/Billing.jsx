@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { toast } from 'sonner'
 import useStore from '@/store/useStore'
 import Fuse from 'fuse.js'
-import api from '@/services/api'
+import api, { getCustomers } from '@/services/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,10 +33,17 @@ const Billing = () => {
 
   const [searchQuery, setSearchQuery] = useState('')
   const [customerDoc, setCustomerDoc] = useState('')
+  const [customerId, setCustomerId] = useState(null)
+  const [customerSearch, setCustomerSearch] = useState('')
+  const [customerResults, setCustomerResults] = useState([])
+  const [showCustomerSearch, setShowCustomerSearch] = useState(false)
   const [lastInvoice, setLastInvoice] = useState(null)
 
   const { settings } = useStore()
   const isAfipConfigured = settings.afip_cuit && settings.afip_pv
+
+  const puntoDeVentaActivo = useStore(s => s.puntoDeVentaActivo)
+  const empresaActiva = useStore(s => s.empresaActiva)
 
   const [docType, setDocType] = useState(settings.tax_condition === 'RI' ? 'afip_b' : 'afip_c')
   const [customerVatCondition, setCustomerVatCondition] = useState('5')
@@ -65,6 +73,31 @@ const Billing = () => {
     return fuse.search(searchQuery).map(r => r.item)
   }, [fuse, searchQuery, products])
 
+  const handleCustomerSearch = async (query) => {
+    setCustomerSearch(query)
+    if (query.length < 2) { setCustomerResults([]); return }
+    try {
+      const res = await getCustomers({ search: query, limit: 10 })
+      setCustomerResults(res.data.data || [])
+    } catch { setCustomerResults([]) }
+  }
+
+  const selectCustomer = (c) => {
+    setCustomerId(c.id)
+    setCustomerDoc(c.tax_id || '')
+    setCustomerName(c.name)
+    setCustomerSearch(c.name)
+    setShowCustomerSearch(false)
+  }
+
+  const clearCustomer = () => {
+    setCustomerId(null)
+    setCustomerDoc('')
+    setCustomerName('')
+    setCustomerSearch('')
+    setCustomerResults([])
+  }
+
   const handleRegisterSale = async () => {
     if (cart.length === 0) return
     setLoading(true)
@@ -72,6 +105,7 @@ const Billing = () => {
       let afipData = null
       let internalData = null
       const isAfip = docType.startsWith('afip_')
+      const location = puntoDeVentaActivo?.location || empresaActiva?.puntosDeVenta?.[0]?.location || 'general'
 
       if (isAfip) {
         if (!isAfipConfigured) throw new Error("AFIP no está configurado. Revisa Ajustes.")
@@ -98,7 +132,7 @@ const Billing = () => {
       }
 
       const now = new Date()
-      await api.post('/sales', {
+      const salePayload = {
         id: `sale_${Date.now()}`,
         date: now.toISOString().split('T')[0],
         time: now.toTimeString().split(' ')[0].substring(0, 5),
@@ -108,18 +142,25 @@ const Billing = () => {
         afip_nro: afipData?.voucherNumber || null,
         afip_vto: afipData?.expiration || null,
         afip_type: afipData?.type || null,
+        location,
         notes: isAfip ? '' : `${internalData.typeStr} - Cliente: ${internalData.customer}`,
-      })
+      }
+      if (customerId) {
+        salePayload.customer_id = customerId
+        salePayload.customer_name = customerName
+      }
+      await api.post('/sales', salePayload)
 
-      alert(isAfip
-        ? `Venta y Factura #${afipData.voucherNumber} registradas con éxito. CAE: ${afipData.cae}`
+      toast.success(isAfip
+        ? `Factura #${afipData.voucherNumber} registrada. CAE: ${afipData.cae}`
         : `Venta (${internalData.typeStr}) registrada con éxito`)
 
       clearCart()
       setCustomerDoc('')
       setCustomerName('')
+      clearCustomer()
     } catch (err) {
-      alert('Error: ' + (err.response?.data?.error || err.message))
+      toast.error('Error: ' + (err.response?.data?.error || err.message))
     } finally {
       setLoading(false)
     }
@@ -127,11 +168,11 @@ const Billing = () => {
 
   const handleTestInvoice = async () => {
     if (!docType.startsWith('afip_')) {
-      alert("Selecciona un tipo de Factura AFIP (A, B o C) para hacer una prueba.")
+      toast.error("Seleccioná un tipo de Factura AFIP (A, B o C) para hacer una prueba.")
       return
     }
     if (!isAfipConfigured) {
-      alert("Debes configurar AFIP primero en Ajustes.")
+      toast.error("Debés configurar AFIP primero en Ajustes.")
       return
     }
     setLoading(true)
@@ -159,9 +200,9 @@ const Billing = () => {
         afip_vto: afipData.expiration, afip_type: afipData.type,
         notes: 'Factura de Prueba',
       })
-      alert(`Factura de prueba #${afipData.voucherNumber} registrada. CAE: ${afipData.cae}`)
+      toast.success(`Factura de prueba #${afipData.voucherNumber} registrada. CAE: ${afipData.cae}`)
     } catch (err) {
-      alert('Error en factura de prueba: ' + (err.response?.data?.error || err.message))
+      toast.error('Error en factura de prueba: ' + (err.response?.data?.error || err.message))
     } finally {
       setLoading(false)
     }
@@ -344,13 +385,42 @@ const Billing = () => {
                   </div>
                 ) : (
                   <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Nombre del Cliente (Opcional)</label>
-                    <Input
-                      placeholder="Ej: Juan Pérez"
-                      value={customerName}
-                      onChange={e => setCustomerName(e.target.value)}
-                      className="h-8 text-sm"
-                    />
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Cliente</label>
+                    <div className="relative">
+                      <Input
+                        placeholder="Buscar cliente existente..."
+                        value={customerSearch}
+                        onChange={e => handleCustomerSearch(e.target.value)}
+                        onFocus={() => customerResults.length > 0 && setShowCustomerSearch(true)}
+                        className="h-8 text-sm pr-8"
+                      />
+                      {customerId && (
+                        <button className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-destructive"
+                          onClick={clearCustomer}>×</button>
+                      )}
+                      {showCustomerSearch && customerResults.length > 0 && (
+                        <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-popover border rounded-md shadow-lg max-h-40 overflow-y-auto">
+                          {customerResults.map(c => (
+                            <button key={c.id}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground flex justify-between"
+                              onClick={() => selectCustomer(c)}>
+                              <span>{c.name}</span>
+                              <span className="text-xs text-muted-foreground">{c.tax_id || ''}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {!customerId && (
+                      <div className="mt-1">
+                        <Input
+                          placeholder="O nombre libre..."
+                          value={customerName}
+                          onChange={e => setCustomerName(e.target.value)}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -367,7 +437,7 @@ const Billing = () => {
               {lastInvoice && (
                 <Button variant="outline" className="w-full border-green-500/30 text-green-500 hover:text-green-500"
                   onClick={() => printInvoice(lastInvoice)}>
-                  🖨️ Imprimir Factura #{lastInvoice.voucherNumber}
+                  Imprimir Factura #{lastInvoice.voucherNumber}
                 </Button>
               )}
 
@@ -383,7 +453,7 @@ const Billing = () => {
               <Button variant="outline" className="w-full text-xs"
                 disabled={loading}
                 onClick={handleTestInvoice}>
-                🧪 Emitir Factura de Prueba (1 ARS)
+                Emitir Factura de Prueba (1 ARS)
               </Button>
             </div>
           </Card>

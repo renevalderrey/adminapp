@@ -1,50 +1,30 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# Project Constitution
 
-## Core Principles
+This document defines the core principles, standards, and guidelines for developing the `sistema-de-facturacion` project. All specifications, technical plans, and implementation steps generated must strictly adhere to these rules.
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+## 1. Architecture & Tech Stack
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### Backend
+- **Framework**: Node.js with Express.js.
+- **Database**: PostgreSQL.
+- **Pattern**: Modular architecture (Models, Services, Controllers, Routes).
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### Frontend
+- **Framework**: React via Vite.
+- **State Management**: Zustand (Do NOT use Redux or other state management libraries).
+- **Styling**: Vanilla CSS (`index.css` as the core file). TailwindCSS should ONLY be used if the developer explicitly requests it.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+## 2. Core Domain Constraints (Billing & AFIP/ARCA)
+- **Immutability of Fiscal Records**: Financial transactions and AFIP invoices must NOT be deleted. They can only be annulled or reversed through credit notes.
+- **AFIP Integration**: All sales operations related to electronic billing must preserve the CAE (Código de Autorización Electrónico) and associated AFIP data in the local database.
+- **Multi-tenant SaaS Architecture**: As the system scales to a SaaS model, all queries and creations must filter and associate records by `tenant_id` where applicable.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+## 3. UI/UX & Aesthetics
+- **Premium Design**: The UI must not look generic or basic. It must feature modern typography (e.g., Inter, Roboto), vibrant but harmonious color palettes, and glassmorphism where appropriate.
+- **Dynamic Interfaces**: Include smooth micro-animations and hover effects to make the interface feel alive and responsive.
+- **No Placeholders**: Functional demonstrations must be created instead of using empty placeholders in production views.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
-
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
-
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
-
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
-
-## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
-
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
-
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+## 4. Workflows & Agent Guidelines
+- **Spec-Driven Process**: All new features must start with `/speckit.specify`, followed by `/speckit.plan`, and `/speckit.tasks` before any code is written (`/speckit.implement`).
+- **Validation**: Any plan must account for testing the integration point, especially regarding Auth0 and AFIP/ARCA integrations.
+- **Preserve Documentation**: Maintain existing comments and docstrings unless explicitly requested to change them.

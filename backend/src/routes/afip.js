@@ -2,9 +2,10 @@ const express = require('express');
 const router = express.Router();
 const afipService = require('../services/afipService');
 const { Setting } = require('../models');
+const checkPermission = require('../middleware/checkPermission');
 
 // GET /api/afip/status — Verificar conexión
-router.get('/status', async (req, res) => {
+router.get('/status', checkPermission('config.ver'), async (req, res) => {
   try {
     const status = await afipService.getStatus();
     res.json({ ok: true, data: status });
@@ -14,7 +15,7 @@ router.get('/status', async (req, res) => {
 });
 
 // GET /api/afip/cert-info — Obtener info del certificado cargado
-router.get('/cert-info', async (req, res) => {
+router.get('/cert-info', checkPermission('config.ver'), async (req, res) => {
   try {
     const forge = require('node-forge');
     const certSetting = await Setting.findOne({ where: { key: 'afip_cert' } });
@@ -44,7 +45,7 @@ router.get('/cert-info', async (req, res) => {
 });
 
 // POST /api/afip/setup — Guardar configuración del usuario
-router.post('/setup', async (req, res) => {
+router.post('/setup', checkPermission('config.editar'), async (req, res) => {
   try {
     const { cuit, cert, key, environment, pv } = req.body;
     
@@ -68,7 +69,7 @@ router.post('/setup', async (req, res) => {
 });
 
 // POST /api/afip/generate-csr — Generar CSR y Key para el usuario
-router.post('/generate-csr', async (req, res) => {
+router.post('/generate-csr', checkPermission('config.editar'), async (req, res) => {
   try {
     const { alias } = req.body;
     const result = await afipService.createCSR(alias);
@@ -79,7 +80,7 @@ router.post('/generate-csr', async (req, res) => {
 });
 
 // POST /api/afip/invoice — Emitir comprobante electrónico
-router.post('/invoice', async (req, res) => {
+router.post('/invoice', checkPermission('ventas.crear'), async (req, res) => {
   try {
     const { type, amount, customerCuit, pv, customerVatCondition } = req.body;
     
@@ -98,7 +99,7 @@ router.post('/invoice', async (req, res) => {
 });
 
 // GET /api/afip/invoice/:type/:pv/:number/data — Obtener datos para imprimir en frontend
-router.get('/invoice/:type/:pv/:number/data', async (req, res) => {
+router.get('/invoice/:type/:pv/:number/data', checkPermission('ventas.ver'), async (req, res) => {
   try {
     const { type, pv, number } = req.params;
     

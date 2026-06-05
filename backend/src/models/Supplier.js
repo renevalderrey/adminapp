@@ -13,13 +13,36 @@ const Supplier = sequelize.define('Supplier', {
     autoIncrement: true,
     primaryKey: true,
   },
+  empresa_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+  },
   name: {
     type: DataTypes.STRING(150),
     allowNull: false,
-    unique: true,
+  },
+  phone: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+  },
+  email: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
+  address: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  cuit: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
   },
 }, {
   tableName: 'suppliers',
+  indexes: [
+    { unique: true, fields: ['empresa_id', 'name'] },
+  ],
 });
 
 // ── Pedidos a proveedores ──
@@ -29,10 +52,14 @@ const SupplierOrder = sequelize.define('SupplierOrder', {
     autoIncrement: true,
     primaryKey: true,
   },
+  empresa_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+  },
   supplier_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    references: { model: 'suppliers', key: 'id' },
   },
   date: {
     type: DataTypes.DATEONLY,
@@ -47,10 +74,14 @@ const SupplierOrder = sequelize.define('SupplierOrder', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
-  // Detalle del pedido en JSON (productos, cantidades) — para compatibilidad
   detail: {
     type: DataTypes.JSONB,
     allowNull: true,
+  },
+  status: {
+    type: DataTypes.ENUM('pending', 'partial', 'received', 'cancelled'),
+    allowNull: false,
+    defaultValue: 'pending',
   },
 }, {
   tableName: 'supplier_orders',
@@ -67,10 +98,14 @@ const SupplierMovement = sequelize.define('SupplierMovement', {
     autoIncrement: true,
     primaryKey: true,
   },
+  empresa_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+  },
   supplier_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    references: { model: 'suppliers', key: 'id' },
   },
   type: {
     type: DataTypes.ENUM('deuda', 'pago'), // deuda = pedido confirmado, pago = adelanto/pago
@@ -92,6 +127,10 @@ const SupplierMovement = sequelize.define('SupplierMovement', {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  due_date: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
 }, {
   tableName: 'supplier_movements',
   indexes: [
@@ -107,10 +146,14 @@ const SupplierDocument = sequelize.define('SupplierDocument', {
     autoIncrement: true,
     primaryKey: true,
   },
+  empresa_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+  },
   supplier_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    references: { model: 'suppliers', key: 'id' },
   },
   name: {
     type: DataTypes.STRING(200),

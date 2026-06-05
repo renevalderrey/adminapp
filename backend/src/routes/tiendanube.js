@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const tiendanubeController = require('../controllers/tiendanube');
+const checkPermission = require('../middleware/checkPermission');
 
 // Rutas para la integración con TiendaNube
 
@@ -11,7 +12,7 @@ router.get('/auth', tiendanubeController.getAuthUrl);
 router.get('/callback', tiendanubeController.handleCallback);
 
 // Comprobar si TiendaNube ya está vinculada en el sistema
-router.get('/status', tiendanubeController.getStatus);
+router.get('/status', checkPermission('config.ver'), tiendanubeController.getStatus);
 
 // Recepción de Webhooks desde TiendaNube
 router.post('/webhook', express.json({type: 'application/json'}), tiendanubeController.handleWebhook);

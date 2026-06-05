@@ -13,6 +13,11 @@ const FixedExpense = sequelize.define('FixedExpense', {
     autoIncrement: true,
     primaryKey: true,
   },
+  empresa_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+  },
   name: {
     type: DataTypes.STRING(150), // Campo "n" original
     allowNull: false,

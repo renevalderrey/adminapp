@@ -11,18 +11,25 @@ const Brand = sequelize.define('Brand', {
     autoIncrement: true,
     primaryKey: true,
   },
+  empresa_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+  },
   name: {
     type: DataTypes.STRING(100),
     allowNull: false,
-    unique: true,
   },
   color: {
-    type: DataTypes.STRING(7), // Hex color: #ff6b4a
+    type: DataTypes.STRING(7),
     allowNull: true,
     defaultValue: '#4d6fff',
   },
 }, {
   tableName: 'brands',
+  indexes: [
+    { unique: true, fields: ['empresa_id', 'name'] },
+  ],
 });
 
 module.exports = Brand;
