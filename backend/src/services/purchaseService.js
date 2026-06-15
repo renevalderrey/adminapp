@@ -41,8 +41,9 @@ class PurchaseService {
     return order;
   }
 
-  async receiveOrder(orderId, itemsReceived, location = 'general', puntoDeVentaId = null) {
-    const order = await SupplierOrder.findByPk(orderId, {
+  async receiveOrder(orderId, itemsReceived, location = 'general', puntoDeVentaId = null, empresaId = 1) {
+    const order = await SupplierOrder.findOne({
+      where: { id: orderId, empresa_id: empresaId },
       include: [{ model: Supplier, as: 'supplier' }],
     });
     if (!order) throw new Error('Orden no encontrada');
@@ -116,8 +117,8 @@ class PurchaseService {
     return order;
   }
 
-  async cancelOrder(orderId) {
-    const order = await SupplierOrder.findByPk(orderId);
+  async cancelOrder(orderId, empresaId = 1) {
+    const order = await SupplierOrder.findOne({ where: { id: orderId, empresa_id: empresaId } });
     if (!order) throw new Error('Orden no encontrada');
     if (order.status === 'received') throw new Error('No se puede anular una orden ya recibida');
     if (order.status === 'cancelled') throw new Error('La orden ya está anulada');
@@ -166,8 +167,9 @@ class PurchaseService {
     return { data, total: count };
   }
 
-  async getOrderDetail(orderId) {
-    const order = await SupplierOrder.findByPk(orderId, {
+  async getOrderDetail(orderId, empresaId = 1) {
+    const order = await SupplierOrder.findOne({
+      where: { id: orderId, empresa_id: empresaId },
       include: [{ model: Supplier, as: 'supplier', attributes: ['id', 'name'] }],
     });
     if (!order) throw new Error('Orden no encontrada');
