@@ -69,6 +69,20 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    const token = localStorage.getItem('pendingInvite')
+    if (token && usuario) {
+      api.post(`/auth/accept-invite/${token}`)
+        .then(() => {
+          localStorage.removeItem('pendingInvite')
+          loadEmpresaContext()
+        })
+        .catch(() => {
+          localStorage.removeItem('pendingInvite')
+        })
+    }
+  }, [usuario])
+
   if (isLoading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
