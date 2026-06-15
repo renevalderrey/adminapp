@@ -110,40 +110,39 @@ const ROLE_PERMISOS = {
 
 async function seedPermissions() {
   try {
-    const permisosExistentes = await Permiso.count();
-
-    if (permisosExistentes === 0) {
-      logger.info('Seeding permissions...');
-
-      await Permiso.bulkCreate(PERMISOS, { ignoreDuplicates: true });
-
-      const rolesData = [
-        { nombre: 'admin', is_system: true },
-        { nombre: 'gerente', is_system: true },
-        { nombre: 'vendedor', is_system: true },
-        { nombre: 'produccion', is_system: true },
-        { nombre: 'compras', is_system: true },
-      ];
-
-      for (const r of rolesData) {
-        const [rol] = await Rol.findOrCreate({
-          where: { nombre: r.nombre, is_system: true },
-          defaults: { ...r, empresa_id: null },
-        });
-
-        const permisoCodigos = ROLE_PERMISOS[r.nombre] || [];
-        const rolPermisos = permisoCodigos.map(codigo => ({
-          rol_id: rol.id,
-          permiso_codigo: codigo,
-        }));
-
-        await RolPermiso.bulkCreate(rolPermisos, { ignoreDuplicates: true });
-      }
-
-      logger.info('Permissions seeded successfully');
-    } else {
-      logger.info('Permissions already seeded');
+    // Always upsert permissions that don't exist yet
+    for (const permiso of PERMISOS) {
+      await Permiso.findOrCreate({
+        where: { codigo: permiso.codigo },
+        defaults: permiso,
+      });
     }
+
+    // Always upsert roles
+    const rolesData = [
+      { nombre: 'admin', is_system: true },
+      { nombre: 'gerente', is_system: true },
+      { nombre: 'vendedor', is_system: true },
+      { nombre: 'produccion', is_system: true },
+      { nombre: 'compras', is_system: true },
+    ];
+
+    for (const r of rolesData) {
+      const [rol] = await Rol.findOrCreate({
+        where: { nombre: r.nombre, empresa_id: null },
+        defaults: { ...r, empresa_id: null },
+      });
+
+      const permisoCodigos = ROLE_PERMISOS[r.nombre] || [];
+      for (const codigo of permisoCodigos) {
+        await RolPermiso.findOrCreate({
+          where: { rol_id: rol.id, permiso_codigo: codigo },
+          defaults: { rol_id: rol.id, permiso_codigo: codigo },
+        });
+      }
+    }
+
+    logger.info('Permissions seeded/updated successfully');
 
     // Always fix any UsuarioEmpresa records with missing rol_id
     await fixMissingRolIds();

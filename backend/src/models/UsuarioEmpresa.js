@@ -16,7 +16,7 @@ const UsuarioEmpresa = sequelize.define('UsuarioEmpresa', {
     allowNull: false,
   },
   role: {
-    type: DataTypes.ENUM('admin', 'vendedor', 'produccion', 'compras'),
+    type: DataTypes.STRING(20),
     allowNull: false,
     defaultValue: 'vendedor',
   },
