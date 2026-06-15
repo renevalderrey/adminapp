@@ -77,6 +77,19 @@ const Sale = sequelize.define('Sale', {
     type: DataTypes.STRING(255),
     allowNull: true,
   },
+  status: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+    defaultValue: 'active',
+  },
+  voided_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  voided_by: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+  },
 }, {
   tableName: 'sales',
   indexes: [
@@ -85,6 +98,7 @@ const Sale = sequelize.define('Sale', {
     { fields: ['payment_method'] },
     { fields: ['empresa_id'] },
     { fields: ['punto_de_venta_id'] },
+    { fields: ['status'] },
   ],
 });
 
