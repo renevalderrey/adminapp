@@ -1,0 +1,44 @@
+# ── Node ──
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Environment ──
+.env
+.env.local
+.env.*.local
+
+# ── Build / Dist ──
+dist/
+build/
+
+# ── Logs ──
+*.log
+logs/
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── IDE ──
+.vscode/settings.json
+.vscode/workspace.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Test Coverage ──
+coverage/
+backend/src/tests/coverage/
+
+# ── Uploads (temp) ──
+backend/src/uploads/*
+!backend/src/uploads/.gitkeep
+
+# ── Debug / Temp ──
+*.csv
+mapping_debug.txt
