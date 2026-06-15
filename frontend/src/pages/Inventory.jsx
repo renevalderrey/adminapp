@@ -135,7 +135,11 @@ const Inventory = () => {
 
   const lowStock = products.filter(p => {
     const total = getStockForLocation(p, activeLocation)
-    return total <= 5 && total > 0
+    const minStock = p.stock?.find(s => {
+      if (activeLocation === 'all') return true
+      return s.location === activeLocation
+    })?.min_stock || 0
+    return total > 0 && total <= minStock
   }).length
 
   const noStock = products.filter(p => {
@@ -300,10 +304,15 @@ const Inventory = () => {
                     </TableCell>
                     {activeLocation === 'all' ? (
                       locations.map(loc => {
-                        const qty = p.stock?.find(s => s.location === loc.value)?.quantity || 0
+                        const entry = p.stock?.find(s => s.location === loc.value)
+                        const qty = entry?.quantity || 0
+                        const minStock = entry?.min_stock || 0
+                        let badgeVariant = 'outline'
+                        if (qty === 0) badgeVariant = 'destructive'
+                        else if (qty <= minStock) badgeVariant = 'warning'
                         return (
                           <TableCell key={loc.value} className="text-center">
-                            <Badge variant={qty > 3 ? 'outline' : 'destructive'} className="font-mono">
+                            <Badge variant={badgeVariant} className="font-mono">
                               {qty}
                             </Badge>
                           </TableCell>
@@ -311,7 +320,7 @@ const Inventory = () => {
                       })
                     ) : (
                       <TableCell className="text-center">
-                        <Badge variant={totalStock > 3 ? 'outline' : 'destructive'} className="font-mono">
+                        <Badge variant={totalStock === 0 ? 'destructive' : totalStock <= (p.stock?.find(s => s.location === activeLocation)?.min_stock || 0) ? 'warning' : 'outline'} className="font-mono">
                           {totalStock}
                         </Badge>
                       </TableCell>
