@@ -35,6 +35,7 @@ const Rol = require('./Rol');
 const RolPermiso = require('./RolPermiso');
 const UsuarioPermiso = require('./UsuarioPermiso');
 const StockMovement = require('./StockMovement');
+const TiendanubeMapping = require('./TiendanubeMapping');
 
 // ── Relaciones ──
 
@@ -181,4 +182,5 @@ module.exports = {
   RolPermiso,
   UsuarioPermiso,
   StockMovement,
+  TiendanubeMapping,
 };
