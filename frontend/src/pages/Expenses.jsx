@@ -5,30 +5,20 @@ import api from '@/services/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  Plus, Trash2, Store, Users,
-} from 'lucide-react'
+import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Plus, Trash2, Store } from 'lucide-react'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 
 const Expenses = () => {
-  const { initialize } = useStore()
+  const { initialize, empresaActiva } = useStore()
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(false)
   const [isAdding, setIsAdding] = useState(false)
   const { confirm, ConfirmDialog } = useConfirmDialog()
-  const [formData, setFormData] = useState({ name: '', amount: '', group: 'gf1' })
+  const [formData, setFormData] = useState({ name: '', amount: '', punto_de_venta_id: '' })
+
+  const puntosDeVenta = empresaActiva?.puntosDeVenta || []
 
   const fetchExpenses = async () => {
     setLoading(true)
@@ -47,9 +37,13 @@ const Expenses = () => {
   const handleAdd = async (e) => {
     e.preventDefault()
     try {
-      await api.post('/expenses', formData)
+      await api.post('/expenses', {
+        name: formData.name,
+        amount: formData.amount,
+        punto_de_venta_id: formData.punto_de_venta_id ? parseInt(formData.punto_de_venta_id) : null,
+      })
       setIsAdding(false)
-      setFormData({ name: '', amount: '', group: 'gf1' })
+      setFormData({ name: '', amount: '', punto_de_venta_id: '' })
       fetchExpenses()
       initialize()
     } catch (err) {
@@ -69,21 +63,27 @@ const Expenses = () => {
     }
   }
 
-  const gf1 = expenses.filter(e => e.group === 'gf1')
-  const gf2 = expenses.filter(e => e.group === 'gf2')
-  const totalGf1 = gf1.reduce((sum, e) => sum + parseFloat(e.amount), 0)
-  const totalGf2 = gf2.reduce((sum, e) => sum + parseFloat(e.amount), 0)
+  const groups = {}
+  for (const pv of puntosDeVenta) {
+    groups[pv.id] = {
+      name: pv.name,
+      expenses: expenses.filter(e => e.punto_de_venta_id === pv.id || e.group === 'gf' + puntosDeVenta.indexOf(pv)),
+    }
+  }
+  groups['general'] = {
+    name: 'General',
+    expenses: expenses.filter(e => !e.punto_de_venta_id && !e.group?.startsWith('gf')),
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-black tracking-tight">
             Gastos <span className="text-primary">Fijos</span>
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Administración de costos operativos (GF1 y GF2).
+            Costos operativos agrupados por sucursal.
           </p>
         </div>
         <Button size="sm" onClick={() => setIsAdding(true)}>
@@ -91,78 +91,60 @@ const Expenses = () => {
         </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card className="border-orange-500/20">
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total O. de Ocampo (GF1)</p>
-            <p className="text-2xl font-black font-mono mt-1 text-orange-500">${totalGf1.toLocaleString()}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-pink-500/20">
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total 25 de Mayo (GF2)</p>
-            <p className="text-2xl font-black font-mono mt-1 text-pink-500">${totalGf2.toLocaleString()}</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        {Object.entries(groups).filter(([_, g]) => g.name !== 'General').map(([key, group]) => {
+          const total = group.expenses.reduce((s, e) => s + parseFloat(e.amount), 0)
+          return (
+            <Card key={key}>
+              <CardContent className="p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Total {group.name}
+                </p>
+                <p className="text-2xl font-black font-mono mt-1 text-destructive">
+                  ${total.toLocaleString()}
+                </p>
+              </CardContent>
+            </Card>
+          )
+        })}
       </div>
 
-      {/* Tables */}
       <div className="grid lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader className="pb-3 border-b">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Store className="h-4 w-4 text-orange-500" /> Suc. Ortiz de Ocampo (GF1)
-            </CardTitle>
-          </CardHeader>
-          <Table>
-            <TableBody>
-              {gf1.map(e => (
-                <TableRow key={e.id}>
-                  <TableCell className="text-sm">{e.name}</TableCell>
-                  <TableCell className="text-right font-bold font-mono text-destructive">
-                    -${parseFloat(e.amount).toLocaleString()}
-                  </TableCell>
-                  <TableCell className="w-10">
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleDelete(e.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3 border-b">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Users className="h-4 w-4 text-pink-500" /> Suc. 25 de Mayo (GF2)
-            </CardTitle>
-          </CardHeader>
-          <Table>
-            <TableBody>
-              {gf2.map(e => (
-                <TableRow key={e.id}>
-                  <TableCell className="text-sm">{e.name}</TableCell>
-                  <TableCell className="text-right font-bold font-mono text-destructive">
-                    -${parseFloat(e.amount).toLocaleString()}
-                  </TableCell>
-                  <TableCell className="w-10">
-                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleDelete(e.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+        {Object.entries(groups).map(([key, group]) => (
+          <Card key={key}>
+            <CardHeader className="pb-3 border-b">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Store className="h-4 w-4" /> {group.name}
+              </CardTitle>
+            </CardHeader>
+            <Table>
+              <TableBody>
+                {group.expenses.length === 0 ? (
+                  <TableRow>
+                    <TableCell className="text-sm text-muted-foreground text-center py-4">
+                      Sin gastos registrados
+                    </TableCell>
+                  </TableRow>
+                ) : group.expenses.map(e => (
+                  <TableRow key={e.id}>
+                    <TableCell className="text-sm">{e.name}</TableCell>
+                    <TableCell className="text-right font-bold font-mono text-destructive">
+                      -${parseFloat(e.amount).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="w-10">
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleDelete(e.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        ))}
       </div>
 
-      {/* Dialog: New Expense */}
       <Dialog open={isAdding} onOpenChange={setIsAdding}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Agregar Gasto</DialogTitle></DialogHeader>
@@ -176,14 +158,16 @@ const Expenses = () => {
               <Input type="number" required value={formData.amount} onChange={e => setFormData({ ...formData, amount: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Sucursal / Grupo</label>
+              <label className="text-xs font-medium text-muted-foreground">Sucursal</label>
               <select
-                value={formData.group}
-                onChange={e => setFormData({ ...formData, group: e.target.value })}
+                value={formData.punto_de_venta_id}
+                onChange={e => setFormData({ ...formData, punto_de_venta_id: e.target.value })}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
-                <option value="gf1">Ortiz de Ocampo (GF1)</option>
-                <option value="gf2">25 de Mayo (GF2)</option>
+                <option value="">General (sin sucursal)</option>
+                {puntosDeVenta.map(pv => (
+                  <option key={pv.id} value={pv.id}>{pv.name}</option>
+                ))}
               </select>
             </div>
             <div className="flex gap-3">

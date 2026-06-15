@@ -153,6 +153,7 @@ router.get('/expenses', checkPermission('gastos.ver'), async (req, res) => {
       ],
     };
     if (req.query.group) where.group = req.query.group;
+    if (req.query.punto_de_venta_id) where.punto_de_venta_id = req.query.punto_de_venta_id;
     const expenses = await FixedExpense.findAll({ where, order: [['id', 'ASC']] });
     res.json({ ok: true, data: expenses });
   } catch (err) {
@@ -163,7 +164,11 @@ router.get('/expenses', checkPermission('gastos.ver'), async (req, res) => {
 // POST /api/expenses
 router.post('/expenses', checkPermission('gastos.crear'), async (req, res) => {
   try {
-    const expense = await FixedExpense.create({ ...req.body, empresa_id: req.empresaId || 1 });
+    const data = { ...req.body, empresa_id: req.empresaId || 1 };
+    if (!data.group && data.punto_de_venta_id) {
+      data.group = 'pv_' + data.punto_de_venta_id;
+    }
+    const expense = await FixedExpense.create(data);
     res.status(201).json({ ok: true, data: expense });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
