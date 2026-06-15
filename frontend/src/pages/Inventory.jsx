@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import useStore from '@/store/useStore'
-import api from '@/services/api'
 import { transferStock, getStockTransfers } from '@/services/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -30,12 +29,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  Package, Upload, Plus, Search, Edit2, Zap, ArrowRightLeft, FileSpreadsheet, Loader2,
+  Package, Plus, Search, Edit2, ArrowRightLeft, FileSpreadsheet, Loader2,
 } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Can } from '@/components/Can'
 import Pagination from '@/components/Pagination'
 import ImportWizard from '@/components/ImportWizard'
+import ProductForm from '@/components/ProductForm'
 
 const Inventory = () => {
   const { products, brands, initialize, loading, error } = useStore()
@@ -49,6 +49,8 @@ const Inventory = () => {
 
   const [searchQuery, setSearchQuery] = useState('')
   const [isAdding, setIsAdding] = useState(false)
+  const [editingProduct, setEditingProduct] = useState(null)
+  const [isFormOpen, setIsFormOpen] = useState(false)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [isTransfer, setIsTransfer] = useState(false)
   const [activeLocation, setActiveLocation] = useState('all')
@@ -56,10 +58,6 @@ const Inventory = () => {
   const [showTransfers, setShowTransfers] = useState(false)
   const [page, setPage] = useState(1)
   const perPage = 25
-
-  const [formData, setFormData] = useState({
-    name: '', brand_id: '', cost: '', margin_override: '',
-  })
 
   const firstLocation = locations[0]?.value || 'general'
   const secondLocation = locations[1]?.value || 'ortiz'
@@ -83,22 +81,14 @@ const Inventory = () => {
 
   useEffect(() => { setPage(1) }, [searchQuery, activeLocation])
 
-  const handleAddProduct = async (e) => {
-    e.preventDefault()
-    try {
-      const payload = {
-        name: formData.name,
-        cost: formData.cost,
-        margin_override: formData.margin_override || null,
-        brand_id: formData.brand_id || null,
-      }
-      await api.post('/products', payload)
-      setIsAdding(false)
-      setFormData({ name: '', brand_id: '', cost: '', margin_override: '' })
-      initialize()
-    } catch (err) {
-      toast.error('Error al agregar producto: ' + err.message)
-    }
+  const openCreate = () => {
+    setEditingProduct(null)
+    setIsFormOpen(true)
+  }
+
+  const openEdit = (product) => {
+    setEditingProduct(product)
+    setIsFormOpen(true)
   }
 
   const handleTransfer = async (e) => {
@@ -196,7 +186,7 @@ const Inventory = () => {
               <FileSpreadsheet className="h-4 w-4 mr-1" /> Importar
             </Button>
           </Can>
-          <Button size="sm" onClick={() => setIsAdding(true)}>
+          <Button size="sm" onClick={openCreate}>
             <Plus className="h-4 w-4 mr-1" /> Nuevo Producto
           </Button>
         </div>
@@ -332,7 +322,7 @@ const Inventory = () => {
                       </TableCell>
                     )}
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(p)}>
                         <Edit2 className="h-3.5 w-3.5" />
                       </Button>
                     </TableCell>
@@ -345,29 +335,13 @@ const Inventory = () => {
         {!loading && <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />}
       </Card>
 
-      {/* Dialog: New Product */}
-      <Dialog open={isAdding} onOpenChange={setIsAdding}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Cargar Nuevo Producto</DialogTitle></DialogHeader>
-          <form onSubmit={handleAddProduct} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Nombre</Label>
-              <Input required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Costo</Label>
-                <Input type="number" required value={formData.cost} onChange={e => setFormData({ ...formData, cost: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label>Margen (%)</Label>
-                <Input type="number" placeholder="Opcional" value={formData.margin_override} onChange={e => setFormData({ ...formData, margin_override: e.target.value })} />
-              </div>
-            </div>
-            <Button type="submit" className="w-full">Guardar Producto</Button>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* Sheet: New / Edit Product */}
+      <ProductForm
+        open={isFormOpen}
+        onOpenChange={setIsFormOpen}
+        product={editingProduct}
+        onSuccess={() => initialize()}
+      />
 
       {/* Wizard: Importar productos */}
       <ImportWizard
