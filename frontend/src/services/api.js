@@ -212,4 +212,18 @@ export const getInviteInfo = (token) => api.get(`/auth/invite/${token}`);
 
 export const getSubscription = (empresaId) => api.get(`/empresas/${empresaId}/suscripcion`);
 
+// ═══════ IMPORTACIÓN ═══════
+
+export const downloadTemplate = (type = 'products') =>
+  api.get(`/import/template/${type}`, { responseType: 'blob' });
+
+export const importProducts = (file, mapping = {}) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (Object.keys(mapping).length > 0) {
+    formData.append('mapping', JSON.stringify(mapping));
+  }
+  return api.post('/import/products', formData, { timeout: 120000 });
+};
+
 export default api;

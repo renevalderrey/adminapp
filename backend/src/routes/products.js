@@ -4,7 +4,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { Product, Brand, Stock, Recipe, RecipeItem, ProductCostHistory, sequelize } = require('../models');
+const { Product, Brand, Stock, Recipe, RecipeItem, ProductCostHistory, Supplier, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const costService = require('../services/costService');
 const logger = require('../utils/logger');
@@ -29,6 +29,7 @@ router.get('/', checkPermission('products.ver'), async (req, res) => {
           { name: { [Op.iLike]: `%${token}%` } },
           { '$brand.name$': { [Op.iLike]: `%${token}%` } },
           { sku: { [Op.iLike]: `%${token}%` } },
+          { barcode: { [Op.iLike]: `%${token}%` } },
           { category: { [Op.iLike]: `%${token}%` } },
         ];
         const num = parseFloat(token);
@@ -53,6 +54,7 @@ router.get('/', checkPermission('products.ver'), async (req, res) => {
       where,
       include: [
         { model: Brand, as: 'brand', attributes: ['id', 'name', 'color'] },
+        { model: Supplier, as: 'supplier', attributes: ['id', 'name'] },
         { model: Stock, as: 'stock', attributes: ['location', 'punto_de_venta_id', 'quantity', 'available'] },
       ],
       order: [['name', 'ASC']],
@@ -84,6 +86,7 @@ router.get('/:id', checkPermission('products.ver'), async (req, res) => {
     const product = await Product.findByPk(req.params.id, {
       include: [
         { model: Brand, as: 'brand' },
+        { model: Supplier, as: 'supplier', attributes: ['id', 'name'] },
         { model: Stock, as: 'stock' },
       ],
     });
@@ -97,8 +100,13 @@ router.get('/:id', checkPermission('products.ver'), async (req, res) => {
 // POST /api/products — Crear producto
 router.post('/', checkPermission('products.crear'), async (req, res) => {
   try {
-    const { name, sku, cost, brand_id, margin_override, price_override, category } = req.body;
-    const product = await Product.create({ name, sku, cost, brand_id, margin_override, price_override, category, empresa_id: req.empresaId || 1 });
+    const { name, description, sku, barcode, cost, brand_id, supplier_id, margin_override, price_override, wholesale_margin, wholesale_price, category, unit_type, unit_size, taxed, image_url } = req.body;
+    const product = await Product.create({
+      name, description, sku, barcode, cost, brand_id, supplier_id,
+      margin_override, price_override, wholesale_margin, wholesale_price,
+      category, unit_type, unit_size, taxed, image_url,
+      empresa_id: req.empresaId || 1,
+    });
     res.status(201).json({ ok: true, data: product });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

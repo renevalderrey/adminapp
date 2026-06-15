@@ -85,6 +85,10 @@ ProductionOrder.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
 Product.hasMany(ProductionOrderItem, { foreignKey: 'ingredient_product_id', as: 'usedInProduction' });
 ProductionOrderItem.belongsTo(Product, { foreignKey: 'ingredient_product_id', as: 'ingredient' });
 
+// Product ↔ Supplier
+Supplier.hasMany(Product, { foreignKey: 'supplier_id', as: 'products' });
+Product.belongsTo(Supplier, { foreignKey: 'supplier_id', as: 'supplier' });
+
 // ── Empresa ──
 Empresa.hasMany(PuntoDeVenta, { foreignKey: 'empresa_id', as: 'puntosDeVenta' });
 PuntoDeVenta.belongsTo(Empresa, { foreignKey: 'empresa_id', as: 'empresa' });
