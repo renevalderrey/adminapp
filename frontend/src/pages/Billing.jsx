@@ -44,6 +44,7 @@ const Billing = () => {
 
   const puntoDeVentaActivo = useStore(s => s.puntoDeVentaActivo)
   const empresaActiva = useStore(s => s.empresaActiva)
+  const location = puntoDeVentaActivo?.location || empresaActiva?.puntosDeVenta?.[0]?.location || 'general'
 
   const [docType, setDocType] = useState(settings.tax_condition === 'RI' ? 'afip_b' : 'afip_c')
   const [customerVatCondition, setCustomerVatCondition] = useState('5')
@@ -72,6 +73,10 @@ const Billing = () => {
     if (!searchQuery) return products || []
     return fuse.search(searchQuery).map(r => r.item)
   }, [fuse, searchQuery, products])
+
+  const getAvailableStock = (product) => {
+    return product.stock?.find(s => s.location === location)?.available ?? 0
+  }
 
   const handleCustomerSearch = async (query) => {
     setCustomerSearch(query)
@@ -105,7 +110,6 @@ const Billing = () => {
       let afipData = null
       let internalData = null
       const isAfip = docType.startsWith('afip_')
-      const location = puntoDeVentaActivo?.location || empresaActiva?.puntosDeVenta?.[0]?.location || 'general'
 
       if (isAfip) {
         if (!isAfipConfigured) throw new Error("AFIP no está configurado. Revisa Ajustes.")
@@ -150,6 +154,8 @@ const Billing = () => {
         salePayload.customer_name = customerName
       }
       await api.post('/sales', salePayload)
+
+      await initialize()
 
       toast.success(isAfip
         ? `Factura #${afipData.voucherNumber} registrada. CAE: ${afipData.cae}`
@@ -196,10 +202,12 @@ const Billing = () => {
         payment_method: 'ef',
         items: [{ qty: 1, name: "Proteína Testing", price: 1 }],
         total: 1,
+        location,
         afip_cae: afipData.cae, afip_nro: afipData.voucherNumber,
         afip_vto: afipData.expiration, afip_type: afipData.type,
         notes: 'Factura de Prueba',
       })
+      await initialize()
       toast.success(`Factura de prueba #${afipData.voucherNumber} registrada. CAE: ${afipData.cae}`)
     } catch (err) {
       toast.error('Error en factura de prueba: ' + (err.response?.data?.error || err.message))
@@ -248,18 +256,21 @@ const Billing = () => {
           <div className="space-y-1.5">
             {filteredProducts.map(p => {
               const { cashPrice, cardPrice, alliancePrice } = calculatePrices(p)
+              const available = getAvailableStock(p)
+              const outOfStock = available === 0
               return (
-                <Card key={p.id} className="hover:bg-accent/50 transition-colors">
+                <Card key={p.id} className={`hover:bg-accent/50 transition-colors ${outOfStock ? 'opacity-50' : ''}`}>
                   <CardContent className="p-3 grid grid-cols-[1fr_90px_90px_90px_50px] items-center">
                     <div className="min-w-0 pr-2">
                       <p className="font-semibold text-sm truncate">{p.name}</p>
                       <p className="text-[11px] text-muted-foreground">{p.brand?.name || 'Sin marca'}</p>
+                      <p className="text-[10px] text-muted-foreground">Stock: {available}</p>
                     </div>
                     <p className="text-center font-bold font-mono text-sm text-green-500">${cashPrice.toLocaleString()}</p>
                     <p className="text-center font-bold font-mono text-sm text-blue-500">${cardPrice.toLocaleString()}</p>
                     <p className="text-center font-bold font-mono text-sm text-orange-500">${alliancePrice.toLocaleString()}</p>
                     <div className="flex justify-end">
-                      <Button size="icon" className="h-8 w-8" onClick={() => addToCart(p)}>
+                      <Button size="icon" className="h-8 w-8" onClick={() => addToCart(p)} disabled={outOfStock}>
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>

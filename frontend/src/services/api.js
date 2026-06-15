@@ -86,7 +86,7 @@ export const getSales = (date, location, page, limit) =>
   api.get('/sales', { params: { date, location, page, limit } });
 export const getSalesSummary = (from, to) => api.get('/sales/summary', { params: { from, to } });
 export const createSale = (data) => api.post('/sales', data);
-export const deleteSale = (id) => api.delete(`/sales/${id}`);
+export const voidSale = (id) => api.put(`/sales/${id}/void`);
 
 // ═══════ STOCK ═══════
 

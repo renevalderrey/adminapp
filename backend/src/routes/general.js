@@ -38,12 +38,41 @@ router.get('/stock', checkPermission('stock.ver'), async (req, res) => {
   }
 });
 
-// PUT /api/stock/:id — Actualizar cantidad
+// PUT /api/stock/:id — Actualizar cantidad (con validación y auditoría)
 router.put('/stock/:id', checkPermission('stock.editar'), async (req, res) => {
   try {
     const stock = await Stock.findByPk(req.params.id);
     if (!stock) return res.status(404).json({ ok: false, error: 'Registro de stock no encontrado' });
+
+    const { quantity, available } = req.body;
+    if (quantity !== undefined && quantity < 0) {
+      return res.status(400).json({ ok: false, error: 'El stock no puede ser negativo' });
+    }
+    if (available !== undefined && available < 0) {
+      return res.status(400).json({ ok: false, error: 'El disponible no puede ser negativo' });
+    }
+
+    const oldQty = stock.quantity;
+    const oldAvail = stock.available;
+
     await stock.update(req.body);
+
+    if (quantity !== undefined || available !== undefined) {
+      const StockMovement = require('../models/StockMovement');
+      await StockMovement.create({
+        empresa_id: stock.empresa_id,
+        product_id: stock.product_id,
+        punto_de_venta_id: stock.punto_de_venta_id,
+        tipo: 'manual',
+        referencia_id: null,
+        cantidad_anterior: oldQty,
+        cantidad_nueva: stock.quantity,
+        disponible_anterior: oldAvail,
+        disponible_nuevo: stock.available,
+        usuario_id: req.userId,
+      });
+    }
+
     res.json({ ok: true, data: stock });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
