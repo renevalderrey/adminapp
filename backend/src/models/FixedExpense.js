@@ -32,6 +32,11 @@ const FixedExpense = sequelize.define('FixedExpense', {
     allowNull: false,
     defaultValue: 'gf1',
   },
+  punto_de_venta_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: { model: 'puntos_de_venta', key: 'id' },
+  },
 }, {
   tableName: 'fixed_expenses',
 });
