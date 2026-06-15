@@ -1,16 +1,17 @@
-import * as React from "react"
-import { Field } from "@base-ui/react/field"
 import { cn } from "@/lib/utils"
 
-function Label({ className, ...props }) {
+function Label({ className, children, htmlFor, ...props }) {
   return (
-    <Field.Label
+    <label
+      htmlFor={htmlFor}
       className={cn(
-        "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
+        "text-sm font-medium leading-none",
         className
       )}
       {...props}
-    />
+    >
+      {children}
+    </label>
   )
 }
 
