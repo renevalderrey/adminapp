@@ -100,11 +100,16 @@ router.get('/:id', checkPermission('products.ver'), async (req, res) => {
 // POST /api/products — Crear producto
 router.post('/', checkPermission('products.crear'), async (req, res) => {
   try {
+    const sanitize = (v) => (v === '' || v === undefined || v === null ? null : v);
     const { name, description, sku, barcode, cost, brand_id, supplier_id, margin_override, price_override, wholesale_margin, wholesale_price, category, unit_type, unit_size, taxed, image_url } = req.body;
     const product = await Product.create({
-      name, description, sku, barcode, cost, brand_id, supplier_id,
-      margin_override, price_override, wholesale_margin, wholesale_price,
-      category, unit_type, unit_size, taxed, image_url,
+      name, description,
+      sku: sanitize(sku), barcode: sanitize(barcode),
+      cost, brand_id: sanitize(brand_id), supplier_id: sanitize(supplier_id),
+      margin_override: sanitize(margin_override), price_override: sanitize(price_override),
+      wholesale_margin: sanitize(wholesale_margin), wholesale_price: sanitize(wholesale_price),
+      category, unit_type, unit_size: sanitize(unit_size), taxed,
+      image_url: sanitize(image_url),
       empresa_id: req.empresaId || 1,
     });
     res.status(201).json({ ok: true, data: product });

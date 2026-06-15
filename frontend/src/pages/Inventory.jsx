@@ -86,7 +86,13 @@ const Inventory = () => {
   const handleAddProduct = async (e) => {
     e.preventDefault()
     try {
-      await api.post('/products', formData)
+      const payload = {
+        name: formData.name,
+        cost: formData.cost,
+        margin_override: formData.margin_override || null,
+        brand_id: formData.brand_id || null,
+      }
+      await api.post('/products', payload)
       setIsAdding(false)
       setFormData({ name: '', brand_id: '', cost: '', margin_override: '' })
       initialize()
