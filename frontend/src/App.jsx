@@ -2,6 +2,7 @@ import React, { useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
 import { setAuthToken, setEmpresaContext, setOnUnauthorized } from '@/services/api'
+import { usePermission } from '@/hooks/usePermission'
 import useStore from '@/store/useStore'
 import { AppSidebar } from '@/components/app-sidebar'
 import ErrorBoundary from '@/components/ErrorBoundary'
@@ -26,6 +27,27 @@ import Taxes from '@/pages/Taxes'
 import Onboarding from '@/pages/Onboarding'
 import Team from '@/pages/Team'
 import SubscriptionSettings from '@/pages/SubscriptionSettings'
+
+function RouteGuard({ children, requiredModule }) {
+  const usuario = useStore(s => s.usuario)
+  const empresaActiva = useStore(s => s.empresaActiva)
+  const { user } = useAuth0()
+
+  const empresaSettings = empresaActiva?.settings || {}
+  const enabledModules = empresaSettings.enabled_modules
+  const ownerAuth0Sub = empresaSettings.owner_auth0_sub
+  const isOwner = user?.sub === ownerAuth0Sub
+
+  if (isOwner) return children
+
+  if (enabledModules && Array.isArray(enabledModules) && requiredModule) {
+    if (!enabledModules.includes(requiredModule)) {
+      return <Navigate to="/pos" replace />
+    }
+  }
+
+  return children
+}
 
 function App() {
   const navigate = useNavigate()
@@ -127,14 +149,14 @@ function App() {
               <Route path="/pos" element={<Billing />} />
               <Route path="/ventas" element={<InvoicesList />} />
               <Route path="/inventario" element={<Inventory />} />
-              <Route path="/recetas" element={<Recipes />} />
-              <Route path="/produccion" element={<Production />} />
-              <Route path="/clientes" element={<Customers />} />
-              <Route path="/caja" element={<CashFlow />} />
-              <Route path="/impuestos" element={<Taxes />} />
+              <Route path="/recetas" element={<RouteGuard requiredModule="recetas"><Recipes /></RouteGuard>} />
+              <Route path="/produccion" element={<RouteGuard requiredModule="produccion"><Production /></RouteGuard>} />
+              <Route path="/clientes" element={<RouteGuard requiredModule="clientes"><Customers /></RouteGuard>} />
+              <Route path="/caja" element={<RouteGuard requiredModule="caja"><CashFlow /></RouteGuard>} />
+              <Route path="/impuestos" element={<RouteGuard requiredModule="impuestos"><Taxes /></RouteGuard>} />
               <Route path="/proveedores" element={<Orders />} />
-              <Route path="/ordenes-compra" element={<PurchaseOrders />} />
-              <Route path="/reportes" element={<Reports />} />
+              <Route path="/ordenes-compra" element={<RouteGuard requiredModule="ordenes-compra"><PurchaseOrders /></RouteGuard>} />
+              <Route path="/reportes" element={<RouteGuard requiredModule="reportes"><Reports /></RouteGuard>} />
               <Route path="/gastos" element={<Expenses />} />
               <Route path="/panel" element={<Dashboard />} />
               <Route path="/facturacion" element={<Settings />} />

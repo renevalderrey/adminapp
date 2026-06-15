@@ -217,7 +217,40 @@ function SidebarContent() {
 
         <nav className="flex flex-col gap-6">
           {navSections.map((section) => {
-            const visibleItems = section.items.filter(item => !item.permission || can(item.permission));
+            const empresaSettings = empresaActiva?.settings || {}
+            const enabledModules = empresaSettings.enabled_modules
+            const ownerAuth0Sub = empresaSettings.owner_auth0_sub
+            const isOwner = user?.sub === ownerAuth0Sub
+
+            const routeToModule = {
+              '/pos': 'pos',
+              '/ventas': 'ventas',
+              '/clientes': 'clientes',
+              '/produccion': 'produccion',
+              '/inventario': 'inventario',
+              '/recetas': 'recetas',
+              '/proveedores': 'proveedores',
+              '/ordenes-compra': 'ordenes-compra',
+              '/gastos': 'gastos',
+              '/reportes': 'reportes',
+              '/caja': 'caja',
+              '/impuestos': 'impuestos',
+              '/panel': 'panel',
+              '/facturacion': 'facturacion',
+              '/team': 'equipo',
+              '/suscripcion': 'suscripcion',
+            }
+
+            const visibleItems = section.items.filter(item => {
+              const hasPermission = !item.permission || can(item.permission)
+              if (!hasPermission) return false
+              if (isOwner) return true
+              if (enabledModules && Array.isArray(enabledModules)) {
+                const module = routeToModule[item.to]
+                return module ? enabledModules.includes(module) : true
+              }
+              return true
+            })
             if (visibleItems.length === 0) return null;
             return (
               <div key={section.label}>
