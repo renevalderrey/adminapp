@@ -21,6 +21,7 @@
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
+    "multer": "^2.1.1",
     "node-forge": "^1.4.0",
     "nodemon": "^3.1.14",
     "pg": "^8.20.0",
@@ -30,6 +31,7 @@
     "resend": "^6.12.4",
     "sequelize": "^6.37.8",
     "soap": "^1.9.1",
+    "xlsx": "^0.18.5",
     "xml2js": "^0.6.2"
   },
   "devDependencies": {

@@ -30,10 +30,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  Package, Upload, Plus, Search, Edit2, Zap, ArrowRightLeft, Loader2,
+  Package, Upload, Plus, Search, Edit2, Zap, ArrowRightLeft, FileSpreadsheet, Loader2,
 } from 'lucide-react'
 import { Label } from '@/components/ui/label'
+import { Can } from '@/components/Can'
 import Pagination from '@/components/Pagination'
+import ImportWizard from '@/components/ImportWizard'
 
 const Inventory = () => {
   const { products, brands, initialize, loading, error } = useStore()
@@ -47,7 +49,7 @@ const Inventory = () => {
 
   const [searchQuery, setSearchQuery] = useState('')
   const [isAdding, setIsAdding] = useState(false)
-  const [isBulkImport, setIsBulkImport] = useState(false)
+  const [isImportOpen, setIsImportOpen] = useState(false)
   const [isTransfer, setIsTransfer] = useState(false)
   const [activeLocation, setActiveLocation] = useState('all')
   const [transfers, setTransfers] = useState([])
@@ -58,7 +60,6 @@ const Inventory = () => {
   const [formData, setFormData] = useState({
     name: '', brand_id: '', cost: '', margin_override: '',
   })
-  const [bulkText, setBulkText] = useState('')
 
   const firstLocation = locations[0]?.value || 'general'
   const secondLocation = locations[1]?.value || 'ortiz'
@@ -91,22 +92,6 @@ const Inventory = () => {
       initialize()
     } catch (err) {
       toast.error('Error al agregar producto: ' + err.message)
-    }
-  }
-
-  const handleBulkImport = async () => {
-    try {
-      const rows = bulkText.split('\n').map(line => {
-        const parts = line.split('\t')
-        return { name: parts[0]?.trim(), cost: parseFloat(parts[1]) || 0, stock: parseInt(parts[2]) || 0 }
-      }).filter(p => p.name)
-      await api.post('/products/bulk', { products: rows })
-      setIsBulkImport(false)
-      setBulkText('')
-      initialize()
-      toast.success(`Importados ${rows.length} productos con éxito.`)
-    } catch (err) {
-      toast.error('Error en importación: ' + err.message)
     }
   }
 
@@ -196,9 +181,11 @@ const Inventory = () => {
           <Button variant="outline" size="sm" onClick={() => setIsTransfer(true)}>
             <ArrowRightLeft className="h-4 w-4 mr-1" /> Transferir Stock
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setIsBulkImport(true)}>
-            <Upload className="h-4 w-4 mr-1" /> Importación Masiva
-          </Button>
+          <Can codigo="products.crear">
+            <Button variant="outline" size="sm" onClick={() => setIsImportOpen(true)}>
+              <FileSpreadsheet className="h-4 w-4 mr-1" /> Importar
+            </Button>
+          </Can>
           <Button size="sm" onClick={() => setIsAdding(true)}>
             <Plus className="h-4 w-4 mr-1" /> Nuevo Producto
           </Button>
@@ -367,27 +354,12 @@ const Inventory = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog: Bulk Import */}
-      <Dialog open={isBulkImport} onOpenChange={setIsBulkImport}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader><DialogTitle>Importación Masiva</DialogTitle></DialogHeader>
-          <p className="text-xs text-muted-foreground">
-            Pegá las columnas de tu Excel (Nombre | Costo | Stock). Asegurate de que estén separadas por tabulación.
-          </p>
-          <textarea
-            value={bulkText}
-            onChange={e => setBulkText(e.target.value)}
-            placeholder={"Ejemplo:\nProteína Whey 1kg\t15000\t10\nCreatina 300g\t12000\t5"}
-            className="w-full h-64 rounded-lg border border-input bg-muted/50 p-4 font-mono text-sm resize-none outline-none focus:ring-2 focus:ring-ring"
-          />
-          <div className="flex gap-3">
-            <Button variant="outline" className="flex-1" onClick={() => setIsBulkImport(false)}>Cancelar</Button>
-            <Button className="flex-1" onClick={handleBulkImport}>
-              Importar {bulkText.split('\n').filter(Boolean).length} ítems
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Wizard: Importar productos */}
+      <ImportWizard
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        onSuccess={() => initialize()}
+      />
 
       {/* Dialog: Transfer */}
       <Dialog open={isTransfer} onOpenChange={setIsTransfer}>

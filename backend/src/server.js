@@ -128,6 +128,7 @@ app.use('/api/dashboard', ...authMiddleware, require('./routes/dashboard'));
 app.use('/api/cashflow', ...authMiddleware, require('./routes/cashflow'));
 app.use('/api/taxes', ...authMiddleware, require('./routes/taxes'));
 app.use('/api/empresas', ...authMiddleware, require('./routes/empresas'));
+app.use('/api/import', ...authMiddleware, require('./routes/import'));
 
 // ── Auth routes (invitaciones públicas + protegidas) ──
 app.get('/api/auth/invite/:token', require('./routes/auth'));
