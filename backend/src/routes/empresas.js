@@ -69,7 +69,7 @@ router.post('/onboarding', async (req, res) => {
 
     await sendEmail({
       to: usuario.email,
-      subject: `Bienvenido a Comprafit — ${name}`,
+      subject: `Bienvenido a Admin App — ${name}`,
       html: welcomeEmail(usuario.nombre || usuario.email, name),
     });
 

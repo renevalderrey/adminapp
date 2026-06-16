@@ -193,7 +193,7 @@ class AfipService {
   }
 
   // Used only to get a fresh CSR for ARCA setup
-  async createCSR(alias = 'Comprafit') {
+  async createCSR(alias = 'Admin App') {
     const forge = require('node-forge');
     const keys = forge.pki.rsa.generateKeyPair(2048);
     const csr = forge.pki.createCertificationRequest();

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin App — Iniciar Sesión</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #ffffff;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+      width: 100%;
+      max-width: 400px;
+      padding: 2rem;
+      text-align: center;
+    }
+    .card img.logo {
+      width: 144px;
+      height: 144px;
+      object-fit: contain;
+      margin-bottom: 0.75rem;
+    }
+    .card h1 {
+      font-size: 1.5rem;
+      font-weight: 900;
+      letter-spacing: -0.025em;
+      color: #111;
+      margin-bottom: 0.25rem;
+    }
+    .card p.sub {
+      font-size: 0.875rem;
+      color: #666;
+      margin-bottom: 1.5rem;
+    }
+    .auth0-lock-widget {
+      width: 100% !important;
+    }
+    .auth0-lock-widget .auth0-lock-header {
+      display: none;
+    }
+    .auth0-lock.auth0-lock .auth0-lock-widget {
+      box-shadow: none !important;
+      border-radius: 0 !important;
+    }
+    .auth0-lock.auth0-lock .auth0-lock-form {
+      padding: 0 !important;
+    }
+    .auth0-lock.auth0-lock .auth0-lock-submit {
+      background: #00B4B6 !important;
+      border-radius: 8px !important;
+      height: 44px !important;
+      font-weight: 600 !important;
+      font-size: 0.875rem !important;
+      transition: all 0.15s ease !important;
+    }
+    .auth0-lock.auth0-lock .auth0-lock-submit:hover {
+      background: #008B8E !important;
+      box-shadow: 0 4px 12px rgba(0, 180, 182, 0.3) !important;
+      filter: brightness(1.1) !important;
+    }
+    .auth0-lock.auth0-lock input {
+      border-radius: 8px !important;
+      border-color: #e0e0e0 !important;
+      font-size: 0.875rem !important;
+    }
+    .auth0-lock.auth0-lock input:focus {
+      border-color: #00B4B6 !important;
+      box-shadow: 0 0 0 3px rgba(0, 180, 182, 0.15) !important;
+    }
+    .auth0-lock.auth0-lock .auth0-lock-name {
+      display: none;
+    }
+    .auth0-lock.auth0-lock .auth0-lock-terms {
+      text-align: center;
+    }
+    .auth0-lock.auth0-lock .auth0-lock-social-button {
+      border-radius: 8px !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="https://YOUR-DOMAIN.com/logo_sin_fondo.png" alt="Admin App" onerror="this.style.display='none'">
+    <h1>Admin App</h1>
+    <p class="sub">Iniciá sesión para acceder al panel</p>
+    <div id="auth0-lock-container"></div>
+  </div>
+</body>
+</html>

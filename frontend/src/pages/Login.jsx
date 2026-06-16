@@ -1,7 +1,7 @@
 import { useAuth0 } from '@auth0/auth0-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Zap } from 'lucide-react'
+
 
 function Login() {
   const { loginWithRedirect } = useAuth0()
@@ -9,12 +9,12 @@ function Login() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-sm">
-        <CardHeader className="items-center text-center space-y-4">
-          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Zap className="h-7 w-7" />
+        <CardHeader className="items-center text-center space-y-3 pt-4">
+          <div className="flex items-center justify-center">
+            <img src="/logo_sin_fondo.png" alt="Admin App" className="h-36 w-36 object-contain" />
           </div>
           <div>
-            <CardTitle className="text-2xl font-black tracking-tight">System</CardTitle>
+            <CardTitle className="text-2xl font-black tracking-tight">Admin App</CardTitle>
             <CardDescription className="mt-1">
               Iniciá sesión para acceder al panel
             </CardDescription>
@@ -23,8 +23,9 @@ function Login() {
         <CardContent>
           <Button
             onClick={() => loginWithRedirect()}
-            className="w-full h-11 font-semibold"
+            className="w-full h-11 font-semibold cursor-pointer hover:shadow-lg hover:shadow-cyan-500/30 hover:brightness-110"
             size="lg"
+            style={{ backgroundColor: 'var(--color-brand)' }}
           >
             Iniciar Sesión
           </Button>

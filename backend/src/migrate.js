@@ -20,7 +20,7 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 // ── Configuración de la API PHP original ──
 const PHP_API_URL = process.env.PHP_API_URL || 'https://tu-dominio.com/api.php';
-const PHP_API_TOKEN = process.env.PHP_API_TOKEN || 'Comprafit.App.2025';
+const PHP_API_TOKEN = process.env.PHP_API_TOKEN || 'AdminApp.2025';
 
 // ── Helper para llamar a la API PHP ──
 async function phpGet(action, params = '') {

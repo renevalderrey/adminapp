@@ -2,7 +2,7 @@ const { Resend } = require('resend');
 const logger = require('../utils/logger');
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@comprafit.app';
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@adminapp.app';
 
 let resend = null;
 if (RESEND_API_KEY) {
@@ -40,7 +40,7 @@ async function sendEmail({ to, subject, html }) {
 function welcomeEmail(usuarioNombre, empresaNombre) {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h1 style="color: #6d28d9;">Bienvenido a Comprafit</h1>
+      <h1 style="color: #6d28d9;">Bienvenido a Admin App</h1>
       <p>Hola ${usuarioNombre},</p>
       <p>Tu empresa <strong>${empresaNombre}</strong> ha sido creada exitosamente.</p>
       <p>Ya podés empezar a gestionar tus ventas, inventario y más.</p>
@@ -62,7 +62,7 @@ function invitationEmail(invitadorNombre, empresaNombre, token) {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h1 style="color: #6d28d9;">Te invitaron a unirte a ${empresaNombre}</h1>
-      <p><strong>${invitadorNombre}</strong> te ha invitado a formar parte de <strong>${empresaNombre}</strong> en Comprafit.</p>
+      <p><strong>${invitadorNombre}</strong> te ha invitado a formar parte de <strong>${empresaNombre}</strong> en Admin App.</p>
       <p>Hacé clic en el siguiente enlace para aceptar la invitación:</p>
       <p style="margin-top: 24px;">
         <a href="${acceptUrl}"

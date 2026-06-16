@@ -131,11 +131,9 @@ function SidebarContent() {
     <div className="flex h-full flex-col overflow-hidden">
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 py-5 shrink-0">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground font-black text-sm">
-          <Zap className="h-5 w-5" />
-        </div>
+        <img src="/logo.jpg" alt="Admin App" className="h-9 w-9 rounded-lg object-cover" />
         <div className="flex flex-col">
-          <span className="text-base font-bold tracking-tight">System</span>
+          <span className="text-base font-bold tracking-tight">Admin App</span>
           <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
             Gestión Comercial
           </span>

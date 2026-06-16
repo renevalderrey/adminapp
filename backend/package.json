@@ -1,7 +1,7 @@
 {
-  "name": "comprafit-backend",
+  "name": "admin-app-backend",
   "version": "1.0.0",
-  "description": "Comprafit · API Backend — Node.js + Express + PostgreSQL + Auth0",
+  "description": "Admin App · API Backend — Node.js + Express + PostgreSQL + Auth0",
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",

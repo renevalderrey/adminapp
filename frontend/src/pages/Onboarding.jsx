@@ -61,7 +61,7 @@ const Onboarding = () => {
           </div>
           <CardTitle className="text-2xl">Configurá tu empresa</CardTitle>
           <CardDescription>
-            Completá los datos para empezar a usar Comprafit. Tenés 15 días de prueba gratuita.
+            Completá los datos para empezar a usar Admin App. Tenés 15 días de prueba gratuita.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -162,7 +162,7 @@ const Onboarding = () => {
               {loading ? (
                 <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creando empresa...</>
               ) : (
-                <><ArrowRight className="h-4 w-4 mr-2" /> Comenzar a usar Comprafit</>
+                <><ArrowRight className="h-4 w-4 mr-2" /> Comenzar a usar Admin App</>
               )}
             </Button>
           </form>

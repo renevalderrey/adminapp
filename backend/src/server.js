@@ -38,7 +38,7 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev', { str
 
 // ── Health Check (público, sin auth ni rate limit) ──
 app.get('/api/ping', (req, res) => {
-  res.json({ ok: true, msg: 'Comprafit API OK', time: new Date().toISOString() });
+  res.json({ ok: true, msg: 'Admin App API OK', time: new Date().toISOString() });
 });
 
 // ── CORS ──

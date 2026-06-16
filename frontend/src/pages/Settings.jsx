@@ -84,7 +84,7 @@ const Settings = () => {
   const handleGenerateCSR = async () => {
     setLoading(true)
     try {
-      const res = await api.post('/afip/generate-csr', { alias: 'Comprafit' })
+      const res = await api.post('/afip/generate-csr', { alias: 'Admin App' })
       setGeneratedFiles(res.data.data)
       setSaveStatus({ type: 'ok', msg: 'Archivos generados. Descargá ambos a continuación.' })
     } catch (err) {
@@ -158,11 +158,11 @@ const Settings = () => {
                     ) : (
                       <div className="flex gap-2 mt-3">
                         <Button size="sm" variant="outline" className="text-orange-500 border-orange-500/30"
-                          onClick={() => downloadFile(generatedFiles.key, 'comprafit_privada.key')}>
+                          onClick={() => downloadFile(generatedFiles.key, 'admin_app_privada.key')}>
                           <Key className="h-3.5 w-3.5 mr-1" /> Descargar .key
                         </Button>
                         <Button size="sm"
-                          onClick={() => downloadFile(generatedFiles.csr, 'comprafit_pedido.csr')}>
+                          onClick={() => downloadFile(generatedFiles.csr, 'admin_app_pedido.csr')}>
                           <FileCheck className="h-3.5 w-3.5 mr-1" /> Descargar .csr
                         </Button>
                       </div>
@@ -209,7 +209,7 @@ const Settings = () => {
                 <CardContent className="p-4 flex gap-4">
                   <div className="h-8 w-8 rounded-full bg-muted border flex items-center justify-center text-sm font-bold text-muted-foreground shrink-0">4</div>
                   <div className="flex-1">
-                    <p className="font-bold text-sm">Cargar Credenciales en System</p>
+                    <p className="font-bold text-sm">Cargar Credenciales en Admin App</p>
                     <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                       Cargá los archivos <code className="text-orange-500">.key</code> y <code className="text-green-500">.crt</code> en el formulario.
                       Luego presioná <strong>Guardar y Verificar</strong>.

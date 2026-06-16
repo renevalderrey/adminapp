@@ -70,7 +70,7 @@ async function ensureDevUserAccess(empresaId) {
   try {
     const [usuario] = await Usuario.findOrCreate({
       where: { auth0_sub: 'test-user-id' },
-      defaults: { email: 'dev@comprafit.app', nombre: 'Dev User' },
+      defaults: { email: 'dev@adminapp.app', nombre: 'Dev User' },
     });
 
     await UsuarioEmpresa.findOrCreate({
