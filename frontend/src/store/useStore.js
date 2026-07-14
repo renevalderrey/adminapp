@@ -25,6 +25,8 @@ const useStore = create((set, get) => ({
 
   // Loading states
   loading: false,
+  loadingUsuario: false,
+  contextError: false,
   error: null,
 
   // Initialize data from API
@@ -32,7 +34,7 @@ const useStore = create((set, get) => ({
     set({ loading: true });
     try {
       const [pd, br, st] = await Promise.all([
-        api.get('/products'),
+        api.get('/products?active=true'),
         api.get('/brands'),
         api.get('/settings')
       ]);
@@ -50,6 +52,7 @@ const useStore = create((set, get) => ({
 
   // Load empresa context after login
   loadEmpresaContext: async () => {
+    set({ loadingUsuario: true, contextError: false });
     try {
       const res = await api.get('/empresas/mi-contexto');
       if (res.data.ok) {
@@ -60,10 +63,14 @@ const useStore = create((set, get) => ({
           empresas,
           permisos: permisos || [],
           puntoDeVentaActivo: empresaActiva?.puntosDeVenta?.[0] || null,
+          loadingUsuario: false,
         });
+      } else {
+        set({ loadingUsuario: false });
       }
     } catch (err) {
       console.warn('[store] Error loading empresa context:', err.message);
+      set({ loadingUsuario: false, contextError: true });
     }
   },
 

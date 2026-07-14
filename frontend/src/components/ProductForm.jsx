@@ -45,7 +45,8 @@ const UNIT_TYPES = [
 ]
 
 export default function ProductForm({ open, onOpenChange, product, onSuccess }) {
-  const { brands } = useStore()
+  const { brands, empresaActiva } = useStore()
+  const puntosDeVenta = empresaActiva?.puntosDeVenta || []
   const [saving, setSaving] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
 
@@ -67,6 +68,14 @@ export default function ProductForm({ open, onOpenChange, product, onSuccess }) 
     image_url: '',
   })
 
+  const [stockEntries, setStockEntries] = useState([])
+
+  const updateStock = (index, field, value) => {
+    setStockEntries(prev => prev.map((e, i) =>
+      i === index ? { ...e, [field]: value } : e
+    ))
+  }
+
   useEffect(() => {
     if (product) {
       setForm({
@@ -86,6 +95,30 @@ export default function ProductForm({ open, onOpenChange, product, onSuccess }) 
         taxed: product.taxed !== undefined ? product.taxed : true,
         image_url: product.image_url || '',
       })
+
+      const existing = product.stock || []
+      if (puntosDeVenta.length > 0) {
+        setStockEntries(puntosDeVenta.map(pv => {
+          const match = existing.find(s => s.punto_de_venta_id === pv.id)
+          return {
+            id: match?.id || null,
+            punto_de_venta_id: pv.id,
+            label: pv.name,
+            quantity: match?.quantity ?? 0,
+            available: match?.available ?? 0,
+            min_stock: match?.min_stock ?? 0,
+          }
+        }))
+      } else {
+        setStockEntries(existing.map(s => ({
+          id: s.id,
+          punto_de_venta_id: s.punto_de_venta_id,
+          label: s.location || 'Sucursal',
+          quantity: s.quantity ?? 0,
+          available: s.available ?? 0,
+          min_stock: s.min_stock ?? 0,
+        })))
+      }
     } else {
       setForm({
         name: '',
@@ -104,8 +137,9 @@ export default function ProductForm({ open, onOpenChange, product, onSuccess }) 
         taxed: true,
         image_url: '',
       })
+      setStockEntries([])
     }
-  }, [product, open])
+  }, [product, open, puntosDeVenta])
 
   const handleSubmit = async () => {
     setShowConfirm(true)
@@ -135,6 +169,26 @@ export default function ProductForm({ open, onOpenChange, product, onSuccess }) 
 
       if (product) {
         await api.put(`/products/${product.id}`, payload)
+
+        if (stockEntries.length > 0) {
+          await Promise.all(stockEntries.map(entry => {
+            if (entry.id) {
+              return api.put(`/stock/${entry.id}`, {
+                quantity: entry.quantity,
+                available: entry.available,
+                min_stock: entry.min_stock,
+              })
+            } else {
+              return api.post('/stock', {
+                quantity: entry.quantity,
+                min_stock: entry.min_stock,
+                product_id: product.id,
+                punto_de_venta_id: entry.punto_de_venta_id,
+              })
+            }
+          }))
+        }
+
         toast.success('Producto actualizado correctamente')
       } else {
         await api.post('/products', payload)
@@ -290,6 +344,28 @@ export default function ProductForm({ open, onOpenChange, product, onSuccess }) 
                 </div>
               </div>
             </div>
+
+            {product && stockEntries.length > 0 && (
+              <div className="space-y-1">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Stock por sucursal</h4>
+                <div className="space-y-2">
+                  <div className="grid grid-cols-[1fr_60px_60px_60px] gap-2 text-xs text-muted-foreground font-medium px-1">
+                    <span>Sucursal</span>
+                    <span className="text-right">Cant</span>
+                    <span className="text-right">Disp</span>
+                    <span className="text-right">Mín</span>
+                  </div>
+                  {stockEntries.map((entry, index) => (
+                    <div key={entry.punto_de_venta_id || index} className="grid grid-cols-[1fr_60px_60px_60px] gap-2 items-center">
+                      <span className="text-sm truncate">{entry.label}</span>
+                      <Input type="number" min="0" value={entry.quantity} onChange={e => updateStock(index, 'quantity', parseInt(e.target.value) || 0)} className="h-8 text-xs text-right" />
+                      <Input type="number" min="0" value={entry.available} onChange={e => updateStock(index, 'available', parseInt(e.target.value) || 0)} className="h-8 text-xs text-right" />
+                      <Input type="number" min="0" value={entry.min_stock} onChange={e => updateStock(index, 'min_stock', parseInt(e.target.value) || 0)} className="h-8 text-xs text-right" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <SheetFooter className="px-4 pb-4">

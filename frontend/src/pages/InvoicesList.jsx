@@ -15,7 +15,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Calendar, Search, Printer, ShieldCheck, FileText, CloudCog, Store } from 'lucide-react'
+import { Calendar, Search, Printer, ShieldCheck, FileText, CloudCog, Store, Trash2 } from 'lucide-react'
+import { useConfirmDialog } from '@/components/ConfirmDialog'
+import { usePermission } from '@/hooks/usePermission'
 import {
   Select,
   SelectContent,
@@ -41,6 +43,9 @@ const InvoicesList = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [location, setLocation] = useState('all')
   const [page, setPage] = useState(1)
+  const [voiding, setVoiding] = useState(null)
+  const { confirm, ConfirmDialog } = useConfirmDialog()
+  const { can } = usePermission()
   const limit = 20
 
   const fetchSales = async () => {
@@ -81,6 +86,7 @@ const InvoicesList = () => {
       date: new Date(sale.date + 'T' + sale.time).toLocaleString('es-AR'),
       customer: customerStr, items: formattedItems, total: sale.total,
       cae: sale.afip_cae, expiration: sale.afip_vto,
+      empresaNombre: empresaActiva?.nombre,
     })
   }
 
@@ -98,6 +104,24 @@ const InvoicesList = () => {
     }
   }
 
+  const handleVoid = async (sale) => {
+    const confirmed = await confirm(
+      `¿Anular la venta ${sale.afip_nro ? `Nro ${sale.afip_nro}` : sale.id.split('-')[0]}? Se restaurará el stock.`
+    )
+    if (!confirmed) return
+
+    setVoiding(sale.id)
+    try {
+      await api.put(`/sales/${sale.id}/void`)
+      toast.success('Venta anulada y stock restaurado')
+      fetchSales()
+    } catch (err) {
+      toast.error('Error al anular: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setVoiding(null)
+    }
+  }
+
   const filteredSales = sales.filter(s =>
     s.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (s.afip_cae && s.afip_cae.includes(searchQuery)) ||
@@ -105,6 +129,7 @@ const InvoicesList = () => {
   )
 
   return (
+    <>
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-black tracking-tight">
@@ -168,6 +193,7 @@ const InvoicesList = () => {
                   <TableHead>SUCURSAL</TableHead>
                   <TableHead>TIPO</TableHead>
                   <TableHead>COMPROBANTE</TableHead>
+                  <TableHead>ESTADO</TableHead>
                   <TableHead>TOTAL</TableHead>
                   <TableHead className="text-right">ACCIONES</TableHead>
                 </TableRow>
@@ -207,9 +233,14 @@ const InvoicesList = () => {
                       <TableCell className="font-black font-mono text-green-500">
                         ${Number(sale.total).toLocaleString()}
                       </TableCell>
+                      <TableCell>
+                        {sale.status === 'voided' ? (
+                          <Badge variant="destructive" className="text-xs">Anulada</Badge>
+                        ) : null}
+                      </TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1.5 justify-end">
-                          {isAfip && (
+                          {isAfip && sale.status !== 'voided' && (
                             <Button variant="ghost" size="sm" className="text-green-500 text-xs gap-1"
                               onClick={() => handleVerifyAfip(sale)}>
                               <CloudCog className="h-3.5 w-3.5" /> Verificar
@@ -219,6 +250,13 @@ const InvoicesList = () => {
                             onClick={() => handlePrint(sale)}>
                             <Printer className="h-3.5 w-3.5" /> Imprimir
                           </Button>
+                          {sale.status !== 'voided' && can('ventas.anular') && (
+                            <Button variant="ghost" size="sm" className="text-destructive text-xs gap-1"
+                              disabled={voiding === sale.id}
+                              onClick={() => handleVoid(sale)}>
+                              <Trash2 className="h-3.5 w-3.5" /> Anular
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -235,6 +273,8 @@ const InvoicesList = () => {
         )}
       </Card>
     </div>
+    <ConfirmDialog />
+    </>
   )
 }
 

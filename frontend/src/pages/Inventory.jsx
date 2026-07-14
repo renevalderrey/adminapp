@@ -59,8 +59,8 @@ const Inventory = () => {
   const [page, setPage] = useState(1)
   const perPage = 25
 
-  const firstLocation = locations[0]?.value || 'general'
-  const secondLocation = locations[1]?.value || 'ortiz'
+  const firstLocation = locations[0]?.value || ''
+  const secondLocation = locations[1]?.value || locations[0]?.value || ''
 
   const [transferForm, setTransferForm] = useState({
     from_location: firstLocation,
@@ -186,7 +186,7 @@ const Inventory = () => {
               <FileSpreadsheet className="h-4 w-4 mr-1" /> Importar
             </Button>
           </Can>
-          <Button size="sm" onClick={openCreate}>
+          <Button size="sm" onClick={openCreate} className="bg-[#00B4B6] hover:bg-[#008B8E] text-white">
             <Plus className="h-4 w-4 mr-1" /> Nuevo Producto
           </Button>
         </div>

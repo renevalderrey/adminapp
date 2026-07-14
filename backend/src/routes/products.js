@@ -55,7 +55,7 @@ router.get('/', checkPermission('products.ver'), async (req, res) => {
       include: [
         { model: Brand, as: 'brand', attributes: ['id', 'name', 'color'] },
         { model: Supplier, as: 'supplier', attributes: ['id', 'name'] },
-        { model: Stock, as: 'stock', attributes: ['location', 'punto_de_venta_id', 'quantity', 'available'] },
+        { model: Stock, as: 'stock', attributes: ['id', 'location', 'punto_de_venta_id', 'quantity', 'available', 'min_stock'] },
       ],
       order: [['name', 'ASC']],
     };

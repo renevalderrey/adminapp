@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { toast } from 'sonner'
 import * as XLSX from 'xlsx'
 import { importProducts, downloadTemplate } from '@/services/api'
+import useStore from '@/store/useStore'
 import {
   Dialog,
   DialogContent,
@@ -37,7 +38,7 @@ const SYSTEM_FIELDS = [
   { key: 'wholesale_margin', label: 'Margen mayorista %', required: false, tooltip: 'Porcentaje de margen para precio mayorista.', group: 'producto' },
   { key: 'wholesale_price', label: 'Precio mayorista', required: false, tooltip: 'Precio mayorista manual. Anula el cálculo por margen mayorista.', group: 'producto' },
   { key: 'quantity', label: 'Stock inicial', required: false, tooltip: 'Cantidad inicial en inventario para la sucursal especificada.', group: 'stock' },
-  { key: 'location', label: 'Sucursal', required: false, tooltip: 'Sucursal donde se almacena el stock: general, ortiz, mayo. Default: general', group: 'stock' },
+  { key: 'location', label: 'Sucursal', required: false, tooltip: 'Código de la sucursal donde se almacena el stock. Dejalo vacío para usar la sucursal principal.', group: 'stock' },
   { key: 'min_stock', label: 'Stock mínimo', required: false, tooltip: 'Cantidad mínima para alertar reposición.', group: 'stock' },
   { key: 'current_batch', label: 'Lote', required: false, tooltip: 'Número de lote del producto.', group: 'stock' },
   { key: 'expiration_date', label: 'Vencimiento', required: false, tooltip: 'Fecha de vencimiento en formato YYYY-MM-DD.', group: 'stock' },
@@ -146,6 +147,7 @@ function formatFileSize(bytes) {
 }
 
 export default function ImportWizard({ open, onOpenChange, onSuccess }) {
+  const empresaActiva = useStore(s => s.empresaActiva)
   const [step, setStep] = useState(1)
   const [file, setFile] = useState(null)
   const [fileData, setFileData] = useState({ headers: [], rows: [], totalRows: 0 })
@@ -157,6 +159,7 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
   const fileInputRef = useRef(null)
   const [dragOver, setDragOver] = useState(false)
   const [expandedErrors, setExpandedErrors] = useState(false)
+  const [defaultLocation, setDefaultLocation] = useState(empresaActiva?.puntosDeVenta?.[0]?.code || 'principal')
 
   useEffect(() => {
     if (!open) {
@@ -169,9 +172,10 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
         setResult(null)
         setParsing(false)
         setExpandedErrors(false)
+        setDefaultLocation(empresaActiva?.puntosDeVenta?.[0]?.code || 'principal')
       }, 200)
     }
-  }, [open])
+  }, [open, empresaActiva?.puntosDeVenta])
 
   const reset = useCallback(() => {
     setStep(1)
@@ -182,7 +186,8 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
     setResult(null)
     setParsing(false)
     setExpandedErrors(false)
-  }, [])
+    setDefaultLocation(empresaActiva?.puntosDeVenta?.[0]?.code || 'principal')
+  }, [empresaActiva?.puntosDeVenta])
 
   const handleFile = useCallback(async (selectedFile) => {
     const validExts = ['.csv', '.xlsx', '.xls']
@@ -281,7 +286,7 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
     }
 
     try {
-      const res = await importProducts(file, mapping)
+      const res = await importProducts(file, mapping, defaultLocation)
       setResult(res.data)
       setStep(3)
     } catch (err) {
@@ -289,7 +294,7 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
     } finally {
       setImporting(false)
     }
-  }, [file, columnMap, fileData.headers])
+  }, [file, columnMap, fileData.headers, defaultLocation])
 
   const requiredMapped = SYSTEM_FIELDS
     .filter(f => f.required)
@@ -455,11 +460,35 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
 
   const renderMappingStep = () => {
     const { headers } = fileData
+    const locations = empresaActiva?.puntosDeVenta || []
     return (
       <div className="space-y-5">
         <DialogDescription>
           El sistema detectó {fileData.totalRows} filas en tu archivo. Revisá la correspondencia entre las columnas de tu archivo y los campos del sistema. Los campos obligatorios están marcados con <span className="text-destructive font-medium">*</span>.
         </DialogDescription>
+
+        {/* Default location selector */}
+        <div className="rounded-lg border p-3">
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1.5">
+            Sucursal destino para el stock
+          </label>
+          <p className="text-xs text-muted-foreground mb-2">
+            El stock se asignará a esta sucursal a menos que el archivo tenga una columna "Sucursal" mapeada.
+          </p>
+          {locations.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No hay sucursales disponibles</p>
+          ) : (
+            <select
+              value={defaultLocation}
+              onChange={(e) => setDefaultLocation(e.target.value)}
+              className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors w-full sm:w-64"
+            >
+              {locations.map(pv => (
+                <option key={pv.code} value={pv.code}>{pv.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
 
         {renderPreviewTable()}
 
@@ -630,27 +659,27 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-2xl gap-0 p-0" showCloseButton={!importing}>
-        <div className="p-4 pb-0">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden" showCloseButton={!importing}>
+        <div className="px-6 pt-5 pb-0 shrink-0">
           <DialogHeader className="mb-3">
             <DialogTitle>Importar Productos</DialogTitle>
           </DialogHeader>
           {renderStepIndicator()}
         </div>
 
-        <div className="px-4 pb-4 overflow-y-auto max-h-[65vh]">
+        <div className="px-6 pb-6 overflow-y-auto min-h-0 flex-1">
           {step === 1 && renderUploadStep()}
           {step === 2 && renderMappingStep()}
           {step === 3 && renderResultStep()}
         </div>
 
-        <DialogFooter className="px-4 py-3 border-t">
+        <DialogFooter className="mx-0 mb-0 px-6 py-5 border-t shrink-0">
           {step === 1 && (
             <div className="flex justify-between w-full">
               <DialogClose asChild>
                 <Button variant="ghost">Cancelar</Button>
               </DialogClose>
-              <Button disabled={!file || parsing} onClick={() => file && handleFile(file)}>
+              <Button disabled={!file || parsing} onClick={() => file && handleFile(file)} className="bg-[#00B4B6] hover:bg-[#008B8E] text-white">
                 {parsing ? 'Leyendo...' : file ? 'Continuar' : 'Seleccioná un archivo'}
                 <ArrowRight className="size-4 ml-1.5" />
               </Button>
@@ -666,7 +695,7 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
                 <DialogClose asChild>
                   <Button variant="outline">Cancelar</Button>
                 </DialogClose>
-                <Button onClick={handleImport} disabled={!requiredMapped || importing}>
+                <Button onClick={handleImport} disabled={!requiredMapped || importing} className="bg-[#00B4B6] hover:bg-[#008B8E] text-white">
                   {importing ? (
                     <><Loader2 className="size-4 animate-spin mr-1.5" /> Importando...</>
                   ) : (
@@ -679,7 +708,7 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
 
           {step === 3 && (
             <div className="flex justify-end w-full">
-              <Button onClick={() => { onOpenChange(false); if (onSuccess && result?.created > 0) onSuccess(result) }}>
+              <Button onClick={() => { onOpenChange(false); if (onSuccess && result?.created > 0) onSuccess(result) }} className="bg-[#00B4B6] hover:bg-[#008B8E] text-white">
                 Finalizar
               </Button>
             </div>

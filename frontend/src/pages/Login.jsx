@@ -22,7 +22,12 @@ function Login() {
         </CardHeader>
         <CardContent>
           <Button
-            onClick={() => loginWithRedirect()}
+            onClick={() => loginWithRedirect({
+              authorizationParams: {
+                audience: 'https://api.sistema-de-facturacion.com',
+                scope: 'openid profile email offline_access',
+              },
+            })}
             className="w-full h-11 font-semibold cursor-pointer hover:shadow-lg hover:shadow-cyan-500/30 hover:brightness-110"
             size="lg"
             style={{ backgroundColor: 'var(--color-brand)' }}

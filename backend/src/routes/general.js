@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
-const { Stock, Brand, Product, FixedExpense, Setting } = require('../models');
+const { Stock, Brand, Product, FixedExpense, Setting, PuntoDeVenta } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
 
 // ═══════ STOCK ═══════
@@ -71,6 +71,41 @@ router.put('/stock/:id', checkPermission('stock.editar'), async (req, res) => {
         disponible_nuevo: stock.available,
         usuario_id: req.userId,
       });
+    }
+
+    res.json({ ok: true, data: stock });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /api/stock — Crear o actualizar stock de un producto en una sucursal
+router.post('/stock', checkPermission('stock.editar'), async (req, res) => {
+  try {
+    const { product_id, quantity, available, min_stock, location, punto_de_venta_id } = req.body;
+    const empresaId = req.empresaId || 1;
+    if (!product_id) return res.status(400).json({ ok: false, error: 'product_id es requerido' });
+
+    let loc = location;
+    if (!loc && punto_de_venta_id) {
+      const pv = await PuntoDeVenta.findByPk(punto_de_venta_id);
+      loc = pv?.code || pv?.name || 'general';
+    }
+
+    const [stock, created] = await Stock.findOrCreate({
+      where: { product_id, punto_de_venta_id: punto_de_venta_id || null, empresa_id: empresaId },
+      defaults: {
+        quantity: quantity ?? 0,
+        available: available ?? quantity ?? 0,
+        min_stock: min_stock ?? 0,
+        location: loc || 'general',
+        punto_de_venta_id: punto_de_venta_id || null,
+        empresa_id: empresaId,
+      },
+    });
+
+    if (!created) {
+      await stock.update({ quantity: quantity ?? stock.quantity, available: available ?? stock.available, min_stock: min_stock ?? stock.min_stock });
     }
 
     res.json({ ok: true, data: stock });

@@ -160,8 +160,12 @@ async function start() {
     await sequelize.authenticate();
     logger.info('PostgreSQL connected');
 
-    await sequelize.sync({ alter: process.env.NODE_ENV === 'development' });
-    logger.info('Models synchronized');
+    if (process.env.NODE_ENV === 'production') {
+      logger.info('Production mode: skipping sequelize.sync() — use "npm run migrate" instead');
+    } else {
+      await sequelize.sync({ alter: true });
+      logger.info('Models synchronized (development)');
+    }
 
     await seedPermissions();
     await seedPuntosDeVenta();

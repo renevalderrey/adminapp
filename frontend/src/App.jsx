@@ -56,6 +56,8 @@ function App() {
   const usuario = useStore(s => s.usuario)
   const empresaActiva = useStore(s => s.empresaActiva)
   const puntoDeVentaActivo = useStore(s => s.puntoDeVentaActivo)
+  const loadingUsuario = useStore(s => s.loadingUsuario)
+  const contextError = useStore(s => s.contextError)
   const onboardingCompleted = empresaActiva?.onboarding_completed
 
   useEffect(() => {
@@ -71,10 +73,10 @@ function App() {
   }, [logout])
 
   useEffect(() => {
-    if (isAuthenticated && !usuario) {
+    if (isAuthenticated && !usuario && !contextError) {
       loadEmpresaContext()
     }
-  }, [isAuthenticated, usuario, loadEmpresaContext])
+  }, [isAuthenticated, usuario, contextError, loadEmpresaContext])
 
   useEffect(() => {
     setEmpresaContext(
@@ -105,6 +107,13 @@ function App() {
     }
   }, [usuario])
 
+  // Si falla la carga del contexto, desloguear automáticamente
+  useEffect(() => {
+    if (contextError) {
+      logout({ logoutParams: { returnTo: window.location.origin } })
+    }
+  }, [contextError, logout])
+
   if (isLoading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
@@ -126,7 +135,32 @@ function App() {
     )
   }
 
-  // Show onboarding while context loads or if onboarding not completed
+  // Cargando contexto del usuario
+  if (loadingUsuario || (isAuthenticated && !usuario && !contextError)) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-background">
+        <div className="text-center">
+          <img src="/logo_sin_fondo.png" alt="Admin App" className="h-16 w-16 object-contain mx-auto mb-4" />
+          <p className="text-muted-foreground font-medium">Cargando tu información...</p>
+        </div>
+        <Toaster />
+      </div>
+    )
+  }
+
+  // Error al cargar contexto — mostrar pantalla de redirección
+  if (contextError) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-background">
+        <div className="text-center">
+          <p className="text-muted-foreground font-medium">Redirigiendo al inicio de sesión...</p>
+        </div>
+        <Toaster />
+      </div>
+    )
+  }
+
+  // Usuario autenticado sin empresa → Onboarding
   if (usuario && !onboardingCompleted) {
     return (
       <ErrorBoundary>

@@ -79,7 +79,7 @@ const TEMPLATES = {
       { header: 'tamaño_envase', key: 'unit_size', note: 'Ej: 500 (gr), 1 (kg)' },
       { header: 'gravado', key: 'taxed', note: 'true / false' },
       { header: 'stock', key: 'quantity', note: 'Cantidad en inventario' },
-      { header: 'sucursal', key: 'location', note: 'general / ortiz / mayo' },
+      { header: 'sucursal', key: 'location', note: 'Código de sucursal. Default: principal' },
       { header: 'lote', key: 'current_batch', note: '' },
       { header: 'vencimiento', key: 'expiration_date', note: 'YYYY-MM-DD' },
     ],
@@ -94,7 +94,7 @@ const TEMPLATES = {
       { header: 'total', key: 'total', note: 'Total de la venta' },
       { header: 'metodo_pago', key: 'payment_method', note: 'ef / tr / td / tc1 / qr' },
       { header: 'cliente', key: 'customer_name', note: 'Nombre del cliente' },
-      { header: 'sucursal', key: 'location', note: 'general / ortiz / mayo' },
+      { header: 'sucursal', key: 'location', note: 'Código de sucursal. Default: principal' },
     ],
   },
   customers: {
@@ -202,13 +202,24 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
     if (rows.length === 0) return res.status(400).json({ ok: false, error: 'El archivo está vacío' });
 
     const empresaId = req.empresaId || 1;
+    const defaultLocation = req.body.defaultLocation || 'principal';
     let created = 0, updated = 0, errors = [];
 
     for (const [i, raw] of rows.entries()) {
       try {
         const data = mapRow(raw, columnMap);
+
+        // Sanitize: convert empty strings to null so optional fields don't cause validation errors
+        for (const k of Object.keys(data)) {
+          if (data[k] === '' || data[k] === ' ') data[k] = null;
+        }
+
         if (!data.name && !data.sku) {
           errors.push({ fila: i + 2, error: 'Falta nombre o sku' });
+          continue;
+        }
+        if (!data.name) {
+          errors.push({ fila: i + 2, error: 'Falta el nombre del producto' });
           continue;
         }
 
@@ -230,24 +241,27 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
           supplierId = supplier.id;
         }
 
-        const cost = parseFloat(data.cost) || 0;
-        const marginOverride = data.margin_override !== undefined ? parseFloat(data.margin_override) : undefined;
-        const priceOverride = data.price_override !== undefined ? parseFloat(data.price_override) : undefined;
-        const wholesaleMargin = data.wholesale_margin !== undefined ? parseFloat(data.wholesale_margin) : undefined;
-        const wholesalePrice = data.wholesale_price !== undefined ? parseFloat(data.wholesale_price) : undefined;
-        const unitSize = data.unit_size !== undefined ? parseFloat(data.unit_size) : undefined;
-        const taxed = data.taxed !== undefined ? (data.taxed === 'true' || data.taxed === true || data.taxed === '1' || data.taxed === 1) : undefined;
-        const isActive = data.is_active !== undefined ? (data.is_active === 'true' || data.is_active === true || data.is_active === '1' || data.is_active === 1) : undefined;
+        const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
+
+        const cost = toNum(data.cost) || 0;
+        const marginOverride = toNum(data.margin_override);
+        const priceOverride = toNum(data.price_override);
+        const wholesaleMargin = toNum(data.wholesale_margin);
+        const wholesalePrice = toNum(data.wholesale_price);
+        const unitSize = toNum(data.unit_size);
+        const taxed = data.taxed != null && data.taxed !== '' ? (data.taxed === 'true' || data.taxed === true || data.taxed === '1' || data.taxed === 1) : undefined;
+        const isActive = data.is_active != null && data.is_active !== '' ? (data.is_active === 'true' || data.is_active === true || data.is_active === '1' || data.is_active === 1) : undefined;
 
         let product = null;
         if (data.sku) product = await Product.findOne({ where: { sku: data.sku, empresa_id: empresaId } });
-        if (!product) product = await Product.findOne({ where: { name: data.name, empresa_id: empresaId } });
+        if (!product && data.name) product = await Product.findOne({ where: { name: data.name, empresa_id: empresaId } });
 
         const productData = {
           name: data.name, description: data.description, sku: data.sku, barcode: data.barcode,
           cost, brand_id: brandId, supplier_id: supplierId,
           category: data.category || 'otro',
-          unit_type: data.unit_type, unit_size: unitSize,
+          unit_type: ['unidad', 'kg', 'gr', 'litro', 'ml'].includes(data.unit_type) ? data.unit_type : 'unidad',
+          unit_size: unitSize,
           taxed, image_url: data.image_url,
           empresa_id: empresaId,
         };
@@ -268,7 +282,7 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
 
         if (data.quantity !== undefined) {
           const qty = parseInt(data.quantity) || 0;
-          const location = data.location || 'general';
+          const location = data.location || defaultLocation;
           const [stock] = await Stock.findOrCreate({
             where: { product_id: product.id, location, empresa_id: empresaId },
             defaults: { quantity: qty, available: qty, location, empresa_id: empresaId, min_stock: parseInt(data.min_stock) || 0, current_batch: data.current_batch || null, expiration_date: data.expiration_date || null, purchase_date: data.purchase_date || null },
@@ -278,7 +292,12 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
           }
         }
       } catch (err) {
-        errors.push({ fila: i + 2, error: err.message });
+        let msg = err.message;
+        if (msg.includes('enum_products_unit_type')) msg = `"${data.unit_type || '(vacío)'}" no es válido para Unidad. Usá: unidad, kg, gr, litro, ml`;
+        else if (msg === 'Validation error' && err.errors?.length) msg = err.errors.map(e => `${e.path}: ${e.message}`).join('; ');
+        else if (msg.includes('null value in column')) msg = `Falta un campo obligatorio (${msg.match(/"([^"]+)"/)?.[1] || ''})`;
+        else if (msg.length > 120) msg = msg.substring(0, 120) + '...';
+        errors.push({ fila: i + 2, error: msg });
       }
     }
 

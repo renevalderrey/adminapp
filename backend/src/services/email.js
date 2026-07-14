@@ -38,6 +38,9 @@ async function sendEmail({ to, subject, html }) {
 }
 
 function welcomeEmail(usuarioNombre, empresaNombre) {
+  const frontendUrl = process.env.FRONTEND_URL;
+  if (!frontendUrl) logger.warn('FRONTEND_URL not set — email links will be broken');
+
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h1 style="color: #6d28d9;">Bienvenido a Admin App</h1>
@@ -45,7 +48,7 @@ function welcomeEmail(usuarioNombre, empresaNombre) {
       <p>Tu empresa <strong>${empresaNombre}</strong> ha sido creada exitosamente.</p>
       <p>Ya podés empezar a gestionar tus ventas, inventario y más.</p>
       <p style="margin-top: 24px;">
-        <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}"
+        <a href="${frontendUrl || '#'}"
            style="background: #6d28d9; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
           Ir al Dashboard
         </a>
@@ -58,7 +61,8 @@ function welcomeEmail(usuarioNombre, empresaNombre) {
 }
 
 function invitationEmail(invitadorNombre, empresaNombre, token) {
-  const acceptUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/accept-invite/${token}`;
+  const frontendUrl = process.env.FRONTEND_URL || '#';
+  const acceptUrl = `${frontendUrl}/accept-invite/${token}`;
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h1 style="color: #6d28d9;">Te invitaron a unirte a ${empresaNombre}</h1>

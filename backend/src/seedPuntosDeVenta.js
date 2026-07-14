@@ -1,4 +1,4 @@
-const { PuntoDeVenta, Stock, Sale, ProductionOrder, StockTransfer, sequelize } = require('./models');
+const { Empresa, PuntoDeVenta, Stock, Sale, ProductionOrder, StockTransfer } = require('./models');
 const { Op } = require('sequelize');
 const logger = require('./utils/logger');
 
@@ -11,30 +11,11 @@ async function seedPuntosDeVenta() {
       logger.info('No puntos de venta found, creating defaults...');
     }
 
-    const empresasConStock = await Stock.findAll({
-      attributes: [[sequelize.fn('DISTINCT', sequelize.col('empresa_id')), 'empresa_id']],
-      where: { empresa_id: { [Op.ne]: null } },
-      raw: true,
-    });
-
-    const empresasConSales = await Sale.findAll({
-      attributes: [[sequelize.fn('DISTINCT', sequelize.col('empresa_id')), 'empresa_id']],
-      where: { empresa_id: { [Op.ne]: null } },
-      raw: true,
-    });
-
-    const empresasConProd = await ProductionOrder.findAll({
-      attributes: [[sequelize.fn('DISTINCT', sequelize.col('empresa_id')), 'empresa_id']],
-      where: { empresa_id: { [Op.ne]: null } },
-      raw: true,
-    });
-
-    const empresaIds = new Set([
-      ...empresasConStock.map(r => r.empresa_id),
-      ...empresasConSales.map(r => r.empresa_id),
-      ...empresasConProd.map(r => r.empresa_id),
-    ]);
-    if (empresaIds.size === 0) empresaIds.add(1);
+    const empresas = await Empresa.findAll({ attributes: ['id'], raw: true });
+    if (empresas.length === 0) {
+      logger.info('No empresas found, skipping PuntoDeVenta seed');
+      return;
+    }
 
     const locationCodes = ['general', 'ortiz', 'mayo'];
     const locationNames = {
@@ -43,16 +24,18 @@ async function seedPuntosDeVenta() {
       mayo: 'Mayo',
     };
 
-    for (const empresaId of empresaIds) {
+    for (const { id: empresaId } of empresas) {
+      const existingCount = await PuntoDeVenta.count({ where: { empresa_id: empresaId } });
+      if (existingCount > 0) {
+        logger.info(`Empresa ${empresaId} already has ${existingCount} PVs, skipping defaults`);
+        continue;
+      }
       for (const code of locationCodes) {
-        await PuntoDeVenta.findOrCreate({
-          where: { empresa_id: empresaId, code },
-          defaults: {
-            empresa_id: empresaId,
-            code,
-            name: locationNames[code] || code,
-            is_active: true,
-          },
+        await PuntoDeVenta.create({
+          empresa_id: empresaId,
+          code,
+          name: locationNames[code] || code,
+          is_active: true,
         });
       }
     }

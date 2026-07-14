@@ -10,7 +10,6 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 // Instancia de Axios con configuración base
 const api = axios.create({
   baseURL: API_BASE,
-  headers: { 'Content-Type': 'application/json' },
 });
 
 let currentEmpresaId = null;
@@ -31,6 +30,9 @@ export function setOnUnauthorized(callback) {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.config?.skipUnauthorized) {
+      return Promise.reject(error);
+    }
     if (error.response?.status === 401 && onUnauthorizedCallback) {
       onUnauthorizedCallback();
     }
@@ -217,12 +219,13 @@ export const getSubscription = (empresaId) => api.get(`/empresas/${empresaId}/su
 export const downloadTemplate = (type = 'products') =>
   api.get(`/import/template/${type}`, { responseType: 'blob' });
 
-export const importProducts = (file, mapping = {}) => {
+export const importProducts = (file, mapping = {}, defaultLocation = 'principal') => {
   const formData = new FormData();
   formData.append('file', file);
   if (Object.keys(mapping).length > 0) {
     formData.append('mapping', JSON.stringify(mapping));
   }
+  formData.append('defaultLocation', defaultLocation);
   return api.post('/import/products', formData, { timeout: 120000 });
 };
 

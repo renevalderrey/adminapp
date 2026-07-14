@@ -90,4 +90,33 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  /* Subtle scrollbar — brand colors */
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, #00B4B6 20%, transparent);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, #00B4B6 40%, transparent);
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, #00B4B6 30%, transparent);
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, #00B4B6 50%, transparent);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, #00B4B6 20%, transparent) transparent;
+  }
+  .dark * {
+    scrollbar-color: color-mix(in srgb, #00B4B6 30%, transparent) transparent;
+  }
 }

@@ -4,18 +4,51 @@ const { Op } = require('sequelize');
 const { Empresa, PuntoDeVenta, Usuario, UsuarioEmpresa, Suscripcion, Invitacion, Rol, RolPermiso, UsuarioPermiso } = require('../models');
 const { sendEmail, welcomeEmail, invitationEmail } = require('../services/email');
 const checkPermission = require('../middleware/checkPermission');
+const multer = require('multer');
+const path = require('path');
 const logger = require('../utils/logger');
+
+const UPLOADS_DIR = path.join(__dirname, '..', '..', '..', 'frontend', 'public', 'uploads', 'empresas');
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const name = `logo_${Date.now()}${ext}`;
+    cb(null, name);
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, allowed.includes(ext));
+  },
+});
 
 // ── ONBOARDING ──
 
 // POST /api/empresas/onboarding — Crea empresa + PV + suscripción después del signup
-router.post('/onboarding', async (req, res) => {
+router.post('/onboarding', (req, res, next) => {
+  const ct = req.headers['content-type'] || '';
+  if (ct.includes('multipart/form-data')) {
+    upload.single('logo')(req, res, next);
+  } else {
+    next();
+  }
+}, async (req, res) => {
   try {
     const usuario = req.usuario;
     if (!usuario) return res.status(401).json({ ok: false, error: 'Usuario no autenticado' });
 
     const { name, cuit, phone, address, city, state, rubro, pv_name } = req.body;
-    if (!name) return res.status(400).json({ ok: false, error: 'El nombre de la empresa es requerido' });
+    if (!name) return res.status(400).json({ ok: false, error: 'Completá el nombre de la empresa' });
+    if (!phone) return res.status(400).json({ ok: false, error: 'Completá el teléfono de contacto' });
+
+    const logoUrl = req.file ? `/uploads/empresas/${req.file.filename}` : null;
 
     const empresa = await Empresa.create({
       name,
@@ -25,6 +58,7 @@ router.post('/onboarding', async (req, res) => {
       city: city || null,
       state: state || null,
       rubro: rubro || null,
+      logo: logoUrl,
       onboarding_completed: true,
       settings: {
         margin_efectivo: 50,
@@ -84,6 +118,7 @@ router.post('/onboarding', async (req, res) => {
           address: empresa.address,
           city: empresa.city,
           state: empresa.state,
+          logo: empresa.logo,
           settings: empresa.settings,
         },
         puntoDeVenta: { id: defaultPv.id, name: defaultPv.name, code: defaultPv.code },
@@ -91,7 +126,14 @@ router.post('/onboarding', async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    logger.error({ err }, 'Onboarding error');
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ ok: false, error: 'El logo no puede superar los 5MB' });
+    }
+    if (err?.message?.includes('multer')) {
+      return res.status(400).json({ ok: false, error: 'Error al subir el logo. Verificá que sea una imagen válida.' });
+    }
+    res.status(500).json({ ok: false, error: 'Error al crear la empresa. Intentalo de nuevo.' });
   }
 });
 

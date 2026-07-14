@@ -49,8 +49,19 @@ import {
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
+import useStore from '@/store/useStore';
 
 const Production = () => {
+  const empresaActiva = useStore(s => s.empresaActiva);
+  const locations = React.useMemo(() => {
+    const pvs = empresaActiva?.puntosDeVenta || []
+    return pvs.length > 0 ? pvs : [
+      { location: 'general', name: 'General' },
+      { location: 'ortiz', name: 'Ortiz' },
+      { location: 'mayo', name: '25 de Mayo' },
+    ]
+  }, [empresaActiva?.puntosDeVenta])
+
   const [allProducts, setAllProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [total, setTotal] = useState(0);
@@ -484,9 +495,9 @@ const Production = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="general">General</SelectItem>
-                    <SelectItem value="ortiz">Ortiz</SelectItem>
-                    <SelectItem value="mayo">Mayo</SelectItem>
+                    {locations.map(loc => (
+                      <SelectItem key={loc.location} value={loc.location}>{loc.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

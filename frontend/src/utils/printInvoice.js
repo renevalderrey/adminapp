@@ -1,5 +1,6 @@
 export const printInvoice = (data) => {
   const printWindow = window.open('', '_blank');
+  const companyName = data.companyName || data.empresaNombre || 'Comprafit';
   
   const headerTitle = data.isInternal 
     ? data.typeStr 
@@ -27,7 +28,7 @@ export const printInvoice = (data) => {
       </head>
       <body>
         <div class="header">
-          <h2>COMPRAFIT</h2>
+          <h2>${companyName}</h2>
           <p>${headerTitle}</p>
           <p>${nroString}</p>
           <p>Fecha: ${data.date}</p>
