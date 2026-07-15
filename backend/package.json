@@ -7,6 +7,8 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "migrate": "node src/migrate.js",
+    "db:migrate": "npx sequelize-cli db:migrate --config src/config/sequelize-cli.js",
+    "db:migrate:undo": "npx sequelize-cli db:migrate:undo --config src/config/sequelize-cli.js",
     "test": "jest --forceExit --detectOpenHandles --passWithNoTests",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"

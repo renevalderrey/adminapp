@@ -1,0 +1,37 @@
+# fly.toml - Deploy backend en Fly.io (gratis)
+# Ejecutar: fly launch
+
+app = "comprafit-api"
+primary_region = "gru"  # Sao Paulo (más cerca de Argentina)
+
+[build]
+  dockerfile = "backend/Dockerfile"
+  # Build context is the repo root because Dockerfile references src/ relative to backend/
+
+[env]
+  NODE_ENV = "production"
+  PORT = "5000"
+
+# Variables de entorno (setear con: fly secrets set KEY=VALUE)
+# DATABASE_URL=<lo pone Neon>
+# AUTH0_DOMAIN=<tu-auth0>
+# AUTH0_AUDIENCE=<tu-audience>
+# FRONTEND_URL=<tu-vercel-url>
+# RESEND_API_KEY=<tu-key>
+
+[http_service]
+  internal_port = 5000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256

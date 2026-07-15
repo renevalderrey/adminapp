@@ -29,6 +29,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 5000
+      DATABASE_URL: ${DATABASE_URL}
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-comprafit}

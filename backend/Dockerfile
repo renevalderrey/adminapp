@@ -17,4 +17,4 @@ EXPOSE 5000
 
 ENV NODE_ENV=production
 
-CMD ["sh", "-c", "npm run migrate --prefix /app && node src/server.js"]
+CMD ["sh", "-c", "npx sequelize-cli db:migrate --config src/config/sequelize-cli.js && node src/server.js"]
