@@ -55,6 +55,23 @@ que sugiere "lo desarrollé sin orden".
 
 ## 1.2 El bloqueante crítico: fuga de datos entre clientes
 
+> **RESUELTO** (30/07/2026). Lo que sigue describe el estado en que se
+> encontró el sistema. El detalle de la corrección, con la cobertura endpoint
+> por endpoint, está en [AUDITORIA-AISLAMIENTO.md](AUDITORIA-AISLAMIENTO.md).
+>
+> La auditoría completa encontró **20 endpoints vulnerables**, no los 8 que se
+> ven en la tabla de abajo, más tres causas estructurales que no se habían
+> detectado en el primer relevamiento:
+>
+> - La configuración de AFIP era **global**: `settings` tenía `key` como única
+>   clave primaria, así que existía una sola fila de certificado, CUIT y
+>   entorno para toda la base. Una empresa facturaba con la identidad fiscal
+>   de otra.
+> - `customerService.getSummary()` agregaba las cuentas por cobrar y por pagar
+>   de **todas** las empresas y se las mostraba a cualquier usuario.
+> - `POST /api/empresas/:empresaId/invitar` permitía invitarse a uno mismo a
+>   otra empresa.
+
 **Este es el único hallazgo que por sí solo impide vender.**
 
 El patrón de autorización tiene un agujero sistémico. `checkPermission(codigo)`
@@ -74,9 +91,8 @@ Confirmado en:
 | `routes/empresas.js` | `PUT /:id`, `DELETE /:id` | Editar o desactivar la empresa de otro cliente |
 | `routes/customers.js` | `GET /:id`, `PUT /:id`, `DELETE /:id`, `GET /:id/debt`, `GET /:id/payments`, `GET /:id/sales` | Leer y modificar la cartera de clientes, deudas y ventas de otro cliente |
 
-Los de `empresas.js` **ya están corregidos** en el commit
-`fix(security): cerrar IDOR cross-tenant`. Los de `customers.js` **no**, y hay
-14 rutas más sin auditar.
+Todos corregidos. Ver la tabla completa en
+[AUDITORIA-AISLAMIENTO.md](AUDITORIA-AISLAMIENTO.md).
 
 El conteo grueso de scoping por archivo (queries vs. menciones de `empresa_id`)
 señala dónde mirar primero:
@@ -109,8 +125,12 @@ La suite reportaba verde sin ejecutar un solo test. Tres causas encadenadas:
    `setupFiles`, donde ese global todavía no existe: habría tirado
    `ReferenceError` apenas corriera algo.
 
-Corregido, con 6 smoke tests de arranque como base. Pero la cobertura real de
-lógica de negocio sigue siendo **0%** sobre ~9.500 líneas de API.
+Corregido. La suite pasó de 0 a **119 tests**: smoke tests de arranque,
+unitarios de los helpers de scoping, y guardias estáticos que fallan si los
+patrones de fuga entre empresas reaparecen.
+
+Pero eso cubre el aislamiento, no el cálculo. La cobertura de **lógica de
+negocio sigue siendo 0%** sobre ~9.500 líneas de API. Es el Frente 2.
 
 Para dimensionar el riesgo: el sistema calcula precios con márgenes, punto de
 equilibrio, costos de receta, deudas de cuenta corriente e IVA. Un error de
