@@ -13,7 +13,7 @@ const {
 const cashflowService = require('./cashflowService');
 
 class DashboardService {
-  async getKpis(empresaId = 1) {
+  async getKpis(empresaId) {
     const today = new Date().toISOString().split('T')[0];
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const now = new Date();
@@ -81,7 +81,7 @@ class DashboardService {
     };
   }
 
-  async _salesPeriod(from, to, empresaId = 1) {
+  async _salesPeriod(from, to, empresaId) {
     const result = await Sale.findOne({
       attributes: [
         [fn('COALESCE', fn('SUM', col('total')), 0), 'total'],
@@ -96,7 +96,7 @@ class DashboardService {
     };
   }
 
-  async _salesByMethod(from, to, empresaId = 1) {
+  async _salesByMethod(from, to, empresaId) {
     const rows = await Sale.findAll({
       attributes: [
         'payment_method',
@@ -113,7 +113,7 @@ class DashboardService {
     return byMethod;
   }
 
-  async _customerStats(empresaId = 1) {
+  async _customerStats(empresaId) {
     const totalActive = await Customer.count({ where: { is_active: true, empresa_id: empresaId } });
 
     const customersWithBalance = await Customer.findAll({
@@ -146,7 +146,7 @@ class DashboardService {
     };
   }
 
-  async _receivables(thirtyDaysAgo, empresaId = 1) {
+  async _receivables(thirtyDaysAgo, empresaId) {
     const thirtyDaysAgoDate = thirtyDaysAgo;
     const now = new Date().toISOString().split('T')[0];
     const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -187,7 +187,7 @@ class DashboardService {
     };
   }
 
-  async _payables(empresaId = 1) {
+  async _payables(empresaId) {
     const debts = await SupplierMovement.findAll({
       where: { empresa_id: empresaId, type: 'deuda' },
       attributes: [
@@ -231,7 +231,7 @@ class DashboardService {
     };
   }
 
-  async _productStats(empresaId = 1) {
+  async _productStats(empresaId) {
     const active = await Product.count({ where: { is_active: true, empresa_id: empresaId } });
 
     const lowStockRows = await Stock.findAll({
@@ -251,7 +251,7 @@ class DashboardService {
     return { active, low_stock: lowStock };
   }
 
-  async _lowStockAlerts(limit = 5, empresaId = 1) {
+  async _lowStockAlerts(limit = 5, empresaId) {
     const rows = await Stock.findAll({
       where: {
         [Op.and]: [
@@ -273,7 +273,7 @@ class DashboardService {
     }));
   }
 
-  async _expiringAlerts(today, limit = 5, empresaId = 1) {
+  async _expiringAlerts(today, limit = 5, empresaId) {
     const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const rows = await Stock.findAll({
       where: {

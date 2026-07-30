@@ -10,7 +10,7 @@ const {
 } = require('../models');
 
 class CashflowService {
-  async getBalance(empresaId = 1, puntoDeVentaId = null) {
+  async getBalance(empresaId, puntoDeVentaId = null) {
     const today = new Date().toISOString().split('T')[0];
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const sixtyDaysFromNow = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -70,7 +70,7 @@ class CashflowService {
     };
   }
 
-  async getMovements(filters = {}, empresaId = 1, puntoDeVentaId = null) {
+  async getMovements(filters = {}, empresaId, puntoDeVentaId = null) {
     const { limit, offset, type, category, date_from, date_to } = filters;
     const where = { empresa_id: empresaId };
     if (puntoDeVentaId) where.punto_de_venta_id = puntoDeVentaId;
@@ -95,7 +95,7 @@ class CashflowService {
     return { data: rows, total: count };
   }
 
-  async createEntry(data, empresaId = 1, puntoDeVentaId = null) {
+  async createEntry(data, empresaId, puntoDeVentaId = null) {
     if (!data.amount || parseFloat(data.amount) <= 0) {
       throw new Error('El monto debe ser mayor a 0');
     }
@@ -120,7 +120,7 @@ class CashflowService {
     return true;
   }
 
-  async getAllMovementsUnified(filters = {}, empresaId = 1, puntoDeVentaId = null) {
+  async getAllMovementsUnified(filters = {}, empresaId, puntoDeVentaId = null) {
     const { date_from, date_to, limit } = filters;
     const pageLimit = parseInt(limit) || 100;
 

@@ -13,7 +13,7 @@ const checkPermission = require('../middleware/checkPermission');
 // GET /api/stock — Stock (filtrado por punto de venta activo)
 router.get('/stock', checkPermission('stock.ver'), async (req, res) => {
   try {
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId;
     const where = {
       [Op.or]: [
         { empresa_id: empresaId },
@@ -83,7 +83,7 @@ router.put('/stock/:id', checkPermission('stock.editar'), async (req, res) => {
 router.post('/stock', checkPermission('stock.editar'), async (req, res) => {
   try {
     const { product_id, quantity, available, min_stock, location, punto_de_venta_id } = req.body;
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId;
     if (!product_id) return res.status(400).json({ ok: false, error: 'product_id es requerido' });
 
     let loc = location;
@@ -118,7 +118,7 @@ router.post('/stock', checkPermission('stock.editar'), async (req, res) => {
 router.post('/stock/bulk', checkPermission('stock.editar'), async (req, res) => {
   try {
     const { items, location } = req.body;
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId;
     if (!Array.isArray(items)) return res.status(400).json({ ok: false, error: 'Formato inválido' });
     const loc = location || 'general';
     const pvId = req.puntoDeVentaId || null;
@@ -149,7 +149,7 @@ router.post('/stock/bulk', checkPermission('stock.editar'), async (req, res) => 
 // GET /api/brands
 router.get('/brands', checkPermission('products.ver'), async (req, res) => {
   try {
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId;
     const brands = await Brand.findAll({
       where: {
         [Op.or]: [
@@ -168,7 +168,7 @@ router.get('/brands', checkPermission('products.ver'), async (req, res) => {
 // POST /api/brands
 router.post('/brands', checkPermission('products.crear'), async (req, res) => {
   try {
-    const brand = await Brand.create({ ...req.body, empresa_id: req.empresaId || 1 });
+    const brand = await Brand.create({ ...req.body, empresa_id: req.empresaId });
     res.status(201).json({ ok: true, data: brand });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -180,7 +180,7 @@ router.post('/brands', checkPermission('products.crear'), async (req, res) => {
 // GET /api/expenses?group=gf1
 router.get('/expenses', checkPermission('gastos.ver'), async (req, res) => {
   try {
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId;
     const where = {
       [Op.or]: [
         { empresa_id: empresaId },
@@ -199,7 +199,7 @@ router.get('/expenses', checkPermission('gastos.ver'), async (req, res) => {
 // POST /api/expenses
 router.post('/expenses', checkPermission('gastos.crear'), async (req, res) => {
   try {
-    const data = { ...req.body, empresa_id: req.empresaId || 1 };
+    const data = { ...req.body, empresa_id: req.empresaId };
     if (!data.group && data.punto_de_venta_id) {
       data.group = 'pv_' + data.punto_de_venta_id;
     }
@@ -238,7 +238,7 @@ router.delete('/expenses/:id', checkPermission('gastos.eliminar'), async (req, r
 // GET /api/settings — Todas las configuraciones
 router.get('/settings', checkPermission('config.ver'), async (req, res) => {
   try {
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId;
     const settings = await Setting.findAll({
       where: {
         [Op.or]: [
@@ -262,7 +262,7 @@ router.get('/settings', checkPermission('config.ver'), async (req, res) => {
 // GET /api/settings/:key — Una configuración específica
 router.get('/settings/:key', checkPermission('config.ver'), async (req, res) => {
   try {
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId;
     const setting = await Setting.findOne({
       where: {
         key: req.params.key,
@@ -282,8 +282,8 @@ router.get('/settings/:key', checkPermission('config.ver'), async (req, res) => 
 router.put('/settings/:key', checkPermission('config.editar'), async (req, res) => {
   try {
     const [setting, created] = await Setting.findOrCreate({
-      where: { key: req.params.key, empresa_id: req.empresaId || 1 },
-      defaults: { value: req.body.value, empresa_id: req.empresaId || 1 },
+      where: { key: req.params.key, empresa_id: req.empresaId },
+      defaults: { value: req.body.value, empresa_id: req.empresaId },
     });
     if (!created) await setting.update({ value: req.body.value });
     res.json({ ok: true, data: setting });
@@ -298,7 +298,7 @@ router.get('/alerts', checkPermission('stock.ver'), async (req, res) => {
     const sequelize = require('../config/database');
     const today = new Date().toISOString().split('T')[0];
     const next30Days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId;
     const empresaOrNull = { [Op.or]: [{ empresa_id: empresaId }, { empresa_id: null }] };
 
     // Alertas de stock mínimo

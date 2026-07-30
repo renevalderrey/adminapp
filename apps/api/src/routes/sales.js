@@ -10,7 +10,7 @@ router.get('/', checkPermission('ventas.ver'), async (req, res) => {
   try {
     const date = req.query.date || new Date().toISOString().split('T')[0];
     const { customer_id, page, limit } = req.query;
-    const where = { date, empresa_id: req.empresaId || 1 };
+    const where = { date, empresa_id: req.empresaId };
     if (req.puntoDeVentaId) {
       where.punto_de_venta_id = req.puntoDeVentaId;
     } else if (req.query.location) {
@@ -61,7 +61,7 @@ router.get('/summary', checkPermission('ventas.ver'), async (req, res) => {
         [sequelize.fn('SUM', sequelize.col('total')), 'total'],
       ],
       where: {
-        empresa_id: req.empresaId || 1,
+        empresa_id: req.empresaId,
         date: { [Op.between]: [from, to] },
         status: 'active',
       },
@@ -85,7 +85,7 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
     const saleData = {
       id, date, time, total, payment_method, notes, location, seller,
       afip_cae, afip_nro, afip_vto, afip_type,
-      empresa_id: req.empresaId || 1,
+      empresa_id: req.empresaId,
       punto_de_venta_id: req.puntoDeVentaId || null,
       status: 'active',
     };
@@ -113,7 +113,7 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
         const stock = await Stock.findOne({
           where: {
             product_id: si.product_id,
-            empresa_id: req.empresaId || 1,
+            empresa_id: req.empresaId,
             punto_de_venta_id: req.puntoDeVentaId || null,
           },
           transaction: t,
@@ -133,7 +133,7 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
           }, { transaction: t });
 
           await StockMovement.create({
-            empresa_id: req.empresaId || 1,
+            empresa_id: req.empresaId,
             product_id: si.product_id,
             punto_de_venta_id: req.puntoDeVentaId || null,
             tipo: 'sale',

@@ -5,7 +5,7 @@ const checkPermission = require('../middleware/checkPermission');
 
 router.get('/kpis', checkPermission('dashboard.ver'), async (req, res) => {
   try {
-    const data = await dashboardService.getKpis(req.empresaId || 1);
+    const data = await dashboardService.getKpis(req.empresaId);
     res.json({ ok: true, data });
   } catch (err) {
     console.error('[dashboard] error:', err);

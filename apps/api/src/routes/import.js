@@ -201,7 +201,7 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
 
     if (rows.length === 0) return res.status(400).json({ ok: false, error: 'El archivo está vacío' });
 
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId;
     const defaultLocation = req.body.defaultLocation || 'principal';
     let created = 0, updated = 0, errors = [];
 

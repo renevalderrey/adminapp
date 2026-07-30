@@ -5,7 +5,7 @@ const checkPermission = require('../middleware/checkPermission');
 
 router.get('/', checkPermission('produccion.ver'), async (req, res) => {
   try {
-    const result = await productionService.listProductionOrders(req.query, req.empresaId || 1);
+    const result = await productionService.listProductionOrders(req.query, req.empresaId);
     res.json({ ok: true, ...result });
   } catch (err) {
     console.error('[production:list]', err);
@@ -27,7 +27,7 @@ router.get('/:id', checkPermission('produccion.ver'), async (req, res) => {
 
 router.post('/', checkPermission('produccion.crear'), async (req, res) => {
   try {
-    const result = await productionService.createProductionOrder(req.body, req.empresaId || 1, req.puntoDeVentaId || null);
+    const result = await productionService.createProductionOrder(req.body, req.empresaId, req.puntoDeVentaId || null);
     res.status(201).json({
       ok: true,
       data: result.order,

@@ -9,7 +9,7 @@ const {
 } = require('../models');
 
 class PurchaseService {
-  async createOrder(supplierId, data, empresaId = 1) {
+  async createOrder(supplierId, data, empresaId) {
     const { date, notes, items } = data;
 
     let total = 0;
@@ -41,7 +41,7 @@ class PurchaseService {
     return order;
   }
 
-  async receiveOrder(orderId, itemsReceived, location = 'general', puntoDeVentaId = null, empresaId = 1) {
+  async receiveOrder(orderId, itemsReceived, location = 'general', puntoDeVentaId = null, empresaId) {
     const order = await SupplierOrder.findOne({
       where: { id: orderId, empresa_id: empresaId },
       include: [{ model: Supplier, as: 'supplier' }],
@@ -106,7 +106,7 @@ class PurchaseService {
     if (totalReceived > 0 && (newStatus === 'received' || newStatus === 'partial')) {
       await SupplierMovement.create({
         supplier_id: order.supplier_id,
-        empresa_id: order.empresa_id || 1,
+        empresa_id: order.empresa_id,
         type: 'deuda',
         date: new Date().toISOString().split('T')[0],
         amount: Math.round(totalReceived * 100) / 100,
@@ -117,7 +117,7 @@ class PurchaseService {
     return order;
   }
 
-  async cancelOrder(orderId, empresaId = 1) {
+  async cancelOrder(orderId, empresaId) {
     const order = await SupplierOrder.findOne({ where: { id: orderId, empresa_id: empresaId } });
     if (!order) throw new Error('Orden no encontrada');
     if (order.status === 'received') throw new Error('No se puede anular una orden ya recibida');
@@ -167,7 +167,7 @@ class PurchaseService {
     return { data, total: count };
   }
 
-  async getOrderDetail(orderId, empresaId = 1) {
+  async getOrderDetail(orderId, empresaId) {
     const order = await SupplierOrder.findOne({
       where: { id: orderId, empresa_id: empresaId },
       include: [{ model: Supplier, as: 'supplier', attributes: ['id', 'name'] }],

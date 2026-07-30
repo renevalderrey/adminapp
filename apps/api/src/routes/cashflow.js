@@ -5,7 +5,7 @@ const checkPermission = require('../middleware/checkPermission');
 
 router.get('/balance', checkPermission('caja.ver'), async (req, res) => {
   try {
-    const balance = await cashflowService.getBalance(req.empresaId || 1, req.puntoDeVentaId || null);
+    const balance = await cashflowService.getBalance(req.empresaId, req.puntoDeVentaId || null);
     res.json({ ok: true, data: balance });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -14,7 +14,7 @@ router.get('/balance', checkPermission('caja.ver'), async (req, res) => {
 
 router.get('/movements', checkPermission('caja.ver'), async (req, res) => {
   try {
-    const movements = await cashflowService.getAllMovementsUnified(req.query, req.empresaId || 1, req.puntoDeVentaId || null);
+    const movements = await cashflowService.getAllMovementsUnified(req.query, req.empresaId, req.puntoDeVentaId || null);
     res.json({ ok: true, data: movements, total: movements.length });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -23,7 +23,7 @@ router.get('/movements', checkPermission('caja.ver'), async (req, res) => {
 
 router.get('/entries', checkPermission('caja.ver'), async (req, res) => {
   try {
-    const result = await cashflowService.getMovements(req.query, req.empresaId || 1, req.puntoDeVentaId || null);
+    const result = await cashflowService.getMovements(req.query, req.empresaId, req.puntoDeVentaId || null);
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -32,7 +32,7 @@ router.get('/entries', checkPermission('caja.ver'), async (req, res) => {
 
 router.post('/entries', checkPermission('caja.crear'), async (req, res) => {
   try {
-    const entry = await cashflowService.createEntry(req.body, req.empresaId || 1, req.puntoDeVentaId || null);
+    const entry = await cashflowService.createEntry(req.body, req.empresaId, req.puntoDeVentaId || null);
     res.status(201).json({ ok: true, data: entry });
   } catch (err) {
     if (err.message.includes('debe ser mayor a 0')) {

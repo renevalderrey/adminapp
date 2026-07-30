@@ -10,7 +10,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const { sequelize, Usuario } = require('./models');
-const { checkJwt, extractUser, loadEmpresaContext } = require('./middleware/auth');
+const { checkJwt, extractUser, loadEmpresaContext, requireEmpresa } = require('./middleware/auth');
 const checkSubscription = require('./middleware/checkSubscription');
 const subscriptionCron = require('./services/subscriptionCron');
 const logger = require('./utils/logger');
@@ -158,27 +158,49 @@ const authMiddleware = process.env.BYPASS_AUTH === 'true'
         })
         .catch(() => { req.usuarioPermisos = []; next(); });
     }]
-  : [checkJwt, extractUser, loadEmpresaContext, checkSubscription];
+  : [checkJwt, extractUser, loadEmpresaContext];
 
-app.use('/api/products', ...authMiddleware, require('./routes/products'));
-app.use('/api/sales', ...authMiddleware, require('./routes/sales'));
-app.use('/api/suppliers', ...authMiddleware, require('./routes/suppliers'));
-app.use('/api/afip', ...authMiddleware, require('./routes/afip'));
-app.use('/api', ...authMiddleware, require('./routes/general'));
+// ── Cadena para rutas con datos de una empresa ──
+// requireEmpresa va DESPUES de loadEmpresaContext y ANTES de
+// checkSubscription: sin empresa activa no hay suscripcion que chequear, y
+// sobre todo no hay empresa valida sobre la cual operar. Antes las rutas lo
+// resolvian con `req.empresaId || 1`, que ante un contexto no resuelto caia
+// sobre la empresa 1 — un cliente real en produccion.
+// checkSubscription solo fuera de bypass, igual que antes: en desarrollo con
+// BYPASS_AUTH no se quiere que un trial vencido en la empresa 1 local bloquee
+// todos los endpoints.
+const authEmpresa = process.env.BYPASS_AUTH === 'true'
+  ? [...authMiddleware, requireEmpresa]
+  : [...authMiddleware, requireEmpresa, checkSubscription];
+
+// ── Cadena para rutas que un usuario SIN empresa todavia debe poder usar ──
+// Un usuario recien registrado no tiene empresa hasta completar el onboarding,
+// y quien acepta una invitacion tampoco la tiene antes de aceptarla. Estas
+// rutas se autentican igual, pero no pueden exigir empresa activa: hacerlo
+// dejaria al usuario nuevo sin forma de crear la primera.
+// El scoping de las que SI operan sobre una empresa se aplica ruta por ruta
+// dentro de routes/empresas.js.
+const authSinEmpresa = [...authMiddleware];
+
+app.use('/api/products', ...authEmpresa, require('./routes/products'));
+app.use('/api/sales', ...authEmpresa, require('./routes/sales'));
+app.use('/api/suppliers', ...authEmpresa, require('./routes/suppliers'));
+app.use('/api/afip', ...authEmpresa, require('./routes/afip'));
+app.use('/api', ...authEmpresa, require('./routes/general'));
 app.use('/api/tiendanube', require('./routes/tiendanube'));
-app.use('/api/production', ...authMiddleware, require('./routes/production'));
-app.use('/api/customers', ...authMiddleware, require('./routes/customers'));
-app.use('/api/stock', ...authMiddleware, require('./routes/stock'));
-app.use('/api/reports', ...authMiddleware, require('./routes/reports'));
-app.use('/api/dashboard', ...authMiddleware, require('./routes/dashboard'));
-app.use('/api/cashflow', ...authMiddleware, require('./routes/cashflow'));
-app.use('/api/taxes', ...authMiddleware, require('./routes/taxes'));
-app.use('/api/empresas', ...authMiddleware, require('./routes/empresas'));
-app.use('/api/import', ...authMiddleware, require('./routes/import'));
+app.use('/api/production', ...authEmpresa, require('./routes/production'));
+app.use('/api/customers', ...authEmpresa, require('./routes/customers'));
+app.use('/api/stock', ...authEmpresa, require('./routes/stock'));
+app.use('/api/reports', ...authEmpresa, require('./routes/reports'));
+app.use('/api/dashboard', ...authEmpresa, require('./routes/dashboard'));
+app.use('/api/cashflow', ...authEmpresa, require('./routes/cashflow'));
+app.use('/api/taxes', ...authEmpresa, require('./routes/taxes'));
+app.use('/api/empresas', ...authSinEmpresa, require('./routes/empresas'));
+app.use('/api/import', ...authEmpresa, require('./routes/import'));
 
 // ── Auth routes (invitaciones públicas + protegidas) ──
 app.get('/api/auth/invite/:token', require('./routes/auth'));
-app.post('/api/auth/accept-invite/:token', ...authMiddleware, require('./routes/auth'));
+app.post('/api/auth/accept-invite/:token', ...authSinEmpresa, require('./routes/auth'));
 
 // ── Error Handler Global ──
 app.use((err, req, res, next) => {

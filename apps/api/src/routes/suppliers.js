@@ -10,7 +10,7 @@ const checkPermission = require('../middleware/checkPermission');
 // GET /api/suppliers/orders — Lista global de órdenes
 router.get('/orders', checkPermission('ordenes_compra.ver'), async (req, res) => {
   try {
-    const result = await purchaseService.getOrders({ ...req.query, empresa_id: req.empresaId || 1 });
+    const result = await purchaseService.getOrders({ ...req.query, empresa_id: req.empresaId });
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -20,7 +20,7 @@ router.get('/orders', checkPermission('ordenes_compra.ver'), async (req, res) =>
 // GET /api/suppliers/orders/:id — Detalle de orden
 router.get('/orders/:id', checkPermission('ordenes_compra.ver'), async (req, res) => {
   try {
-    const order = await purchaseService.getOrderDetail(req.params.id, req.empresaId || 1);
+    const order = await purchaseService.getOrderDetail(req.params.id, req.empresaId);
     res.json({ ok: true, data: order });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -31,7 +31,7 @@ router.get('/orders/:id', checkPermission('ordenes_compra.ver'), async (req, res
 router.put('/orders/:id/receive', checkPermission('ordenes_compra.recibir'), async (req, res) => {
   try {
     const pvId = req.puntoDeVentaId || null;
-    const order = await purchaseService.receiveOrder(req.params.id, req.body.items, req.body.location, pvId, req.empresaId || 1);
+    const order = await purchaseService.receiveOrder(req.params.id, req.body.items, req.body.location, pvId, req.empresaId);
     res.json({ ok: true, data: { id: order.id, status: order.status } });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -41,7 +41,7 @@ router.put('/orders/:id/receive', checkPermission('ordenes_compra.recibir'), asy
 // PUT /api/suppliers/orders/:id/cancel — Anular orden
 router.put('/orders/:id/cancel', checkPermission('ordenes_compra.anular'), async (req, res) => {
   try {
-    const order = await purchaseService.cancelOrder(req.params.id, req.empresaId || 1);
+    const order = await purchaseService.cancelOrder(req.params.id, req.empresaId);
     res.json({ ok: true, data: { id: order.id, status: order.status } });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -54,7 +54,7 @@ router.put('/orders/:id/cancel', checkPermission('ordenes_compra.anular'), async
 router.get('/', checkPermission('proveedores.ver'), async (req, res) => {
   try {
     const suppliers = await Supplier.findAll({
-      where: { empresa_id: req.empresaId || 1 },
+      where: { empresa_id: req.empresaId },
       include: [
         { model: SupplierMovement, as: 'movements' },
         { model: SupplierDocument, as: 'documents' },
@@ -71,7 +71,7 @@ router.get('/', checkPermission('proveedores.ver'), async (req, res) => {
 router.get('/:id', checkPermission('proveedores.ver'), async (req, res) => {
   try {
     const supplier = await Supplier.findOne({
-      where: { id: req.params.id, empresa_id: req.empresaId || 1 },
+      where: { id: req.params.id, empresa_id: req.empresaId },
       include: [
         { model: SupplierOrder, as: 'orders', order: [['date', 'DESC']] },
         { model: SupplierMovement, as: 'movements', order: [['date', 'DESC']] },
@@ -88,7 +88,7 @@ router.get('/:id', checkPermission('proveedores.ver'), async (req, res) => {
 // POST /api/suppliers — Crear proveedor
 router.post('/', checkPermission('proveedores.crear'), async (req, res) => {
   try {
-    const supplier = await Supplier.create({ ...req.body, empresa_id: req.empresaId || 1 });
+    const supplier = await Supplier.create({ ...req.body, empresa_id: req.empresaId });
     res.status(201).json({ ok: true, data: supplier });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -98,7 +98,7 @@ router.post('/', checkPermission('proveedores.crear'), async (req, res) => {
 // PUT /api/suppliers/:id — Actualizar proveedor
 router.put('/:id', checkPermission('proveedores.editar'), async (req, res) => {
   try {
-    const supplier = await Supplier.findOne({ where: { id: req.params.id, empresa_id: req.empresaId || 1 } });
+    const supplier = await Supplier.findOne({ where: { id: req.params.id, empresa_id: req.empresaId } });
     if (!supplier) return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
     await supplier.update(req.body);
     res.json({ ok: true, data: supplier });
@@ -111,7 +111,7 @@ router.put('/:id', checkPermission('proveedores.editar'), async (req, res) => {
 router.delete('/:id', checkPermission('proveedores.eliminar'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const supplier = await Supplier.findOne({ where: { id: req.params.id, empresa_id: req.empresaId || 1 }, transaction: t });
+    const supplier = await Supplier.findOne({ where: { id: req.params.id, empresa_id: req.empresaId }, transaction: t });
     if (!supplier) return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
     await SupplierDocument.destroy({ where: { supplier_id: req.params.id }, transaction: t });
     await SupplierMovement.destroy({ where: { supplier_id: req.params.id }, transaction: t });
@@ -130,7 +130,7 @@ router.delete('/:id', checkPermission('proveedores.eliminar'), async (req, res) 
 // POST /api/suppliers/:id/orders — Crear pedido con items
 router.post('/:id/orders', checkPermission('ordenes_compra.crear'), async (req, res) => {
   try {
-    const order = await purchaseService.createOrder(req.params.id, req.body, req.empresaId || 1);
+    const order = await purchaseService.createOrder(req.params.id, req.body, req.empresaId);
     res.status(201).json({ ok: true, data: order });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -145,7 +145,7 @@ router.post('/:id/payments', checkPermission('proveedores.crear'), async (req, r
     const { date, amount, payment_method, notes } = req.body;
     const movement = await SupplierMovement.create({
       supplier_id: req.params.id,
-      empresa_id: req.empresaId || 1,
+      empresa_id: req.empresaId,
       type: 'pago',
       date,
       amount,
@@ -163,7 +163,7 @@ router.post('/:id/payments', checkPermission('proveedores.crear'), async (req, r
 // PUT /api/suppliers/movements/:id — Editar movimiento
 router.put('/movements/:id', checkPermission('proveedores.editar'), async (req, res) => {
   try {
-    const movement = await SupplierMovement.findOne({ where: { id: req.params.id, empresa_id: req.empresaId || 1 } });
+    const movement = await SupplierMovement.findOne({ where: { id: req.params.id, empresa_id: req.empresaId } });
     if (!movement) return res.status(404).json({ ok: false, error: 'Movimiento no encontrado' });
     await movement.update(req.body);
     res.json({ ok: true, data: movement });
@@ -175,7 +175,7 @@ router.put('/movements/:id', checkPermission('proveedores.editar'), async (req, 
 // DELETE /api/suppliers/movements/:id — Eliminar movimiento
 router.delete('/movements/:id', checkPermission('proveedores.eliminar'), async (req, res) => {
   try {
-    const deleted = await SupplierMovement.destroy({ where: { id: req.params.id, empresa_id: req.empresaId || 1 } });
+    const deleted = await SupplierMovement.destroy({ where: { id: req.params.id, empresa_id: req.empresaId } });
     if (!deleted) return res.status(404).json({ ok: false, error: 'Movimiento no encontrado' });
     res.json({ ok: true, message: 'Movimiento eliminado' });
   } catch (err) {
@@ -188,9 +188,9 @@ router.delete('/movements/:id', checkPermission('proveedores.eliminar'), async (
 // POST /api/suppliers/:id/documents
 router.post('/:id/documents', checkPermission('proveedores.editar'), async (req, res) => {
   try {
-    const supplier = await Supplier.findOne({ where: { id: req.params.id, empresa_id: req.empresaId || 1 } });
+    const supplier = await Supplier.findOne({ where: { id: req.params.id, empresa_id: req.empresaId } });
     if (!supplier) return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
-    const doc = await SupplierDocument.create({ supplier_id: req.params.id, empresa_id: req.empresaId || 1, ...req.body });
+    const doc = await SupplierDocument.create({ supplier_id: req.params.id, empresa_id: req.empresaId, ...req.body });
     res.status(201).json({ ok: true, data: doc });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -200,7 +200,7 @@ router.post('/:id/documents', checkPermission('proveedores.editar'), async (req,
 // DELETE /api/suppliers/documents/:id
 router.delete('/documents/:id', checkPermission('proveedores.eliminar'), async (req, res) => {
   try {
-    const deleted = await SupplierDocument.destroy({ where: { id: req.params.id, empresa_id: req.empresaId || 1 } });
+    const deleted = await SupplierDocument.destroy({ where: { id: req.params.id, empresa_id: req.empresaId } });
     if (!deleted) return res.status(404).json({ ok: false, error: 'Documento no encontrado' });
     res.json({ ok: true, message: 'Documento eliminado' });
   } catch (err) {

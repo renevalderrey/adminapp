@@ -14,7 +14,7 @@ const checkPermission = require('../middleware/checkPermission');
 router.get('/', checkPermission('products.ver'), async (req, res) => {
   try {
     const { search, brand, active, page, limit } = req.query;
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId;
     const where = {
       [Op.or]: [
         { empresa_id: empresaId },
@@ -110,7 +110,7 @@ router.post('/', checkPermission('products.crear'), async (req, res) => {
       wholesale_margin: sanitize(wholesale_margin), wholesale_price: sanitize(wholesale_price),
       category, unit_type, unit_size: sanitize(unit_size), taxed,
       image_url: sanitize(image_url),
-      empresa_id: req.empresaId || 1,
+      empresa_id: req.empresaId,
     });
     res.status(201).json({ ok: true, data: product });
   } catch (err) {
@@ -183,7 +183,7 @@ router.post('/bulk', checkPermission('products.crear'), async (req, res) => {
 
     let created = 0, updated = 0;
 
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId;
 
     for (const p of products) {
       // Buscar o crear marca
@@ -294,7 +294,7 @@ router.post('/:id/recipe', checkPermission('recetas.crear'), async (req, res) =>
     // Buscar o crear receta
     const [recipe, created] = await Recipe.findOrCreate({
       where: { product_id: productId },
-      defaults: { loss_percentage: loss_percentage || 0, yield: recipeYield || 1, empresa_id: req.empresaId || 1 },
+      defaults: { loss_percentage: loss_percentage || 0, yield: recipeYield || 1, empresa_id: req.empresaId },
       transaction: t,
     });
 

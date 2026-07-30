@@ -65,13 +65,39 @@ const loadEmpresaContext = async (req, res, next) => {
 
     req.usuario = usuario;
 
-    const ue = await UsuarioEmpresa.findOne({
-      where: { usuario_id: usuario.id, is_active: true },
-      include: [
-        { model: Empresa, as: 'empresa' },
-      ],
-      order: [['is_default', 'DESC']],
-    });
+    // ── Seleccion de empresa activa ──
+    // El frontend manda X-Empresa-Id para cambiar de empresa. Antes se
+    // ignoraba por completo y siempre se usaba la empresa por defecto, con lo
+    // cual el selector de empresa no tenia efecto del lado del servidor.
+    //
+    // El header se toma como una PREFERENCIA, nunca como una autorizacion: la
+    // busqueda filtra por usuario_id, asi que pedir una empresa ajena no
+    // devuelve nada y se cae al comportamiento por defecto.
+    const empresaHeader = parseInt(req.headers['x-empresa-id'], 10);
+
+    let ue = null;
+
+    if (Number.isInteger(empresaHeader)) {
+      ue = await UsuarioEmpresa.findOne({
+        where: { usuario_id: usuario.id, empresa_id: empresaHeader, is_active: true },
+        include: [{ model: Empresa, as: 'empresa' }],
+      });
+
+      if (!ue) {
+        logger.warn(
+          { userId: req.userId, empresaSolicitada: empresaHeader },
+          'X-Empresa-Id pedido sin membresia activa; se usa la empresa por defecto'
+        );
+      }
+    }
+
+    if (!ue) {
+      ue = await UsuarioEmpresa.findOne({
+        where: { usuario_id: usuario.id, is_active: true },
+        include: [{ model: Empresa, as: 'empresa' }],
+        order: [['is_default', 'DESC']],
+      });
+    }
 
     if (ue) {
       req.empresaId = ue.empresa_id;
@@ -115,24 +141,64 @@ const loadEmpresaContext = async (req, res, next) => {
       }
     }
 
-    const pvHeader = req.headers['x-punto-de-venta-id'];
-    if (pvHeader) {
-      req.puntoDeVentaId = parseInt(pvHeader, 10);
+    // ── Punto de venta activo ──
+    // Antes se hacia req.puntoDeVentaId = parseInt(header) sin ninguna
+    // validacion. Ese valor se escribe en ventas, movimientos de caja y
+    // ordenes de produccion, y se usa como filtro de lectura: un usuario podia
+    // mandar el id de un punto de venta de otra empresa y operar sobre el.
+    // Ahora se verifica que pertenezca a la empresa activa.
+    const pvHeader = parseInt(req.headers['x-punto-de-venta-id'], 10);
+
+    if (Number.isInteger(pvHeader) && req.empresaId) {
+      const pv = await PuntoDeVenta.findOne({
+        where: { id: pvHeader, empresa_id: req.empresaId, is_active: true },
+        attributes: ['id'],
+      });
+
+      if (pv) {
+        req.puntoDeVentaId = pv.id;
+      } else {
+        logger.warn(
+          { userId: req.userId, empresaId: req.empresaId, pvSolicitado: pvHeader },
+          'X-Punto-De-Venta-Id no pertenece a la empresa activa; se ignora'
+        );
+      }
     }
 
     next();
   } catch (err) {
+    // No se llama next(err): el contexto es opcional para las rutas publicas.
+    // Lo que si importa es que req.empresaId quede sin definir, para que
+    // requireEmpresa corte los endpoints que necesitan una empresa en vez de
+    // dejarlos operar sobre una empresa arbitraria.
     logger.error({ err, userId: req.userId }, 'Error loading empresa context');
     next();
   }
 };
 
-const empresaScope = (req, res, next) => {
-  if (req.method === 'GET' && req.empresaId) {
-    const originalJson = res.json.bind(res);
-    res.json = function (body) { return originalJson(body); };
+/**
+ * Corta el request si no hay empresa activa en el contexto.
+ *
+ * loadEmpresaContext no falla el request cuando no puede resolver la empresa
+ * (usuario sin membresia, error de base). Sin este guard, las rutas caian en
+ * el patron `req.empresaId || 1` y terminaban leyendo y escribiendo sobre la
+ * empresa 1 — que en produccion es un cliente real.
+ *
+ * Va despues de loadEmpresaContext y antes de las rutas que necesitan tenant.
+ */
+const requireEmpresa = (req, res, next) => {
+  if (!req.empresaId) {
+    logger.warn(
+      { userId: req.userId, path: req.originalUrl },
+      'Request sin empresa activa en el contexto'
+    );
+    return res.status(403).json({
+      ok: false,
+      error: 'NO_EMPRESA',
+      message: 'No tenés una empresa activa. Completá el onboarding o pedí acceso a una empresa.',
+    });
   }
   next();
 };
 
-module.exports = { checkJwt, extractUser, loadEmpresaContext };
+module.exports = { checkJwt, extractUser, loadEmpresaContext, requireEmpresa };

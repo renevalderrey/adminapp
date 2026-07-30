@@ -1,4 +1,4 @@
-const { Op, fn, col, literal, QueryTypes } = require('sequelize');
+const { Op, fn, literal, QueryTypes } = require('sequelize');
 const {
   Customer,
   CustomerPayment,
@@ -6,24 +6,39 @@ const {
   SupplierMovement,
   sequelize,
 } = require('../models');
+const { assertEmpresaId } = require('../utils/tenantScope');
+
+// Todos los metodos publicos reciben empresaId de forma obligatoria.
+// Antes varios tenian `empresaId = 1` como default y otros directamente no
+// filtraban: getSummary agregaba los totales financieros de TODAS las empresas
+// cliente y se los mostraba a cualquier usuario.
 
 class CustomerService {
-  async getCustomerDetail(customerId) {
-    const customer = await Customer.findByPk(customerId);
+  /** Busca un cliente restringido a la empresa. null si es de otra. */
+  async _findCustomer(customerId, empresaId) {
+    assertEmpresaId(empresaId);
+
+    const id = parseInt(customerId, 10);
+    if (!Number.isInteger(id)) return null;
+
+    return Customer.findOne({ where: { id, empresa_id: empresaId } });
+  }
+
+  async getCustomerDetail(customerId, empresaId) {
+    const customer = await this._findCustomer(customerId, empresaId);
     if (!customer) return null;
 
-    const balance = await this.calculateBalance(customerId);
-    const aging = await this.calculateAging(customerId);
-    const empresaId = customer.empresa_id || 1;
+    const balance = await this.calculateBalance(customer.id, empresaId);
+    const aging = await this.calculateAging(customer.id, empresaId);
 
     const recentSales = await Sale.findAll({
-      where: { customer_id: customerId, empresa_id: empresaId },
+      where: { customer_id: customer.id, empresa_id: empresaId },
       order: [['date', 'DESC']],
       limit: 20,
     });
 
     const recentPayments = await CustomerPayment.findAll({
-      where: { customer_id: customerId, empresa_id: empresaId },
+      where: { customer_id: customer.id, empresa_id: empresaId },
       order: [['payment_date', 'DESC']],
       limit: 20,
     });
@@ -37,188 +52,187 @@ class CustomerService {
     };
   }
 
-  async calculateBalance(customerId) {
-    const customer = await Customer.findByPk(customerId);
-    const empresaId = customer?.empresa_id || 1;
-    const totalSales = await Sale.sum('total', {
-      where: { customer_id: customerId, empresa_id: empresaId },
-    });
+  async calculateBalance(customerId, empresaId) {
+    assertEmpresaId(empresaId);
 
-    const totalPayments = await CustomerPayment.sum('amount', {
-      where: { customer_id: customerId, empresa_id: empresaId },
-    });
+    const where = { customer_id: customerId, empresa_id: empresaId };
+
+    const totalSales = await Sale.sum('total', { where });
+    const totalPayments = await CustomerPayment.sum('amount', { where });
 
     return (parseFloat(totalSales) || 0) - (parseFloat(totalPayments) || 0);
   }
 
-  async calculateAging(customerId) {
-    const today = new Date();
-    const buckets = {
-      '0_30': 0,
-      '31_60': 0,
-      '61_90': 0,
-      '90_plus': 0,
-    };
+  async calculateAging(customerId, empresaId) {
+    assertEmpresaId(empresaId);
 
-    const customer = await Customer.findByPk(customerId);
-    const empresaId = customer?.empresa_id || 1;
+    const today = new Date();
+    const buckets = { '0_30': 0, '31_60': 0, '61_90': 0, '90_plus': 0 };
+    const where = { customer_id: customerId, empresa_id: empresaId };
 
     const sales = await Sale.findAll({
-      where: { customer_id: customerId, empresa_id: empresaId },
+      where,
       attributes: ['total', 'date'],
       raw: true,
     });
 
     const totalPayments = parseFloat(
-      await CustomerPayment.sum('amount', { where: { customer_id: customerId, empresa_id: empresaId } })
+      await CustomerPayment.sum('amount', { where })
     ) || 0;
 
     const totalSalesAmount = sales.reduce((sum, s) => sum + parseFloat(s.total || 0), 0);
-
-    const agingSales = { '0_30': [], '31_60': [], '61_90': [], '90_plus': [] };
-
-    for (const sale of sales) {
-      const saleDate = new Date(sale.date);
-      const diffDays = Math.floor((today - saleDate) / (1000 * 60 * 60 * 24));
-
-      if (diffDays <= 30) agingSales['0_30'].push(parseFloat(sale.total));
-      else if (diffDays <= 60) agingSales['31_60'].push(parseFloat(sale.total));
-      else if (diffDays <= 90) agingSales['61_90'].push(parseFloat(sale.total));
-      else agingSales['90_plus'].push(parseFloat(sale.total));
-    }
-
     const unpaid = totalSalesAmount - totalPayments;
 
-    if (unpaid <= 0) return buckets;
+    // Guard contra division por cero: un cliente sin ventas daba NaN en cada
+    // bucket, que serializado a JSON sale como null.
+    if (unpaid <= 0 || totalSalesAmount <= 0) return buckets;
 
-    const unpaidRatio = unpaid / totalSalesAmount;
-
-    for (const key of Object.keys(buckets)) {
-      const bucketTotal = agingSales[key].reduce((s, v) => s + v, 0);
-      buckets[key] = Math.round(bucketTotal * unpaidRatio * 100) / 100;
-    }
-
-    return buckets;
+    return this._repartirPorAntiguedad(
+      sales.map((s) => ({ monto: parseFloat(s.total), fecha: s.date })),
+      unpaid,
+      totalSalesAmount,
+      today
+    );
   }
 
-  async getRanking(limit = 20, empresaId = 1) {
+  async getRanking(limit = 20, empresaId) {
+    assertEmpresaId(empresaId);
+
+    const pageLimit = parseInt(limit, 10) || 20;
+
+    // Las subconsultas usan bind params (:empresaId) en lugar de interpolacion
+    // de string. El valor viene de la base y no del cliente, pero interpolar en
+    // SQL crudo es un patron que tarde o temprano se copia a un lugar donde el
+    // valor si viene del cliente.
     const customers = await Customer.findAll({
       where: { is_active: true, empresa_id: empresaId },
       attributes: [
         'id', 'name', 'tax_id', 'email', 'phone',
         [fn('COALESCE', literal(
-          `(SELECT SUM(CAST(total AS DECIMAL)) FROM sales WHERE sales.customer_id = "Customer".id AND sales.empresa_id = '${empresaId}')`
+          '(SELECT SUM(CAST(total AS DECIMAL)) FROM sales WHERE sales.customer_id = "Customer".id AND sales.empresa_id = :empresaId)'
         ), 0), 'total_purchases'],
         [fn('COALESCE', literal(
-          `(SELECT COUNT(*) FROM sales WHERE sales.customer_id = "Customer".id AND sales.empresa_id = '${empresaId}')`
+          '(SELECT COUNT(*) FROM sales WHERE sales.customer_id = "Customer".id AND sales.empresa_id = :empresaId)'
         ), 0), 'visit_count'],
         [fn('COALESCE', literal(
-          `(SELECT MAX(date) FROM sales WHERE sales.customer_id = "Customer".id AND sales.empresa_id = '${empresaId}')`
+          '(SELECT MAX(date) FROM sales WHERE sales.customer_id = "Customer".id AND sales.empresa_id = :empresaId)'
         ), null), 'last_purchase'],
       ],
+      replacements: { empresaId },
       order: [[literal('total_purchases'), 'DESC']],
-      limit,
+      limit: pageLimit,
     });
 
-    return customers.map(c => {
+    return customers.map((c) => {
       const data = c.toJSON();
-      const firstSale = null;
       return {
         ...data,
         total_purchases: parseFloat(data.total_purchases) || 0,
-        visit_count: parseInt(data.visit_count) || 0,
+        visit_count: parseInt(data.visit_count, 10) || 0,
       };
     });
   }
 
-  async registerPayment(customerId, data) {
-    const customer = await Customer.findByPk(customerId);
-    if (!customer) throw new Error('Cliente no encontrado');
+  async registerPayment(customerId, data, empresaId) {
+    const customer = await this._findCustomer(customerId, empresaId);
 
-    const payment = await CustomerPayment.create({
-      customer_id: customerId,
-      empresa_id: customer.empresa_id || 1,
+    if (!customer) {
+      const err = new Error('Cliente no encontrado');
+      err.status = 404;
+      throw err;
+    }
+
+    return CustomerPayment.create({
+      customer_id: customer.id,
+      empresa_id: empresaId,
       amount: data.amount,
       payment_date: data.payment_date || new Date().toISOString().split('T')[0],
       payment_method: data.payment_method || 'ef',
       reference: data.reference || null,
       notes: data.notes || null,
     });
-
-    return payment;
   }
 
-  async getSummary() {
-    const totalReceivable = parseFloat(
-      await Customer.findOne({
-        attributes: [[literal(`
-          (SELECT COALESCE(SUM(CAST(total AS DECIMAL)), 0) FROM sales WHERE customer_id IS NOT NULL)
-          -
-          (SELECT COALESCE(SUM(CAST(amount AS DECIMAL)), 0) FROM customer_payments)
-        `), 'total']],
-        raw: true,
-      })
-    ) || 0;
+  /**
+   * Totales de cuentas por cobrar y por pagar de UNA empresa.
+   *
+   * La version anterior corria SQL crudo sin ninguna clausula de empresa:
+   * sumaba las ventas, los pagos y los movimientos de proveedores de todas las
+   * empresas cliente de la base y devolvia el total a cualquier usuario que
+   * abriera la pantalla de clientes. No hacia falta enumerar ids para verlo.
+   */
+  async getSummary(empresaId) {
+    assertEmpresaId(empresaId);
 
-    const totalPayable = parseFloat(
-      await SupplierMovement.findOne({
-        attributes: [[literal(`
-          (SELECT COALESCE(SUM(CAST(amount AS DECIMAL)), 0) FROM supplier_movements WHERE type = 'deuda')
-          -
-          (SELECT COALESCE(SUM(CAST(amount AS DECIMAL)), 0) FROM supplier_movements WHERE type = 'pago')
-        `), 'total']],
-        raw: true,
-      })
-    ) || 0;
+    const [receivableRow] = await sequelize.query(
+      `SELECT
+         COALESCE((SELECT SUM(CAST(total AS DECIMAL))
+                   FROM sales
+                   WHERE customer_id IS NOT NULL AND empresa_id = :empresaId), 0)
+         -
+         COALESCE((SELECT SUM(CAST(amount AS DECIMAL))
+                   FROM customer_payments
+                   WHERE empresa_id = :empresaId), 0)
+         AS total`,
+      { replacements: { empresaId }, type: QueryTypes.SELECT }
+    );
+
+    const totalReceivable = parseFloat(receivableRow?.total) || 0;
+
+    const [payableRow] = await sequelize.query(
+      `SELECT
+         COALESCE((SELECT SUM(CAST(amount AS DECIMAL))
+                   FROM supplier_movements
+                   WHERE type = 'deuda' AND empresa_id = :empresaId), 0)
+         -
+         COALESCE((SELECT SUM(CAST(amount AS DECIMAL))
+                   FROM supplier_movements
+                   WHERE type = 'pago' AND empresa_id = :empresaId), 0)
+         AS total`,
+      { replacements: { empresaId }, type: QueryTypes.SELECT }
+    );
+
+    const totalPayable = parseFloat(payableRow?.total) || 0;
 
     const today = new Date();
+
+    // ── Aging de proveedores ──
     const supplierMovements = await SupplierMovement.findAll({
-      where: { type: 'deuda' },
+      where: { type: 'deuda', empresa_id: empresaId },
       attributes: ['amount', 'date'],
       raw: true,
     });
 
     const totalDebt = supplierMovements.reduce((s, m) => s + parseFloat(m.amount || 0), 0);
     const totalPaid = parseFloat(
-      await SupplierMovement.sum('amount', { where: { type: 'pago' } })
+      await SupplierMovement.sum('amount', {
+        where: { type: 'pago', empresa_id: empresaId },
+      })
     ) || 0;
     const unpaidSupplier = Math.max(0, totalDebt - totalPaid);
 
-    const supplierAging = { '0_30': 0, '31_60': 0, '61_90': 0, '90_plus': 0 };
+    const supplierAging = this._repartirPorAntiguedad(
+      supplierMovements.map((m) => ({ monto: parseFloat(m.amount), fecha: m.date })),
+      unpaidSupplier,
+      totalDebt,
+      today
+    );
 
-    if (unpaidSupplier > 0 && totalDebt > 0) {
-      const ratio = unpaidSupplier / totalDebt;
-      for (const m of supplierMovements) {
-        const diffDays = Math.floor((today - new Date(m.date)) / (1000 * 60 * 60 * 24));
-        const amt = parseFloat(m.amount) * ratio;
-        if (diffDays <= 30) supplierAging['0_30'] += amt;
-        else if (diffDays <= 60) supplierAging['31_60'] += amt;
-        else if (diffDays <= 90) supplierAging['61_90'] += amt;
-        else supplierAging['90_plus'] += amt;
-      }
-    }
-
-    const customerAging = { '0_30': 0, '31_60': 0, '61_90': 0, '90_plus': 0 };
-
+    // ── Aging de clientes ──
     const allSales = await Sale.findAll({
-      where: { customer_id: { [Op.ne]: null } },
+      where: { customer_id: { [Op.ne]: null }, empresa_id: empresaId },
       attributes: ['total', 'date', 'customer_id'],
       raw: true,
     });
 
     const totalCustomerSales = allSales.reduce((s, sa) => s + parseFloat(sa.total || 0), 0);
 
-    if (totalReceivable > 0 && totalCustomerSales > 0) {
-      const ratio = totalReceivable / totalCustomerSales;
-      for (const sa of allSales) {
-        const diffDays = Math.floor((today - new Date(sa.date)) / (1000 * 60 * 60 * 24));
-        const amt = parseFloat(sa.total) * ratio;
-        if (diffDays <= 30) customerAging['0_30'] += amt;
-        else if (diffDays <= 60) customerAging['31_60'] += amt;
-        else if (diffDays <= 90) customerAging['61_90'] += amt;
-        else customerAging['90_plus'] += amt;
-      }
-    }
+    const customerAging = this._repartirPorAntiguedad(
+      allSales.map((s) => ({ monto: parseFloat(s.total), fecha: s.date })),
+      totalReceivable,
+      totalCustomerSales,
+      today
+    );
 
     return {
       total_receivable: Math.round(totalReceivable * 100) / 100,
@@ -228,7 +242,40 @@ class CustomerService {
     };
   }
 
-  async listCustomers(filters = {}, empresaId = 1) {
+  /**
+   * Reparte un saldo impago entre tramos de antiguedad, en proporcion a como se
+   * distribuyen los comprobantes en el tiempo.
+   *
+   * Es una aproximacion: no imputa cada pago a una venta concreta, sino que
+   * prorratea. Sirve para el tablero; no como respaldo contable.
+   */
+  _repartirPorAntiguedad(comprobantes, saldoImpago, totalFacturado, hoy) {
+    const buckets = { '0_30': 0, '31_60': 0, '61_90': 0, '90_plus': 0 };
+
+    if (saldoImpago <= 0 || totalFacturado <= 0) return buckets;
+
+    const ratio = saldoImpago / totalFacturado;
+
+    for (const c of comprobantes) {
+      const dias = Math.floor((hoy - new Date(c.fecha)) / (1000 * 60 * 60 * 24));
+      const monto = (c.monto || 0) * ratio;
+
+      if (dias <= 30) buckets['0_30'] += monto;
+      else if (dias <= 60) buckets['31_60'] += monto;
+      else if (dias <= 90) buckets['61_90'] += monto;
+      else buckets['90_plus'] += monto;
+    }
+
+    for (const k of Object.keys(buckets)) {
+      buckets[k] = Math.round(buckets[k] * 100) / 100;
+    }
+
+    return buckets;
+  }
+
+  async listCustomers(filters = {}, empresaId) {
+    assertEmpresaId(empresaId);
+
     const where = { empresa_id: empresaId };
     const { search, active, limit, offset } = filters;
 
@@ -240,8 +287,8 @@ class CustomerService {
       ];
     }
 
-    const pageLimit = parseInt(limit) || 50;
-    const pageOffset = parseInt(offset) || 0;
+    const pageLimit = parseInt(limit, 10) || 50;
+    const pageOffset = parseInt(offset, 10) || 0;
 
     const { count, rows } = await Customer.findAndCountAll({
       where,
@@ -250,17 +297,19 @@ class CustomerService {
       offset: pageOffset,
     });
 
+    // TODO(perf): esto hace 4 consultas por cliente (N+1). Con 50 clientes por
+    // pagina son 200 consultas por request. Resolver con un GROUP BY unico.
     const enriched = await Promise.all(
       rows.map(async (c) => {
-        const totalSales = parseFloat(
-          await Sale.sum('total', { where: { customer_id: c.id } })
-        ) || 0;
-        const visitCount = await Sale.count({ where: { customer_id: c.id } });
+        const scopeVentas = { customer_id: c.id, empresa_id: empresaId };
+
+        const totalSales = parseFloat(await Sale.sum('total', { where: scopeVentas })) || 0;
+        const visitCount = await Sale.count({ where: scopeVentas });
         const lastSale = await Sale.findOne({
-          where: { customer_id: c.id },
+          where: scopeVentas,
           order: [['date', 'DESC']],
         });
-        const balance = await this.calculateBalance(c.id);
+        const balance = await this.calculateBalance(c.id, empresaId);
 
         return {
           ...c.toJSON(),

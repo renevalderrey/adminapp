@@ -13,7 +13,7 @@ const DEFAULT_MONOTRIBUTO_SCALES = [
 ];
 
 class TaxService {
-  async getConfig(taxType, empresaId = 1) {
+  async getConfig(taxType, empresaId) {
     let config = await TaxConfig.findOne({ where: { tax_type: taxType, empresa_id: empresaId } });
     if (!config) {
       if (taxType === 'monotributo') {
@@ -33,7 +33,7 @@ class TaxService {
     return config;
   }
 
-  async updateConfig(taxType, configData, empresaId = 1) {
+  async updateConfig(taxType, configData, empresaId) {
     const [config, created] = await TaxConfig.findOrCreate({
       where: { tax_type: taxType, empresa_id: empresaId },
       defaults: { config: configData, empresa_id: empresaId },
@@ -44,7 +44,7 @@ class TaxService {
     return config;
   }
 
-  async calculateMonotributo(year, empresaId = 1) {
+  async calculateMonotributo(year, empresaId) {
     const targetYear = year || new Date().getFullYear();
     const startDate = `${targetYear}-01-01`;
     const endDate = `${targetYear}-12-31`;
@@ -92,7 +92,7 @@ class TaxService {
     };
   }
 
-  async registerPayment(data, empresaId = 1) {
+  async registerPayment(data, empresaId) {
     return await TaxPayment.create({
       tax_type: data.tax_type,
       empresa_id: empresaId,
@@ -104,7 +104,7 @@ class TaxService {
     });
   }
 
-  async getPayments(filters = {}, empresaId = 1) {
+  async getPayments(filters = {}, empresaId) {
     const where = { empresa_id: empresaId };
     const { tax_type, date_from, date_to } = filters;
     if (tax_type) where.tax_type = tax_type;

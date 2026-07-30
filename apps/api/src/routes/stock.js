@@ -9,7 +9,7 @@ router.post('/transfer', checkPermission('stock.transferir'), async (req, res) =
   const t = await sequelize.transaction();
   try {
     const { from_location, to_location, items } = req.body;
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId;
 
     if (!from_location || !to_location) {
       return res.status(400).json({ ok: false, error: 'Origen y destino son requeridos' });
@@ -115,7 +115,7 @@ router.get('/transfers', checkPermission('stock.ver'), async (req, res) => {
     const offset = parseInt(req.query.offset) || 0;
 
     const { count, rows } = await StockTransfer.findAndCountAll({
-      where: { empresa_id: req.empresaId || 1 },
+      where: { empresa_id: req.empresaId },
       order: [['createdAt', 'DESC']],
       limit,
       offset,

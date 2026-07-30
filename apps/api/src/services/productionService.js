@@ -94,7 +94,7 @@ class ProductionService {
     return warnings;
   }
 
-  async createProductionOrder(data, empresaId = 1, puntoDeVentaId = null) {
+  async createProductionOrder(data, empresaId, puntoDeVentaId = null) {
     const { product_id, quantity_produced, batch_code, production_date, location, notes } = data;
 
     if (!quantity_produced || parseFloat(quantity_produced) <= 0) {
@@ -298,7 +298,7 @@ class ProductionService {
     }
   }
 
-  async listProductionOrders(filters = {}, empresaId = 1) {
+  async listProductionOrders(filters = {}, empresaId) {
     const where = { empresa_id: empresaId };
     const { product_id, status, batch_code, date_from, date_to, limit, offset } = filters;
 

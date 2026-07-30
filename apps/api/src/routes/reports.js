@@ -9,7 +9,7 @@ router.get('/sales', checkPermission('reportes.ver'), async (req, res) => {
   try {
     const from = req.query.from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     const to = req.query.to || new Date().toISOString().split('T')[0];
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId;
 
     const items = await SaleItem.findAll({
       attributes: [
@@ -79,7 +79,7 @@ router.get('/sales', checkPermission('reportes.ver'), async (req, res) => {
 router.get('/inventory', checkPermission('reportes.ver'), async (req, res) => {
   try {
     const stock = await Stock.findAll({
-      where: { empresa_id: req.empresaId || 1, quantity: { [Op.gt]: 0 } },
+      where: { empresa_id: req.empresaId, quantity: { [Op.gt]: 0 } },
       include: [
         {
           model: Product,
@@ -126,7 +126,7 @@ router.get('/profit', checkPermission('reportes.ver'), async (req, res) => {
   try {
     const from = req.query.from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     const to = req.query.to || new Date().toISOString().split('T')[0];
-    const empresaId = req.empresaId || 1;
+    const empresaId = req.empresaId;
 
     const totalRevenue = parseFloat(await Sale.sum('total', { where: { empresa_id: empresaId, date: { [Op.between]: [from, to] } } })) || 0;
 
