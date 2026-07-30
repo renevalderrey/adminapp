@@ -8,26 +8,40 @@ const multer = require('multer');
 const path = require('path');
 const logger = require('../utils/logger');
 
-const UPLOADS_DIR = path.join(__dirname, '..', '..', '..', 'frontend', 'public', 'uploads', 'empresas');
+// ── Logo de empresa ──
+// El logo se guarda como data URI en la columna Empresa.logo (TEXT), no en
+// disco. Razon: en Render/Vercel/Railway el filesystem es efimero — todo lo
+// escrito se pierde en cada deploy — y el free tier no tiene disco persistente.
+// Guardarlo en Postgres lo hace portable entre plataformas sin cambios.
+//
+// El limite es 300KB (no 5MB) porque Empresa se carga en cada login via
+// loadEmpresaContext(); un blob grande se transferiria en cada arranque de la
+// app. Ver el defaultScope de Empresa, que excluye la columna por defecto.
+const MAX_LOGO_BYTES = 300 * 1024;
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const name = `logo_${Date.now()}${ext}`;
-    cb(null, name);
-  },
-});
+const ALLOWED_LOGO_MIME = [
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'image/svg+xml',
+];
 
 const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_LOGO_BYTES },
   fileFilter: (req, file, cb) => {
-    const allowed = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+    const allowedExt = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
     const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, allowed.includes(ext));
+    cb(null, allowedExt.includes(ext) && ALLOWED_LOGO_MIME.includes(file.mimetype));
   },
 });
+
+/** Convierte el archivo en memoria a data URI, o null si no vino archivo. */
+function fileToDataUri(file) {
+  if (!file) return null;
+  return `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+}
 
 // ── ONBOARDING ──
 
@@ -48,7 +62,7 @@ router.post('/onboarding', (req, res, next) => {
     if (!name) return res.status(400).json({ ok: false, error: 'Completá el nombre de la empresa' });
     if (!phone) return res.status(400).json({ ok: false, error: 'Completá el teléfono de contacto' });
 
-    const logoUrl = req.file ? `/uploads/empresas/${req.file.filename}` : null;
+    const logoDataUri = fileToDataUri(req.file);
 
     const empresa = await Empresa.create({
       name,
@@ -58,7 +72,7 @@ router.post('/onboarding', (req, res, next) => {
       city: city || null,
       state: state || null,
       rubro: rubro || null,
-      logo: logoUrl,
+      logo: logoDataUri,
       onboarding_completed: true,
       settings: {
         margin_efectivo: 50,
@@ -128,7 +142,7 @@ router.post('/onboarding', (req, res, next) => {
   } catch (err) {
     logger.error({ err }, 'Onboarding error');
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ ok: false, error: 'El logo no puede superar los 5MB' });
+      return res.status(400).json({ ok: false, error: 'El logo no puede superar los 300KB' });
     }
     if (err?.message?.includes('multer')) {
       return res.status(400).json({ ok: false, error: 'Error al subir el logo. Verificá que sea una imagen válida.' });
@@ -329,26 +343,72 @@ router.post('/', checkPermission('config.editar'), async (req, res) => {
   }
 });
 
-router.put('/:id', checkPermission('config.editar'), async (req, res) => {
+/**
+ * Verifica que el :id de la ruta sea la empresa activa del request.
+ *
+ * checkPermission solo valida que el usuario tenga el permiso EN SU EMPRESA
+ * ACTIVA — no mira el :id de la URL. Sin este chequeo, cualquier usuario con
+ * config.editar en su propia empresa podia modificar o desactivar la empresa
+ * de otro tenant pasando un id distinto.
+ */
+function requireEmpresaPropia(req, res, next) {
+  const idSolicitado = parseInt(req.params.id, 10);
+  if (!Number.isInteger(idSolicitado) || idSolicitado !== req.empresaId) {
+    logger.warn(
+      { userId: req.userId, empresaActiva: req.empresaId, empresaSolicitada: req.params.id },
+      'Intento de acceso a empresa ajena'
+    );
+    return res.status(403).json({ ok: false, error: 'No tenés acceso a esta empresa' });
+  }
+  next();
+}
+
+/** Valida que el logo sea un data URI de imagen dentro del limite de tamaño. */
+function validarLogo(logo) {
+  if (logo == null || logo === '') return { ok: true, valor: null };
+
+  const match = /^data:(image\/(?:png|jpeg|gif|webp|svg\+xml));base64,/.exec(logo);
+  if (!match) {
+    return { ok: false, error: 'El logo debe ser una imagen en formato data URI' };
+  }
+  // El largo del base64 sobreestima los bytes reales en ~33%; alcanza como cota.
+  if (logo.length > MAX_LOGO_BYTES * 1.4) {
+    return { ok: false, error: 'El logo no puede superar los 300KB' };
+  }
+  return { ok: true, valor: logo };
+}
+
+router.put('/:id', checkPermission('config.editar'), requireEmpresaPropia, async (req, res) => {
   try {
     const { name, cuit, rubro, logo, phone, address, city, state, timezone, currency, settings } = req.body;
+
+    const logoCheck = validarLogo(logo);
+    if (!logoCheck.ok) return res.status(400).json({ ok: false, error: logoCheck.error });
+
     const empresa = await Empresa.findByPk(req.params.id);
     if (!empresa) return res.status(404).json({ ok: false, error: 'Empresa no encontrada' });
-    await empresa.update({ name, cuit, rubro, logo, phone, address, city, state, timezone, currency, settings });
+
+    const cambios = { name, cuit, rubro, phone, address, city, state, timezone, currency, settings };
+    // Solo se pisa el logo si vino en el body; un PUT parcial no debe borrarlo.
+    if (logo !== undefined) cambios.logo = logoCheck.valor;
+
+    await empresa.update(cambios);
     res.json({ ok: true, data: empresa });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    logger.error({ err }, 'Error al actualizar empresa');
+    res.status(500).json({ ok: false, error: 'Error al actualizar la empresa' });
   }
 });
 
-router.delete('/:id', checkPermission('config.editar'), async (req, res) => {
+router.delete('/:id', checkPermission('config.editar'), requireEmpresaPropia, async (req, res) => {
   try {
     const empresa = await Empresa.findByPk(req.params.id);
     if (!empresa) return res.status(404).json({ ok: false, error: 'Empresa no encontrada' });
     await empresa.update({ is_active: false });
     res.json({ ok: true, message: 'Empresa desactivada' });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    logger.error({ err }, 'Error al desactivar empresa');
+    res.status(500).json({ ok: false, error: 'Error al desactivar la empresa' });
   }
 });
 
