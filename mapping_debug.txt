@@ -1,3 +1,0 @@
-body keys: mapping
-mapping raw: "{\"Producto\":\"name\",\"Codigo Interno\":\"sku\"}"
-mapping type: string
