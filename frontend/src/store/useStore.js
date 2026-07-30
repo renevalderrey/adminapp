@@ -52,9 +52,11 @@ const useStore = create((set, get) => ({
 
   // Load empresa context after login
   loadEmpresaContext: async () => {
+    const state = get();
+    if (state.usuario) return;
     set({ loadingUsuario: true, contextError: false });
     try {
-      const res = await api.get('/empresas/mi-contexto');
+      const res = await api.get('/empresas/mi-contexto', { timeout: 20000 });
       if (res.data.ok) {
         const { usuario, empresaActiva, empresas, permisos } = res.data.data;
         set({
@@ -69,6 +71,7 @@ const useStore = create((set, get) => ({
         set({ loadingUsuario: false });
       }
     } catch (err) {
+      if (get().usuario) return;
       console.warn('[store] Error loading empresa context:', err.message);
       set({ loadingUsuario: false, contextError: true });
     }

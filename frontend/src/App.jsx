@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
-import { setAuthToken, setEmpresaContext, setOnUnauthorized } from '@/services/api'
+import api, { setAuthToken, setEmpresaContext, setOnUnauthorized } from '@/services/api'
 import { usePermission } from '@/hooks/usePermission'
 import useStore from '@/store/useStore'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -51,7 +51,7 @@ function RouteGuard({ children, requiredModule }) {
 
 function App() {
   const navigate = useNavigate()
-  const { isAuthenticated, isLoading, getAccessTokenSilently, logout } = useAuth0()
+  const { isAuthenticated, isLoading, getAccessTokenSilently, getAccessTokenWithPopup, logout } = useAuth0()
   const loadEmpresaContext = useStore(s => s.loadEmpresaContext)
   const usuario = useStore(s => s.usuario)
   const empresaActiva = useStore(s => s.empresaActiva)
@@ -62,9 +62,9 @@ function App() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      setAuthToken(getAccessTokenSilently)
+      setAuthToken(getAccessTokenSilently, getAccessTokenWithPopup)
     }
-  }, [isAuthenticated, getAccessTokenSilently])
+  }, [isAuthenticated, getAccessTokenSilently, getAccessTokenWithPopup])
 
   useEffect(() => {
     setOnUnauthorized(() => {
@@ -136,12 +136,15 @@ function App() {
   }
 
   // Cargando contexto del usuario
-  if (loadingUsuario || (isAuthenticated && !usuario && !contextError)) {
+  const showLoading = loadingUsuario || (isAuthenticated && !usuario && !contextError);
+
+  if (showLoading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <div className="text-center">
           <img src="/logo_sin_fondo.png" alt="Admin App" className="h-16 w-16 object-contain mx-auto mb-4" />
           <p className="text-muted-foreground font-medium">Cargando tu información...</p>
+          <p className="text-xs text-muted-foreground mt-2">Esto puede tomar unos segundos en la primera carga</p>
         </div>
         <Toaster />
       </div>

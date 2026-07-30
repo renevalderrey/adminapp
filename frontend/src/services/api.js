@@ -10,6 +10,7 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 // Instancia de Axios con configuración base
 const api = axios.create({
   baseURL: API_BASE,
+  timeout: 15000,
 });
 
 let currentEmpresaId = null;
@@ -47,17 +48,29 @@ api.interceptors.response.use(
 // ── Request interceptor: inyecta el token de Auth0 en cada request ──
 let authInterceptorId = null;
 
-export function setAuthToken(getAccessTokenSilently) {
+export function setAuthToken(getAccessTokenSilently, getAccessTokenWithPopup) {
   if (authInterceptorId !== null) {
     api.interceptors.request.eject(authInterceptorId);
   }
 
   authInterceptorId = api.interceptors.request.use(async (config) => {
     try {
-      const token = await getAccessTokenSilently();
+      const token = await Promise.race([
+        getAccessTokenSilently(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Token timeout')), 10000)),
+      ]);
       config.headers.Authorization = `Bearer ${token}`;
       return config;
     } catch (err) {
+      if (getAccessTokenWithPopup) {
+        try {
+          const token = await getAccessTokenWithPopup();
+          config.headers.Authorization = `Bearer ${token}`;
+          return config;
+        } catch (popupErr) {
+          return Promise.reject(popupErr);
+        }
+      }
       return Promise.reject(err);
     }
   });
