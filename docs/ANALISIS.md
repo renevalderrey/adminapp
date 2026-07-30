@@ -94,7 +94,7 @@ Es una heurística, no una prueba: un archivo puede delegar el scoping a un
 service. Sirve para priorizar, no para concluir.
 
 **Por qué esto es distinto de un bug común.** Un cálculo mal hecho se corrige y
-se recalcula. Una fuga entre inquilinos, una vez que hay dos clientes reales en
+se recalcula. Una fuga entre empresas cliente, una vez que hay dos clientes reales en
 la misma base, es un incidente de datos: hay que notificar, y destruye la
 confianza que un SaaS de facturación necesita para existir. Tiene que estar
 cerrado *antes* del segundo cliente, no después.
@@ -163,7 +163,20 @@ Se arreglaron durante la reestructuración; se listan para que quede registro:
 Cinco frentes, ordenados por lo que bloquea vender. Cada uno indica el método,
 no solo el objetivo — el objetivo sin método es una intención.
 
-## Frente 1 · Auditoría de aislamiento entre inquilinos
+## Frente 1 · Auditoría de aislamiento entre empresas cliente
+
+> **ESTADO: CERRADO** (30/07/2026). 20 endpoints corregidos, 119 tests.
+> Ver [AUDITORIA-AISLAMIENTO.md](AUDITORIA-AISLAMIENTO.md) para el detalle
+> endpoint por endpoint.
+>
+> La auditoría encontró más de lo previsto. Además de los IDOR esperados:
+> la configuración de AFIP era **global** —una sola fila de certificado y CUIT
+> para todas las empresas, con lo cual una facturaba con la identidad fiscal de
+> otra—; `getSummary` agregaba totales financieros de toda la base sin filtro;
+> y `POST /:empresaId/invitar` permitía invitarse a uno mismo a otra empresa.
+>
+> Queda pendiente: cifrar la clave privada de AFIP en reposo, y los tests de
+> integración contra base real.
 
 **Bloquea vender. Es lo primero.**
 
@@ -302,8 +315,8 @@ clientes confirmada en dos archivos y probablemente presente en más; hay ~9.500
 líneas de lógica financiera sin un solo test; y hay una incógnita del tamaño de
 AFIP sin medir.
 
-Con **un cliente único** (Comprafit) el riesgo de la fuga entre inquilinos es
-nulo en la práctica: no hay otro inquilino del que filtrar. Eso abre un camino
+Con **un cliente único** (Comprafit) el riesgo de la fuga entre empresas cliente es
+nulo en la práctica: no hay otro empresa cliente del que filtrar. Eso abre un camino
 razonable: salir con Comprafit mientras se ejecutan los frentes 1 y 2, y no
 sumar el segundo cliente hasta que el frente 1 esté cerrado y con tests de
 regresión.
