@@ -1,8 +1,11 @@
 {
-  "name": "admin-app-backend",
+  "name": "adminapp-api",
   "version": "1.0.0",
-  "description": "Admin App · API Backend — Node.js + Express + PostgreSQL + Auth0",
+  "description": "AdminApp · API Backend — Node.js + Express + PostgreSQL + Auth0",
   "main": "src/server.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",

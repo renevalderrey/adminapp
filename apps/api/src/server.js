@@ -29,8 +29,19 @@ if (process.env.BYPASS_AUTH !== 'true') {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// ── Trust proxy ──
+// Render, Railway, Vercel y cualquier PaaS ponen un reverse proxy delante.
+// Sin esto, express-rate-limit ve la IP del proxy en vez de la del cliente
+// (limita a todos los usuarios como si fueran uno) y avisa con
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR. El valor 1 = confiar en un solo hop.
+app.set('trust proxy', 1);
+
 // ── Security Headers ──
-app.use(helmet());
+app.use(helmet({
+  // Los assets servidos por la API (logos de empresa) se embeben desde el
+  // dominio del frontend, que es un origen distinto.
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 
 // ── Request Logging (morgan → pino) ──
 const morganStream = { write: (msg) => logger.http(msg.trim()) };
@@ -42,17 +53,39 @@ app.get('/api/ping', (req, res) => {
 });
 
 // ── CORS ──
+// Origenes permitidos. Ahora hay mas de uno (app + landing + previews de
+// Vercel), asi que se acepta una lista separada por comas en ALLOWED_ORIGINS.
+// FRONTEND_URL se mantiene por compatibilidad con la config existente.
 const allowedOrigins = [
+  ...(process.env.ALLOWED_ORIGINS || '').split(',').map((o) => o.trim()),
   process.env.FRONTEND_URL,
+  process.env.LANDING_URL,
   'http://localhost:5173',
+  'http://localhost:5174',
   'http://localhost:3000',
 ].filter(Boolean);
 
+// Los deploy previews de Vercel usan subdominios efimeros. Se permiten solo
+// si se define VERCEL_PREVIEW_PATTERN (ej: "adminapp-.*\.vercel\.app$").
+const previewPattern = process.env.VERCEL_PREVIEW_PATTERN
+  ? new RegExp(process.env.VERCEL_PREVIEW_PATTERN)
+  : null;
+
+function isOriginAllowed(origin) {
+  if (allowedOrigins.includes(origin)) return true;
+  if (previewPattern && previewPattern.test(origin)) return true;
+  return false;
+}
+
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    // Sin Origin = same-origin, curl, o health check del PaaS.
+    if (!origin) return cb(null, true);
+    if (isOriginAllowed(origin)) return cb(null, true);
+    logger.warn({ origin }, 'CORS: origen rechazado');
     cb(null, false);
   },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Empresa-Id', 'X-Punto-De-Venta-Id'],
   exposedHeaders: ['X-Empresa-Id', 'X-Punto-De-Venta-Id'],

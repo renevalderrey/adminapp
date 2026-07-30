@@ -7,10 +7,16 @@ import axios from 'axios';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
+// El free tier de Render duerme el servicio a los 15 min de inactividad, y el
+// primer request despues de eso tarda ~50s en levantarlo (cold start). Con un
+// timeout de 15s el usuario veia un error donde en realidad solo habia que
+// esperar. 60s cubre el cold start; se puede bajar cuando haya plan pago.
+const API_TIMEOUT = Number(import.meta.env.VITE_API_TIMEOUT) || 60000;
+
 // Instancia de Axios con configuración base
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 15000,
+  timeout: API_TIMEOUT,
 });
 
 let currentEmpresaId = null;

@@ -19,10 +19,25 @@ const sequelize = process.env.DATABASE_URL
         },
       },
       pool: {
+        // min: 0 es importante con Neon: el free tier autosuspende la base a
+        // los 5 min de inactividad y no tiene sentido sostener conexiones.
         max: 10,
         min: 0,
         acquire: 30000,
         idle: 10000,
+      },
+      // Cuando Neon esta suspendida, la primera conexion puede fallar mientras
+      // la base despierta. Se reintenta en vez de tirar el request.
+      retry: {
+        max: 3,
+        match: [
+          /ECONNREFUSED/,
+          /ETIMEDOUT/,
+          /ECONNRESET/,
+          /SequelizeConnectionError/,
+          /SequelizeConnectionRefusedError/,
+          /Connection terminated unexpectedly/,
+        ],
       },
       define: {
         timestamps: true,
