@@ -1,0 +1,17 @@
+# Normaliza line endings: LF en el repo, nativo en el working dir.
+# Evita el ruido de CRLF/LF al trabajar desde Windows con deploys en Linux.
+* text=auto eol=lf
+
+# Binarios: sin conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+
+# Lockfiles: colapsar en los diffs de review
+package-lock.json linguist-generated=true -diff

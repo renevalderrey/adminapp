@@ -1,0 +1,27 @@
+# ════════════════════════════════════════════
+#  COMPRAFIT · Variables de Entorno
+#  Copiar a .env y completar con valores reales
+# ════════════════════════════════════════════
+
+# ── Backend ──
+PORT=5000
+DATABASE_URL=postgresql://postgres:comprafit_secure_2025@localhost:5433/comprafit
+NODE_ENV=development
+
+# ── Auth0 ──
+AUTH0_DOMAIN=your-tenant.auth0.com
+AUTH0_AUDIENCE=https://api.comprafit.com
+
+# ── TiendaNube (opcional) ──
+TIENDANUBE_CLIENT_ID=
+TIENDANUBE_CLIENT_SECRET=
+TIENDANUBE_CONTACT_EMAIL=contacto@tudominio.com
+
+# ── Frontend URL (para redirects de OAuth) ──
+FRONTEND_URL=http://localhost:5173
+
+# ── Email (Resend) ──
+RESEND_API_KEY=
+
+# ── Solo para desarrollo local. NUNCA activar en producción ──
+BYPASS_AUTH=false

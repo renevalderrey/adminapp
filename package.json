@@ -1,0 +1,25 @@
+{
+  "name": "adminapp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AdminApp — SaaS multi-tenant de gestion comercial. Monorepo: api + web + landing.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "install:all": "npm --prefix apps/api ci && npm --prefix apps/web ci && npm --prefix apps/landing ci",
+    "dev": "concurrently -n api,web,landing -c blue,green,magenta \"npm run dev:api\" \"npm run dev:web\" \"npm run dev:landing\"",
+    "dev:api": "npm --prefix apps/api run dev",
+    "dev:web": "npm --prefix apps/web run dev",
+    "dev:landing": "npm --prefix apps/landing run dev",
+    "build": "npm run build:web && npm run build:landing",
+    "build:web": "npm --prefix apps/web run build",
+    "build:landing": "npm --prefix apps/landing run build",
+    "test": "npm --prefix apps/api test",
+    "lint": "npm --prefix apps/web run lint && npm --prefix apps/landing run lint",
+    "migrate": "npm --prefix apps/api run db:migrate"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

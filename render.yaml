@@ -1,0 +1,84 @@
+# ══════════════════════════════════════════════════════════════
+#  AdminApp · Render Blueprint
+#
+#  Despliega la API. El frontend (apps/web) y la landing (apps/landing)
+#  van en Vercel — ver apps/*/vercel.json.
+#
+#  Uso: Render Dashboard -> New -> Blueprint -> apuntar a este repo.
+#  Los secrets marcados sync:false se cargan a mano en el dashboard; no
+#  se versionan.
+# ══════════════════════════════════════════════════════════════
+
+services:
+  - type: web
+    name: adminapp-api
+    runtime: docker
+    plan: free
+    region: oregon
+    # Monorepo: el build context es apps/api, donde vive el Dockerfile.
+    rootDir: apps/api
+    dockerfilePath: ./Dockerfile
+    # Solo redeploya si cambio la API. Sin esto, cada push a la landing
+    # reconstruiria el backend.
+    buildFilter:
+      paths:
+        - apps/api/**
+    healthCheckPath: /api/ping
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # ── Base de datos ──
+      # Neon durante desarrollo. Usar el connection string *pooled*
+      # (el host termina en -pooler): Neon free autosuspende y el pooler
+      # maneja mejor la reconexion.
+      - key: DATABASE_URL
+        sync: false
+
+      # ── Auth0 ──
+      # Sin estas dos el server aborta al arrancar (ver REQUIRED_ENV).
+      - key: AUTH0_DOMAIN
+        sync: false
+      - key: AUTH0_AUDIENCE
+        sync: false
+
+      # ── Origenes permitidos por CORS ──
+      # Lista separada por comas: app + landing.
+      # Ej: https://app.adminapp.com,https://adminapp.com
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # URL de la app, usada tambien en los links de los emails.
+      - key: FRONTEND_URL
+        sync: false
+      # Opcional: regex para habilitar los deploy previews de Vercel.
+      # Ej: ^https://adminapp-web-.*\.vercel\.app$
+      - key: VERCEL_PREVIEW_PATTERN
+        sync: false
+
+      # ── Email transaccional (Resend) ──
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+
+      # ── TiendaNube (opcional) ──
+      - key: TIENDANUBE_CLIENT_ID
+        sync: false
+      - key: TIENDANUBE_CLIENT_SECRET
+        sync: false
+
+      # ── Extraccion de productos por IA (opcional) ──
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+# ── Notas del free tier ──
+#
+# El servicio duerme tras 15 min sin trafico; el primer request despues
+# tarda ~50s. Por eso el timeout de axios en apps/web esta en 60s.
+#
+# Con el servicio dormido, subscriptionCron no corre. Los vencimientos de
+# suscripcion no se procesan de forma confiable hasta que haya plan pago
+# o un cron job externo.
+#
+# Las migraciones corren en el CMD del Dockerfile al arrancar. Sirve con
+# una sola instancia; al escalar hay que moverlas a un pre-deploy job.

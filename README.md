@@ -1,229 +1,155 @@
-# Sistema de Gestión Empresarial y Facturación
+# AdminApp
 
-Este proyecto es una plataforma integral (SaaS) diseñada para la gestión comercial de empresas y emprendedores de múltiples rubros. El sistema centraliza la facturación electrónica, el control de stock multi-sucursal, la gestión de proveedores y el análisis de rentabilidad en una interfaz moderna y escalable.
+SaaS multi-tenant de gestión comercial: punto de venta, stock multi-sucursal,
+proveedores, producción, cuentas corrientes, flujo de caja, impuestos y
+facturación electrónica AFIP.
 
----
-
-## 🚀 Funcionalidades
-
-### 1. Punto de Venta (POS)
-- **Carrito de Compras**: Selección rápida de productos con múltiples listas de precios (Efectivo, Tarjeta, Alianzas).
-- **Cálculo Automático**: Gestión de vueltos, recargos por tarjeta (configurable) y descuentos.
-- **Registro de Ventas**: Persistencia inmediata con capacidad de imprimir comprobantes.
-
-### 2. Gestión de Inventario
-- **Control de Stock Multi-Sucursal**: Stock por sucursal (General, Ortiz de Ocampo, 25 de Mayo).
-- **Administración de Precios**: Márgenes personalizados por producto y calculadora BEP.
-- **Carga Masiva**: Excel, texto pegado, manual o extracción por IA desde PDF/imágenes.
-
-### 3. Historial y Reportes
-- **Historial Diario**: Registro detallado de todas las transacciones.
-- **Resumen Financiero**: Ingresos segmentados por método de pago y sucursal.
-
-### 4. Módulo de Proveedores
-- **Comparador de Precios**: Comparación entre proveedores para optimizar compras.
-- **Cuentas Corrientes**: Deudas, pagos, adelantos y saldos con cada proveedor.
-- **Armado de Pedidos**: Pedidos optimizados por marca con exportación a WhatsApp.
-
-### 5. Gastos Fijos y Calculadora BEP
-- **GF1/GF2**: Gastos fijos separados por sucursal.
-- **Punto de Equilibrio**: Cálculo automático del margen mínimo necesario.
-- **Recomendaciones**: Sugerencias de precio (BEP Justo, Recomendado, Agresivo).
+> **Nota sobre la marca.** Comprafit es un **cliente** del producto — de ahí
+> salió la base del proyecto — no el producto en sí. La marca es AdminApp.
 
 ---
 
-## 🏗️ Stack Tecnológico
+## Estructura
 
-| Componente | Tecnología |
-| :--- | :--- |
-| **Frontend** | React 19 + Vite |
-| **Backend** | Node.js + Express |
-| **Base de Datos** | PostgreSQL + Sequelize ORM |
-| **Autenticación** | Auth0 (JWT) |
-| **Estilos** | CSS Custom (Dark Theme) |
+```
+adminapp/
+├── apps/
+│   ├── api/        API REST · Node + Express 5 + Sequelize + PostgreSQL + Auth0
+│   ├── web/        SPA de la aplicación · React 19 + Vite + Tailwind 4
+│   └── landing/    Landing pública · React 19 + TypeScript + Vite + Tailwind 4
+├── docs/           Documentación y especificaciones (spec-kit)
+├── legacy/         Código PHP original, previo a la migración. Solo referencia.
+├── render.yaml     Blueprint de Render para la API
+└── .env.example    Referencia única de variables de entorno
+```
+
+Es un **monorepo aislado**: cada app mantiene su propio `package.json` y su
+propio lockfile. No usa npm workspaces, porque las plataformas de deploy
+construyen cada servicio con un *Root Directory* distinto y desde ahí no verían
+un lockfile ubicado en la raíz.
 
 ---
 
-## 📁 Estructura del Proyecto
+## Arquitectura de deploy
 
-```
-/sistema-de-facturacion
-  ├── /backend                    # API REST — Node.js + Express
-  │     ├── /src
-  │     │    ├── /config          # Configuración PostgreSQL
-  │     │    │    └── database.js
-  │     │    ├── /middleware      # Auth0 JWT middleware
-  │     │    │    └── auth.js
-  │     │    ├── /models          # Modelos Sequelize
-  │     │    │    ├── Brand.js        # Marcas
-  │     │    │    ├── Product.js      # Productos (costo, márgenes)
-  │     │    │    ├── Stock.js        # Stock multi-sucursal
-  │     │    │    ├── Sale.js         # Ventas + items
-  │     │    │    ├── Supplier.js     # Proveedores, pedidos, movimientos
-  │     │    │    ├── FixedExpense.js # Gastos fijos GF1/GF2
-  │     │    │    ├── Setting.js      # Configuraciones generales
-  │     │    │    └── index.js        # Relaciones entre modelos
-  │     │    ├── /routes          # Endpoints de la API
-  │     │    │    ├── products.js     # CRUD + bulk import
-  │     │    │    ├── sales.js        # Registro venta + historial
-  │     │    │    ├── suppliers.js    # Proveedores + cuentas
-  │     │    │    └── general.js      # Stock, marcas, gastos, settings
-  │     │    ├── server.js        # Entry point del servidor
-  │     │    └── migrate.js       # Script de migración PHP → PostgreSQL
-  │     ├── .env                  # Variables de entorno
-  │     ├── .env.example
-  │     └── package.json
-  │
-  ├── /frontend                   # SPA — React + Vite
-  │     ├── /src
-  │     │    ├── /pages           # Vistas principales
-  │     │    │    ├── Dashboard.jsx   # Calculadora / KPIs
-  │     │    │    ├── Inventory.jsx   # Inventario
-  │     │    │    ├── Billing.jsx     # Facturación (POS)
-  │     │    │    ├── Orders.jsx      # Pedidos
-  │     │    │    ├── Expenses.jsx    # Gastos fijos
-  │     │    │    └── Login.jsx       # Autenticación Auth0
-  │     │    ├── /services        # Capa de API
-  │     │    │    └── api.js          # Axios + Auth0 interceptor
-  │     │    ├── /components      # Componentes reutilizables
-  │     │    ├── /hooks           # Custom hooks
-  │     │    ├── /context         # React Context
-  │     │    ├── App.jsx          # Layout + routing
-  │     │    ├── main.jsx         # Entry point + Auth0Provider
-  │     │    └── index.css        # Design system (dark theme)
-  │     ├── .env
-  │     └── package.json
-  │
-  ├── index (8).html              # ⚠️ Sistema original (legacy)
-  ├── api.php                     # ⚠️ API original (legacy)
-  └── README.md
-```
+| App | Plataforma | Dominio previsto |
+|---|---|---|
+| `apps/landing` | Vercel | `adminapp.com` |
+| `apps/web` | Vercel | `app.adminapp.com` |
+| `apps/api` | Render | `api.adminapp.com` |
+| PostgreSQL | Neon | — |
+
+La landing y la app se despliegan por separado. La landing enlaza a la app vía
+`VITE_APP_URL`; el CTA de prueba gratis apunta a `<app>/?signup=true`, que la
+app traduce a `screen_hint=signup` de Auth0.
 
 ---
 
-## ⚡ Inicio Rápido
+## Desarrollo local
 
-### Prerrequisitos
-- **Node.js** 18+
-- **PostgreSQL** 14+
-- **Cuenta Auth0** (para autenticación)
-
-### 1. Base de Datos
+Requiere **Node 22+** y una base PostgreSQL (local o Neon).
 
 ```bash
-# Crear la base de datos en PostgreSQL
-psql -U postgres -c "CREATE DATABASE comprafit;"
-```
+# 1. Dependencias de las tres apps
+npm run install:all
 
-### 2. Backend
+# 2. Configurar entorno
+cp .env.example apps/api/.env       # completar bloque API
+cp .env.example apps/web/.env       # completar bloque WEB
+cp .env.example apps/landing/.env   # completar bloque LANDING
 
-```bash
-cd backend
-
-# Configurar variables de entorno
-cp .env.example .env
-# Editar .env con tu configuración de PostgreSQL y Auth0
-
-# Instalar dependencias
-npm install
-
-# Iniciar en modo desarrollo (crea las tablas automáticamente)
-npm run dev
-```
-
-### 3. Frontend
-
-```bash
-cd frontend
-
-# Configurar variables de entorno
-# Editar .env con tu AUTH0_DOMAIN y CLIENT_ID
-
-# Instalar dependencias
-npm install
-
-# Iniciar en modo desarrollo
-npm run dev
-```
-
-### 4. Migración de Datos (desde PHP/MySQL)
-
-```bash
-cd backend
-
-# Configurar en .env:
-# PHP_API_URL=https://tu-dominio.com/api.php
-# PHP_API_TOKEN=Comprafit.App.2025
-
-# Ejecutar migración
+# 3. Migraciones
 npm run migrate
+
+# 4. Levantar todo (api :5000, web :5173, landing :5174)
+npm install          # instala concurrently en la raíz
+npm run dev
 ```
 
-El script de migración:
-- Conecta a la API PHP actual
-- Extrae **todos** los datos (productos, stock, ventas, gastos, proveedores)
-- Los normaliza en tablas PostgreSQL relacionales
-- Muestra un resumen con la cantidad de registros migrados
+Cada app se puede levantar sola con `npm run dev:api`, `dev:web` o `dev:landing`.
 
----
+### Otros comandos
 
-## 🔑 Configuración Auth0
-
-1. Crear una **Single Page Application** en Auth0
-2. Crear una **API** con audience `https://api.comprafit.com`
-3. Configurar las **Allowed Callback URLs** con `http://localhost:5173`
-4. Copiar `Domain` y `Client ID` a los archivos `.env`:
-
-**Backend (.env):**
-```
-AUTH0_DOMAIN=tu-tenant.us.auth0.com
-AUTH0_AUDIENCE=https://api.comprafit.com
-```
-
-**Frontend (.env):**
-```
-VITE_AUTH0_DOMAIN=tu-tenant.us.auth0.com
-VITE_AUTH0_CLIENT_ID=tu_client_id
-VITE_AUTH0_AUDIENCE=https://api.comprafit.com
-```
-
-> **Nota**: En modo desarrollo (`NODE_ENV=development`), si Auth0 no está configurado, la API se ejecuta sin autenticación para facilitar el desarrollo.
-
----
-
-## 📊 Esquema de Base de Datos
-
-```
-brands ─────────── 1:N ── products
-products ───────── 1:N ── stock (por sucursal)
-products ───────── 1:N ── sale_items
-sales ──────────── 1:N ── sale_items
-suppliers ──────── 1:N ── supplier_orders
-suppliers ──────── 1:N ── supplier_movements
-suppliers ──────── 1:N ── supplier_documents
-fixed_expenses ─── (gf1 / gf2)
-settings ───────── (key-value para config general)
+```bash
+npm run build     # buildea web + landing
+npm test          # tests de la API (jest)
+npm run lint      # eslint en web + landing
 ```
 
 ---
 
-## 📡 API Endpoints
+## Deploy
 
-| Método | Ruta | Descripción |
-|:---|:---|:---|
-| `GET` | `/api/ping` | Health check (público) |
-| `GET` | `/api/products` | Listar productos |
-| `POST` | `/api/products` | Crear producto |
-| `POST` | `/api/products/bulk` | Carga masiva |
-| `GET` | `/api/sales?date=YYYY-MM-DD` | Ventas por fecha |
-| `POST` | `/api/sales` | Registrar venta |
-| `GET` | `/api/stock?location=ortiz` | Stock por sucursal |
-| `GET` | `/api/brands` | Listar marcas |
-| `GET` | `/api/expenses?group=gf1` | Gastos fijos |
-| `GET` | `/api/suppliers` | Proveedores |
-| `POST` | `/api/suppliers/:id/payments` | Registrar pago |
-| `GET/PUT` | `/api/settings/:key` | Configuraciones |
+### PostgreSQL — Neon
+
+1. Crear un proyecto en [neon.tech](https://neon.tech).
+2. Copiar el connection string **pooled** (el host termina en `-pooler`).
+   Neon free autosuspende la base a los 5 min de inactividad y el pooler
+   maneja mejor la reconexión.
+3. Ese string va en `DATABASE_URL` de la API.
+
+### API — Render
+
+Vía Blueprint (recomendado): *New → Blueprint* apuntando a este repo. Render
+lee `render.yaml` y crea el servicio con `rootDir: apps/api` ya configurado.
+
+Manualmente: *New → Web Service*, runtime **Docker**, y **Root Directory** en
+`apps/api`.
+
+Después cargar en el dashboard las variables marcadas `sync: false` en
+`render.yaml`. Sin `AUTH0_DOMAIN` y `AUTH0_AUDIENCE` el servidor no arranca.
+
+Las migraciones corren solas en el arranque del contenedor.
+
+### Web y Landing — Vercel
+
+Un proyecto de Vercel por app:
+
+| | Root Directory | Variables |
+|---|---|---|
+| web | `apps/web` | `VITE_API_URL`, `VITE_AUTH0_*`, `VITE_API_TIMEOUT` |
+| landing | `apps/landing` | `VITE_APP_URL`, `VITE_CONTACT_EMAIL` |
+
+Vercel autodetecta Vite y lee el `vercel.json` de cada app.
+
+> Las `VITE_*` se hornean en el bundle **durante el build**. Cambiar una en el
+> dashboard no tiene efecto hasta redesplegar.
+
+### Después de desplegar
+
+Actualizar en la API `ALLOWED_ORIGINS` con los dominios reales de web y landing
+(lista separada por comas), y `FRONTEND_URL` con el de la app.
+
+En Auth0, agregar el dominio de la app a *Allowed Callback URLs*, *Allowed Logout
+URLs* y *Allowed Web Origins*.
 
 ---
 
-Creado por **Antigravity**. 🚀
+## Limitaciones conocidas de los planes gratuitos
+
+Aplican durante la fase de desarrollo; desaparecen al pasar a planes pagos.
+
+- **Render free duerme el servicio** tras 15 min sin tráfico. El primer request
+  posterior tarda ~50 s. Por eso el timeout de axios está en 60 s
+  (`VITE_API_TIMEOUT`).
+- **`subscriptionCron` no corre de forma confiable**: con el servicio dormido no
+  se procesan los vencimientos de suscripción. Requiere plan pago o un cron
+  externo.
+- **Neon free autosuspende** a los 5 min. Sequelize reintenta la conexión, pero
+  la primera query tras la suspensión puede tardar.
+- **Sin disco persistente.** Por eso los logos de empresa se guardan como data
+  URI en la base y no en el filesystem, que es efímero en las tres plataformas.
+- **Migraciones al arrancar.** Funciona con una sola instancia. Al escalar a
+  varias réplicas hay que moverlas a un pre-deploy job, o correrían en paralelo.
+
+---
+
+## Migración futura a Railway
+
+Los `Dockerfile` de las tres apps ya sirven para Railway sin cambios. Al migrar:
+un proyecto con cuatro servicios (`api`, `web`, `landing` y PostgreSQL),
+apuntando el *Root Directory* de cada uno a su carpeta en `apps/`.
+
+Las referencias entre servicios conviene resolverlas con las variables de
+Railway (`${{Postgres.DATABASE_URL}}`, `${{api.RAILWAY_PUBLIC_DOMAIN}}`) en vez
+de hardcodear URLs.
