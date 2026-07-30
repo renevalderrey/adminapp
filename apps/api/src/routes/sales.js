@@ -4,6 +4,7 @@ const { Sale, SaleItem, Product, Stock, StockMovement } = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const checkPermission = require('../middleware/checkPermission');
+const { findScoped } = require('../utils/tenantScope');
 
 // GET /api/sales?date=YYYY-MM-DD — Ventas de una fecha (paginado)
 router.get('/', checkPermission('ventas.ver'), async (req, res) => {
@@ -163,7 +164,10 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
 router.put('/:id/void', checkPermission('ventas.anular'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const sale = await Sale.findByPk(req.params.id, {
+    // Sin el filtro por empresa, este endpoint permitia anular la venta de
+    // otra empresa cliente — y la anulacion devuelve stock, asi que ademas de
+    // leer, alteraba su inventario.
+    const sale = await findScoped(Sale, req.params.id, req.empresaId, {
       include: [{ model: SaleItem, as: 'items' }],
       transaction: t,
       lock: t.LOCK.UPDATE,

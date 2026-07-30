@@ -44,7 +44,7 @@ router.post('/entries', checkPermission('caja.crear'), async (req, res) => {
 
 router.delete('/entries/:id', checkPermission('caja.eliminar'), async (req, res) => {
   try {
-    await cashflowService.deleteEntry(req.params.id);
+    await cashflowService.deleteEntry(req.params.id, req.empresaId);
     res.json({ ok: true, message: 'Movimiento eliminado' });
   } catch (err) {
     if (err.message === 'Movimiento no encontrado') {

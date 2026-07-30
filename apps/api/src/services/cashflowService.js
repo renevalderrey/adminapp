@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const { assertEmpresaId } = require('../utils/tenantScope');
 const {
   CashFlowEntry,
   Sale,
@@ -113,8 +114,12 @@ class CashflowService {
     });
   }
 
-  async deleteEntry(id) {
-    const entry = await CashFlowEntry.findByPk(id);
+  async deleteEntry(id, empresaId) {
+    assertEmpresaId(empresaId);
+
+    const entry = await CashFlowEntry.findOne({
+      where: { id, empresa_id: empresaId },
+    });
     if (!entry) throw new Error('Movimiento no encontrado');
     await entry.destroy();
     return true;

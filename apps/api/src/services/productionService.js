@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const { assertEmpresaId } = require('../utils/tenantScope');
 const {
   ProductionOrder,
   ProductionOrderItem,
@@ -95,10 +96,25 @@ class ProductionService {
   }
 
   async createProductionOrder(data, empresaId, puntoDeVentaId = null) {
+    assertEmpresaId(empresaId);
+
     const { product_id, quantity_produced, batch_code, production_date, location, notes } = data;
 
     if (!quantity_produced || parseFloat(quantity_produced) <= 0) {
       throw new Error('quantity_produced debe ser mayor a 0');
+    }
+
+    // product_id viene del body sin validar. Sin este chequeo se podia lanzar
+    // una orden sobre el producto de otra empresa cliente: calculateOrderCosts
+    // lee su receta y guarda los costos de sus insumos en cost_snapshot, con lo
+    // cual quedaban expuestos en la respuesta.
+    const producto = await Product.findOne({
+      where: { id: product_id, empresa_id: empresaId },
+      attributes: ['id'],
+    });
+
+    if (!producto) {
+      throw new Error('Producto no encontrado');
     }
 
     const { totalCost, unitCost, recipe, items, costSnapshot } =
@@ -222,8 +238,13 @@ class ProductionService {
     }
   }
 
-  async voidProductionOrder(id) {
-    const order = await ProductionOrder.findByPk(id, {
+  async voidProductionOrder(id, empresaId) {
+    assertEmpresaId(empresaId);
+
+    // Sin el filtro por empresa esto anulaba la orden de otra empresa cliente
+    // y le revertia el stock de los insumos.
+    const order = await ProductionOrder.findOne({
+      where: { id, empresa_id: empresaId },
       include: [{ model: ProductionOrderItem, as: 'items' }],
     });
 
@@ -345,8 +366,11 @@ class ProductionService {
     };
   }
 
-  async getProductionOrder(id) {
-    const order = await ProductionOrder.findByPk(id, {
+  async getProductionOrder(id, empresaId) {
+    assertEmpresaId(empresaId);
+
+    const order = await ProductionOrder.findOne({
+      where: { id, empresa_id: empresaId },
       include: [
         { model: Product, as: 'product', attributes: ['id', 'name'] },
         {

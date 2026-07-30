@@ -7,6 +7,7 @@ const router = express.Router();
 const { Op } = require('sequelize');
 const { Stock, Brand, Product, FixedExpense, Setting, PuntoDeVenta } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
+const { findScoped } = require('../utils/tenantScope');
 
 // ═══════ STOCK ═══════
 
@@ -14,12 +15,10 @@ const checkPermission = require('../middleware/checkPermission');
 router.get('/stock', checkPermission('stock.ver'), async (req, res) => {
   try {
     const empresaId = req.empresaId;
-    const where = {
-      [Op.or]: [
-        { empresa_id: empresaId },
-        { empresa_id: null },
-      ],
-    };
+    // empresa_id es NOT NULL en las 22 tablas del schema: aceptar tambien
+    // empresa_id IS NULL era codigo muerto, y se volveria una fuga el dia que
+    // alguien haga la columna nullable.
+    const where = { empresa_id: empresaId };
     if (req.puntoDeVentaId) {
       where.punto_de_venta_id = req.puntoDeVentaId;
     } else if (req.query.location) {
@@ -41,7 +40,7 @@ router.get('/stock', checkPermission('stock.ver'), async (req, res) => {
 // PUT /api/stock/:id — Actualizar cantidad (con validación y auditoría)
 router.put('/stock/:id', checkPermission('stock.editar'), async (req, res) => {
   try {
-    const stock = await Stock.findByPk(req.params.id);
+    const stock = await findScoped(Stock, req.params.id, req.empresaId);
     if (!stock) return res.status(404).json({ ok: false, error: 'Registro de stock no encontrado' });
 
     const { quantity, available } = req.body;
@@ -88,8 +87,13 @@ router.post('/stock', checkPermission('stock.editar'), async (req, res) => {
 
     let loc = location;
     if (!loc && punto_de_venta_id) {
-      const pv = await PuntoDeVenta.findByPk(punto_de_venta_id);
-      loc = pv?.code || pv?.name || 'general';
+      // El punto de venta viene del body: hay que confirmar que sea de esta
+      // empresa antes de usarlo para ubicar el stock.
+      const pv = await findScoped(PuntoDeVenta, punto_de_venta_id, empresaId);
+      if (!pv) {
+        return res.status(400).json({ ok: false, error: 'Punto de venta inválido' });
+      }
+      loc = pv.code || pv.name || 'general';
     }
 
     const [stock, created] = await Stock.findOrCreate({
@@ -151,12 +155,7 @@ router.get('/brands', checkPermission('products.ver'), async (req, res) => {
   try {
     const empresaId = req.empresaId;
     const brands = await Brand.findAll({
-      where: {
-        [Op.or]: [
-          { empresa_id: empresaId },
-          { empresa_id: null },
-        ],
-      },
+      where: { empresa_id: empresaId },
       order: [['name', 'ASC']],
     });
     res.json({ ok: true, data: brands });
@@ -181,12 +180,10 @@ router.post('/brands', checkPermission('products.crear'), async (req, res) => {
 router.get('/expenses', checkPermission('gastos.ver'), async (req, res) => {
   try {
     const empresaId = req.empresaId;
-    const where = {
-      [Op.or]: [
-        { empresa_id: empresaId },
-        { empresa_id: null },
-      ],
-    };
+    // empresa_id es NOT NULL en las 22 tablas del schema: aceptar tambien
+    // empresa_id IS NULL era codigo muerto, y se volveria una fuga el dia que
+    // alguien haga la columna nullable.
+    const where = { empresa_id: empresaId };
     if (req.query.group) where.group = req.query.group;
     if (req.query.punto_de_venta_id) where.punto_de_venta_id = req.query.punto_de_venta_id;
     const expenses = await FixedExpense.findAll({ where, order: [['id', 'ASC']] });
@@ -213,9 +210,11 @@ router.post('/expenses', checkPermission('gastos.crear'), async (req, res) => {
 // PUT /api/expenses/:id
 router.put('/expenses/:id', checkPermission('gastos.editar'), async (req, res) => {
   try {
-    const expense = await FixedExpense.findByPk(req.params.id);
+    const expense = await findScoped(FixedExpense, req.params.id, req.empresaId);
     if (!expense) return res.status(404).json({ ok: false, error: 'Gasto no encontrado' });
-    await expense.update(req.body);
+
+    const { empresa_id, id, ...cambios } = req.body;
+    await expense.update(cambios);
     res.json({ ok: true, data: expense });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -293,7 +292,8 @@ router.get('/alerts', checkPermission('stock.ver'), async (req, res) => {
     const today = new Date().toISOString().split('T')[0];
     const next30Days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const empresaId = req.empresaId;
-    const empresaOrNull = { [Op.or]: [{ empresa_id: empresaId }, { empresa_id: null }] };
+    // empresa_id es NOT NULL en todo el schema; el OR con null era codigo muerto.
+    const empresaOrNull = { empresa_id: empresaId };
 
     // Alertas de stock mínimo
     const lowStock = await Stock.findAll({

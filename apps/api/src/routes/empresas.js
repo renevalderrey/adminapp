@@ -4,9 +4,11 @@ const { Op } = require('sequelize');
 const { Empresa, PuntoDeVenta, Usuario, UsuarioEmpresa, Suscripcion, Invitacion, Rol, RolPermiso, UsuarioPermiso } = require('../models');
 const { sendEmail, welcomeEmail, invitationEmail } = require('../services/email');
 const checkPermission = require('../middleware/checkPermission');
+const { requireEmpresa } = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const logger = require('../utils/logger');
+const { findScoped } = require('../utils/tenantScope');
 
 // ── Logo de empresa ──
 // El logo se guarda como data URI en la columna Empresa.logo (TEXT), no en
@@ -14,9 +16,9 @@ const logger = require('../utils/logger');
 // escrito se pierde en cada deploy — y el free tier no tiene disco persistente.
 // Guardarlo en Postgres lo hace portable entre plataformas sin cambios.
 //
-// El limite es 300KB (no 5MB) porque Empresa se carga en cada login via
-// loadEmpresaContext(); un blob grande se transferiria en cada arranque de la
-// app. Ver el defaultScope de Empresa, que excluye la columna por defecto.
+// El limite es 300KB (no 5MB) porque la empresa entera viaja en la respuesta
+// de /mi-contexto, que el frontend pide en cada arranque de la app: un blob
+// grande se transferiria en cada login.
 const MAX_LOGO_BYTES = 300 * 1024;
 
 const ALLOWED_LOGO_MIME = [
@@ -308,7 +310,7 @@ router.get('/', checkPermission('config.ver'), async (req, res) => {
   }
 });
 
-router.get('/:id', checkPermission('config.ver'), async (req, res) => {
+router.get('/:id', checkPermission('config.ver'), requireEmpresa, requireEmpresaPropia(), async (req, res) => {
   try {
     const empresa = await Empresa.findByPk(req.params.id, {
       include: [
@@ -344,23 +346,30 @@ router.post('/', checkPermission('config.editar'), async (req, res) => {
 });
 
 /**
- * Verifica que el :id de la ruta sea la empresa activa del request.
+ * Verifica que el id de empresa de la ruta sea la empresa activa del request.
  *
  * checkPermission solo valida que el usuario tenga el permiso EN SU EMPRESA
- * ACTIVA — no mira el :id de la URL. Sin este chequeo, cualquier usuario con
- * config.editar en su propia empresa podia modificar o desactivar la empresa
- * de otro tenant pasando un id distinto.
+ * ACTIVA — no mira el id de la URL. Sin este chequeo, cualquier usuario con el
+ * permiso en su propia empresa podia operar sobre la empresa de otro cliente
+ * pasando un id distinto.
+ *
+ * @param {string} [param='id'] Nombre del parametro de ruta que trae el id.
+ *   Las rutas de este router usan tanto :id como :empresaId.
  */
-function requireEmpresaPropia(req, res, next) {
-  const idSolicitado = parseInt(req.params.id, 10);
-  if (!Number.isInteger(idSolicitado) || idSolicitado !== req.empresaId) {
-    logger.warn(
-      { userId: req.userId, empresaActiva: req.empresaId, empresaSolicitada: req.params.id },
-      'Intento de acceso a empresa ajena'
-    );
-    return res.status(403).json({ ok: false, error: 'No tenés acceso a esta empresa' });
-  }
-  next();
+function requireEmpresaPropia(param = 'id') {
+  return (req, res, next) => {
+    const idSolicitado = parseInt(req.params[param], 10);
+
+    if (!Number.isInteger(idSolicitado) || idSolicitado !== req.empresaId) {
+      logger.warn(
+        { userId: req.userId, empresaActiva: req.empresaId, empresaSolicitada: req.params[param] },
+        'Intento de acceso a empresa ajena'
+      );
+      return res.status(403).json({ ok: false, error: 'No tenés acceso a esta empresa' });
+    }
+
+    next();
+  };
 }
 
 /** Valida que el logo sea un data URI de imagen dentro del limite de tamaño. */
@@ -378,7 +387,7 @@ function validarLogo(logo) {
   return { ok: true, valor: logo };
 }
 
-router.put('/:id', checkPermission('config.editar'), requireEmpresaPropia, async (req, res) => {
+router.put('/:id', checkPermission('config.editar'), requireEmpresa, requireEmpresaPropia(), async (req, res) => {
   try {
     const { name, cuit, rubro, logo, phone, address, city, state, timezone, currency, settings } = req.body;
 
@@ -400,7 +409,7 @@ router.put('/:id', checkPermission('config.editar'), requireEmpresaPropia, async
   }
 });
 
-router.delete('/:id', checkPermission('config.editar'), requireEmpresaPropia, async (req, res) => {
+router.delete('/:id', checkPermission('config.editar'), requireEmpresa, requireEmpresaPropia(), async (req, res) => {
   try {
     const empresa = await Empresa.findByPk(req.params.id);
     if (!empresa) return res.status(404).json({ ok: false, error: 'Empresa no encontrada' });
@@ -450,10 +459,10 @@ router.post('/:empresaId/puntos-de-venta', checkPermission('sucursales.crear'), 
   }
 });
 
-router.put('/puntos-de-venta/:id', checkPermission('sucursales.editar'), async (req, res) => {
+router.put('/puntos-de-venta/:id', requireEmpresa, checkPermission('sucursales.editar'), async (req, res) => {
   try {
     const { name, code, address } = req.body;
-    const pv = await PuntoDeVenta.findByPk(req.params.id);
+    const pv = await findScoped(PuntoDeVenta, req.params.id, req.empresaId);
     if (!pv) return res.status(404).json({ ok: false, error: 'Punto de venta no encontrado' });
     await pv.update({ name, code, address });
     res.json({ ok: true, data: pv });
@@ -462,9 +471,9 @@ router.put('/puntos-de-venta/:id', checkPermission('sucursales.editar'), async (
   }
 });
 
-router.delete('/puntos-de-venta/:id', checkPermission('sucursales.eliminar'), async (req, res) => {
+router.delete('/puntos-de-venta/:id', requireEmpresa, checkPermission('sucursales.eliminar'), async (req, res) => {
   try {
-    const pv = await PuntoDeVenta.findByPk(req.params.id);
+    const pv = await findScoped(PuntoDeVenta, req.params.id, req.empresaId);
     if (!pv) return res.status(404).json({ ok: false, error: 'Punto de venta no encontrado' });
     await pv.update({ is_active: false });
     res.json({ ok: true, message: 'Punto de venta desactivado' });
@@ -489,7 +498,12 @@ router.get('/:empresaId/invitaciones', checkPermission('equipo.ver'), async (req
 });
 
 // POST /api/empresas/:empresaId/invitar — Invitar empleado
-router.post('/:empresaId/invitar', checkPermission('equipo.invitar'), async (req, res) => {
+// El :empresaId de la URL debe ser la empresa activa. Sin ese chequeo,
+// checkPermission solo validaba que el usuario pudiera invitar EN SU PROPIA
+// empresa, y despues se invitaba al email indicado a la empresa del :empresaId:
+// alcanzaba con poner el id de otra empresa y el mail propio para conseguir
+// acceso a un tenant ajeno.
+router.post('/:empresaId/invitar', checkPermission('equipo.invitar'), requireEmpresa, requireEmpresaPropia('empresaId'), async (req, res) => {
   try {
     const { email, role } = req.body;
     if (!email) return res.status(400).json({ ok: false, error: 'Email requerido' });
@@ -546,9 +560,9 @@ router.post('/invitaciones/:token/re-enviar', checkPermission('equipo.invitar'),
 });
 
 // DELETE /api/empresas/invitaciones/:id — Revocar invitación pendiente
-router.delete('/invitaciones/:id', checkPermission('equipo.eliminar'), async (req, res) => {
+router.delete('/invitaciones/:id', requireEmpresa, checkPermission('equipo.eliminar'), async (req, res) => {
   try {
-    const invitacion = await Invitacion.findByPk(req.params.id);
+    const invitacion = await findScoped(Invitacion, req.params.id, req.empresaId);
     if (!invitacion) return res.status(404).json({ ok: false, error: 'Invitación no encontrada' });
     await invitacion.update({ status: 'revoked' });
     res.json({ ok: true, message: 'Invitación revocada' });
@@ -593,15 +607,23 @@ router.post('/:empresaId/usuarios', checkPermission('equipo.invitar'), async (re
   }
 });
 
-router.put('/usuarios/:id', checkPermission('config.editar'), async (req, res) => {
+// UsuarioEmpresa no tiene columna empresa_id sino empresa_id como FK propia:
+// se filtra por ella igual. Sin el filtro, este endpoint permitia cambiarle el
+// rol o desactivar a cualquier miembro de cualquier empresa cliente.
+router.put('/usuarios/:id', requireEmpresa, checkPermission('config.editar'), async (req, res) => {
   try {
     const { role, is_active } = req.body;
-    const ue = await UsuarioEmpresa.findByPk(req.params.id);
+
+    const ue = await UsuarioEmpresa.findOne({
+      where: { id: req.params.id, empresa_id: req.empresaId },
+    });
     if (!ue) return res.status(404).json({ ok: false, error: 'Relación no encontrada' });
+
     await ue.update({ role, is_active });
     res.json({ ok: true, data: ue });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    logger.error({ err, empresaId: req.empresaId }, 'empresas:update-usuario');
+    res.status(500).json({ ok: false, error: 'Error al actualizar el usuario' });
   }
 });
 

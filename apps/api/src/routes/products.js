@@ -9,18 +9,17 @@ const { Op } = require('sequelize');
 const costService = require('../services/costService');
 const logger = require('../utils/logger');
 const checkPermission = require('../middleware/checkPermission');
+const { findScoped } = require('../utils/tenantScope');
 
 // GET /api/products — Listar productos (con marca y stock, paginado)
 router.get('/', checkPermission('products.ver'), async (req, res) => {
   try {
     const { search, brand, active, page, limit } = req.query;
     const empresaId = req.empresaId;
-    const where = {
-      [Op.or]: [
-        { empresa_id: empresaId },
-        { empresa_id: null },
-      ],
-    };
+    // empresa_id es NOT NULL en las 22 tablas del schema: aceptar tambien
+    // empresa_id IS NULL era codigo muerto, y se volveria una fuga el dia que
+    // alguien haga la columna nullable.
+    const where = { empresa_id: empresaId };
 
     if (search) {
       const tokens = search.trim().split(/\s+/).filter(Boolean);
@@ -83,7 +82,7 @@ router.get('/', checkPermission('products.ver'), async (req, res) => {
 // GET /api/products/:id — Un producto específico
 router.get('/:id', checkPermission('products.ver'), async (req, res) => {
   try {
-    const product = await Product.findByPk(req.params.id, {
+    const product = await findScoped(Product, req.params.id, req.empresaId, {
       include: [
         { model: Brand, as: 'brand' },
         { model: Supplier, as: 'supplier', attributes: ['id', 'name'] },
@@ -122,7 +121,7 @@ router.post('/', checkPermission('products.crear'), async (req, res) => {
 router.put('/:id', checkPermission('products.editar'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const product = await Product.findByPk(req.params.id, { transaction: t });
+    const product = await findScoped(Product, req.params.id, req.empresaId, { transaction: t });
     if (!product) {
       await t.rollback();
       return res.status(404).json({ ok: false, error: 'Producto no encontrado' });
@@ -166,7 +165,7 @@ router.put('/:id', checkPermission('products.editar'), async (req, res) => {
 // DELETE /api/products/:id — Eliminar (soft: desactivar)
 router.delete('/:id', checkPermission('products.eliminar'), async (req, res) => {
   try {
-    const product = await Product.findByPk(req.params.id);
+    const product = await findScoped(Product, req.params.id, req.empresaId);
     if (!product) return res.status(404).json({ ok: false, error: 'Producto no encontrado' });
     await product.update({ is_active: false });
     res.json({ ok: true, message: 'Producto desactivado' });
@@ -279,8 +278,33 @@ router.post('/:id/recipe', checkPermission('recetas.crear'), async (req, res) =>
     return res.status(400).json({ ok: false, error: 'La receta debe contener al menos un ingrediente' });
   }
 
+  // El producto elaborado tiene que ser de esta empresa. Sin este chequeo se
+  // podia crear una receta sobre el producto de otra empresa cliente.
+  const producto = await findScoped(Product, productId, req.empresaId);
+  if (!producto) {
+    return res.status(404).json({ ok: false, error: 'Producto no encontrado' });
+  }
+
+  const ingredientIds = items.map((item) => parseInt(item.ingredient_product_id));
+
+  if (ingredientIds.some((id) => !Number.isInteger(id))) {
+    return res.status(400).json({ ok: false, error: 'Hay ingredientes con id inválido' });
+  }
+
+  // Los ingredientes tambien: referenciar el producto de otra empresa como
+  // insumo filtraba su costo a traves del costo calculado de la receta.
+  const ingredientesPropios = await Product.count({
+    where: { id: ingredientIds, empresa_id: req.empresaId },
+  });
+
+  if (ingredientesPropios !== new Set(ingredientIds).size) {
+    return res.status(400).json({
+      ok: false,
+      error: 'Alguno de los ingredientes no pertenece a tu empresa',
+    });
+  }
+
   // Validar dependencia circular
-  const ingredientIds = items.map(item => parseInt(item.ingredient_product_id));
   const hasCircularDependency = await costService.checkCircularDependency(productId, ingredientIds);
   if (hasCircularDependency) {
     return res.status(400).json({
@@ -293,7 +317,7 @@ router.post('/:id/recipe', checkPermission('recetas.crear'), async (req, res) =>
   try {
     // Buscar o crear receta
     const [recipe, created] = await Recipe.findOrCreate({
-      where: { product_id: productId },
+      where: { product_id: productId, empresa_id: req.empresaId },
       defaults: { loss_percentage: loss_percentage || 0, yield: recipeYield || 1, empresa_id: req.empresaId },
       transaction: t,
     });

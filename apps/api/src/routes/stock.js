@@ -3,6 +3,7 @@ const router = express.Router();
 const { Stock, StockTransfer, Product, PuntoDeVenta, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const checkPermission = require('../middleware/checkPermission');
+const { findScoped } = require('../utils/tenantScope');
 
 // POST /api/stock/transfer — Transferir stock entre sucursales
 router.post('/transfer', checkPermission('stock.transferir'), async (req, res) => {
@@ -46,7 +47,7 @@ router.post('/transfer', checkPermission('stock.transferir'), async (req, res) =
       });
 
       if (!sourceStock || sourceStock.quantity < qty) {
-        const product = await Product.findByPk(productId);
+        const product = await findScoped(Product, productId, empresaId);
         throw new Error(`Stock insuficiente en "${from_location}" para "${product?.name || 'Producto'}" (disponible: ${sourceStock?.quantity || 0}, requerido: ${qty})`);
       }
 
@@ -83,7 +84,7 @@ router.post('/transfer', checkPermission('stock.transferir'), async (req, res) =
         await Stock.create(createData, { transaction: t });
       }
 
-      const product = await Product.findByPk(productId, { transaction: t });
+      const product = await findScoped(Product, productId, empresaId, { transaction: t });
       transferItems.push({
         product_id: productId,
         product_name: product?.name || 'Unknown',
