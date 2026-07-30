@@ -239,13 +239,10 @@ router.delete('/expenses/:id', checkPermission('gastos.eliminar'), async (req, r
 router.get('/settings', checkPermission('config.ver'), async (req, res) => {
   try {
     const empresaId = req.empresaId;
+    // Antes esto aceptaba tambien empresa_id IS NULL, pero la columna es
+    // allowNull:false desde la migracion inicial: esas filas no existen.
     const settings = await Setting.findAll({
-      where: {
-        [Op.or]: [
-          { empresa_id: empresaId },
-          { empresa_id: null },
-        ],
-      },
+      where: { empresa_id: empresaId },
     });
     const obj = {};
     settings.forEach(s => { obj[s.key] = s.value; });
@@ -266,10 +263,7 @@ router.get('/settings/:key', checkPermission('config.ver'), async (req, res) => 
     const setting = await Setting.findOne({
       where: {
         key: req.params.key,
-        [Op.or]: [
-          { empresa_id: empresaId },
-          { empresa_id: null },
-        ],
+        empresa_id: empresaId,
       },
     });
     res.json({ ok: true, data: setting ? setting.value : null });

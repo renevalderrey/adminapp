@@ -1,81 +1,131 @@
 const express = require('express');
 const router = express.Router();
+const forge = require('node-forge');
 const afipService = require('../services/afipService');
-const { Setting } = require('../models');
+const afipAuth = require('../services/afipAuth');
+const { Setting, sequelize } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
+const logger = require('../utils/logger');
+
+// Toda la configuracion de AFIP es POR EMPRESA: cada empresa cliente factura
+// con su propio CUIT, su certificado y su clave privada.
+//
+// Antes las lecturas y escrituras de Setting no pasaban empresa_id, y la tabla
+// settings tenia `key` como unica clave primaria: existia una sola fila por
+// clave en toda la base. La segunda empresa que guardaba su certificado pisaba
+// el de la primera, y las facturas de esta ultima salian emitidas con la
+// identidad fiscal de la otra.
+
+const CLAVES_AFIP = ['afip_cuit', 'afip_cert', 'afip_key', 'afip_environment', 'afip_pv'];
 
 // GET /api/afip/status — Verificar conexión
 router.get('/status', checkPermission('config.ver'), async (req, res) => {
   try {
-    const status = await afipService.getStatus();
+    const status = await afipService.getStatus(req.empresaId);
     res.json({ ok: true, data: status });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    logger.error({ err, empresaId: req.empresaId }, 'afip:status');
+    res.status(502).json({ ok: false, error: 'No se pudo consultar el estado de AFIP' });
   }
 });
 
-// GET /api/afip/cert-info — Obtener info del certificado cargado
+// GET /api/afip/cert-info — Info del certificado cargado por esta empresa
 router.get('/cert-info', checkPermission('config.ver'), async (req, res) => {
   try {
-    const forge = require('node-forge');
-    const certSetting = await Setting.findOne({ where: { key: 'afip_cert' } });
-    
+    const certSetting = await Setting.findOne({
+      where: { key: 'afip_cert', empresa_id: req.empresaId },
+    });
+
     if (!certSetting || !certSetting.value) {
       return res.json({ ok: false, error: 'No hay certificado cargado' });
     }
-    
+
     const cert = forge.pki.certificateFromPem(certSetting.value);
-    const issuer = cert.issuer.attributes.find(a => a.name === 'commonName')?.value || 'Desconocido';
+    const issuer = cert.issuer.attributes.find((a) => a.name === 'commonName')?.value || 'Desconocido';
     const isProduction = issuer === 'Computadores' || issuer === 'AFIP';
-    
+
     res.json({
       ok: true,
       data: {
         issuer,
         isProduction,
-        subject: cert.subject.attributes.find(a => a.name === 'commonName')?.value || 'Desconocido',
-        cuit: cert.subject.attributes.find(a => a.name === 'serialNumber')?.value || 'Desconocido',
+        subject: cert.subject.attributes.find((a) => a.name === 'commonName')?.value || 'Desconocido',
+        cuit: cert.subject.attributes.find((a) => a.name === 'serialNumber')?.value || 'Desconocido',
         validFrom: cert.validity.notBefore,
-        validTo: cert.validity.notAfter
-      }
+        validTo: cert.validity.notAfter,
+      },
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    logger.error({ err, empresaId: req.empresaId }, 'afip:cert-info');
+    res.status(400).json({ ok: false, error: 'El certificado cargado no es válido' });
   }
 });
 
-// POST /api/afip/setup — Guardar configuración del usuario
+// POST /api/afip/setup — Guardar la configuración de AFIP de ESTA empresa
 router.post('/setup', checkPermission('config.editar'), async (req, res) => {
   try {
     const { cuit, cert, key, environment, pv } = req.body;
-    
-    // Almacenar en la tabla settings
-    const configs = [
-      { key: 'afip_cuit', value: cuit },
-      { key: 'afip_cert', value: cert },
-      { key: 'afip_key', value: key },
-      { key: 'afip_environment', value: environment },
-      { key: 'afip_pv', value: pv }
-    ];
 
-    for (const config of configs) {
-      await Setting.upsert(config);
+    if (environment && !['homologation', 'production'].includes(environment)) {
+      return res.status(400).json({
+        ok: false,
+        error: 'El entorno debe ser "homologation" o "production"',
+      });
     }
 
+    // El certificado y la clave se validan antes de guardarlos: un PEM
+    // corrupto guardado sin chequear recien fallaba al momento de facturar.
+    if (cert) {
+      try {
+        forge.pki.certificateFromPem(cert);
+      } catch {
+        return res.status(400).json({ ok: false, error: 'El certificado no es un PEM válido' });
+      }
+    }
+
+    if (key) {
+      try {
+        forge.pki.privateKeyFromPem(key);
+      } catch {
+        return res.status(400).json({ ok: false, error: 'La clave privada no es un PEM válido' });
+      }
+    }
+
+    const valores = { afip_cuit: cuit, afip_cert: cert, afip_key: key, afip_environment: environment, afip_pv: pv };
+
+    await sequelize.transaction(async (transaction) => {
+      for (const clave of CLAVES_AFIP) {
+        // Solo se tocan las claves que vinieron en el body: un setup parcial
+        // no debe borrar el certificado ya cargado.
+        if (valores[clave] === undefined) continue;
+
+        await Setting.upsert(
+          { key: clave, empresa_id: req.empresaId, value: valores[clave] },
+          { transaction }
+        );
+      }
+    });
+
+    // El ticket WSAA cacheado se emitio con el certificado anterior.
+    afipAuth.invalidarCache(req.empresaId);
+
+    logger.info({ empresaId: req.empresaId, environment }, 'afip: configuración actualizada');
     res.json({ ok: true, message: 'Configuración de AFIP guardada correctamente' });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    logger.error({ err, empresaId: req.empresaId }, 'afip:setup');
+    res.status(500).json({ ok: false, error: 'Error al guardar la configuración de AFIP' });
   }
 });
 
-// POST /api/afip/generate-csr — Generar CSR y Key para el usuario
+// POST /api/afip/generate-csr — Generar CSR y clave para el trámite en ARCA
 router.post('/generate-csr', checkPermission('config.editar'), async (req, res) => {
   try {
     const { alias } = req.body;
     const result = await afipService.createCSR(alias);
     res.json({ ok: true, data: result });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    logger.error({ err, empresaId: req.empresaId }, 'afip:generate-csr');
+    res.status(500).json({ ok: false, error: 'Error al generar el CSR' });
   }
 });
 
@@ -83,28 +133,32 @@ router.post('/generate-csr', checkPermission('config.editar'), async (req, res) 
 router.post('/invoice', checkPermission('ventas.crear'), async (req, res) => {
   try {
     const { type, amount, customerCuit, pv, customerVatCondition } = req.body;
-    
+
     const result = await afipService.createVoucher({
-      type: parseInt(type) || 6,
-      pv: parseInt(pv),
+      type: parseInt(type, 10) || 6,
+      pv: parseInt(pv, 10),
       customerCuit,
       amount: parseFloat(amount),
-      customerVatCondition: parseInt(customerVatCondition) || 5
+      customerVatCondition: parseInt(customerVatCondition, 10) || 5,
+      empresaId: req.empresaId,
     });
 
     res.json({ ok: true, data: result });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    logger.error({ err, empresaId: req.empresaId }, 'afip:invoice');
+    // El mensaje de AFIP se devuelve tal cual a proposito: el usuario necesita
+    // saber por que rechazaron su comprobante para poder corregirlo.
+    res.status(502).json({ ok: false, error: err.message });
   }
 });
 
-// GET /api/afip/invoice/:type/:pv/:number/data — Obtener datos para imprimir en frontend
+// GET /api/afip/invoice/:type/:pv/:number/data — Datos para imprimir
 router.get('/invoice/:type/:pv/:number/data', checkPermission('ventas.ver'), async (req, res) => {
   try {
     const { type, pv, number } = req.params;
-    
-    const voucherInfo = await afipService.getVoucherInfo(pv, type, number);
-    
+
+    const voucherInfo = await afipService.getVoucherInfo(pv, type, number, req.empresaId);
+
     res.json({
       ok: true,
       data: {
@@ -112,11 +166,12 @@ router.get('/invoice/:type/:pv/:number/data', checkPermission('ventas.ver'), asy
         CbteTipo: type,
         CbteDesde: number,
         CbteHasta: number,
-        ...voucherInfo
-      }
+        ...voucherInfo,
+      },
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    logger.error({ err, empresaId: req.empresaId }, 'afip:voucher-data');
+    res.status(502).json({ ok: false, error: 'No se pudo obtener el comprobante de AFIP' });
   }
 });
 

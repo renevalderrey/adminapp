@@ -2,46 +2,73 @@ const soap = require('soap');
 const { Setting } = require('../models');
 const afipAuth = require('./afipAuth');
 
+// ════════════════════════════════════════════
+//  AFIP · Facturacion electronica WSFE, por empresa
+//
+//  Cada metodo recibe empresaId. La identidad fiscal (CUIT, certificado,
+//  entorno homologacion/produccion) es de la empresa que factura, nunca
+//  compartida.
+//
+//  Lo que estaba mal antes:
+//   - getAuthParam leia Setting.findOne({ key: 'afip_cuit' }) sin empresa_id,
+//     con lo cual todas las empresas facturaban con el mismo CUIT.
+//   - createVoucher hacia Setting.findAll() sin filtro y reducia a un mapa:
+//     tax_condition salia de la fila de cualquier empresa.
+//   - this.wsfeClient cacheaba un unico cliente SOAP. Como la URL del WSDL
+//     depende de si la empresa esta en homologacion o produccion, la primera
+//     empresa en facturar fijaba el entorno para todas las demas.
+// ════════════════════════════════════════════
+
 class AfipService {
   constructor() {
-    this.wsfeClient = null;
+    // Map<'homologation'|'production', clienteSoap>. El cliente se puede
+    // compartir entre empresas del MISMO entorno: no lleva credenciales, esas
+    // viajan en el parametro Auth de cada llamada.
+    this.wsfeClients = new Map();
   }
 
-  async getWsdlUrl() {
-    const isProd = await afipAuth.isProduction();
+  async getWsdlUrl(empresaId) {
+    const isProd = await afipAuth.isProduction(empresaId);
     return isProd
       ? 'https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL'
       : 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL';
   }
 
-  async getClient() {
-    if (this.wsfeClient) return this.wsfeClient;
-    const wsdlUrl = await this.getWsdlUrl();
+  async getClient(empresaId) {
+    const isProd = await afipAuth.isProduction(empresaId);
+    const entorno = isProd ? 'production' : 'homologation';
+
+    const cacheado = this.wsfeClients.get(entorno);
+    if (cacheado) return cacheado;
+
+    const wsdlUrl = await this.getWsdlUrl(empresaId);
+
     return new Promise((resolve, reject) => {
       soap.createClient(wsdlUrl, (err, client) => {
         if (err) return reject(new Error('Error creating WSFE client: ' + err.message));
-        this.wsfeClient = client;
+        this.wsfeClients.set(entorno, client);
         resolve(client);
       });
     });
   }
 
-  async getAuthParam() {
-    const { token, sign } = await afipAuth.getAccessTicket();
-    const cuitSetting = await Setting.findOne({ where: { key: 'afip_cuit' } });
-    if (!cuitSetting) throw new Error('CUIT no configurado');
-    
+  async getAuthParam(empresaId) {
+    const { token, sign } = await afipAuth.getAccessTicket(empresaId);
+
+    const cuitSetting = await Setting.findOne({
+      where: { key: 'afip_cuit', empresa_id: empresaId },
+    });
+    if (!cuitSetting || !cuitSetting.value) {
+      throw new Error('CUIT de AFIP no configurado para esta empresa');
+    }
+
     return {
-      Auth: {
-        Token: token,
-        Sign: sign,
-        Cuit: cuitSetting.value
-      }
+      Auth: { Token: token, Sign: sign, Cuit: cuitSetting.value },
     };
   }
 
-  async getStatus() {
-    const client = await this.getClient();
+  async getStatus(empresaId) {
+    const client = await this.getClient(empresaId);
     return new Promise((resolve, reject) => {
       client.FEDummy((err, result) => {
         if (err) return reject(err);
@@ -50,9 +77,9 @@ class AfipService {
     });
   }
 
-  async getLastVoucher(pv, cbteTipo) {
-    const client = await this.getClient();
-    const auth = await this.getAuthParam();
+  async getLastVoucher(pv, cbteTipo, empresaId) {
+    const client = await this.getClient(empresaId);
+    const auth = await this.getAuthParam(empresaId);
     
     const params = {
       Auth: auth.Auth,
@@ -72,9 +99,9 @@ class AfipService {
     });
   }
 
-  async getVoucherInfo(pv, cbteTipo, cbteNro) {
-    const client = await this.getClient();
-    const auth = await this.getAuthParam();
+  async getVoucherInfo(pv, cbteTipo, cbteNro, empresaId) {
+    const client = await this.getClient(empresaId);
+    const auth = await this.getAuthParam(empresaId);
     
     const params = {
       Auth: auth.Auth,
@@ -97,15 +124,22 @@ class AfipService {
     });
   }
 
-  async createVoucher({ type, pv, customerCuit, amount, concept = 1, customerVatCondition = 5 }) {
-    const client = await this.getClient();
-    const auth = await this.getAuthParam();
-    
-    const settingsRaw = await Setting.findAll();
-    const settings = settingsRaw.reduce((acc, s) => ({ ...acc, [s.key]: s.value }), {});
-    const taxCondition = settings['tax_condition'] || 'Monotributo';
+  async createVoucher({ type, pv, customerCuit, amount, concept = 1, customerVatCondition = 5, empresaId }) {
+    if (!Number.isInteger(empresaId)) {
+      throw new Error('AFIP: falta empresaId al emitir el comprobante.');
+    }
 
-    const lastVoucher = await this.getLastVoucher(pv, type);
+    const client = await this.getClient(empresaId);
+    const auth = await this.getAuthParam(empresaId);
+
+    // Antes era Setting.findAll() sin filtro: la condicion fiscal podia salir
+    // de la fila de otra empresa y cambiar como se discrimina el IVA.
+    const taxSetting = await Setting.findOne({
+      where: { key: 'tax_condition', empresa_id: empresaId },
+    });
+    const taxCondition = taxSetting?.value || 'Monotributo';
+
+    const lastVoucher = await this.getLastVoucher(pv, type, empresaId);
     const nextVoucher = lastVoucher + 1;
 
     const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
@@ -193,7 +227,7 @@ class AfipService {
   }
 
   // Used only to get a fresh CSR for ARCA setup
-  async createCSR(alias = 'Admin App') {
+  async createCSR(alias = 'AdminApp') {
     const forge = require('node-forge');
     const keys = forge.pki.rsa.generateKeyPair(2048);
     const csr = forge.pki.createCertificationRequest();

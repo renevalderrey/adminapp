@@ -2,36 +2,68 @@ const forge = require('node-forge');
 const soap = require('soap');
 const xml2js = require('xml2js');
 const { Setting } = require('../models');
+const logger = require('../utils/logger');
+
+// ════════════════════════════════════════════
+//  AFIP · Autenticacion WSAA, por empresa
+//
+//  Cada empresa cliente factura con SU PROPIA identidad fiscal: su CUIT, su
+//  certificado y su clave privada. Nada de lo que hay aca puede compartirse
+//  entre empresas.
+//
+//  La version anterior leia la configuracion de AFIP con
+//  Setting.findOne({ where: { key: 'afip_cert' } }), sin empresa_id, y la
+//  tabla settings tenia  como unica clave primaria: habia una sola fila
+//  por clave en toda la base. La segunda empresa que cargaba su certificado
+//  pisaba el de la primera, y a partir de ahi las facturas de la primera
+//  salian firmadas con el certificado y el CUIT de la segunda.
+//
+//  Ademas el ticket de acceso se guardaba en this.taCache sobre una instancia
+//  singleton: una empresa reutilizaba el ticket WSAA emitido para otra.
+//
+//  Ahora todo recibe empresaId y las caches van por empresa.
+// ════════════════════════════════════════════
 
 class AfipAuth {
   constructor() {
-    this.taCache = null; // { token, sign, expirationDate }
+    // Map<empresaId, { token, sign, expirationDate }>
+    this.taCache = new Map();
   }
 
-  async getWsdlUrl() {
-    const isProd = await this.isProduction();
+  /** Lee una clave de configuracion de AFIP de UNA empresa. */
+  async _getSetting(key, empresaId) {
+    if (!Number.isInteger(empresaId)) {
+      throw new Error('AFIP: falta empresaId. La configuracion fiscal es por empresa.');
+    }
+    return Setting.findOne({ where: { key, empresa_id: empresaId } });
+  }
+
+  async getWsdlUrl(empresaId) {
+    const isProd = await this.isProduction(empresaId);
     return isProd
       ? 'https://wsaa.afip.gov.ar/ws/services/LoginCms?wsdl'
       : 'https://wsaahomo.afip.gov.ar/ws/services/LoginCms?wsdl';
   }
 
-  async isProduction() {
-    const setting = await Setting.findOne({ where: { key: 'afip_environment' } });
+  async isProduction(empresaId) {
+    const setting = await this._getSetting('afip_environment', empresaId);
     return setting && setting.value === 'production';
   }
 
-  async getCertAndKey() {
-    const certSetting = await Setting.findOne({ where: { key: 'afip_cert' } });
-    const keySetting = await Setting.findOne({ where: { key: 'afip_key' } });
+  async getCertAndKey(empresaId) {
+    const certSetting = await this._getSetting('afip_cert', empresaId);
+    const keySetting = await this._getSetting('afip_key', empresaId);
 
     if (!certSetting || !keySetting) {
-      throw new Error('Certificado o Clave Privada de AFIP no encontrados en la base de datos.');
+      throw new Error('Certificado o Clave Privada de AFIP no configurados para esta empresa.');
     }
 
-    return {
-      cert: certSetting.value,
-      key: keySetting.value
-    };
+    return { cert: certSetting.value, key: keySetting.value };
+  }
+
+  /** Invalida el ticket cacheado de una empresa (al cambiar su certificado). */
+  invalidarCache(empresaId) {
+    this.taCache.delete(empresaId);
   }
 
   generateTRA() {
@@ -104,24 +136,30 @@ class AfipAuth {
 
       return base64Data;
     } catch (err) {
-      console.error('Error signing TRA:', err);
+      logger.error({ err }, 'AFIP: error al firmar el TRA');
       throw new Error('Error al firmar el ticket de acceso: ' + err.message);
     }
   }
 
-  async getAccessTicket() {
-    // Check if we have a valid cache
-    if (this.taCache && this.taCache.expirationDate > new Date()) {
-      return { token: this.taCache.token, sign: this.taCache.sign };
+  async getAccessTicket(empresaId) {
+    if (!Number.isInteger(empresaId)) {
+      throw new Error('AFIP: falta empresaId al pedir el ticket de acceso.');
     }
 
-    console.log('Generando nuevo Ticket de Acceso (WSAA)...');
-    
-    const { cert, key } = await this.getCertAndKey();
+    // Cache por empresa. Antes era una sola entrada compartida, con lo cual
+    // una empresa podia terminar usando el ticket WSAA emitido para otra.
+    const cacheado = this.taCache.get(empresaId);
+    if (cacheado && cacheado.expirationDate > new Date()) {
+      return { token: cacheado.token, sign: cacheado.sign };
+    }
+
+    logger.info({ empresaId }, 'AFIP: generando nuevo Ticket de Acceso (WSAA)');
+
+    const { cert, key } = await this.getCertAndKey(empresaId);
     const traXml = this.generateTRA();
     const cmsBase64 = this.signTRA(traXml, cert, key);
 
-    const wsdlUrl = await this.getWsdlUrl();
+    const wsdlUrl = await this.getWsdlUrl(empresaId);
 
     return new Promise((resolve, reject) => {
       soap.createClient(wsdlUrl, (err, client) => {
@@ -145,13 +183,13 @@ class AfipAuth {
               const sign = parsed.loginTicketResponse.credentials.sign;
               const expirationTime = parsed.loginTicketResponse.header.expirationTime;
 
-              this.taCache = {
+              this.taCache.set(empresaId, {
                 token,
                 sign,
-                expirationDate: new Date(expirationTime)
-              };
+                expirationDate: new Date(expirationTime),
+              });
 
-              console.log('Ticket de Acceso obtenido exitosamente.');
+              logger.info({ empresaId }, 'AFIP: ticket de acceso obtenido');
               resolve({ token, sign });
             } catch (e) {
               reject(new Error('Error extrayendo Token y Sign de la respuesta de WSAA: ' + e.message));
