@@ -1,3 +1,5 @@
+import { CONTACT_URL, SIGNUP_URL } from '../config';
+
 export default function CTA() {
   return (
     <section className="py-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
@@ -14,12 +16,12 @@ export default function CTA() {
             Toma el control de tu empresa hoy. Únete a los emprendedores que ya están simplificando su facturación, inventario y finanzas.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <button className="bg-white text-blue-600 hover:bg-gray-50 px-8 py-3 rounded-full font-bold text-lg transition-colors shadow-lg">
+            <a href={SIGNUP_URL} className="bg-white text-blue-600 hover:bg-gray-50 px-8 py-3 rounded-full font-bold text-lg transition-colors shadow-lg">
               Empieza gratis
-            </button>
-            <button className="bg-blue-700/50 hover:bg-blue-700/70 text-white border border-blue-500 px-8 py-3 rounded-full font-bold text-lg transition-colors">
+            </a>
+            <a href={CONTACT_URL} className="bg-blue-700/50 hover:bg-blue-700/70 text-white border border-blue-500 px-8 py-3 rounded-full font-bold text-lg transition-colors">
               Agenda una demo
-            </button>
+            </a>
           </div>
         </div>
       </div>

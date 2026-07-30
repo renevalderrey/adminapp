@@ -1,4 +1,4 @@
-
+import { CONTACT_URL } from '../config';
 
 export default function FAQ() {
   const faqs = [
@@ -25,14 +25,14 @@ export default function FAQ() {
   ];
 
   return (
-    <section className="py-24 bg-slate-50 border-t border-gray-100">
+    <section id="faq" className="py-24 bg-slate-50 border-t border-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row gap-12">
           
           <div className="md:w-1/3">
             <h2 className="text-3xl font-bold text-slate-900 mb-4">Preguntas Frecuentes</h2>
             <p className="text-slate-500 mb-6">
-              ¿Tienes alguna otra duda? <a href="#" className="text-blue-600 hover:underline font-medium">Habla con nosotros</a>.
+              ¿Tienes alguna otra duda? <a href={CONTACT_URL} className="text-blue-600 hover:underline font-medium">Habla con nosotros</a>.
             </p>
           </div>
 

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CONTACT_URL, SIGNUP_URL } from '../config';
 
 export default function Pricing() {
   const [annual, setAnnual] = useState(true);
@@ -41,9 +42,9 @@ export default function Pricing() {
             <p className="text-sm text-slate-500 mb-8 min-h-[40px]">
               Ideal para emprendedores y pequeños negocios dando sus primeros pasos.
             </p>
-            <button className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-full py-3 font-medium transition-colors mt-auto">
+            <a href={SIGNUP_URL} className="block text-center w-full bg-slate-900 hover:bg-slate-800 text-white rounded-full py-3 font-medium transition-colors mt-auto">
               Comenzar gratis
-            </button>
+            </a>
             
             <div className="mt-8 space-y-4">
               <div className="flex items-start">
@@ -70,9 +71,9 @@ export default function Pricing() {
             <p className="text-sm text-slate-500 mb-8 min-h-[40px]">
               Para empresas en crecimiento que buscan centralizar toda su operativa.
             </p>
-            <button className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-full py-3 font-medium transition-colors mt-auto">
+            <a href={SIGNUP_URL} className="block text-center w-full bg-blue-600 hover:bg-blue-700 text-white rounded-full py-3 font-medium transition-colors mt-auto">
               Prueba gratuita
-            </button>
+            </a>
             
             <div className="mt-8 space-y-4">
               <div className="flex items-start">
@@ -95,9 +96,9 @@ export default function Pricing() {
             <p className="text-sm text-blue-100 mb-8 min-h-[40px]">
               Para organizaciones con alta complejidad y múltiples sucursales.
             </p>
-            <button className="w-full bg-white/20 hover:bg-white/30 text-white border border-white/30 rounded-full py-3 font-medium transition-colors mt-auto backdrop-blur-sm">
+            <a href={CONTACT_URL} className="block text-center w-full bg-white/20 hover:bg-white/30 text-white border border-white/30 rounded-full py-3 font-medium transition-colors mt-auto backdrop-blur-sm">
               Hablar con ventas
-            </button>
+            </a>
             
             <div className="mt-8 space-y-4">
               <div className="flex items-start">
@@ -132,9 +133,9 @@ export default function Pricing() {
              <div className="my-2">
                <span className="text-4xl font-extrabold text-slate-900">$150</span><span className="text-slate-500"> / pago único</span>
              </div>
-             <button className="w-full mt-4 bg-slate-900 hover:bg-slate-800 text-white rounded-full py-3 font-medium transition-colors">
+             <a href={CONTACT_URL} className="block text-center w-full mt-4 bg-slate-900 hover:bg-slate-800 text-white rounded-full py-3 font-medium transition-colors">
                Consultar por implementación
-             </button>
+             </a>
           </div>
         </div>
 

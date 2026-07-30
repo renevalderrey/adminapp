@@ -9,7 +9,7 @@ export default function MiniFeatures() {
   ];
 
   return (
-    <section className="py-20 bg-white border-t border-gray-100">
+    <section id="integrations" className="py-20 bg-white border-t border-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <h2 className="text-3xl font-bold text-slate-900 mb-2">¿Necesitas más? Lo tenemos.</h2>
         <p className="text-slate-500 mb-16">Características pensadas para que tu negocio funcione como reloj suizo.</p>
