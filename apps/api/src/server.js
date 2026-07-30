@@ -47,11 +47,6 @@ app.use(helmet({
 const morganStream = { write: (msg) => logger.http(msg.trim()) };
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev', { stream: morganStream }));
 
-// ── Health Check (público, sin auth ni rate limit) ──
-app.get('/api/ping', (req, res) => {
-  res.json({ ok: true, msg: 'Admin App API OK', time: new Date().toISOString() });
-});
-
 // ── CORS ──
 // Origenes permitidos. Ahora hay mas de uno (app + landing + previews de
 // Vercel), asi que se acepta una lista separada por comas en ALLOWED_ORIGINS.
@@ -91,6 +86,15 @@ app.use(cors({
   exposedHeaders: ['X-Empresa-Id', 'X-Punto-De-Venta-Id'],
 }));
 app.use(express.json({ limit: '10mb' }));
+
+// ── Health Check (público: sin auth y sin rate limit) ──
+// Va DESPUES de cors y ANTES del rate limiter, a proposito.
+// Antes estaba declarado arriba de app.use(cors(...)), con lo cual no recibia
+// cabeceras CORS: un fetch desde el navegador para despertar la API (util con
+// el cold start de ~50s del free tier de Render) quedaba bloqueado.
+app.get('/api/ping', (req, res) => {
+  res.json({ ok: true, msg: 'AdminApp API OK', time: new Date().toISOString() });
+});
 
 // ── Rate Limiting (después de ping) ──
 const limiter = rateLimit({
@@ -224,11 +228,16 @@ async function start() {
   }
 }
 
-start();
+// Solo arranca si el archivo se ejecuta directo (node src/server.js).
+// Cuando se importa desde un test, se exporta `app` sin abrir el puerto ni
+// conectar a la base, para poder ejercitarlo con supertest.
+if (require.main === module) {
+  start();
 
-// ── Graceful Shutdown ──
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+  // ── Graceful Shutdown ──
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+}
 
 function shutdown() {
   logger.info('Shutting down gracefully...');
@@ -241,3 +250,5 @@ function shutdown() {
     process.exit(1);
   });
 }
+
+module.exports = { app, start, shutdown };
