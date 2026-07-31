@@ -93,14 +93,32 @@ router.post('/setup', checkPermission('config.editar'), async (req, res) => {
 
     const valores = { afip_cuit: cuit, afip_cert: cert, afip_key: key, afip_environment: environment, afip_pv: pv };
 
+    // El certificado y la clave se guardan juntos o no se guardan: subir uno
+    // solo deja una configuracion que no puede firmar.
+    if ((cert && !key) || (key && !cert)) {
+      return res.status(400).json({
+        ok: false,
+        error: 'El certificado y la clave privada se cargan juntos.',
+      });
+    }
+
     await sequelize.transaction(async (transaction) => {
       for (const clave of CLAVES_AFIP) {
-        // Solo se tocan las claves que vinieron en el body: un setup parcial
-        // no debe borrar el certificado ya cargado.
-        if (valores[clave] === undefined) continue;
+        const valor = valores[clave];
+
+        // Se saltea tanto undefined como cadena vacia.
+        //
+        // La version anterior solo salteaba undefined, y el formulario de
+        // Ajustes arranca con cert:'' y key:'' y postea el objeto entero. Con
+        // solo cambiar el desplegable de ambiente y guardar, se ejecutaba
+        // Setting.upsert({ value: '' }) sobre afip_cert y afip_key: el
+        // certificado y la clave quedaban destruidos. Y como la clave privada
+        // nunca se guarda del lado del servidor al generar el CSR, no habia
+        // copia: habia que rehacer todo el tramite en ARCA.
+        if (valor === undefined || valor === null || valor === '') continue;
 
         await Setting.upsert(
-          { key: clave, empresa_id: req.empresaId, value: valores[clave] },
+          { key: clave, empresa_id: req.empresaId, value: valor },
           { transaction }
         );
       }

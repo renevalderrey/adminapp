@@ -233,8 +233,10 @@ const Billing = () => {
             total: parseFloat(venta.total),
             customer: customerDoc,
             date: new Date().toLocaleDateString('es-AR'),
+            fechaIso: venta.date,
             isInternal: false,
-            empresaNombre: empresaActiva?.nombre,
+            empresa: empresaActiva,
+            empresaNombre: empresaActiva?.name,
           }
         : {
             voucherNumber: venta.id,
@@ -245,7 +247,8 @@ const Billing = () => {
             customer: customerName || 'Consumidor Final',
             date: new Date().toLocaleDateString('es-AR'),
             isInternal: true,
-            empresaNombre: empresaActiva?.nombre,
+            empresa: empresaActiva,
+            empresaNombre: empresaActiva?.name,
           })
 
       await initialize()

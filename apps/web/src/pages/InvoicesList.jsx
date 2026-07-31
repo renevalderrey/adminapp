@@ -81,12 +81,21 @@ const InvoicesList = () => {
     printInvoice({
       isInternal: !isAfip,
       typeStr: isAfip ? 'FACTURA' : (sale.notes?.split('-')[0]?.trim() || 'COMPROBANTE'),
-      type: sale.afip_type, pointOfSale: isAfip ? 1 : 0,
+      type: sale.afip_type,
+      // El punto de venta estaba fijo en 1: si el comercio factura con otro,
+      // el numero impreso y el QR salian con un PV que no es el suyo.
+      pointOfSale: isAfip ? (settings.afip_pv || 1) : 0,
       voucherNumber: sale.afip_nro || sale.id.split('-')[0],
       date: new Date(sale.date + 'T' + sale.time).toLocaleString('es-AR'),
+      // El QR necesita la fecha en formato ISO, no la version legible.
+      fechaIso: sale.date,
       customer: customerStr, items: formattedItems, total: sale.total,
       cae: sale.afip_cae, expiration: sale.afip_vto,
-      empresaNombre: empresaActiva?.nombre,
+      // Datos fiscales del emisor. Antes se mandaba empresaActiva?.nombre, pero
+      // la API devuelve el campo como `name`: el nombre del comercio nunca se
+      // llego a imprimir.
+      empresa: empresaActiva,
+      empresaNombre: empresaActiva?.name,
     })
   }
 

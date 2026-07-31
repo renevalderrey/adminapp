@@ -33,7 +33,32 @@ const Settings = () => {
     } catch (err) { console.error('Error fetching cert info:', err) }
   }
 
-  useEffect(() => { 
+  // Carga la configuración ya guardada en el formulario.
+  //
+  // Sin esto el estado arrancaba en blanco y handleSave posteaba el objeto
+  // entero: cambiar solo el desplegable de ambiente mandaba cuit:'' y pv:''
+  // junto con el cambio, y esos vacíos pisaban lo que estaba guardado.
+  //
+  // El certificado y la clave NO se traen: son material sensible y no tiene
+  // sentido devolverlos al navegador. Se dejan vacíos a propósito, y el
+  // backend ignora los campos vacíos justamente para que eso no borre nada.
+  const fetchConfig = async () => {
+    try {
+      const res = await api.get('/settings')
+      const d = res.data?.data || {}
+
+      setConfig((actual) => ({
+        ...actual,
+        cuit: d.afip_cuit ?? actual.cuit,
+        pv: d.afip_pv ?? actual.pv,
+        environment: d.afip_environment || actual.environment,
+        tax_condition: d.tax_condition || actual.tax_condition,
+      }))
+    } catch (err) { console.error('Error fetching AFIP config:', err) }
+  }
+
+  useEffect(() => {
+    fetchConfig()
     fetchCertInfo()
     checkTiendaNubeStatus()
 

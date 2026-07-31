@@ -281,12 +281,24 @@ router.get('/settings', checkPermission('config.ver'), async (req, res) => {
     const settings = await Setting.findAll({
       where: { empresa_id: empresaId },
     });
-    const obj = {};
-    settings.forEach(s => { obj[s.key] = s.value; });
+    // El JSON de empresa.settings son los VALORES POR DEFECTO que se crean en
+    // el onboarding; las filas de la tabla settings son lo que el usuario
+    // configuro despues. Las filas tienen que ganar.
+    //
+    // Antes el Object.assign iba al reves y el JSON pisaba a las filas. Como
+    // ese JSON se crea con afip_cuit:'' y afip_pv:'' y nada lo vuelve a
+    // escribir, la configuracion real de AFIP quedaba tapada para siempre: el
+    // POS leia afip_cuit vacio, isAfipConfigured daba falso y la facturacion
+    // electronica no se habilitaba nunca, por mas que estuviera bien cargada.
     const empresa = req.empresa;
-    if (empresa && empresa.settings) {
-      Object.assign(obj, empresa.settings);
-    }
+    const obj = { ...((empresa && empresa.settings) || {}) };
+
+    settings.forEach((s) => {
+      // Una fila con valor vacio no debe tapar el default.
+      if (s.value === null || s.value === '') return;
+      obj[s.key] = s.value;
+    });
+
     res.json({ ok: true, data: obj });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

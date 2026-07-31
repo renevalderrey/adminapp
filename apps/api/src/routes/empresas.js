@@ -81,9 +81,9 @@ router.post('/onboarding', (req, res, next) => {
         recargo_tarjeta: 20,
         descuento_alianza: 10,
         fixed_expenses_total: 0,
-        afip_cuit: '',
-        afip_pv: '',
-        afip_environment: 'homologation',
+        // Las claves afip_* NO van aca. La configuracion de AFIP vive en la
+        // tabla settings, y sembrarlas vacias en este JSON hacia que taparan a
+        // las reales en GET /api/settings.
         tax_condition: 'Monotributo',
       },
     });
