@@ -103,28 +103,50 @@ class CostService {
   }
 
   /**
-   * Detecta si añadir un conjunto de ingredientes a un producto generará una dependencia circular
+   * Detecta si añadir un conjunto de ingredientes a un producto generará una
+   * dependencia circular.
+   *
+   * Recorre hacia abajo el árbol de recetas de cada ingrediente buscando si
+   * `productId` aparece en algún nivel. Si aparece, agregar ese ingrediente
+   * cerraría un ciclo.
+   *
+   * El Set `visited` registra los INGREDIENTES ya explorados, no el producto
+   * destino. Cumple dos funciones:
+   *
+   *  - Memoización: si ya se recorrió el subárbol de un ingrediente y no se
+   *    encontró `productId`, volver a recorrerlo da lo mismo. La respuesta no
+   *    depende del camino por el que se llegó.
+   *  - Terminación: si los datos ya contienen un ciclo entre ingredientes
+   *    (cargado antes de que existiera esta validación), evita la recursión
+   *    infinita.
+   *
+   * Por eso se comparte entre ramas hermanas en lugar de clonarse.
+   *
+   * NOTA: la versión anterior hacía `visited.add(productId)` al entrar y
+   * `visited.has(productId)` como primera comprobación. Como el productId es
+   * el mismo en toda la recursión, la primera llamada recursiva lo encontraba
+   * siempre en el Set y devolvía true. El efecto era que CUALQUIER ingrediente
+   * que tuviera receta propia se reportaba como dependencia circular, y el
+   * módulo rechazaba las recetas anidadas — justamente el caso de uso para el
+   * que existe (una preparación intermedia usada dentro de otra).
    */
   async checkCircularDependency(productId, ingredientIds, visited = new Set()) {
-    if (visited.has(productId)) {
-      return true;
-    }
-    visited.add(productId);
-
-    // Para cada ingrediente sugerido, revisar si depende directa o indirectamente del producto destino
     for (const ingredientId of ingredientIds) {
+      // El ingrediente es el producto mismo: ciclo directo.
       if (ingredientId === productId) return true;
 
-      // Buscar si el ingrediente tiene su propia receta
+      // Ya se exploró este subárbol y no llevaba a productId.
+      if (visited.has(ingredientId)) continue;
+      visited.add(ingredientId);
+
       const recipe = await Recipe.findOne({
         where: { product_id: ingredientId },
-        include: [{ model: RecipeItem, as: 'items', attributes: ['ingredient_product_id'] }]
+        include: [{ model: RecipeItem, as: 'items', attributes: ['ingredient_product_id'] }],
       });
 
       if (recipe && recipe.items && recipe.items.length > 0) {
-        const subIngredientIds = recipe.items.map(item => item.ingredient_product_id);
-        const branchVisited = new Set(visited);
-        const hasLoop = await this.checkCircularDependency(productId, subIngredientIds, branchVisited);
+        const subIngredientIds = recipe.items.map((item) => item.ingredient_product_id);
+        const hasLoop = await this.checkCircularDependency(productId, subIngredientIds, visited);
         if (hasLoop) return true;
       }
     }
