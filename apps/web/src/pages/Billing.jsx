@@ -147,71 +147,120 @@ const Billing = () => {
     setCustomerResults([])
   }
 
+  // ── Orden: PRIMERO se guarda la venta, DESPUES se pide el CAE ──
+  //
+  // Antes era al revés: se pedía el CAE y después se guardaba. Si el guardado
+  // fallaba —red, validación, stock insuficiente— quedaba un comprobante fiscal
+  // emitido, con número de AFIP consumido, sin ningún registro en el sistema, y
+  // el usuario solo veía un toast rojo.
+  //
+  // Con este orden el peor caso cambia por completo:
+  //   - Falla el guardado  → no se pidió ningún CAE. No hay nada huérfano.
+  //   - Falla AFIP         → la venta quedó registrada sin comprobante y se
+  //                          puede reintentar. No se pierde la operación.
   const handleRegisterSale = async () => {
     if (cart.length === 0) return
     setLoading(true)
-    try {
-      let afipData = null
-      let internalData = null
-      const isAfip = docType.startsWith('afip_')
 
-      if (isAfip) {
-        if (!isAfipConfigured) throw new Error("AFIP no está configurado. Revisa Ajustes.")
-        const vType = docType === 'afip_a' ? 1 : docType === 'afip_b' ? 6 : 11
-        const res = await api.post('/afip/invoice', {
-          amount: totalAmount, customerCuit: customerDoc,
-          customerVatCondition, pv: settings.afip_pv, type: vType,
-        })
-        afipData = res.data.data
-        setLastInvoice({
-          ...afipData, items: [...cart], total: totalAmount,
-          customer: customerDoc, date: new Date().toLocaleDateString('es-AR'),
-          isInternal: false, empresaNombre: empresaActiva?.nombre,
-        })
-      } else {
-        const vTypeStr = docType === 'remito' ? 'REMITO' : 'RECIBO X'
-        internalData = {
-          voucherNumber: Math.floor(Math.random() * 1000000),
-          pointOfSale: 0, typeStr: vTypeStr, items: [...cart],
-          total: totalAmount, customer: customerName || 'Consumidor Final',
-          date: new Date().toLocaleDateString('es-AR'), isInternal: true,
-          empresaNombre: empresaActiva?.nombre,
-        }
-        setLastInvoice(internalData)
+    const isAfip = docType.startsWith('afip_')
+
+    try {
+      if (isAfip && !isAfipConfigured) {
+        throw new Error('AFIP no está configurado. Revisá Ajustes.')
       }
 
+      // ── 1. Guardar la venta ──
       const now = new Date()
       const salePayload = {
         id: `sale_${Date.now()}`,
         date: now.toISOString().split('T')[0],
         time: now.toTimeString().split(' ')[0].substring(0, 5),
         payment_method: cart[0]?.method || 'ef',
-        items: cart, total: totalAmount,
-        afip_cae: afipData?.cae || null,
-        afip_nro: afipData?.voucherNumber || null,
-        afip_vto: afipData?.expiration || null,
-        afip_type: afipData?.type || null,
+        items: cart,
+        total: totalAmount,
         location,
-        notes: isAfip ? '' : `${internalData.typeStr} - Cliente: ${internalData.customer}`,
+        notes: isAfip ? '' : `${docType === 'remito' ? 'REMITO' : 'RECIBO X'} - Cliente: ${customerName || 'Consumidor Final'}`,
       }
       if (customerId) {
         salePayload.customer_id = customerId
         salePayload.customer_name = customerName
       }
-      await api.post('/sales', salePayload)
+
+      const ventaRes = await api.post('/sales', salePayload)
+      const venta = ventaRes.data.data
+
+      // El backend avisa cuando no pudo descontar stock de algún producto.
+      for (const aviso of ventaRes.data.warnings || []) {
+        toast.warning(aviso)
+      }
+
+      // ── 2. Pedir el CAE, si corresponde ──
+      let afipData = null
+
+      if (isAfip) {
+        const vType = docType === 'afip_a' ? 1 : docType === 'afip_b' ? 6 : 11
+
+        try {
+          const res = await api.post(`/sales/${venta.id}/facturar`, {
+            type: vType,
+            customerCuit: customerDoc,
+            customerVatCondition,
+            pv: settings.afip_pv,
+          })
+          afipData = res.data.data
+        } catch (errAfip) {
+          // La venta YA está registrada. Se avisa y se limpia el carrito igual:
+          // insistir sobre el mismo carrito llevaría a duplicarla.
+          const detalle = errAfip.response?.data?.error || errAfip.message
+          toast.error(
+            `La venta se registró, pero AFIP rechazó el comprobante: ${detalle}. ` +
+            'Podés reintentar la facturación desde el listado de ventas.'
+          )
+          await initialize()
+          clearCart()
+          setCustomerDoc('')
+          setCustomerName('')
+          clearCustomer()
+          return
+        }
+      }
+
+      // ── 3. Comprobante para imprimir ──
+      setLastInvoice(isAfip
+        ? {
+            ...afipData,
+            items: [...cart],
+            total: parseFloat(venta.total),
+            customer: customerDoc,
+            date: new Date().toLocaleDateString('es-AR'),
+            isInternal: false,
+            empresaNombre: empresaActiva?.nombre,
+          }
+        : {
+            voucherNumber: venta.id,
+            pointOfSale: 0,
+            typeStr: docType === 'remito' ? 'REMITO' : 'RECIBO X',
+            items: [...cart],
+            total: parseFloat(venta.total),
+            customer: customerName || 'Consumidor Final',
+            date: new Date().toLocaleDateString('es-AR'),
+            isInternal: true,
+            empresaNombre: empresaActiva?.nombre,
+          })
 
       await initialize()
 
       toast.success(isAfip
         ? `Factura #${afipData.voucherNumber} registrada. CAE: ${afipData.cae}`
-        : `Venta (${internalData.typeStr}) registrada con éxito`)
+        : 'Venta registrada con éxito')
 
       clearCart()
       setCustomerDoc('')
       setCustomerName('')
       clearCustomer()
     } catch (err) {
-      toast.error('Error: ' + (err.response?.data?.error || err.message))
+      const data = err.response?.data
+      toast.error('Error: ' + (data?.message || data?.error || err.message))
     } finally {
       setLoading(false)
     }

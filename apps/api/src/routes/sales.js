@@ -7,6 +7,7 @@ const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
 const { verificarTotal, normalizarItem, metodoDePago, esPagoMixto } = require('../utils/calculosVenta');
 const logger = require('../utils/logger');
+const afipService = require('../services/afipService');
 
 // GET /api/sales?date=YYYY-MM-DD — Ventas de una fecha (paginado)
 router.get('/', checkPermission('ventas.ver'), async (req, res) => {
@@ -315,6 +316,91 @@ router.put('/:id/void', checkPermission('ventas.anular'), async (req, res) => {
   } catch (err) {
     await t.rollback();
     res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /api/sales/:id/facturar — Pedir el CAE de una venta ya registrada
+//
+// ── Por qué existe ──
+//
+// El POS pedía el CAE a AFIP y DESPUÉS guardaba la venta. Si el guardado
+// fallaba —red, validación, stock insuficiente— quedaba un comprobante fiscal
+// emitido, con número de AFIP consumido, sin ningún registro en el sistema. El
+// usuario veía un error genérico y no tenía forma de enterarse de que acababa
+// de emitirse una factura a su nombre.
+//
+// Dando vuelta el orden, el peor caso cambia por completo:
+//   - Si falla el guardado → no se pidió ningún CAE. No hay nada huérfano.
+//   - Si falla AFIP → la venta existe sin comprobante, y se puede reintentar.
+//
+// Además el importe que se declara sale de la venta PERSISTIDA, no del carrito
+// del navegador: antes podían diferir y nadie lo comparaba.
+router.post('/:id/facturar', checkPermission('ventas.crear'), async (req, res) => {
+  try {
+    const { type, customerCuit, customerVatCondition, pv } = req.body;
+
+    const sale = await findScoped(Sale, req.params.id, req.empresaId);
+    if (!sale) return res.status(404).json({ ok: false, error: 'Venta no encontrada' });
+
+    if (sale.status === 'voided') {
+      return res.status(400).json({ ok: false, error: 'No se puede facturar una venta anulada' });
+    }
+
+    // Idempotente: un reintento sobre una venta ya facturada devuelve el CAE
+    // que tiene, en vez de pedir otro y duplicar el comprobante.
+    if (sale.afip_cae) {
+      return res.json({
+        ok: true,
+        yaFacturada: true,
+        data: {
+          cae: sale.afip_cae,
+          expiration: sale.afip_vto,
+          voucherNumber: sale.afip_nro,
+          type: sale.afip_type,
+        },
+      });
+    }
+
+    const puntoDeVenta = parseInt(pv, 10);
+    if (!Number.isInteger(puntoDeVenta)) {
+      return res.status(400).json({ ok: false, error: 'Falta el punto de venta de AFIP' });
+    }
+
+    const resultado = await afipService.createVoucher({
+      type: parseInt(type, 10) || 6,
+      pv: puntoDeVenta,
+      customerCuit,
+      // El importe sale de la venta guardada, que es el que ya se validó
+      // contra las líneas.
+      amount: parseFloat(sale.total),
+      customerVatCondition: parseInt(customerVatCondition, 10) || 5,
+      empresaId: req.empresaId,
+    });
+
+    await sale.update({
+      afip_cae: resultado.cae,
+      afip_nro: resultado.voucherNumber,
+      afip_vto: resultado.expiration,
+      afip_type: resultado.type,
+    });
+
+    logger.info(
+      { empresaId: req.empresaId, saleId: sale.id, cae: resultado.cae },
+      'sales: comprobante emitido'
+    );
+
+    res.json({ ok: true, data: resultado });
+  } catch (err) {
+    logger.error({ err, empresaId: req.empresaId, saleId: req.params.id }, 'sales: error al facturar');
+
+    // El mensaje de AFIP se devuelve tal cual: el usuario necesita saber por
+    // qué le rechazaron el comprobante para poder corregirlo. La venta quedó
+    // guardada, así que puede reintentar.
+    res.status(502).json({
+      ok: false,
+      error: err.message,
+      message: 'La venta quedó registrada pero no se pudo emitir el comprobante. Podés reintentar desde el listado de ventas.',
+    });
   }
 });
 
