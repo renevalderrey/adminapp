@@ -304,6 +304,26 @@ Este frente puede terminar siendo el más grande. Conviene medirlo temprano.
 
 ## Frente 4 · Ciclo de suscripción y cobro
 
+> **ESTADO: CERRADO** (31/07/2026). 44 hallazgos: 29 defectos y 15 ausencias.
+> Detalle en [AUDITORIA-SUSCRIPCIONES.md](AUDITORIA-SUSCRIPCIONES.md).
+>
+> Lo más urgente no es técnico: **la landing promete un plan gratuito
+> permanente que no existe**. El usuario que lo elige queda bloqueado al día
+> 18. Tambien promete "IA ilimitada", una funcionalidad que no existe en el
+> codigo.
+>
+> Corregidos: los trials sin período de gracia no vencían nunca; el paywall era
+> eludible (una empresa sin fila de suscripción tenía acceso ilimitado, y
+> cancelled/past_due no bloqueaban); un IDOR más; y el frontend no manejaba el
+> 402, con lo cual el usuario vencido veía una app rota.
+>
+> Construido: script de activación manual (no existía NINGUNA forma de marcar
+> una suscripción como paga) y los emails del ciclo de vida.
+>
+> Falta decidir: qué planes existen realmente, con qué límites y en qué moneda;
+> qué pasarela (Stripe no cobra en pesos en Argentina); y redactar Términos y
+> Privacidad.
+
 **Bloquea facturar**, que es distinto de bloquear vender: se puede vender
 manualmente al principio, pero no escala.
 
