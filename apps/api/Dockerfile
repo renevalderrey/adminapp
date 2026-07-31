@@ -22,9 +22,17 @@ ENV NODE_ENV=production
 # El PaaS inyecta PORT; 5000 es solo el default local.
 EXPOSE 5000
 
-# Las migraciones corren al arrancar. Son idempotentes (sequelize lleva el
-# registro en la tabla SequelizeMeta) y si fallan el contenedor no levanta,
-# que es el comportamiento deseado.
-# OJO: con mas de una replica esto corre N veces en paralelo. Al escalar,
-# mover las migraciones a un pre-deploy job.
-CMD ["sh", "-c", "npx sequelize-cli db:migrate --config src/config/sequelize-cli.js && node src/server.js"]
+# Copia de los scripts operativos (migraciones con lock, respaldos,
+# administracion de suscripciones).
+COPY scripts/ ./scripts/
+
+# Las migraciones corren al arrancar, a traves de scripts/migrar.js, que toma
+# un advisory lock de PostgreSQL antes de aplicarlas.
+#
+# Sin el lock, al escalar a varias instancias todas arrancan a la vez y todas
+# migran en paralelo sobre la misma base: dos pueden leer "esta migracion
+# falta", ejecutarla ambas, y la segunda fallar con la tabla ya modificada.
+#
+# Si la migracion falla, el contenedor no levanta. Es el comportamiento
+# deseado: es preferible no arrancar a arrancar con el schema a medio migrar.
+CMD ["sh", "-c", "node scripts/migrar.js && node src/server.js"]
