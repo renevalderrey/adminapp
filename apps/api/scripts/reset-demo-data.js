@@ -11,8 +11,8 @@
  */
 
 require('dotenv').config();
-const { sequelize } = require('./models');
-const logger = require('./utils/logger');
+const { sequelize } = require('../src/models');
+const logger = require('../src/utils/logger');
 
 async function resetDemoData() {
   const t = await sequelize.transaction();
@@ -96,4 +96,11 @@ async function resetDemoData() {
   }
 }
 
-resetDemoData();
+// Solo se ejecuta si se lo corre directamente. Antes se autoejecutaba con
+// solo importarlo, y el archivo vivia en src/, con lo cual viajaba dentro de
+// la imagen de produccion: un require accidental borraba datos reales.
+if (require.main === module) {
+  resetDemoData();
+}
+
+module.exports = { resetDemoData };

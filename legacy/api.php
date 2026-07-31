@@ -1,15 +1,30 @@
 <?php
 // ════════════════════════════════════════════
+//  ATENCION
+//
+//  Este archivo es el backend PHP original, previo a la migracion. Se conserva
+//  solo como referencia y NO forma parte del sistema.
+//
+//  Las credenciales que tenia hardcodeadas (usuario, contrasena de base y token
+//  de aplicacion del hosting) se redactaron, PERO SIGUEN EN EL HISTORIAL DE
+//  GIT. Redactarlas aca no las saca de los commits anteriores.
+//
+//  Si este repositorio fue publico alguna vez, o si alguien mas tuvo acceso,
+//  esas credenciales HAY QUE ROTARLAS en el panel del hosting. Ver
+//  docs/AUDITORIA-OPERABILIDAD.md.
+// ════════════════════════════════════════════
+
+// ════════════════════════════════════════════
 //  COMPRAFIT · API Backend
 //  Hostinger · MySQL
 // ════════════════════════════════════════════
 
 // ── Configuración ──────────────────────────
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'u336213859_comprafit_app');
-define('DB_USER', 'u336213859_comprafit');
-define('DB_PASS', 'Comprafit.2025');   // <-- CAMBIÁ ESTO
-define('APP_TOKEN', 'Comprafit.App.2025');   // <-- CAMBIÁ ESTO (clave secreta tuya)
+define('DB_NAME', getenv('LEGACY_DB_NAME') ?: '');
+define('DB_USER', getenv('LEGACY_DB_USER') ?: '');
+define('DB_PASS', getenv('LEGACY_DB_PASS') ?: '');   // Redactado: estaba en texto plano en el repo
+define('APP_TOKEN', getenv('LEGACY_APP_TOKEN') ?: '');   // Redactado: estaba en texto plano en el repo
 
 // ── CORS y headers ─────────────────────────
 header('Content-Type: application/json; charset=utf-8');

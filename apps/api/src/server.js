@@ -47,8 +47,27 @@ app.use(helmet({
 }));
 
 // ── Request Logging (morgan → pino) ──
-const morganStream = { write: (msg) => logger.http(msg.trim()) };
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev', { stream: morganStream }));
+//
+// En produccion los requests se loguean a nivel `info`, no al nivel `http`
+// personalizado.
+//
+// `http` esta definido con valor 10, y el nivel efectivo del logger en
+// produccion es `info` (30): todo lo que se emitia por debajo de 30 se
+// descartaba. El resultado era que en produccion NO se registraba ni un solo
+// request. Sin log de acceso no se puede reconstruir que hizo un usuario antes
+// de un error.
+//
+// En desarrollo se mantiene el nivel http para no ensuciar la consola.
+const nivelRequest = process.env.NODE_ENV === 'production'
+  ? (msg) => logger.info({ tipo: 'request' }, msg.trim())
+  : (msg) => logger.http(msg.trim());
+
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev', {
+  stream: { write: nivelRequest },
+  // El health check lo consulta la plataforma cada pocos segundos: loguearlo
+  // tapa todo lo demas.
+  skip: (req) => req.originalUrl === '/api/health' || req.originalUrl === '/api/ping',
+}));
 
 // ── CORS ──
 // Origenes permitidos. Ahora hay mas de uno (app + landing + previews de

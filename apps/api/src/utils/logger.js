@@ -65,6 +65,19 @@ const logger = pino({
       'access_token',
       '*.access_token',
       'tiendanube_access_token',
+
+      // Errores de Sequelize.
+      //
+      // El serializador de pino incluye err.sql y err.parameters cuando el
+      // error viene de la base. Ese SQL trae los valores del INSERT o del
+      // UPDATE que fallo: datos de clientes, montos, y en el peor caso la
+      // clave privada de AFIP al guardarla. Todo eso terminaba visible en el
+      // panel de la plataforma.
+      'err.sql',
+      'err.parameters',
+      'err.original.sql',
+      'err.original.parameters',
+      'err.errors[*].value',
     ],
     censor: '[REDACTADO]',
   },
