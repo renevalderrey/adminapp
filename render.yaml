@@ -23,7 +23,10 @@ services:
     buildFilter:
       paths:
         - apps/api/**
-    healthCheckPath: /api/ping
+    # /api/health verifica que se pueda consultar la base, no solo que el
+    # proceso responda. Con /api/ping el servicio figuraba SANO aunque Postgres
+    # estuviera caido y cada request devolviera 500.
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production

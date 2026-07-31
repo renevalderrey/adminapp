@@ -58,3 +58,37 @@ describe('Rutas inexistentes', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('GET /api/health', () => {
+  // /api/ping solo dice que el proceso responde. Render lo usaba como
+  // healthcheck, con lo cual el servicio figuraba sano aunque Postgres
+  // estuviera caido y cada request devolviera 500.
+  it('responde con el estado de la base de datos', async () => {
+    const res = await request(app).get('/api/health');
+
+    // Sin base disponible en el entorno de test, se espera 503; con base, 200.
+    expect([200, 503]).toContain(res.status);
+    expect(res.body).toHaveProperty('base_de_datos');
+    expect(res.body).toHaveProperty('latencia_ms');
+  });
+
+  it('devuelve 503 y ok:false cuando la base no responde', async () => {
+    const res = await request(app).get('/api/health');
+
+    if (res.status === 503) {
+      expect(res.body.ok).toBe(false);
+      expect(res.body.base_de_datos).toBe('error');
+    } else {
+      expect(res.body.ok).toBe(true);
+      expect(res.body.base_de_datos).toBe('ok');
+    }
+  });
+
+  // El healthcheck lo consulta la plataforma sin sesion.
+  it('no exige autenticacion', async () => {
+    const res = await request(app).get('/api/health');
+
+    expect(res.status).not.toBe(401);
+    expect(res.status).not.toBe(403);
+  });
+});

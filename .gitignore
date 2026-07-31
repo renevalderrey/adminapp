@@ -30,6 +30,10 @@ apps/api/uploads/
 apps/api/src/uploads/
 apps/web/public/uploads/
 
+# ── Respaldos (datos de clientes: nunca al repo) ──
+respaldos/
+*.backup.json
+
 # ── Logs ──
 *.log
 logs/

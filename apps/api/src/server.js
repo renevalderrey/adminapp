@@ -29,6 +29,9 @@ if (process.env.BYPASS_AUTH !== 'true') {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Referencia al servidor HTTP, para el cierre ordenado.
+let servidor = null;
+
 // ── Trust proxy ──
 // Render, Railway, Vercel y cualquier PaaS ponen un reverse proxy delante.
 // Sin esto, express-rate-limit ve la IP del proxy en vez de la del cliente
@@ -94,6 +97,42 @@ app.use(express.json({ limit: '10mb' }));
 // el cold start de ~50s del free tier de Render) quedaba bloqueado.
 app.get('/api/ping', (req, res) => {
   res.json({ ok: true, msg: 'AdminApp API OK', time: new Date().toISOString() });
+});
+
+// ── Health check profundo ──
+//
+// /api/ping solo dice que el proceso responde. Render lo usaba como
+// healthCheckPath, con lo cual el servicio figuraba SANO aunque Postgres
+// estuviera caido y cada request devolviera 500. Nadie se enteraba: ni una
+// alerta, ni un reinicio, ni un aviso en el panel.
+//
+// Este endpoint verifica de verdad que se puede consultar la base. Es el que
+// tiene que mirar la plataforma.
+app.get('/api/health', async (req, res) => {
+  const inicio = Date.now();
+
+  try {
+    await sequelize.query('SELECT 1');
+
+    res.json({
+      ok: true,
+      base_de_datos: 'ok',
+      // Con Neon free la base autosuspende: la primera consulta despues de la
+      // suspension tarda. Exponer el tiempo permite distinguir "esta lenta"
+      // de "esta caida" sin adivinar.
+      latencia_ms: Date.now() - inicio,
+      time: new Date().toISOString(),
+    });
+  } catch (err) {
+    logger.error({ err }, 'health: la base de datos no responde');
+
+    res.status(503).json({
+      ok: false,
+      base_de_datos: 'error',
+      latencia_ms: Date.now() - inicio,
+      time: new Date().toISOString(),
+    });
+  }
 });
 
 // ── Rate Limiting (después de ping) ──
@@ -244,7 +283,9 @@ async function start() {
 
     subscriptionCron.start();
 
-    app.listen(PORT, () => {
+    // Se guarda la referencia para poder cerrarlo de forma ordenada: sin ella
+    // el shutdown cortaba la base con requests todavia en vuelo.
+    servidor = app.listen(PORT, () => {
       logger.info({ port: PORT, env: process.env.NODE_ENV }, 'Server started');
     });
   } catch (err) {
@@ -262,18 +303,70 @@ if (require.main === module) {
   // ── Graceful Shutdown ──
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
+
+  // ── Fallos no atrapados ──
+  //
+  // No habia handlers. En Node una promesa rechazada sin catch tumba el
+  // proceso, y una excepcion no atrapada tambien: el contenedor se reiniciaba
+  // sin dejar ningun rastro de por que. Con los logs yendo a un archivo
+  // efimero, el motivo se perdia del todo.
+  //
+  // Se loguea y se sale con codigo distinto de cero para que la plataforma lo
+  // registre como caida y no como reinicio normal. No se intenta seguir
+  // operando: despues de una excepcion no atrapada el estado del proceso es
+  // desconocido, y una API de facturacion en estado desconocido es peor que
+  // una API caida.
+  process.on('unhandledRejection', (motivo, promesa) => {
+    logger.fatal({ err: motivo, promesa: String(promesa) }, 'Promesa rechazada sin catch');
+    shutdown(1);
+  });
+
+  process.on('uncaughtException', (err) => {
+    logger.fatal({ err }, 'Excepcion no atrapada');
+    shutdown(1);
+  });
 }
 
-function shutdown() {
-  logger.info('Shutting down gracefully...');
+/**
+ * Cierre ordenado.
+ *
+ * El orden importa: primero se deja de aceptar requests nuevos y se esperan
+ * los que estan en vuelo, y RECIEN despues se cierra la base. La version
+ * anterior cerraba Postgres de una, con lo cual una venta a medio guardar
+ * durante un deploy se cortaba en el medio.
+ *
+ * @param {number} codigo Codigo de salida. 0 para un cierre normal.
+ */
+function shutdown(codigo = 0) {
+  logger.info({ codigo }, 'Cerrando el servidor');
+
   subscriptionCron.stop();
-  sequelize.close().then(() => {
-    logger.info('PostgreSQL connection closed');
-    process.exit(0);
-  }).catch((err) => {
-    logger.error({ err }, 'Error closing PostgreSQL');
-    process.exit(1);
-  });
+
+  // Si el cierre se traba, no se puede esperar indefinidamente: la plataforma
+  // manda SIGKILL a los ~30s de todas formas.
+  const plazo = setTimeout(() => {
+    logger.error('El cierre ordenado tardo demasiado, se fuerza la salida');
+    process.exit(codigo || 1);
+  }, 10000);
+  plazo.unref();
+
+  const cerrarBase = () => {
+    sequelize.close()
+      .then(() => logger.info('Conexion a PostgreSQL cerrada'))
+      .catch((err) => logger.error({ err }, 'Error cerrando PostgreSQL'))
+      .finally(() => {
+        clearTimeout(plazo);
+        process.exit(codigo);
+      });
+  };
+
+  if (servidor) {
+    // close() deja de aceptar conexiones nuevas y espera a que terminen las
+    // que estan en curso.
+    servidor.close(cerrarBase);
+  } else {
+    cerrarBase();
+  }
 }
 
 module.exports = { app, start, shutdown };
