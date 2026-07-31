@@ -225,6 +225,22 @@ Entregable: tabla de cobertura endpoint por endpoint, con estado.
 
 ## Frente 2 · Verificación de la lógica de negocio con dinero
 
+> **ESTADO: CERRADO** (31/07/2026). 140 hallazgos confirmados (14 críticos),
+> los de mayor severidad corregidos con tests. Detalle en
+> [AUDITORIA-LOGICA-FINANCIERA.md](AUDITORIA-LOGICA-FINANCIERA.md); el informe
+> crudo del workflow en `auditoria-frente2-hallazgos.json`.
+>
+> Cinco funcionalidades estaban COMPLETAMENTE caídas sin que nadie lo supiera:
+> todo el módulo de reportes (500 por un alias de asociación inexistente),
+> anular una venta, las recetas anidadas, la integración TiendaNube y
+> `/api/taxes/monotributo`.
+>
+> El de mayor impacto comercial: la calculadora de punto de equilibrio
+> confundía margen sobre venta con recargo sobre costo y recomendaba precios
+> que garantizan pérdida, etiquetados como "precio de supervivencia".
+>
+> Quedan 14 decisiones de producto que el código no puede responder.
+
 **Bloquea vender.** Un error acá factura mal, y facturar mal tiene
 consecuencias fiscales para el cliente.
 
