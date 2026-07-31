@@ -7,6 +7,7 @@ const fs = require('fs');
 const { Product, Brand, Supplier, Stock, sequelize } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
 const logger = require('../utils/logger');
+const { fallo } = require('../utils/errores');
 
 const upload = multer({
   dest: path.join(__dirname, '../../uploads'),
@@ -164,7 +165,7 @@ router.get('/template/:type', checkPermission('products.crear'), (req, res) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.send(buf);
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al generar la plantilla');
   }
 });
 
@@ -206,8 +207,15 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
     let created = 0, updated = 0, errors = [];
 
     for (const [i, raw] of rows.entries()) {
+      // `data` se declara FUERA del try. El catch de abajo lo usa para armar el
+      // mensaje de la fila que fallo, y estando declarado adentro tiraba
+      // ReferenceError justo cuando habia un error que explicar: el catch se
+      // rompia, el error salia del bucle y la importacion entera devolvia 500
+      // en vez de reportar la fila mala y seguir.
+      let data = {};
+
       try {
-        const data = mapRow(raw, columnMap);
+        data = mapRow(raw, columnMap);
 
         // Sanitize: convert empty strings to null so optional fields don't cause validation errors
         for (const k of Object.keys(data)) {
@@ -317,7 +325,7 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
       total: rows.length,
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al importar el archivo');
   }
 });
 

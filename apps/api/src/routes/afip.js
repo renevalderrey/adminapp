@@ -152,8 +152,7 @@ router.post('/setup', checkPermission('config.editar'), async (req, res) => {
     logger.info({ empresaId: req.empresaId, environment }, 'afip: configuración actualizada');
     res.json({ ok: true, message: 'Configuración de AFIP guardada correctamente' });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'afip:setup');
-    res.status(500).json({ ok: false, error: 'Error al guardar la configuración de AFIP' });
+    fallo(req, res, err, 'Error al guardar la configuración de AFIP');
   }
 });
 
@@ -192,8 +191,7 @@ router.post('/generate-csr', checkPermission('config.editar'), async (req, res) 
     if (err.status === 400) {
       return res.status(400).json({ ok: false, error: err.message });
     }
-    logger.error({ err, empresaId: req.empresaId }, 'afip:generate-csr');
-    res.status(500).json({ ok: false, error: 'Error al generar el pedido de certificado' });
+    fallo(req, res, err, 'Error al generar el pedido de certificado');
   }
 });
 

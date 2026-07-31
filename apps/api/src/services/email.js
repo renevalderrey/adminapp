@@ -9,13 +9,38 @@ if (RESEND_API_KEY) {
   resend = new Resend(RESEND_API_KEY);
 }
 
-async function sendEmail({ to, subject, html }) {
-  logger.info({ to, subject }, 'Sending email');
+// Sin RESEND_API_KEY no se manda nada. Avisarlo una sola vez al arrancar, y no
+// en cada envio, para que el aviso se vea en vez de perderse repetido.
+if (!RESEND_API_KEY) {
+  const nivel = process.env.NODE_ENV === 'production' ? 'error' : 'warn';
+  logger[nivel](
+    'RESEND_API_KEY no esta configurada: NO se va a enviar ningun email ' +
+    '(invitaciones, bienvenida, avisos de vencimiento).'
+  );
+}
 
+/**
+ * Envia un email.
+ *
+ * @returns {Promise<{ok: boolean, enviado: boolean, error?: any, data?: any}>}
+ *
+ * `ok: false` cuando no se envio. Antes, sin RESEND_API_KEY, devolvia
+ * `{ ok: true, mock: true }`: las invitaciones se perdian en silencio y quien
+ * invitaba veia "Invitación enviada" en pantalla mientras el destinatario no
+ * recibia nada y no habia forma de darse cuenta. Un error silencioso que se
+ * manifiesta como "el sistema anda pero el equipo no llega" es de los mas
+ * caros de diagnosticar.
+ */
+async function sendEmail({ to, subject, html }) {
   if (!resend) {
-    logger.warn('Resend not configured — email logged to console only');
-    return { ok: true, mock: true };
+    logger.error(
+      { to, subject },
+      'Email NO enviado: falta RESEND_API_KEY'
+    );
+    return { ok: false, enviado: false, error: 'EMAIL_NO_CONFIGURADO' };
   }
+
+  logger.info({ to, subject }, 'Enviando email');
 
   try {
     const { data, error } = await resend.emails.send({
@@ -26,14 +51,14 @@ async function sendEmail({ to, subject, html }) {
     });
 
     if (error) {
-      logger.error({ error }, 'Resend send failed');
-      return { ok: false, error };
+      logger.error({ error, to, subject }, 'Resend rechazo el envio');
+      return { ok: false, enviado: false, error };
     }
 
-    return { ok: true, data };
+    return { ok: true, enviado: true, data };
   } catch (err) {
-    logger.error({ err }, 'Email send error');
-    return { ok: false, error: err.message };
+    logger.error({ err, to, subject }, 'Error al enviar el email');
+    return { ok: false, enviado: false, error: err.message };
   }
 }
 

@@ -21,8 +21,7 @@ router.get('/', checkPermission('clientes.ver'), async (req, res) => {
     const result = await customerService.listCustomers(req.query, req.empresaId);
     res.json({ ok: true, ...result });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'customers:list');
-    res.status(500).json({ ok: false, error: 'Error al listar clientes' });
+    fallo(req, res, err, 'Error al listar clientes');
   }
 });
 
@@ -31,8 +30,7 @@ router.get('/summary', checkPermission('clientes.ver'), async (req, res) => {
     const summary = await customerService.getSummary(req.empresaId);
     res.json({ ok: true, data: summary });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'customers:summary');
-    res.status(500).json({ ok: false, error: 'Error al calcular el resumen' });
+    fallo(req, res, err, 'Error al calcular el resumen');
   }
 });
 
@@ -41,8 +39,7 @@ router.get('/ranking', checkPermission('clientes.ver'), async (req, res) => {
     const ranking = await customerService.getRanking(req.query.limit, req.empresaId);
     res.json({ ok: true, data: ranking });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'customers:ranking');
-    res.status(500).json({ ok: false, error: 'Error al calcular el ranking' });
+    fallo(req, res, err, 'Error al calcular el ranking');
   }
 });
 
@@ -52,8 +49,7 @@ router.get('/:id', checkPermission('clientes.ver'), async (req, res) => {
     if (!detail) return res.status(404).json(NO_ENCONTRADO);
     res.json({ ok: true, data: detail });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'customers:detail');
-    res.status(500).json({ ok: false, error: 'Error al obtener el cliente' });
+    fallo(req, res, err, 'Error al obtener el cliente');
   }
 });
 
@@ -63,8 +59,7 @@ router.post('/', checkPermission('clientes.crear'), async (req, res) => {
     const customer = await Customer.create({ ...req.body, empresa_id: req.empresaId });
     res.status(201).json({ ok: true, data: customer });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'customers:create');
-    res.status(500).json({ ok: false, error: 'Error al crear el cliente' });
+    fallo(req, res, err, 'Error al crear el cliente');
   }
 });
 
@@ -79,8 +74,7 @@ router.put('/:id', checkPermission('clientes.editar'), async (req, res) => {
 
     res.json({ ok: true, data: customer });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'customers:update');
-    res.status(500).json({ ok: false, error: 'Error al actualizar el cliente' });
+    fallo(req, res, err, 'Error al actualizar el cliente');
   }
 });
 
@@ -92,8 +86,7 @@ router.delete('/:id', checkPermission('clientes.eliminar'), async (req, res) => 
     await customer.update({ is_active: false });
     res.json({ ok: true, message: 'Cliente desactivado' });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'customers:delete');
-    res.status(500).json({ ok: false, error: 'Error al desactivar el cliente' });
+    fallo(req, res, err, 'Error al desactivar el cliente');
   }
 });
 
@@ -107,8 +100,7 @@ router.get('/:id/debt', checkPermission('clientes.ver'), async (req, res) => {
 
     res.json({ ok: true, data: { balance, aging } });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'customers:debt');
-    res.status(500).json({ ok: false, error: 'Error al calcular la deuda' });
+    fallo(req, res, err, 'Error al calcular la deuda');
   }
 });
 
@@ -124,8 +116,7 @@ router.post('/:id/payments', checkPermission('caja.crear'), async (req, res) => 
     if (err.status === 404 || err.message === 'Cliente no encontrado') {
       return res.status(404).json(NO_ENCONTRADO);
     }
-    logger.error({ err, empresaId: req.empresaId }, 'customers:registerPayment');
-    res.status(500).json({ ok: false, error: 'Error al registrar el pago' });
+    fallo(req, res, err, 'Error al registrar el pago');
   }
 });
 
@@ -143,8 +134,7 @@ router.get('/:id/payments', checkPermission('clientes.ver'), async (req, res) =>
 
     res.json({ ok: true, data: payments });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'customers:payments');
-    res.status(500).json({ ok: false, error: 'Error al listar los pagos' });
+    fallo(req, res, err, 'Error al listar los pagos');
   }
 });
 
@@ -161,8 +151,7 @@ router.get('/:id/sales', checkPermission('clientes.ver'), async (req, res) => {
 
     res.json({ ok: true, data: sales });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'customers:sales');
-    res.status(500).json({ ok: false, error: 'Error al listar las ventas' });
+    fallo(req, res, err, 'Error al listar las ventas');
   }
 });
 

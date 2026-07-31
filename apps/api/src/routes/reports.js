@@ -3,6 +3,7 @@ const router = express.Router();
 const { Op, fn, col } = require('sequelize');
 const { Sale, SaleItem, Product, Stock, FixedExpense, sequelize } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
+const { fallo } = require('../utils/errores');
 
 // GET /api/reports/sales?from=&to=
 router.get('/sales', checkPermission('reportes.ver'), async (req, res) => {
@@ -70,8 +71,7 @@ router.get('/sales', checkPermission('reportes.ver'), async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('[reports/sales]', err);
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al generar el reporte de ventas');
   }
 });
 
@@ -116,8 +116,7 @@ router.get('/inventory', checkPermission('reportes.ver'), async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('[reports/inventory]', err);
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al generar el reporte de inventario');
   }
 });
 
@@ -178,8 +177,7 @@ router.get('/profit', checkPermission('reportes.ver'), async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('[reports/profit]', err);
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al generar el reporte de rentabilidad');
   }
 });
 

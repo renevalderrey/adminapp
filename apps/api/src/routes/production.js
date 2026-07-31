@@ -3,14 +3,14 @@ const router = express.Router();
 const productionService = require('../services/productionService');
 const checkPermission = require('../middleware/checkPermission');
 const logger = require('../utils/logger');
+const { fallo } = require('../utils/errores');
 
 router.get('/', checkPermission('produccion.ver'), async (req, res) => {
   try {
     const result = await productionService.listProductionOrders(req.query, req.empresaId);
     res.json({ ok: true, ...result });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'production:list');
-    res.status(500).json({ ok: false, error: 'Error al listar las órdenes' });
+    fallo(req, res, err, 'Error al listar las órdenes de producción');
   }
 });
 
@@ -22,7 +22,7 @@ router.get('/:id', checkPermission('produccion.ver'), async (req, res) => {
     }
     res.json({ ok: true, data: order });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al obtener la orden de producción');
   }
 });
 
@@ -41,8 +41,7 @@ router.post('/', checkPermission('produccion.crear'), async (req, res) => {
     if (err.message.includes('no tiene una receta') || err.message.includes('debe ser mayor a 0')) {
       return res.status(400).json({ ok: false, error: err.message });
     }
-    logger.error({ err, empresaId: req.empresaId }, 'production:create');
-    res.status(500).json({ ok: false, error: 'Error al crear la orden de producción' });
+    fallo(req, res, err, 'Error al crear la orden de producción');
   }
 });
 
@@ -61,8 +60,7 @@ router.post('/:id/void', checkPermission('produccion.anular'), async (req, res) 
     if (err.message === 'La orden ya se encuentra anulada') {
       return res.status(400).json({ ok: false, error: err.message });
     }
-    logger.error({ err, empresaId: req.empresaId }, 'production:void');
-    res.status(500).json({ ok: false, error: 'Error al anular la orden' });
+    fallo(req, res, err, 'Error al anular la orden de producción');
   }
 });
 

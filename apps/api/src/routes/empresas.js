@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
-const { Empresa, PuntoDeVenta, Usuario, UsuarioEmpresa, Suscripcion, Invitacion, Rol, RolPermiso, UsuarioPermiso } = require('../models');
+const { Empresa, PuntoDeVenta, Usuario, UsuarioEmpresa, Suscripcion, Invitacion, Rol, RolPermiso, UsuarioPermiso, sequelize } = require('../models');
 const { sendEmail, welcomeEmail, invitationEmail } = require('../services/email');
 const checkPermission = require('../middleware/checkPermission');
 const { requireEmpresa } = require('../middleware/auth');
@@ -9,6 +9,7 @@ const multer = require('multer');
 const path = require('path');
 const logger = require('../utils/logger');
 const { findScoped } = require('../utils/tenantScope');
+const { fallo } = require('../utils/errores');
 
 // ── Logo de empresa ──
 // El logo se guarda como data URI en la columna Empresa.logo (TEXT), no en
@@ -66,62 +67,87 @@ router.post('/onboarding', (req, res, next) => {
 
     const logoDataUri = fileToDataUri(req.file);
 
-    const empresa = await Empresa.create({
-      name,
-      cuit: cuit || null,
-      phone: phone || null,
-      address: address || null,
-      city: city || null,
-      state: state || null,
-      rubro: rubro || null,
-      logo: logoDataUri,
-      onboarding_completed: true,
-      settings: {
-        margin_efectivo: 50,
-        recargo_tarjeta: 20,
-        descuento_alianza: 10,
-        fixed_expenses_total: 0,
-        // Las claves afip_* NO van aca. La configuracion de AFIP vive en la
-        // tabla settings, y sembrarlas vacias en este JSON hacia que taparan a
-        // las reales en GET /api/settings.
-        tax_condition: 'Monotributo',
-      },
-    });
-
-    const defaultPv = await PuntoDeVenta.create({
-      empresa_id: empresa.id,
-      name: pv_name || 'Sucursal Principal',
-      code: 'principal',
-      address: address || null,
-    });
-
-    await UsuarioEmpresa.create({
-      usuario_id: usuario.id,
-      empresa_id: empresa.id,
-      role: 'admin',
-      is_default: true,
-      accepted_at: new Date(),
-    });
-
     const trialEnd = new Date();
     trialEnd.setDate(trialEnd.getDate() + 15);
     const graceEnd = new Date(trialEnd);
     graceEnd.setDate(graceEnd.getDate() + 3);
 
-    await Suscripcion.create({
-      empresa_id: empresa.id,
-      plan: 'free',
-      status: 'trialing',
-      trial_starts_at: new Date(),
-      trial_ends_at: trialEnd,
-      grace_period_ends: graceEnd,
+    // ── Las cuatro creaciones van en UNA transaccion ──
+    //
+    // Antes eran cuatro create() sueltos. Si fallaba el tercero —por ejemplo
+    // por una restriccion de la tabla de suscripciones— quedaba una empresa y
+    // un punto de venta creados, sin membresia y sin suscripcion: el usuario
+    // no podia entrar (no hay UsuarioEmpresa) ni volver a hacer el onboarding
+    // (la empresa ya existe). Una cuenta zombi que solo se arregla a mano en
+    // la base.
+    //
+    // El email queda FUERA a proposito: mandarlo no es reversible, y que el
+    // proveedor de correo este caido no es razon para deshacer una empresa que
+    // se creo bien.
+    const { empresa, defaultPv } = await sequelize.transaction(async (t) => {
+      const empresa = await Empresa.create({
+        name,
+        cuit: cuit || null,
+        phone: phone || null,
+        address: address || null,
+        city: city || null,
+        state: state || null,
+        rubro: rubro || null,
+        logo: logoDataUri,
+        onboarding_completed: true,
+        settings: {
+          margin_efectivo: 50,
+          recargo_tarjeta: 20,
+          descuento_alianza: 10,
+          fixed_expenses_total: 0,
+          // Las claves afip_* NO van aca. La configuracion de AFIP vive en la
+          // tabla settings, y sembrarlas vacias en este JSON hacia que taparan a
+          // las reales en GET /api/settings.
+          tax_condition: 'Monotributo',
+        },
+      }, { transaction: t });
+
+      const defaultPv = await PuntoDeVenta.create({
+        empresa_id: empresa.id,
+        name: pv_name || 'Sucursal Principal',
+        code: 'principal',
+        address: address || null,
+      }, { transaction: t });
+
+      await UsuarioEmpresa.create({
+        usuario_id: usuario.id,
+        empresa_id: empresa.id,
+        role: 'admin',
+        is_default: true,
+        accepted_at: new Date(),
+      }, { transaction: t });
+
+      await Suscripcion.create({
+        empresa_id: empresa.id,
+        plan: 'free',
+        status: 'trialing',
+        trial_starts_at: new Date(),
+        trial_ends_at: trialEnd,
+        grace_period_ends: graceEnd,
+      }, { transaction: t });
+
+      return { empresa, defaultPv };
     });
 
-    await sendEmail({
+    // Si el correo no sale, la empresa igual quedo creada y el usuario ya esta
+    // adentro: se registra y se sigue.
+    const envio = await sendEmail({
       to: usuario.email,
       subject: `Bienvenido a Admin App — ${name}`,
       html: welcomeEmail(usuario.nombre || usuario.email, name),
     });
+
+    if (!envio.ok) {
+      logger.warn(
+        { requestId: req.id, empresaId: empresa.id, motivo: envio.error },
+        'No se pudo enviar el email de bienvenida'
+      );
+    }
 
     res.status(201).json({
       ok: true,
@@ -142,14 +168,13 @@ router.post('/onboarding', (req, res, next) => {
       },
     });
   } catch (err) {
-    logger.error({ err }, 'Onboarding error');
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({ ok: false, error: 'El logo no puede superar los 300KB' });
     }
     if (err?.message?.includes('multer')) {
       return res.status(400).json({ ok: false, error: 'Error al subir el logo. Verificá que sea una imagen válida.' });
     }
-    res.status(500).json({ ok: false, error: 'Error al crear la empresa. Intentalo de nuevo.' });
+    fallo(req, res, err, 'Error al crear la empresa. Intentalo de nuevo.');
   }
 });
 
@@ -213,7 +238,7 @@ router.get('/mi-contexto', async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al cargar tu contexto de usuario');
   }
 });
 
@@ -292,7 +317,7 @@ router.put('/cambiar-empresa/:id', async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al cambiar de empresa');
   }
 });
 
@@ -306,7 +331,7 @@ router.get('/', checkPermission('config.ver'), async (req, res) => {
     });
     res.json({ ok: true, data: empresas });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al listar las empresas');
   }
 });
 
@@ -321,7 +346,7 @@ router.get('/:id', checkPermission('config.ver'), requireEmpresa, requireEmpresa
     if (!empresa) return res.status(404).json({ ok: false, error: 'Empresa no encontrada' });
     res.json({ ok: true, data: empresa });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al obtener la empresa');
   }
 });
 
@@ -341,7 +366,7 @@ router.post('/', checkPermission('config.editar'), async (req, res) => {
 
     res.status(201).json({ ok: true, data: empresa });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al crear la empresa');
   }
 });
 
@@ -404,8 +429,7 @@ router.put('/:id', checkPermission('config.editar'), requireEmpresa, requireEmpr
     await empresa.update(cambios);
     res.json({ ok: true, data: empresa });
   } catch (err) {
-    logger.error({ err }, 'Error al actualizar empresa');
-    res.status(500).json({ ok: false, error: 'Error al actualizar la empresa' });
+    fallo(req, res, err, 'Error al actualizar la empresa');
   }
 });
 
@@ -416,8 +440,7 @@ router.delete('/:id', checkPermission('config.editar'), requireEmpresa, requireE
     await empresa.update({ is_active: false });
     res.json({ ok: true, message: 'Empresa desactivada' });
   } catch (err) {
-    logger.error({ err }, 'Error al desactivar empresa');
-    res.status(500).json({ ok: false, error: 'Error al desactivar la empresa' });
+    fallo(req, res, err, 'Error al desactivar la empresa');
   }
 });
 
@@ -433,25 +456,31 @@ router.get('/:id/suscripcion', requireEmpresa, requireEmpresaPropia(), async (re
 
     res.json({ ok: true, data: suscripcion });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'empresas:suscripcion');
-    res.status(500).json({ ok: false, error: 'Error al obtener la suscripción' });
+    fallo(req, res, err, 'Error al obtener la suscripción');
   }
 });
 
 // ── CRUD PuntoDeVenta ──
+//
+// Las rutas con :empresaId toman el id de la URL, no del contexto. Sin
+// requireEmpresaPropia, checkPermission solo verifica que el usuario tenga el
+// permiso en SU empresa —no que la empresa de la URL sea la suya—, asi que
+// alcanzaba con cambiar el numero en la URL para operar sobre otra empresa
+// cliente. Estaba puesto solo en /:empresaId/invitar; las cinco rutas que
+// faltaban quedaban abiertas.
 
-router.get('/:empresaId/puntos-de-venta', checkPermission('sucursales.ver'), async (req, res) => {
+router.get('/:empresaId/puntos-de-venta', requireEmpresa, requireEmpresaPropia('empresaId'), checkPermission('sucursales.ver'), async (req, res) => {
   try {
     const pvs = await PuntoDeVenta.findAll({
       where: { empresa_id: req.params.empresaId, is_active: true },
     });
     res.json({ ok: true, data: pvs });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al listar los puntos de venta');
   }
 });
 
-router.post('/:empresaId/puntos-de-venta', checkPermission('sucursales.crear'), async (req, res) => {
+router.post('/:empresaId/puntos-de-venta', requireEmpresa, requireEmpresaPropia('empresaId'), checkPermission('sucursales.crear'), async (req, res) => {
   try {
     const { name, code, address } = req.body;
     const pv = await PuntoDeVenta.create({
@@ -460,7 +489,7 @@ router.post('/:empresaId/puntos-de-venta', checkPermission('sucursales.crear'), 
     });
     res.status(201).json({ ok: true, data: pv });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al crear el punto de venta');
   }
 });
 
@@ -472,7 +501,7 @@ router.put('/puntos-de-venta/:id', requireEmpresa, checkPermission('sucursales.e
     await pv.update({ name, code, address });
     res.json({ ok: true, data: pv });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al actualizar el punto de venta');
   }
 });
 
@@ -483,13 +512,13 @@ router.delete('/puntos-de-venta/:id', requireEmpresa, checkPermission('sucursale
     await pv.update({ is_active: false });
     res.json({ ok: true, message: 'Punto de venta desactivado' });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al desactivar el punto de venta');
   }
 });
 
 // ── INVITACIONES ──
 
-router.get('/:empresaId/invitaciones', checkPermission('equipo.ver'), async (req, res) => {
+router.get('/:empresaId/invitaciones', requireEmpresa, requireEmpresaPropia('empresaId'), checkPermission('equipo.ver'), async (req, res) => {
   try {
     const invitaciones = await Invitacion.findAll({
       where: { empresa_id: req.params.empresaId },
@@ -498,7 +527,7 @@ router.get('/:empresaId/invitaciones', checkPermission('equipo.ver'), async (req
     });
     res.json({ ok: true, data: invitaciones });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al listar las invitaciones');
   }
 });
 
@@ -531,15 +560,32 @@ router.post('/:empresaId/invitar', checkPermission('equipo.invitar'), requireEmp
     });
 
     const invitador = req.usuario;
-    await sendEmail({
+    const envio = await sendEmail({
       to: email,
       subject: `${invitador?.nombre || 'Alguien'} te invitó a unirte a ${empresa.name}`,
       html: invitationEmail(invitador?.nombre || 'Un administrador', empresa.name, invitacion.token),
     });
 
-    res.status(201).json({ ok: true, data: invitacion });
+    // La invitacion queda creada y el enlace sirve igual, asi que no es un
+    // error: es un 201 que dice la verdad. Antes se respondia siempre "ok" y
+    // quien invitaba se quedaba esperando a alguien que nunca recibio nada.
+    if (!envio.ok) {
+      logger.warn(
+        { requestId: req.id, empresaId: empresa.id, invitacionId: invitacion.id },
+        'Invitación creada pero el email no salió'
+      );
+    }
+
+    res.status(201).json({
+      ok: true,
+      data: invitacion,
+      email_enviado: envio.ok,
+      message: envio.ok
+        ? undefined
+        : 'La invitación se creó pero no se pudo enviar el email. Pasale el enlace de invitación a mano.',
+    });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al enviar la invitación');
   }
 });
 
@@ -552,15 +598,29 @@ router.post('/invitaciones/:token/re-enviar', checkPermission('equipo.invitar'),
     });
     if (!invitacion) return res.status(404).json({ ok: false, error: 'Invitación no encontrada o ya expiró' });
 
-    await sendEmail({
+    const envio = await sendEmail({
       to: invitacion.email,
       subject: `Recordatorio: te invitamos a unirte a ${invitacion.empresa.name}`,
       html: invitationEmail('Un administrador', invitacion.empresa.name, invitacion.token),
     });
 
+    // Acá sí es un fallo: la unica accion que pedia el usuario era enviar.
+    if (!envio.ok) {
+      logger.warn(
+        { requestId: req.id, invitacionId: invitacion.id },
+        'No se pudo re-enviar la invitación'
+      );
+
+      return res.status(502).json({
+        ok: false,
+        error: 'No se pudo enviar el email. Pasale el enlace de invitación a mano.',
+        requestId: req.id,
+      });
+    }
+
     res.json({ ok: true, message: 'Invitación re-enviada' });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al re-enviar la invitación');
   }
 });
 
@@ -572,13 +632,13 @@ router.delete('/invitaciones/:id', requireEmpresa, checkPermission('equipo.elimi
     await invitacion.update({ status: 'revoked' });
     res.json({ ok: true, message: 'Invitación revocada' });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al revocar la invitación');
   }
 });
 
 // ── USUARIOS (miembros del equipo) ──
 
-router.get('/:empresaId/usuarios', checkPermission('equipo.ver'), async (req, res) => {
+router.get('/:empresaId/usuarios', requireEmpresa, requireEmpresaPropia('empresaId'), checkPermission('equipo.ver'), async (req, res) => {
   try {
     const users = await UsuarioEmpresa.findAll({
       where: { empresa_id: req.params.empresaId, is_active: true },
@@ -586,11 +646,13 @@ router.get('/:empresaId/usuarios', checkPermission('equipo.ver'), async (req, re
     });
     res.json({ ok: true, data: users });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al listar el equipo');
   }
 });
 
-router.post('/:empresaId/usuarios', checkPermission('equipo.invitar'), async (req, res) => {
+// La peor de las cinco: permitia agregar un usuario —incluido uno mismo— al
+// equipo de otra empresa cliente, con el rol que se pidiera.
+router.post('/:empresaId/usuarios', requireEmpresa, requireEmpresaPropia('empresaId'), checkPermission('equipo.invitar'), async (req, res) => {
   try {
     const { auth0_sub, email, nombre, role } = req.body;
 
@@ -608,7 +670,7 @@ router.post('/:empresaId/usuarios', checkPermission('equipo.invitar'), async (re
 
     res.status(201).json({ ok: true, data: { ...ue.toJSON(), usuario } });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al agregar el usuario a la empresa');
   }
 });
 
@@ -627,8 +689,7 @@ router.put('/usuarios/:id', requireEmpresa, checkPermission('config.editar'), as
     await ue.update({ role, is_active });
     res.json({ ok: true, data: ue });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'empresas:update-usuario');
-    res.status(500).json({ ok: false, error: 'Error al actualizar el usuario' });
+    fallo(req, res, err, 'Error al actualizar el usuario');
   }
 });
 

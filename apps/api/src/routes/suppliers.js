@@ -4,6 +4,7 @@ const { Supplier, SupplierOrder, SupplierMovement, SupplierDocument } = require(
 const sequelize = require('../config/database');
 const purchaseService = require('../services/purchaseService');
 const checkPermission = require('../middleware/checkPermission');
+const { fallo } = require('../utils/errores');
 
 // ── Órdenes de Compra (deben ir ANTES de /:id) ──
 
@@ -13,7 +14,7 @@ router.get('/orders', checkPermission('ordenes_compra.ver'), async (req, res) =>
     const result = await purchaseService.getOrders({ ...req.query, empresa_id: req.empresaId });
     res.json({ ok: true, ...result });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al listar las órdenes de compra');
   }
 });
 
@@ -23,7 +24,7 @@ router.get('/orders/:id', checkPermission('ordenes_compra.ver'), async (req, res
     const order = await purchaseService.getOrderDetail(req.params.id, req.empresaId);
     res.json({ ok: true, data: order });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al obtener la orden de compra');
   }
 });
 
@@ -34,7 +35,7 @@ router.put('/orders/:id/receive', checkPermission('ordenes_compra.recibir'), asy
     const order = await purchaseService.receiveOrder(req.params.id, req.body.items, req.body.location, pvId, req.empresaId);
     res.json({ ok: true, data: { id: order.id, status: order.status } });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al recibir la orden de compra');
   }
 });
 
@@ -44,7 +45,7 @@ router.put('/orders/:id/cancel', checkPermission('ordenes_compra.anular'), async
     const order = await purchaseService.cancelOrder(req.params.id, req.empresaId);
     res.json({ ok: true, data: { id: order.id, status: order.status } });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al anular la orden de compra');
   }
 });
 
@@ -63,7 +64,7 @@ router.get('/', checkPermission('proveedores.ver'), async (req, res) => {
     });
     res.json({ ok: true, data: suppliers });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al listar los proveedores');
   }
 });
 
@@ -81,7 +82,7 @@ router.get('/:id', checkPermission('proveedores.ver'), async (req, res) => {
     if (!supplier) return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
     res.json({ ok: true, data: supplier });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al obtener el proveedor');
   }
 });
 
@@ -91,7 +92,7 @@ router.post('/', checkPermission('proveedores.crear'), async (req, res) => {
     const supplier = await Supplier.create({ ...req.body, empresa_id: req.empresaId });
     res.status(201).json({ ok: true, data: supplier });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al crear el proveedor');
   }
 });
 
@@ -103,7 +104,7 @@ router.put('/:id', checkPermission('proveedores.editar'), async (req, res) => {
     await supplier.update(req.body);
     res.json({ ok: true, data: supplier });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al actualizar el proveedor');
   }
 });
 
@@ -112,7 +113,12 @@ router.delete('/:id', checkPermission('proveedores.eliminar'), async (req, res) 
   const t = await sequelize.transaction();
   try {
     const supplier = await Supplier.findOne({ where: { id: req.params.id, empresa_id: req.empresaId }, transaction: t });
-    if (!supplier) return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
+    if (!supplier) {
+      // Sin este rollback la transaccion quedaba abierta y con ella la
+      // conexion: cada 404 se llevaba una del pool hasta el timeout.
+      await t.rollback();
+      return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
+    }
     await SupplierDocument.destroy({ where: { supplier_id: req.params.id }, transaction: t });
     await SupplierMovement.destroy({ where: { supplier_id: req.params.id }, transaction: t });
     await SupplierOrder.destroy({ where: { supplier_id: req.params.id }, transaction: t });
@@ -121,7 +127,7 @@ router.delete('/:id', checkPermission('proveedores.eliminar'), async (req, res) 
     res.json({ ok: true, message: 'Proveedor eliminado' });
   } catch (err) {
     await t.rollback();
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al eliminar el proveedor');
   }
 });
 
@@ -133,7 +139,7 @@ router.post('/:id/orders', checkPermission('ordenes_compra.crear'), async (req, 
     const order = await purchaseService.createOrder(req.params.id, req.body, req.empresaId);
     res.status(201).json({ ok: true, data: order });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al crear el pedido al proveedor');
   }
 });
 
@@ -154,7 +160,7 @@ router.post('/:id/payments', checkPermission('proveedores.crear'), async (req, r
     });
     res.status(201).json({ ok: true, data: movement });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al registrar el pago al proveedor');
   }
 });
 
@@ -168,7 +174,7 @@ router.put('/movements/:id', checkPermission('proveedores.editar'), async (req, 
     await movement.update(req.body);
     res.json({ ok: true, data: movement });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al editar el movimiento del proveedor');
   }
 });
 
@@ -179,7 +185,7 @@ router.delete('/movements/:id', checkPermission('proveedores.eliminar'), async (
     if (!deleted) return res.status(404).json({ ok: false, error: 'Movimiento no encontrado' });
     res.json({ ok: true, message: 'Movimiento eliminado' });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al eliminar el movimiento del proveedor');
   }
 });
 
@@ -193,7 +199,7 @@ router.post('/:id/documents', checkPermission('proveedores.editar'), async (req,
     const doc = await SupplierDocument.create({ supplier_id: req.params.id, empresa_id: req.empresaId, ...req.body });
     res.status(201).json({ ok: true, data: doc });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al adjuntar el documento del proveedor');
   }
 });
 
@@ -204,7 +210,7 @@ router.delete('/documents/:id', checkPermission('proveedores.eliminar'), async (
     if (!deleted) return res.status(404).json({ ok: false, error: 'Documento no encontrado' });
     res.json({ ok: true, message: 'Documento eliminado' });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al eliminar el documento del proveedor');
   }
 });
 

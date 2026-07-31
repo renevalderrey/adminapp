@@ -10,6 +10,7 @@ const costService = require('../services/costService');
 const logger = require('../utils/logger');
 const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
+const { fallo } = require('../utils/errores');
 
 // GET /api/products — Listar productos (con marca y stock, paginado)
 router.get('/', checkPermission('products.ver'), async (req, res) => {
@@ -74,8 +75,7 @@ router.get('/', checkPermission('products.ver'), async (req, res) => {
       totalPages: pageLimit ? Math.ceil(count / pageLimit) : 1,
     });
   } catch (err) {
-    logger.error({ err }, '[products:list]');
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al listar los productos');
   }
 });
 
@@ -92,7 +92,7 @@ router.get('/:id', checkPermission('products.ver'), async (req, res) => {
     if (!product) return res.status(404).json({ ok: false, error: 'Producto no encontrado' });
     res.json({ ok: true, data: product });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al obtener el producto');
   }
 });
 
@@ -113,7 +113,7 @@ router.post('/', checkPermission('products.crear'), async (req, res) => {
     });
     res.status(201).json({ ok: true, data: product });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al crear el producto');
   }
 });
 
@@ -158,7 +158,7 @@ router.put('/:id', checkPermission('products.editar'), async (req, res) => {
     res.json({ ok: true, data: product });
   } catch (err) {
     await t.rollback();
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al actualizar el producto');
   }
 });
 
@@ -170,7 +170,7 @@ router.delete('/:id', checkPermission('products.eliminar'), async (req, res) => 
     await product.update({ is_active: false });
     res.json({ ok: true, message: 'Producto desactivado' });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al desactivar el producto');
   }
 });
 
@@ -232,29 +232,41 @@ router.post('/bulk', checkPermission('products.crear'), async (req, res) => {
 
     res.json({ ok: true, created, updated, total: products.length });
   } catch (err) {
-    console.error('[products:bulk]', err);
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error en la carga masiva de productos');
   }
 });
 
 // GET /api/products/:id/cost-history — Obtener historial de costos de un producto
 router.get('/:id/cost-history', checkPermission('products.ver'), async (req, res) => {
   try {
+    // El historial se filtraba SOLO por product_id: con el id de un producto de
+    // otra empresa cliente se leia su evolucion de costos completa. El producto
+    // se resuelve primero con scoping, y el 404 no distingue "no existe" de
+    // "no es tuyo" para no permitir enumerar ids ajenos.
+    const product = await findScoped(Product, req.params.id, req.empresaId, { attributes: ['id'] });
+    if (!product) return res.status(404).json({ ok: false, error: 'Producto no encontrado' });
+
     const history = await ProductCostHistory.findAll({
-      where: { product_id: req.params.id },
+      where: { product_id: product.id },
       order: [['change_date', 'DESC']],
     });
     res.json({ ok: true, data: history });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al obtener el historial de costos');
   }
 });
 
 // GET /api/products/:id/recipe — Obtener receta de un producto
 router.get('/:id/recipe', checkPermission('recetas.ver'), async (req, res) => {
   try {
+    // Misma fuga que en cost-history: la receta es la formula del producto —
+    // que insumos lleva y en que proporcion— y se podia leer la de cualquier
+    // empresa cliente sabiendo el id.
+    const product = await findScoped(Product, req.params.id, req.empresaId, { attributes: ['id'] });
+    if (!product) return res.status(404).json({ ok: false, error: 'Producto no encontrado' });
+
     const recipe = await Recipe.findOne({
-      where: { product_id: req.params.id },
+      where: { product_id: product.id },
       include: [
         {
           model: RecipeItem,
@@ -265,7 +277,7 @@ router.get('/:id/recipe', checkPermission('recetas.ver'), async (req, res) => {
     });
     res.json({ ok: true, data: recipe });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al obtener la receta');
   }
 });
 
@@ -360,18 +372,24 @@ router.post('/:id/recipe', checkPermission('recetas.crear'), async (req, res) =>
     });
   } catch (err) {
     if (!t.finished) await t.rollback();
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al guardar la receta');
   }
 });
 
 // DELETE /api/products/:id/recipe — Eliminar receta de un producto
 router.delete('/:id/recipe', checkPermission('recetas.eliminar'), async (req, res) => {
   try {
-    const deleted = await Recipe.destroy({ where: { product_id: req.params.id } });
+    // La peor de las tres: un DELETE sin scoping borraba la receta de otra
+    // empresa cliente. Destructivo y silencioso — el dueño se entera cuando
+    // produce y el costo le da cero.
+    const product = await findScoped(Product, req.params.id, req.empresaId, { attributes: ['id'] });
+    if (!product) return res.status(404).json({ ok: false, error: 'Producto no encontrado' });
+
+    const deleted = await Recipe.destroy({ where: { product_id: product.id } });
     if (!deleted) return res.status(404).json({ ok: false, error: 'Receta no encontrada' });
     res.json({ ok: true, message: 'Receta eliminada correctamente' });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al eliminar la receta');
   }
 });
 

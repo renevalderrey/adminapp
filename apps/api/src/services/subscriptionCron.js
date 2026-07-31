@@ -98,13 +98,15 @@ async function avisarVencimientosProximos() {
       const destinatario = await emailDeLaEmpresa(s.empresa_id);
       if (!destinatario) continue;
 
-      await sendEmail({
+      const envio = await sendEmail({
         to: destinatario,
         subject: `Tu prueba de AdminApp termina en ${dias} ${dias === 1 ? 'día' : 'días'}`,
         html: trialPorVencerEmail(s.empresa?.name || 'tu empresa', dias),
       });
 
-      enviados++;
+      // Solo cuenta lo que realmente salio. Contar los intentos hacia que el
+      // log dijera "5 avisos enviados" con el correo sin configurar.
+      if (envio.ok) enviados++;
     }
   }
 

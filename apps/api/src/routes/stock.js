@@ -4,24 +4,28 @@ const { Stock, StockTransfer, Product, PuntoDeVenta, sequelize } = require('../m
 const { Op } = require('sequelize');
 const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
+const { fallo, ErrorDeNegocio } = require('../utils/errores');
 
 // POST /api/stock/transfer — Transferir stock entre sucursales
 router.post('/transfer', checkPermission('stock.transferir'), async (req, res) => {
+  const { from_location, to_location, items } = req.body;
+  const empresaId = req.empresaId;
+
+  // Las validaciones van ANTES de abrir la transaccion. Antes estaban adentro
+  // y cada `return` de estos se iba sin hacer rollback: la transaccion quedaba
+  // abierta reteniendo una conexion del pool hasta que venciera el timeout.
+  if (!from_location || !to_location) {
+    return res.status(400).json({ ok: false, error: 'Origen y destino son requeridos' });
+  }
+  if (from_location === to_location) {
+    return res.status(400).json({ ok: false, error: 'Origen y destino deben ser diferentes' });
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ ok: false, error: 'Debe incluir al menos un producto' });
+  }
+
   const t = await sequelize.transaction();
   try {
-    const { from_location, to_location, items } = req.body;
-    const empresaId = req.empresaId;
-
-    if (!from_location || !to_location) {
-      return res.status(400).json({ ok: false, error: 'Origen y destino son requeridos' });
-    }
-    if (from_location === to_location) {
-      return res.status(400).json({ ok: false, error: 'Origen y destino deben ser diferentes' });
-    }
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ ok: false, error: 'Debe incluir al menos un producto' });
-    }
-
     const [fromPv, toPv] = await Promise.all([
       PuntoDeVenta.findOne({ where: { empresa_id: empresaId, code: from_location } }),
       PuntoDeVenta.findOne({ where: { empresa_id: empresaId, code: to_location } }),
@@ -48,7 +52,7 @@ router.post('/transfer', checkPermission('stock.transferir'), async (req, res) =
 
       if (!sourceStock || sourceStock.quantity < qty) {
         const product = await findScoped(Product, productId, empresaId);
-        throw new Error(`Stock insuficiente en "${from_location}" para "${product?.name || 'Producto'}" (disponible: ${sourceStock?.quantity || 0}, requerido: ${qty})`);
+        throw new ErrorDeNegocio(`Stock insuficiente en "${from_location}" para "${product?.name || 'Producto'}" (disponible: ${sourceStock?.quantity || 0}, requerido: ${qty})`);
       }
 
       sourceStock.quantity -= qty;
@@ -105,7 +109,7 @@ router.post('/transfer', checkPermission('stock.transferir'), async (req, res) =
     res.status(201).json({ ok: true, data: transfer });
   } catch (err) {
     await t.rollback();
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al transferir stock entre sucursales');
   }
 });
 
@@ -124,7 +128,7 @@ router.get('/transfers', checkPermission('stock.ver'), async (req, res) => {
 
     res.json({ ok: true, data: rows, total: count });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al listar las transferencias de stock');
   }
 });
 

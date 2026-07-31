@@ -9,6 +9,7 @@ const { verificarTotal, normalizarItem, metodoDePago, esPagoMixto } = require('.
 const logger = require('../utils/logger');
 const { fechaDelNegocio, horaDelNegocio } = require('../utils/fechas');
 const afipService = require('../services/afipService');
+const { fallo } = require('../utils/errores');
 
 // GET /api/sales?date=YYYY-MM-DD — Ventas de una fecha (paginado)
 router.get('/', checkPermission('ventas.ver'), async (req, res) => {
@@ -48,7 +49,7 @@ router.get('/', checkPermission('ventas.ver'), async (req, res) => {
       totalPages: pageLimit ? Math.ceil(count / pageLimit) : 1,
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al listar las ventas');
   }
 });
 
@@ -77,7 +78,7 @@ router.get('/summary', checkPermission('ventas.ver'), async (req, res) => {
 
     res.json({ ok: true, data: summary });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al calcular el resumen de ventas');
   }
 });
 
@@ -251,7 +252,9 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
     if (err.message.startsWith('Stock insuficiente')) {
       return res.status(400).json({ ok: false, error: err.message });
     }
-    res.status(500).json({ ok: false, error: err.message });
+    // Registrar una venta es la operacion mas critica del sistema: si falla y
+    // no queda rastro, no hay forma de reconstruir que paso en la caja.
+    fallo(req, res, err, 'Error al registrar la venta');
   }
 });
 
@@ -332,7 +335,7 @@ router.put('/:id/void', checkPermission('ventas.anular'), async (req, res) => {
     res.json({ ok: true, message: 'Venta anulada y stock restaurado' });
   } catch (err) {
     await t.rollback();
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al anular la venta');
   }
 });
 

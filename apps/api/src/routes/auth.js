@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Invitacion, Usuario, UsuarioEmpresa, Empresa } = require('../models');
 const { Op } = require('sequelize');
+const { fallo } = require('../utils/errores');
 
 // POST /api/auth/accept-invite/:token — Aceptar invitación (usuario autenticado)
 router.post('/accept-invite/:token', async (req, res) => {
@@ -50,7 +51,7 @@ router.post('/accept-invite/:token', async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al aceptar la invitación');
   }
 });
 
@@ -80,7 +81,7 @@ router.get('/invite/:token', async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al leer la invitación');
   }
 });
 

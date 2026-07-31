@@ -8,6 +8,7 @@ const { Op } = require('sequelize');
 const { Stock, Brand, Product, FixedExpense, Setting, PuntoDeVenta } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
+const { fallo } = require('../utils/errores');
 
 // ═══════ STOCK ═══════
 
@@ -33,7 +34,7 @@ router.get('/stock', checkPermission('stock.ver'), async (req, res) => {
 
     res.json({ ok: true, data: stock });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al listar el stock');
   }
 });
 
@@ -94,7 +95,7 @@ router.put('/stock/:id', checkPermission('stock.editar'), async (req, res) => {
 
     res.json({ ok: true, data: stock });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al actualizar el stock');
   }
 });
 
@@ -147,7 +148,7 @@ router.post('/stock', checkPermission('stock.editar'), async (req, res) => {
 
     res.json({ ok: true, data: stock });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al cargar el stock');
   }
 });
 
@@ -177,7 +178,7 @@ router.post('/stock/bulk', checkPermission('stock.editar'), async (req, res) => 
 
     res.json({ ok: true, updated });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error en la carga masiva de stock');
   }
 });
 
@@ -193,7 +194,7 @@ router.get('/brands', checkPermission('products.ver'), async (req, res) => {
     });
     res.json({ ok: true, data: brands });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al listar las marcas');
   }
 });
 
@@ -203,7 +204,7 @@ router.post('/brands', checkPermission('products.crear'), async (req, res) => {
     const brand = await Brand.create({ ...req.body, empresa_id: req.empresaId });
     res.status(201).json({ ok: true, data: brand });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al crear la marca');
   }
 });
 
@@ -222,7 +223,7 @@ router.get('/expenses', checkPermission('gastos.ver'), async (req, res) => {
     const expenses = await FixedExpense.findAll({ where, order: [['id', 'ASC']] });
     res.json({ ok: true, data: expenses });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al listar los gastos fijos');
   }
 });
 
@@ -236,7 +237,7 @@ router.post('/expenses', checkPermission('gastos.crear'), async (req, res) => {
     const expense = await FixedExpense.create(data);
     res.status(201).json({ ok: true, data: expense });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al crear el gasto fijo');
   }
 });
 
@@ -250,7 +251,7 @@ router.put('/expenses/:id', checkPermission('gastos.editar'), async (req, res) =
     await expense.update(cambios);
     res.json({ ok: true, data: expense });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al actualizar el gasto fijo');
   }
 });
 
@@ -266,7 +267,7 @@ router.delete('/expenses/:id', checkPermission('gastos.eliminar'), async (req, r
     if (!deleted) return res.status(404).json({ ok: false, error: 'Gasto no encontrado' });
     res.json({ ok: true, message: 'Gasto eliminado' });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al eliminar el gasto fijo');
   }
 });
 
@@ -301,7 +302,7 @@ router.get('/settings', checkPermission('config.ver'), async (req, res) => {
 
     res.json({ ok: true, data: obj });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al leer la configuración');
   }
 });
 
@@ -317,7 +318,7 @@ router.get('/settings/:key', checkPermission('config.ver'), async (req, res) => 
     });
     res.json({ ok: true, data: setting ? setting.value : null });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al leer la configuración');
   }
 });
 
@@ -331,7 +332,7 @@ router.put('/settings/:key', checkPermission('config.editar'), async (req, res) 
     if (!created) await setting.update({ value: req.body.value });
     res.json({ ok: true, data: setting });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al guardar la configuración');
   }
 });
 
@@ -391,7 +392,7 @@ router.get('/alerts', checkPermission('stock.ver'), async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    fallo(req, res, err, 'Error al calcular las alertas de stock');
   }
 });
 

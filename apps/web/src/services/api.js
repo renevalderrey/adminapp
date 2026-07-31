@@ -65,6 +65,30 @@ api.interceptors.response.use(
       const msg = error.response?.data?.message || 'No tienes permiso para realizar esta acción';
       console.warn('[api] 403 Forbidden:', msg);
     }
+
+    // ── Codigo de error visible ──
+    //
+    // La API ahora devuelve un requestId en cada 500 y lo repite en cada linea
+    // de log de ese request. Sirve para algo solo si el usuario lo ve: sin el,
+    // un reporte es "me dio error a las tres" y hay que buscar a ciegas.
+    //
+    // Se agrega aca, en el interceptor, y no pantalla por pantalla: todas
+    // muestran `err.response.data.error`, asi que alcanza con completar ese
+    // texto en un solo lugar. Se usan los primeros 8 caracteres porque es lo
+    // que alguien puede dictar por telefono sin equivocarse, y siguen siendo
+    // suficientes para encontrar la linea.
+    const requestId = error.response?.data?.requestId || error.response?.headers?.['x-request-id'];
+
+    if (requestId) {
+      error.requestId = requestId;
+
+      if (error.response?.status >= 500 && error.response.data?.error) {
+        const codigo = String(requestId).slice(0, 8);
+        error.response.data.error = `${error.response.data.error} (código: ${codigo})`;
+        console.error('[api] error del servidor. requestId:', requestId);
+      }
+    }
+
     return Promise.reject(error);
   }
 );

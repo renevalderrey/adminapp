@@ -19,6 +19,20 @@ const extractUser = (req, res, next) => {
   next();
 };
 
+// Cuanto se espera a Auth0 antes de seguir sin el perfil.
+//
+// Esta llamada esta en el camino de TODOS los requests que llegan con un token
+// sin name o sin email. fetch() no tiene timeout por defecto: si Auth0 se
+// pone lento o deja de responder, cada request de la aplicacion se queda
+// colgado esperando —no falla, se cuelga— hasta el timeout del cliente. Con el
+// pool de conexiones y los workers ocupados, un problema de Auth0 se convierte
+// en una caida total de AdminApp.
+//
+// 3 segundos es holgado para una llamada que normalmente tarda decenas de
+// milisegundos, y es un limite duro para el peor caso. El perfil es opcional:
+// si no llega, el usuario se crea con lo que tenga el token.
+const TIMEOUT_USERINFO_MS = 3000;
+
 async function enrichUserFromAuth0(req) {
   if (req.userName && req.userEmail) return;
 
@@ -30,13 +44,22 @@ async function enrichUserFromAuth0(req) {
     const domain = process.env.AUTH0_DOMAIN;
     const res = await fetch(`https://${domain}/userinfo`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(TIMEOUT_USERINFO_MS),
     });
     if (!res.ok) return;
     const profile = await res.json();
     if (!req.userName) req.userName = profile.name || profile.nickname || null;
     if (!req.userEmail) req.userEmail = profile.email || null;
-  } catch {
-    // userinfo fallback no crítico
+  } catch (err) {
+    // El perfil es opcional: se sigue con lo que traiga el token. Pero se
+    // registra, porque si Auth0 empieza a tardar esto es lo primero que lo
+    // muestra. Antes el catch estaba vacio y no quedaba ni rastro.
+    logger.warn(
+      { err, requestId: req.id, userId: req.userId },
+      err?.name === 'TimeoutError'
+        ? 'Auth0 /userinfo no respondio a tiempo'
+        : 'Auth0 /userinfo fallo'
+    );
   }
 }
 

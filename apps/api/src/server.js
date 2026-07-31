@@ -12,6 +12,7 @@ const rateLimit = require('express-rate-limit');
 const { sequelize, Usuario } = require('./models');
 const { checkJwt, extractUser, loadEmpresaContext, requireEmpresa } = require('./middleware/auth');
 const checkSubscription = require('./middleware/checkSubscription');
+const requestId = require('./middleware/requestId');
 const subscriptionCron = require('./services/subscriptionCron');
 const logger = require('./utils/logger');
 
@@ -39,6 +40,11 @@ let servidor = null;
 // ERR_ERL_UNEXPECTED_X_FORWARDED_FOR. El valor 1 = confiar en un solo hop.
 app.set('trust proxy', 1);
 
+// ── Identificador de request ──
+// Primero de todo: para que cualquier cosa que se loguee despues —incluido un
+// rechazo de CORS o un error del propio helmet— pueda referenciarlo.
+app.use(requestId);
+
 // ── Security Headers ──
 app.use(helmet({
   // Los assets servidos por la API (logos de empresa) se embeben desde el
@@ -58,11 +64,34 @@ app.use(helmet({
 // de un error.
 //
 // En desarrollo se mantiene el nivel http para no ensuciar la consola.
+//
+// En produccion la linea sale como campos y no como texto: `combined` produce
+// una cadena estilo Apache que despues nadie puede filtrar sin escribir una
+// expresion regular. Con campos se puede buscar por requestId, por status o
+// por ruta directamente en el panel.
+morgan.token('id', (req) => req.id);
+
+const FORMATO_PROD = ':id\t:remote-addr\t:method\t:url\t:status\t:response-time';
+
 const nivelRequest = process.env.NODE_ENV === 'production'
-  ? (msg) => logger.info({ tipo: 'request' }, msg.trim())
+  ? (linea) => {
+      const [id, ip, metodo, url, status, ms] = linea.trim().split('\t');
+      logger.info(
+        {
+          tipo: 'request',
+          requestId: id,
+          ip,
+          metodo,
+          url,
+          status: Number(status),
+          ms: Number(ms),
+        },
+        `${metodo} ${url} ${status}`
+      );
+    }
   : (msg) => logger.http(msg.trim());
 
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev', {
+app.use(morgan(process.env.NODE_ENV === 'production' ? FORMATO_PROD : 'dev', {
   stream: { write: nivelRequest },
   // El health check lo consulta la plataforma cada pocos segundos: loguearlo
   // tapa todo lo demas.
@@ -104,8 +133,11 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Empresa-Id', 'X-Punto-De-Venta-Id'],
-  exposedHeaders: ['X-Empresa-Id', 'X-Punto-De-Venta-Id'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Empresa-Id', 'X-Punto-De-Venta-Id', 'X-Request-Id'],
+  // X-Request-Id se expone para que el frontend pueda leerlo: sin esto el
+  // navegador se lo oculta al codigo de la app y el usuario no tiene que
+  // copiar a mano.
+  exposedHeaders: ['X-Empresa-Id', 'X-Punto-De-Venta-Id', 'X-Request-Id'],
 }));
 app.use(express.json({ limit: '10mb' }));
 
@@ -321,16 +353,25 @@ app.post('/api/auth/accept-invite/:token', ...authSinEmpresa, require('./routes/
 
 // ── Error Handler Global ──
 app.use((err, req, res, next) => {
-  logger.error({ err, path: req.path, method: req.method }, 'Unhandled error');
-
-  // Error de Auth0 (token inválido o expirado)
+  // Un token vencido no es una falla del servidor: es lo que pasa cada vez que
+  // alguien deja una pestaña abierta. Logueado como error y con el stack
+  // completo, tapaba los errores reales y disparaba alertas por nada.
   if (err.status === 401) {
+    logger.warn({ requestId: req.id, ruta: req.originalUrl }, 'Token inválido o expirado');
     return res.status(401).json({ ok: false, error: 'Token inválido o expirado' });
   }
+
+  logger.error(
+    { err, requestId: req.id, ruta: req.originalUrl, metodo: req.method, empresaId: req.empresaId },
+    'Error no atrapado por la ruta'
+  );
+
+  if (res.headersSent) return next(err);
 
   res.status(err.status || 500).json({
     ok: false,
     error: process.env.NODE_ENV === 'development' ? err.message : 'Error interno del servidor',
+    requestId: req.id,
   });
 });
 
