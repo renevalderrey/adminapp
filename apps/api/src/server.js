@@ -4,6 +4,12 @@
 // ════════════════════════════════════════════
 
 require('dotenv').config();
+
+// Sentry va antes que todo lo demas: si algo falla al cargar un modulo, ese
+// error tambien tiene que llegar.
+const { iniciarSentry, reportarError, vaciarSentry } = require('./config/sentry');
+iniciarSentry();
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -361,10 +367,15 @@ app.use((err, req, res, next) => {
     return res.status(401).json({ ok: false, error: 'Token inválido o expirado' });
   }
 
-  logger.error(
-    { err, requestId: req.id, ruta: req.originalUrl, metodo: req.method, empresaId: req.empresaId },
-    'Error no atrapado por la ruta'
-  );
+  const contexto = {
+    requestId: req.id,
+    ruta: req.originalUrl,
+    metodo: req.method,
+    empresaId: req.empresaId,
+  };
+
+  logger.error({ err, ...contexto }, 'Error no atrapado por la ruta');
+  reportarError(err, contexto);
 
   if (res.headersSent) return next(err);
 
@@ -434,11 +445,13 @@ if (require.main === module) {
   // una API caida.
   process.on('unhandledRejection', (motivo, promesa) => {
     logger.fatal({ err: motivo, promesa: String(promesa) }, 'Promesa rechazada sin catch');
+    reportarError(motivo instanceof Error ? motivo : new Error(String(motivo)), { ruta: 'unhandledRejection' });
     shutdown(1);
   });
 
   process.on('uncaughtException', (err) => {
     logger.fatal({ err }, 'Excepcion no atrapada');
+    reportarError(err, { ruta: 'uncaughtException' });
     shutdown(1);
   });
 }
@@ -467,13 +480,18 @@ function shutdown(codigo = 0) {
   plazo.unref();
 
   const cerrarBase = () => {
-    sequelize.close()
-      .then(() => logger.info('Conexion a PostgreSQL cerrada'))
-      .catch((err) => logger.error({ err }, 'Error cerrando PostgreSQL'))
-      .finally(() => {
-        clearTimeout(plazo);
-        process.exit(codigo);
-      });
+    // Primero se vacia la cola de Sentry: si el proceso muere con el error que
+    // causo la caida todavia en cola, ese error —el que mas importa— no se
+    // entera nadie.
+    vaciarSentry(2000).finally(() => {
+      sequelize.close()
+        .then(() => logger.info('Conexion a PostgreSQL cerrada'))
+        .catch((err) => logger.error({ err }, 'Error cerrando PostgreSQL'))
+        .finally(() => {
+          clearTimeout(plazo);
+          process.exit(codigo);
+        });
+    });
   };
 
   if (servidor) {

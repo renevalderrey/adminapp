@@ -12,13 +12,42 @@ hechos.
 
 | | Qué | Dónde |
 |---|---|---|
+| ⬜ | **Rotar las credenciales del hosting legacy** | Panel de Hostinger · [ver abajo](#rotar-las-credenciales-del-hosting-legacy) |
 | ⬜ | **Correr las migraciones pendientes** | Ver abajo |
-| ⬜ | **Configurar `CRON_SECRET`** y un cron externo diario | Render + cron-job.org |
+| ⬜ | **Configurar `CRON_SECRET`** y los dos secretos del workflow | Render + GitHub · [ver abajo](#tareas-programadas) |
+| ⬜ | **Configurar `SENTRY_DSN`** | sentry.io + Render · [ver abajo](#alertas-de-error) |
 | ⬜ | **Probar el circuito AFIP en homologación** de punta a punta | — |
-| ⬜ | **Probar una restauración de respaldo** | Ver abajo |
+| ⬜ | **Probar una restauración de respaldo** | [Ver abajo](#probar-una-restauración) |
 | ⬜ | **Verificar que los logs se ven** en el panel de Render | — |
 
 Un respaldo que nunca se restauró no es un respaldo. Es un archivo.
+
+---
+
+## Rotar las credenciales del hosting legacy
+
+**Esto es lo único de la lista que no se puede resolver con código.**
+
+`legacy/api.php` tenía hardcodeadas la contraseña de la base MySQL y el token
+de aplicación del hosting original. Se redactaron del archivo, pero **siguen en
+el historial de git**: cualquiera que clone el repositorio y haga
+`git log -p legacy/api.php` las lee.
+
+Redactarlas no las revoca. Hay que cambiarlas en el origen:
+
+1. **Panel de Hostinger → Bases de datos MySQL.** Cambiar la contraseña del
+   usuario de la base de Comprafit.
+2. **El token de aplicación** (`APP_TOKEN` en `api.php`): elegir uno nuevo y
+   ponerlo como variable de entorno `LEGACY_APP_TOKEN` en el hosting.
+3. Si el sistema legacy sigue en uso, actualizar los dos valores donde los
+   consuma.
+
+**Hacerlo ANTES de migrar los datos**, no después: el script de migración se
+conecta a esa API y necesita el token nuevo (`PHP_API_TOKEN`).
+
+Reescribir el historial de git (`git filter-repo`) es una alternativa, pero no
+reemplaza a rotar: si el repo ya se clonó una vez, la credencial vieja ya
+salió. Rotar sí las invalida.
 
 ---
 
@@ -169,13 +198,35 @@ POST /api/tareas/ejecutar
 Header: X-Cron-Secret: <CRON_SECRET>
 ```
 
-Configurar un cron externo gratuito (cron-job.org, GitHub Actions) que lo llame
-una vez por día. Además de correr las tareas, despierta el servicio.
-
 Sin `CRON_SECRET` configurado, el endpoint responde 404: no queda una ruta
 abierta por olvido.
 
 **Si esto no está configurado, los trials no vencen y los avisos no salen.**
+
+### Cómo se configura (una sola vez)
+
+Ya existe el workflow `.github/workflows/tareas-diarias.yml`. Corre todos los
+días a las 06:00 de Argentina y se puede disparar a mano desde la pestaña
+Actions. Se eligió GitHub Actions y no un servicio externo por dos razones: ya
+está pago con el repositorio, y el secreto queda en el mismo lugar que el resto
+en vez de en el panel de un tercero.
+
+Faltan tres pasos, todos de panel:
+
+1. **Elegir un secreto.** Cualquier cadena larga y aleatoria:
+   ```
+   openssl rand -hex 32
+   ```
+2. **Render → el servicio → Environment.** Agregar `CRON_SECRET` con ese valor.
+   Guardar (redeploya).
+3. **GitHub → Settings → Secrets and variables → Actions.** Agregar:
+   - `API_URL` — la URL de la API, sin barra final. Ej:
+     `https://adminapp-api.onrender.com`
+   - `CRON_SECRET` — **el mismo valor** del paso 2.
+
+Para probarlo sin esperar al día siguiente: pestaña **Actions → Tareas diarias
+→ Run workflow**. Si los secretos faltan o no coinciden, el workflow falla con
+el motivo escrito.
 
 ---
 
@@ -226,11 +277,99 @@ Ninguna impide escalar, pero las tres hay que resolverlas antes.
 
 ---
 
+## Alertas de error
+
+Cada 500 y cada caída del proceso se reportan a Sentry, **si está configurado**.
+Sin `SENTRY_DSN` no se inicializa nada y el sistema funciona igual: la
+aplicación no depende de un servicio externo para arrancar.
+
+Configurarlo:
+
+1. Crear una cuenta en sentry.io y un proyecto **Node.js**. El plan gratuito
+   (5.000 eventos/mes) sobra para un cliente.
+2. Copiar el DSN (`https://...@....ingest.sentry.io/...`).
+3. Render → Environment → `SENTRY_DSN`.
+4. En Sentry, Alerts → activar el aviso por mail para errores nuevos.
+
+Lo que llega en cada evento: el `requestId`, la ruta, el método y el
+`empresaId`. Con el `requestId` se encuentra la línea exacta en los logs de
+Render.
+
+Lo que **no** sale del sistema: certificados y claves de AFIP, tokens de
+TiendaNube, contraseñas y cabeceras de autorización. Hay un filtro explícito en
+`src/config/sentry.js` — un secreto en el panel de un tercero es una fuga igual
+que en cualquier otro lado.
+
+---
+
+## Probar una restauración
+
+Un respaldo que nunca se restauró no es un respaldo.
+
+**Lo que cubre Neon (recuperación ante desastre).** Neon guarda un historial
+que permite volver la base a un momento anterior. Cómo probarlo sin tocar
+producción:
+
+1. Panel de Neon → el proyecto → **Branches** → *Create branch*.
+2. Elegir **"From a point in time"** y una fecha de ayer.
+3. Neon crea una rama con su propio connection string.
+4. Conectarse a esa rama y verificar que los datos están:
+   ```sql
+   SELECT COUNT(*) FROM sales;
+   SELECT MAX(date) FROM sales;
+   SELECT COUNT(*) FROM empresas;
+   ```
+5. Borrar la rama.
+
+Esto no interrumpe nada: la rama es una copia. **Anotar la fecha en que se
+probó** — es lo único que convierte el respaldo en respaldo.
+
+**Lo que cubre `scripts/backup.js`** (exportar los datos de una empresa a JSON)
+es otro caso: devolverle los datos a un cliente que se va, o recuperar algo que
+alguien borró por error. No reemplaza lo anterior.
+
+```
+npm --prefix apps/api run backup -- --empresa=<id>
+```
+
+---
+
+## Migrar un cliente desde el sistema legacy
+
+El sistema viejo de Comprafit (PHP + MySQL) guardaba todo como JSON en una
+tabla clave-valor. El script traduce eso al esquema actual.
+
+```
+# 1. Simulación: no escribe nada, dice qué haría
+npm --prefix apps/api run migrar:legacy -- --empresa=<id>
+
+# 2. Si el resumen cierra, aplicar
+npm --prefix apps/api run migrar:legacy -- --empresa=<id> --confirmar
+```
+
+Antes de correrlo:
+
+- La empresa destino tiene que **existir** y tener **al menos un punto de
+  venta**. El script no los crea.
+- Para traer los datos **actuales** hacen falta `PHP_API_URL` y `PHP_API_TOKEN`
+  (el token nuevo, después de rotarlo). Sin eso, el script cae al HTML del
+  repo, que tiene los datos **semilla** — no los de hoy.
+- Migra: marcas, productos, stock por sucursal, gastos fijos, ventas con sus
+  ítems, y proveedores con movimientos, pedidos y documentos.
+- **No** migra los permisos del legacy: el modelo cambió por completo. Se
+  cargan de nuevo desde Equipo.
+- Los gastos variables quedan guardados como referencia en `settings`, porque
+  todavía no hay pantalla para ellos.
+
+Es idempotente: correrlo dos veces no duplica. Y va en una transacción — si
+falla a la mitad, no queda nada a medio migrar.
+
+---
+
 ## Lo que todavía no existe
 
 Para que nadie lo busque:
 
-- **Alertas.** Nadie se entera de un error salvo que mire el panel.
 - **Notas de crédito.**
 - **Pasarela de pago.**
 - **Panel del dueño del SaaS.** Todo se hace con los scripts o contra la base.

@@ -13,6 +13,6 @@ module.exports = {
     'src/**/*.js',
     '!src/tests/**',
     '!src/migrations/**',
-    '!src/migrate.js',
+    '!scripts/**',
   ],
 };

@@ -1,0 +1,90 @@
+# ════════════════════════════════════════════
+#  Tareas diarias
+#
+#  El cron de suscripciones vive dentro del proceso, con setInterval. En el
+#  plan gratuito de Render el servicio se duerme a los 15 minutos sin trafico,
+#  y setInterval no dispara mientras duerme: los trials no vencen y los avisos
+#  de vencimiento no salen. Con la aplicacion usandose de dia y durmiendo de
+#  noche, el cron puede pasar dias sin correr.
+#
+#  Esto lo despierta una vez por dia y ejecuta las tareas. Se usa GitHub
+#  Actions y no un servicio externo (cron-job.org y similares) por dos razones:
+#  ya esta pago con el repo, y el secreto queda en el mismo lugar que el resto
+#  de los secretos del proyecto en vez de en el panel de un tercero.
+#
+#  ── Configuracion (una sola vez) ──
+#
+#  En Settings → Secrets and variables → Actions del repositorio:
+#
+#    API_URL      https://tu-api.onrender.com     (sin barra final)
+#    CRON_SECRET  el mismo valor que la variable CRON_SECRET del servicio
+#
+#  Sin CRON_SECRET configurado del lado de la API, el endpoint responde 404 a
+#  proposito: no queremos una ruta abierta por olvido.
+# ════════════════════════════════════════════
+
+name: Tareas diarias
+
+on:
+  schedule:
+    # 09:00 UTC = 06:00 en Argentina (UTC-3). Temprano, para que el aviso de
+    # vencimiento le llegue al cliente al empezar el dia y no de madrugada.
+    - cron: '0 9 * * *'
+
+  # Tambien a mano, desde la pestaña Actions. Util para probar la configuracion
+  # sin esperar al dia siguiente.
+  workflow_dispatch:
+
+jobs:
+  ejecutar:
+    name: Vencimientos y avisos de suscripcion
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Comprobar que estan los secretos
+        env:
+          API_URL: ${{ secrets.API_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          faltan=""
+          [ -z "$API_URL" ] && faltan="$faltan API_URL"
+          [ -z "$CRON_SECRET" ] && faltan="$faltan CRON_SECRET"
+
+          if [ -n "$faltan" ]; then
+            echo "Faltan secretos del repositorio:$faltan"
+            echo "Se configuran en Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Despertar el servicio
+        env:
+          API_URL: ${{ secrets.API_URL }}
+        # El free tier tarda hasta ~50 s en levantar despues de dormir. Se lo
+        # despierta primero con /api/ping —que no exige secreto— para que la
+        # llamada real no se coma el arranque en frio.
+        run: |
+          curl --silent --show-error --max-time 90 --retry 3 --retry-all-errors \
+            "$API_URL/api/ping" || echo "El ping fallo; se intenta igual."
+
+      - name: Ejecutar las tareas
+        env:
+          API_URL: ${{ secrets.API_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          respuesta=$(mktemp)
+
+          codigo=$(curl --silent --show-error --max-time 120 \
+            --write-out '%{http_code}' --output "$respuesta" \
+            --request POST "$API_URL/api/tareas/ejecutar" \
+            --header "X-Cron-Secret: $CRON_SECRET")
+
+          echo "HTTP $codigo"
+          cat "$respuesta"
+          echo
+
+          # Un 401 o un 404 significan que la configuracion esta mal, no que
+          # haya un problema pasajero: conviene que el workflow falle y avise.
+          if [ "$codigo" != "200" ]; then
+            echo "::error::Las tareas diarias no se ejecutaron (HTTP $codigo)."
+            exit 1
+          fi

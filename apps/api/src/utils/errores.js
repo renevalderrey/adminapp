@@ -1,4 +1,5 @@
 const logger = require('./logger');
+const { reportarError } = require('../config/sentry');
 
 // ════════════════════════════════════════════
 //  Respuesta 500
@@ -72,17 +73,19 @@ function fallo(req, res, err, mensaje = 'Error interno del servidor') {
     });
   }
 
-  logger.error(
-    {
-      err,
-      requestId: req.id,
-      ruta: req.originalUrl,
-      metodo: req.method,
-      empresaId: req.empresaId,
-      usuario: req.userId,
-    },
-    mensaje
-  );
+  const contexto = {
+    requestId: req.id,
+    ruta: req.originalUrl,
+    metodo: req.method,
+    empresaId: req.empresaId,
+    usuario: req.userId,
+  };
+
+  logger.error({ err, ...contexto }, mensaje);
+
+  // Un ErrorDeNegocio no llega hasta aca, asi que todo lo que se reporta es
+  // un fallo real del servidor.
+  reportarError(err, contexto);
 
   // Puede pasar que la respuesta ya se haya empezado a enviar (por ejemplo si
   // el error ocurre despues de un res.write). Volver a escribir tira
