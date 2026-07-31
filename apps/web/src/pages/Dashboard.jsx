@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useIsMounted } from '@/lib/useAsyncEffect'
+import { calcularBep, estrategiasDePrecio } from '@/utils/bep'
 import {
   TrendingUp,
   Calculator,
@@ -59,9 +60,12 @@ const Dashboard = () => {
     }
   }
 
-  const bepMargin = fixedExpenses > 0 && targetSales > 0
-    ? Math.round((fixedExpenses / targetSales) * 100)
-    : 0
+  // El punto de equilibrio se plantea sobre la VENTA (que fraccion de lo
+  // facturado tiene que ser margen), pero los precios se fijan aplicando un
+  // recargo al COSTO. No son el mismo numero y hay que mostrar los dos.
+  // Ver apps/web/src/utils/bep.js.
+  const bep = calcularBep(fixedExpenses, targetSales)
+  const estrategias = estrategiasDePrecio(fixedExpenses, targetSales)
 
   const formatCurrency = (val) => {
     const n = parseFloat(val)
@@ -329,17 +333,39 @@ const Dashboard = () => {
                     <p className="text-[11px] text-muted-foreground">Basado en tus costos operativos actuales.</p>
                   </div>
                 </div>
-                <p className="text-3xl font-black font-mono text-green-500">
-                  {bepMargin}%{' '}
-                  <span className="text-sm font-semibold text-muted-foreground ml-2">
-                    de margen promedio
-                  </span>
-                </p>
-                <p className="text-sm leading-relaxed text-foreground mt-2">
-                  Para cubrir tus gastos fijos de <strong>${fixedExpenses.toLocaleString()}</strong> con
-                  una facturación de <strong>${targetSales.toLocaleString()}</strong>,
-                  necesitás un recargo mínimo del <strong>{bepMargin}%</strong> sobre el costo de todos tus productos.
-                </p>
+                {bep.viable ? (
+                  <>
+                    <p className="text-3xl font-black font-mono text-green-500">
+                      {bep.recargoSobreCosto}%{' '}
+                      <span className="text-sm font-semibold text-muted-foreground ml-2">
+                        de recargo sobre el costo
+                      </span>
+                    </p>
+                    <p className="text-sm leading-relaxed text-foreground mt-2">
+                      Para cubrir tus gastos fijos de <strong>${fixedExpenses.toLocaleString()}</strong> con
+                      una facturación de <strong>${targetSales.toLocaleString()}</strong>,
+                      necesitás aplicar un recargo mínimo del <strong>{bep.recargoSobreCosto}%</strong> sobre
+                      el costo de tus productos.
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Equivale a que el <strong>{bep.margenSobreVenta}%</strong> de lo que facturás sea
+                      margen bruto. Ojo: no es lo mismo un recargo del {bep.recargoSobreCosto}% sobre el
+                      costo que un margen del {bep.recargoSobreCosto}% sobre la venta.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-3xl font-black font-mono text-orange-500">
+                      Sin solución
+                    </p>
+                    <p className="text-sm leading-relaxed text-foreground mt-2">
+                      Con gastos fijos de <strong>${fixedExpenses.toLocaleString()}</strong> y una meta de
+                      <strong> ${targetSales.toLocaleString()}</strong>, no hay precio que cierre: los
+                      gastos se llevan toda la facturación. Hay que subir la meta de ventas o bajar
+                      los gastos fijos.
+                    </p>
+                  </>
+                )}
               </CardContent>
             </Card>
           </CardContent>
@@ -353,35 +379,44 @@ const Dashboard = () => {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Card className="border-green-500/20 bg-green-500/5">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-bold text-sm text-green-500">BEP JUSTO</span>
-                  <Badge variant="outline" className="text-green-500 border-green-500/30">{bepMargin}%</Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">Precio de supervivencia. Cubre exactamente los gastos fijos sin utilidad neta.</p>
-              </CardContent>
-            </Card>
+            {/*
+              Antes cada estrategia mostraba bepMargin, bepMargin + 10 y
+              bepMargin + 25, sumando puntos porcentuales a un numero que se
+              describia como recargo sobre el costo. Sumar 10 puntos a un
+              recargo no produce 10% de utilidad neta. Ahora la utilidad se
+              suma al margen sobre la venta y recien despues se convierte a
+              recargo sobre el costo, que es lo que el comerciante aplica.
+            */}
+            {estrategias.map((e) => {
+              const estilos = {
+                equilibrio: { borde: 'border-green-500/20 bg-green-500/5', texto: 'text-green-500', badge: 'text-green-500 border-green-500/30' },
+                recomendado: { borde: 'border-primary/20 bg-primary/5', texto: 'text-primary', badge: '' },
+                agresivo: { borde: 'border-orange-500/20 bg-orange-500/5', texto: 'text-orange-500', badge: 'text-orange-500 border-orange-500/30' },
+              }[e.clave]
 
-            <Card className="border-primary/20 bg-primary/5">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-bold text-sm text-primary">RECOMENDADO</span>
-                  <Badge>{bepMargin + 10}%</Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">Equilibrio entre competitividad y rentabilidad saludable (10% utilidad neta).</p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-orange-500/20 bg-orange-500/5">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-bold text-sm text-orange-500">AGRESIVO</span>
-                  <Badge variant="outline" className="text-orange-500 border-orange-500/30">{bepMargin + 25}%</Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">Maximización de márgenes para productos exclusivos o baja rotación.</p>
-              </CardContent>
-            </Card>
+              return (
+                <Card key={e.clave} className={estilos.borde}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`font-bold text-sm uppercase ${estilos.texto}`}>{e.titulo}</span>
+                      {e.recargoSobreCosto === null ? (
+                        <Badge variant="outline" className="text-muted-foreground">No alcanzable</Badge>
+                      ) : (
+                        <Badge variant={e.clave === 'recomendado' ? 'default' : 'outline'} className={estilos.badge}>
+                          +{e.recargoSobreCosto}% sobre costo
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{e.descripcion}</p>
+                    {e.recargoSobreCosto !== null && (
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        Margen sobre la venta: {e.margenSobreVenta}%
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              )
+            })}
 
             <Card className="bg-muted/50">
               <CardContent className="p-3 flex items-center gap-2">

@@ -15,9 +15,11 @@
     "build": "npm run build:web && npm run build:landing",
     "build:web": "npm --prefix apps/web run build",
     "build:landing": "npm --prefix apps/landing run build",
-    "test": "npm --prefix apps/api test",
+    "test": "npm --prefix apps/api test && npm --prefix apps/web test",
     "lint": "npm --prefix apps/web run lint && npm --prefix apps/landing run lint",
-    "migrate": "npm --prefix apps/api run db:migrate"
+    "migrate": "npm --prefix apps/api run db:migrate",
+    "test:api": "npm --prefix apps/api test",
+    "test:web": "npm --prefix apps/web test"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
