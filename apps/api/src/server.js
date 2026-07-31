@@ -187,7 +187,10 @@ app.use('/api/sales', ...authEmpresa, require('./routes/sales'));
 app.use('/api/suppliers', ...authEmpresa, require('./routes/suppliers'));
 app.use('/api/afip', ...authEmpresa, require('./routes/afip'));
 app.use('/api', ...authEmpresa, require('./routes/general'));
-app.use('/api/tiendanube', require('./routes/tiendanube'));
+// TiendaNube se monta en dos partes: lo que llama TiendaNube desde afuera va
+// sin sesion (valida firma HMAC), y lo que llama la app va autenticado.
+app.use('/api/tiendanube', require('./routes/tiendanube').publico);
+app.use('/api/tiendanube', ...authEmpresa, require('./routes/tiendanube').privado);
 app.use('/api/production', ...authEmpresa, require('./routes/production'));
 app.use('/api/customers', ...authEmpresa, require('./routes/customers'));
 app.use('/api/stock', ...authEmpresa, require('./routes/stock'));

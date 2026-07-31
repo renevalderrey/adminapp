@@ -86,9 +86,27 @@ class TiendaNubeService {
     );
   }
 
+  /**
+   * Descuenta stock por un pedido de TiendaNube.
+   *
+   * Es idempotente: si ya se procesó este pedido, no vuelve a descontar.
+   * TiendaNube reintenta los webhooks ante cualquier respuesta que no sea 200,
+   * y sin esta guarda un reintento descontaba el stock de nuevo.
+   *
+   * LIMITACIÓN CONOCIDA: baja el inventario pero NO registra una venta. Los
+   * pedidos de la tienda online no aparecen en facturación, ni en el flujo de
+   * caja, ni en los reportes: el stock desaparece sin ingreso asociado.
+   * Completarlo es desarrollo nuevo, no un arreglo. Ver docs/ANALISIS.md.
+   */
   async processOrderCreated(orderData, empresaId, puntoDeVentaId) {
-    const sequelize = require('../config/database');
-    const { Sale, SaleItem } = require('../models');
+    const referencia = `tn_order_${orderData.id}`;
+
+    const yaProcesado = await StockMovement.findOne({
+      where: { empresa_id: empresaId, referencia_id: referencia },
+      attributes: ['id'],
+    });
+
+    if (yaProcesado) return { procesado: false, motivo: 'pedido ya procesado' };
 
     const items = orderData.products || orderData.items || [];
 
@@ -124,7 +142,7 @@ class TiendaNubeService {
             product_id: mapping.product_id,
             punto_de_venta_id: puntoDeVentaId || null,
             tipo: 'tiendanube_sale',
-            referencia_id: `tn_order_${orderData.id}`,
+            referencia_id: referencia,
             cantidad_anterior: oldQty,
             cantidad_nueva: stock.quantity,
             disponible_anterior: oldAvail,
@@ -134,6 +152,8 @@ class TiendaNubeService {
         }
       }
     }
+
+    return { procesado: true };
   }
 }
 
