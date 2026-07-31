@@ -14,7 +14,7 @@ router.get('/sales', checkPermission('reportes.ver'), async (req, res) => {
     const items = await SaleItem.findAll({
       attributes: [
         'sale_id', 'product_name', 'quantity', 'unit_price',
-        [col('Sale.date'), 'sale_date'],
+        [col('sale.date'), 'sale_date'],
       ],
       include: [
         {

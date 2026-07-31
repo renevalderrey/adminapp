@@ -13,10 +13,18 @@ const {
   assertEmpresaId,
 } = require('../utils/tenantScope');
 
-/** Modelo falso que registra con que argumentos lo llamaron. */
-function modeloFalso(devuelve = null) {
+/**
+ * Modelo falso que registra con que argumentos lo llamaron.
+ *
+ * Incluye primaryKeyAttribute y rawAttributes porque findScoped mira el tipo
+ * de la clave primaria para decidir si el id se parsea como entero o se usa
+ * tal cual: no todas las tablas usan enteros.
+ */
+function modeloFalso(devuelve = null, tipoPk = 'INTEGER') {
   return {
     llamadas: [],
+    primaryKeyAttribute: 'id',
+    rawAttributes: { id: { type: { key: tipoPk } } },
     async findOne(opciones) {
       this.llamadas.push(opciones);
       return devuelve;
@@ -101,7 +109,7 @@ describe('findScoped', () => {
   // Un id no numerico no debe llegar a la base: Sequelize lo rechazaria con un
   // error de tipo que se filtraria al cliente como un 500.
   it.each([['texto', 'abc'], ['vacio', ''], ['undefined', undefined]])(
-    'devuelve null sin consultar si el id es %s',
+    'con clave primaria entera, devuelve null sin consultar si el id es %s',
     async (_nombre, id) => {
       const Model = modeloFalso({ id: 1 });
       const resultado = await findScoped(Model, id, 7);
@@ -110,6 +118,34 @@ describe('findScoped', () => {
       expect(Model.llamadas).toHaveLength(0);
     }
   );
+
+
+  // Sale tiene la clave primaria en STRING(40): el cliente genera ids del
+  // estilo "sale_1738012345". Una version anterior hacia parseInt sin mirar el
+  // modelo, con lo cual toda busqueda sobre Sale devolvia null y anular una
+  // venta respondia 404.
+  describe('con clave primaria de texto', () => {
+    it('usa el id tal cual, sin parsearlo como numero', async () => {
+      const Model = modeloFalso({ id: 'sale_123' }, 'STRING');
+      await findScoped(Model, 'sale_1738012345', 7);
+
+      expect(Model.llamadas[0].where).toEqual({ id: 'sale_1738012345', empresa_id: 7 });
+    });
+
+    it('acepta un id numerico convirtiendolo a texto', async () => {
+      const Model = modeloFalso({ id: '5' }, 'STRING');
+      await findScoped(Model, 5, 7);
+
+      expect(Model.llamadas[0].where.id).toBe('5');
+    });
+
+    it('sigue rechazando el id vacio', async () => {
+      const Model = modeloFalso({ id: 'x' }, 'STRING');
+
+      expect(await findScoped(Model, '', 7)).toBeNull();
+      expect(Model.llamadas).toHaveLength(0);
+    });
+  });
 
   it('falla si falta el empresaId, en vez de consultar sin filtro', async () => {
     const Model = modeloFalso({ id: 5 });

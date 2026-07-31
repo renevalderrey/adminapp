@@ -29,13 +29,41 @@
 async function findScoped(Model, id, empresaId, options = {}) {
   assertEmpresaId(empresaId);
 
-  const parsedId = typeof id === 'string' ? parseInt(id, 10) : id;
-  if (!Number.isInteger(parsedId)) return null;
+  const idNormalizado = normalizarId(Model, id);
+  if (idNormalizado === null) return null;
 
   return Model.findOne({
     ...options,
-    where: { ...(options.where || {}), id: parsedId, empresa_id: empresaId },
+    where: { ...(options.where || {}), id: idNormalizado, empresa_id: empresaId },
   });
+}
+
+/**
+ * Adapta el id recibido al tipo de la clave primaria del modelo.
+ *
+ * No todas las tablas usan enteros: Sale tiene la PK en STRING(40) porque el
+ * cliente genera identificadores del estilo "sale_1738012345". Una version
+ * anterior de este helper hacia parseInt sin mirar el modelo, con lo cual
+ * cualquier busqueda sobre Sale devolvia null y la anulacion de ventas
+ * respondia 404.
+ *
+ * @returns {number|string|null} null si el id no sirve para ese modelo.
+ */
+function normalizarId(Model, id) {
+  if (id === null || id === undefined || id === '') return null;
+
+  const atributo = Model.primaryKeyAttribute || 'id';
+  const definicion = Model.rawAttributes && Model.rawAttributes[atributo];
+  const tipo = definicion && definicion.type && definicion.type.key;
+
+  // INTEGER, BIGINT: se exige un entero, para no mandar basura a la base.
+  if (tipo === 'INTEGER' || tipo === 'BIGINT') {
+    const n = typeof id === 'string' ? parseInt(id, 10) : id;
+    return Number.isInteger(n) ? n : null;
+  }
+
+  // STRING, UUID y cualquier otro: se usa tal cual.
+  return String(id);
 }
 
 /**
@@ -90,4 +118,4 @@ function assertEmpresaId(empresaId) {
   }
 }
 
-module.exports = { findScoped, findScopedOrFail, scoped, assertEmpresaId };
+module.exports = { findScoped, findScopedOrFail, scoped, assertEmpresaId, normalizarId };

@@ -145,6 +145,9 @@ const SaleItem = sequelize.define('SaleItem', {
 
 // ── Relaciones ──
 Sale.hasMany(SaleItem, { foreignKey: 'sale_id', as: 'items' });
-SaleItem.belongsTo(Sale, { foreignKey: 'sale_id' });
+// El alias explicito 'sale' hace falta: sin el, Sequelize registra la
+// asociacion bajo el nombre del modelo ('Sale', con mayuscula) y cualquier
+// include que use as:'sale' falla en tiempo de ejecucion.
+SaleItem.belongsTo(Sale, { foreignKey: 'sale_id', as: 'sale' });
 
 module.exports = { Sale, SaleItem };

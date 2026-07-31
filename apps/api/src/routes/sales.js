@@ -87,6 +87,22 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
 
     const lineas = Array.isArray(items) ? items : [];
 
+    // Una cantidad negativa pasaba el control de stock (available < -5 es
+    // falso) y despues hacia quantity - (-5), es decir SUMABA inventario.
+    // Registrar una venta con cantidad -5 creaba mercaderia de la nada.
+    const invalida = lineas
+      .map((item, i) => ({ i, ...normalizarItem(item) }))
+      .find((l) => l.quantity <= 0 || l.unit_price < 0);
+
+    if (invalida) {
+      await t.rollback();
+      return res.status(400).json({
+        ok: false,
+        error: 'ITEM_INVALIDO',
+        message: `El item "${invalida.product_name}" tiene cantidad o precio inválidos (cantidad ${invalida.quantity}, precio ${invalida.unit_price}).`,
+      });
+    }
+
     // El total se recalcula a partir de las lineas y NO se toma del body. Es
     // el registro contable de la operacion: si el cliente lo manda y el
     // servidor lo guarda sin mirar, cualquier bug del frontend —o cualquier
@@ -95,6 +111,8 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
     // Si el declarado no cierra contra las lineas se rechaza en vez de
     // corregirlo en silencio: en un punto de venta, guardar un total distinto
     // al que vio el operador y le cobro al cliente es peor que fallar.
+    const advertencias = [];
+
     const verificacion = verificarTotal(total, lineas);
 
     if (!verificacion.ok) {
@@ -160,6 +178,23 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
           lock: t.LOCK.UPDATE,
         });
 
+        // Sin fila de stock para ese punto de venta, la venta se registraba y
+        // no se descontaba nada, sin ningun aviso. Es el caso tipico cuando el
+        // stock se cargo sin sucursal y el POS opera con una: el inventario
+        // nunca baja y el faltante aparece recien en un recuento fisico.
+        //
+        // No se rechaza la venta —hay rubros que venden servicios sin stock—
+        // pero se avisa en la respuesta y queda en el log.
+        if (!stock) {
+          advertencias.push(
+            `No hay stock cargado para "${si.product_name}" en este punto de venta: no se descontó inventario.`
+          );
+          logger.warn(
+            { empresaId: req.empresaId, productId: si.product_id, puntoDeVentaId: req.puntoDeVentaId || null },
+            'sales: venta sin fila de stock, no se descuenta'
+          );
+        }
+
         if (stock) {
           const qty = si.quantity;
           if (stock.available < qty) {
@@ -189,7 +224,7 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
     }
 
     await t.commit();
-    res.status(201).json({ ok: true, data: sale });
+    res.status(201).json({ ok: true, data: sale, warnings: advertencias });
   } catch (err) {
     await t.rollback();
     if (err.message.startsWith('Stock insuficiente')) {
@@ -206,15 +241,31 @@ router.put('/:id/void', checkPermission('ventas.anular'), async (req, res) => {
     // Sin el filtro por empresa, este endpoint permitia anular la venta de
     // otra empresa cliente — y la anulacion devuelve stock, asi que ademas de
     // leer, alteraba su inventario.
+    //
+    // El lock va SIN include a proposito. Con un include, Sequelize arma
+    // "SELECT ... LEFT OUTER JOIN sale_items ... FOR UPDATE", y PostgreSQL lo
+    // rechaza: "FOR UPDATE cannot be applied to the nullable side of an outer
+    // join". La consulta fallaba siempre y ninguna venta se podia anular.
+    // Los items se traen aparte, ya con la venta bloqueada.
     const sale = await findScoped(Sale, req.params.id, req.empresaId, {
-      include: [{ model: SaleItem, as: 'items' }],
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
-    if (!sale) return res.status(404).json({ ok: false, error: 'Venta no encontrada' });
-    if (sale.status === 'voided') return res.status(400).json({ ok: false, error: 'Venta ya anulada' });
+    if (!sale) {
+      await t.rollback();
+      return res.status(404).json({ ok: false, error: 'Venta no encontrada' });
+    }
+    if (sale.status === 'voided') {
+      await t.rollback();
+      return res.status(400).json({ ok: false, error: 'Venta ya anulada' });
+    }
 
-    for (const item of sale.items || []) {
+    const items = await SaleItem.findAll({
+      where: { sale_id: sale.id },
+      transaction: t,
+    });
+
+    for (const item of items) {
       if (!item.product_id) continue;
 
       const stock = await Stock.findOne({
