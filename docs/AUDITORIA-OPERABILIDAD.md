@@ -377,3 +377,26 @@ nunca falla no sirve de nada.
   importación devolvía 500 en vez de reportar la fila y seguir.
 
 **Suite:** 252 → **308 tests**.
+
+---
+
+## El CI estaba en rojo, y lo que encontró
+
+El CI se agregó en este mismo frente, pero **nunca había pasado en verde**. Dos
+fallas independientes, las dos invisibles en la máquina de quien desarrolla:
+
+1. **Una base nueva no se podía crear.** La migración de `tiendanube_mappings`
+   usaba `references: { table, key }` en `addConstraint`, donde sequelize espera
+   `{ table, field }` — la forma `{ model, key }` es la de `addColumn`. Fallaba
+   con *"references object with table and field must be specified"* y cortaba la
+   cadena de migraciones. La base existente ya tenía las tablas, así que el
+   problema solo aparecía desde cero: exactamente el caso de un deploy nuevo o
+   de una restauración de backup.
+
+2. **`server.test.js` fallaba sin `.env`.** `BYPASS_AUTH` evita que el servidor
+   use `checkJwt`, pero `middleware/auth.js` igual construye `auth({...})` al
+   importarse, y eso exige `AUTH0_AUDIENCE`. En local lo tapaba el `.env`.
+
+Es el argumento a favor del job que arranca la imagen de verdad: **los tests
+usan modelos falsos y jamás habrían encontrado el primero.** Con los dos
+corregidos, los cuatro jobs pasan.
