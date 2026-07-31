@@ -25,8 +25,41 @@ const { fechaParaAfip } = require('../utils/fechas');
 // dejar la conexion colgada indefinidamente.
 const TIMEOUT_AFIP_MS = 30000;
 
+/**
+ * Serializa las llamadas que comparten una misma clave.
+ *
+ * La numeracion de AFIP es correlativa por (punto de venta, tipo de
+ * comprobante) y se obtiene con un read-then-write: se pregunta cual fue el
+ * ultimo autorizado y se pide el siguiente. Sin serializar, dos cajas que
+ * facturan a la vez leen el mismo "ultimo" y piden el mismo numero: AFIP
+ * autoriza uno y rechaza el otro.
+ *
+ * Cada clave mantiene su propia cola; claves distintas siguen en paralelo.
+ */
+function crearSerializador() {
+  const colas = new Map();
+
+  return function serializar(clave, tarea) {
+    const anterior = colas.get(clave) || Promise.resolve();
+
+    // catch() para que un fallo no deje la cola envenenada para los siguientes.
+    const actual = anterior.catch(() => {}).then(tarea);
+
+    colas.set(clave, actual);
+
+    // Se limpia la entrada cuando ya no hay nadie encolado detras.
+    actual.catch(() => {}).finally(() => {
+      if (colas.get(clave) === actual) colas.delete(clave);
+    });
+
+    return actual;
+  };
+}
+
 class AfipService {
   constructor() {
+    this.serializar = crearSerializador();
+
     // Map<'homologation'|'production', clienteSoap>. El cliente se puede
     // compartir entre empresas del MISMO entorno: no lleva credenciales, esas
     // viajan en el parametro Auth de cada llamada.
@@ -135,7 +168,25 @@ class AfipService {
     });
   }
 
-  async createVoucher({ type, pv, customerCuit, amount, concept = 1, customerVatCondition = 5, empresaId }) {
+  /**
+   * Emite un comprobante electronico.
+   *
+   * Las llamadas para un mismo (empresa, punto de venta, tipo) se serializan:
+   * la numeracion de AFIP es correlativa y se obtiene con un read-then-write,
+   * asi que dos cajas simultaneas leian el mismo "ultimo autorizado" y pedian
+   * el mismo numero. AFIP autorizaba uno y rechazaba el otro.
+   *
+   * LIMITACION: el serializador es en memoria del proceso. Con una sola
+   * instancia —que es la configuracion actual— cubre el caso por completo. Con
+   * varias instancias en paralelo hay que sumar un lock en base o un pedido de
+   * numeracion centralizado. Ver docs/AUDITORIA-AFIP.md.
+   */
+  async createVoucher(datos) {
+    const clave = `${datos.empresaId}:${datos.pv}:${datos.type}`;
+    return this.serializar(clave, () => this._emitirComprobante(datos));
+  }
+
+  async _emitirComprobante({ type, pv, customerCuit, amount, concept = 1, customerVatCondition = 5, empresaId }) {
     if (!Number.isInteger(empresaId)) {
       throw new Error('AFIP: falta empresaId al emitir el comprobante.');
     }

@@ -264,6 +264,22 @@ todo el repo; hace falta ~100 % de lo que toca plata.
 
 ## Frente 3 · Estado real de la integración AFIP
 
+> **ESTADO: CERRADO** (31/07/2026). 67 hallazgos confirmados (10 críticos).
+> Detalle en [AUDITORIA-AFIP.md](AUDITORIA-AFIP.md).
+>
+> **Antes de esta auditoría la facturación electrónica no podía funcionar**, y
+> no por un detalle: guardar Ajustes destruía el certificado de forma
+> irreversible, y la configuración nunca llegaba al POS porque un JSON semilla
+> vacío la tapaba. Además el CSR salía sin el CUIT (ARCA lo rechaza) y
+> tax_condition se descartaba en silencio, con lo cual todo Responsable
+> Inscripto facturaba sin discriminar IVA.
+>
+> La parte difícil —firma PKCS#7, WSAA, SOAP— está bien resuelta. Lo que
+> fallaba era la plomería alrededor.
+>
+> No hay evidencia de que se haya probado nunca contra homologación. Es lo
+> primero antes de emitir en producción.
+
 **Bloquea vender**, porque es la promesa central del producto y es lo que un
 cliente no puede resolver por su cuenta.
 
