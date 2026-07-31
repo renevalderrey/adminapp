@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
-import api, { setAuthToken, setEmpresaContext, setOnUnauthorized } from '@/services/api'
+import api, { setAuthToken, setEmpresaContext, setOnUnauthorized, setOnSubscriptionExpired } from '@/services/api'
 import { usePermission } from '@/hooks/usePermission'
 import useStore from '@/store/useStore'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -71,6 +71,20 @@ function App() {
       logout({ logoutParams: { returnTo: window.location.origin } })
     })
   }, [logout])
+
+  // La API devuelve 402 cuando la suscripcion vencio. Sin este manejo, cada
+  // pantalla mostraba su propio error generico y el usuario veia la aplicacion
+  // rota en vez de entender que tiene que renovar.
+  //
+  // Se avisa una sola vez por sesion: repetir el mismo toast en cada request
+  // fallido tapa la pantalla.
+  const [suscripcionVencida, setSuscripcionVencida] = useState(null)
+
+  useEffect(() => {
+    setOnSubscriptionExpired((mensaje) => {
+      setSuscripcionVencida((actual) => actual || mensaje)
+    })
+  }, [])
 
   useEffect(() => {
     if (isAuthenticated && !usuario && !contextError) {
@@ -172,6 +186,28 @@ function App() {
         </Routes>
         <Toaster />
       </ErrorBoundary>
+    )
+  }
+
+  if (suscripcionVencida) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-background p-4">
+        <div className="max-w-md text-center space-y-4">
+          <h2 className="text-2xl font-black tracking-tight">Tu suscripción venció</h2>
+          <p className="text-muted-foreground">{suscripcionVencida}</p>
+          <p className="text-sm text-muted-foreground">
+            <strong>Tus datos siguen guardados.</strong> Ventas, comprobantes, stock y clientes
+            quedan intactos y vuelven a estar disponibles apenas se reactive la cuenta.
+          </p>
+          <button
+            onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+            className="text-sm underline text-muted-foreground hover:text-foreground"
+          >
+            Cerrar sesión
+          </button>
+        </div>
+        <Toaster />
+      </div>
     )
   }
 

@@ -33,6 +33,13 @@ export function setOnUnauthorized(callback) {
   onUnauthorizedCallback = callback;
 }
 
+let onSubscriptionExpiredCallback = null;
+
+/** Se dispara cuando la API responde 402: la suscripcion vencio. */
+export function setOnSubscriptionExpired(callback) {
+  onSubscriptionExpiredCallback = callback;
+}
+
 // ── Response interceptor: captura 401 y redirige al login ──
 api.interceptors.response.use(
   (response) => response,
@@ -43,6 +50,17 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && onUnauthorizedCallback) {
       onUnauthorizedCallback();
     }
+    // 402 = suscripcion vencida. Sin este manejo, cada pantalla mostraba su
+    // propio error generico y el usuario veia la aplicacion rota en vez de un
+    // aviso de que tiene que renovar.
+    if (error.response?.status === 402) {
+      const data = error.response.data || {};
+      if (onSubscriptionExpiredCallback) {
+        onSubscriptionExpiredCallback(data.message || 'Tu suscripción venció.');
+      }
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 403) {
       const msg = error.response?.data?.message || 'No tienes permiso para realizar esta acción';
       console.warn('[api] 403 Forbidden:', msg);
