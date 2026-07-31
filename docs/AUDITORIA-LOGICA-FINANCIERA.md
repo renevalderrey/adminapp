@@ -101,6 +101,47 @@ probable después de cambiar la firma de una función.
 
 ---
 
+## Decisiones tomadas (31/07/2026)
+
+Las cinco que bloqueaban están resueltas y aplicadas en código.
+
+| # | Decisión | Implicancia |
+|---|---|---|
+| **1** | **Margen = recargo sobre el costo.** "50%" es `costo × 1,5` | Era lo que el POS ya hacía. El BEP convierte explícitamente antes de mostrar |
+| **2** | **El recargo por tarjeta se le suma al cliente**: `precio × (1 + r)` | Con 20% el precio subía 25%. **Configurable** por empresa: el otro criterio (compensar la comisión) sigue disponible en `settings.recargo_modo` |
+| **3** | **Las ventas son al contado** salvo marca explícita | Nueva columna `sales.is_credit`. Antes toda venta con cliente contaba como deuda |
+| **4** | **El saldo de caja es base efectivo** | Con `is_credit` se separa sin ambigüedad y desaparece el doble conteo |
+| **5** | **Anular ≠ desfacturar** | La categoría de monotributo sale de lo facturado **con CAE**, no del estado interno |
+
+### Sobre la 5, que es la más sutil
+
+Anular una venta suele ser corrección de un error de caja, y no todo lleva
+comprobante. De ahí la regla:
+
+- Venta **sin CAE** → nunca estuvo en la base imponible. No cuenta.
+- Venta anulada **con CAE** → el comprobante existe ante ARCA. **Sigue contando**
+  hasta que se emita una nota de crédito, que el sistema todavía no emite.
+
+La versión anterior hacía lo contrario en los dos casos: sumaba ventas nunca
+facturadas y descontaba comprobantes que ARCA sigue viendo. Podía llevar a
+**declarar de menos**.
+
+El endpoint ahora devuelve `facturado_con_cae`, `ventas_totales`,
+`sin_facturar` y `anuladas_con_cae_sin_nc`, para que la diferencia entre lo
+vendido y lo declarado esté a la vista.
+
+**Queda pendiente**: emitir notas de crédito. `afipService` ya soporta los tipos
+3 y 8, pero no hay UI ni endpoint. Mientras tanto,
+`anuladas_con_cae_sin_nc` marca los comprobantes que las necesitan.
+
+### Sobre la 2 y "el resto de los clientes"
+
+Resuelto haciendo el modo configurable en vez de elegir uno. `sobre_precio` es
+el default (lo de Comprafit); `compensa_comision` queda para el comercio que
+prefiera absorber la comisión y cobrar el precio de lista neto.
+
+---
+
 ## Preguntas de producto
 
 63 preguntas que el código no puede responder. Consolidadas, son **14
