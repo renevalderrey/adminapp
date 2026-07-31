@@ -340,6 +340,23 @@ manualmente al principio, pero no escala.
 
 ## Frente 5 · Operabilidad
 
+> **ESTADO: CERRADO** (31/07/2026). 54 hallazgos confirmados (4 críticos).
+> Detalle en [AUDITORIA-OPERABILIDAD.md](AUDITORIA-OPERABILIDAD.md) y el
+> runbook en [OPERACION.md](OPERACION.md).
+>
+> **El contenedor no podía arrancar**, por dos motivos independientes: el
+> Dockerfile no copiaba .sequelizerc (sequelize-cli buscaba las migraciones en
+> un directorio inexistente) y las migraciones se conectaban a Neon sin SSL
+> porque el chequeo comparaba con "postgres:" y Neon usa "postgresql:".
+>
+> Y en producción no había observabilidad: los logs iban a un archivo en disco
+> efímero que nadie ve, morgan escribía por debajo del nivel efectivo (ni un
+> request registrado), y el healthcheck no tocaba la base — con Postgres caído
+> el servicio figuraba sano.
+>
+> Había además credenciales reales del hosting original commiteadas. Se
+> redactaron, pero SIGUEN EN EL HISTORIAL: hay que rotarlas.
+
 **No bloquea la primera venta, sí bloquea dormir tranquilo.**
 
 - **Backups.** Neon free tiene retención limitada. Antes del primer cliente
