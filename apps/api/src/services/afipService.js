@@ -1,6 +1,8 @@
 const soap = require('soap');
-const { Setting } = require('../models');
+const { Setting, Empresa } = require('../models');
 const afipAuth = require('./afipAuth');
+const forge = require('node-forge');
+const { fechaParaAfip } = require('../utils/fechas');
 
 // ════════════════════════════════════════════
 //  AFIP · Facturacion electronica WSFE, por empresa
@@ -142,7 +144,11 @@ class AfipService {
     const lastVoucher = await this.getLastVoucher(pv, type, empresaId);
     const nextVoucher = lastVoucher + 1;
 
-    const date = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    // La fecha se toma en la zona horaria del negocio, no en UTC. Argentina
+    // es UTC-3: despues de las 21:00 local, toISOString() ya devuelve el dia
+    // siguiente, y el comprobante salia fechado un dia despues de la venta.
+    const empresa = await Empresa.findByPk(empresaId, { attributes: ['timezone'] });
+    const date = fechaParaAfip(empresa && empresa.timezone);
 
     const params = {
       Auth: auth.Auth,
@@ -227,23 +233,59 @@ class AfipService {
   }
 
   // Used only to get a fresh CSR for ARCA setup
-  async createCSR(alias = 'AdminApp') {
-    const forge = require('node-forge');
+  /**
+   * Genera el pedido de certificado (CSR) para tramitar en ARCA.
+   *
+   * AFIP exige que el subject del CSR incluya el CUIT en el campo
+   * serialNumber, con el formato exacto "CUIT 20123456789". El equivalente en
+   * linea de comandos es:
+   *
+   *   openssl req -new -key privada.key    *     -subj "/C=AR/O=<razon social>/CN=<alias>/serialNumber=CUIT <cuit>"
+   *
+   * La version anterior no incluia serialNumber y ponia organizationName fijo
+   * en "Empresa": ARCA rechazaba el pedido, con lo cual el primer paso del
+   * setup —el boton "Generar Pedido de Certificado"— producia un archivo
+   * inservible.
+   *
+   * @param {string} alias    Alias del certificado, el mismo que se carga en ARCA.
+   * @param {string} cuit     CUIT sin guiones, 11 digitos.
+   * @param {string} razonSocial
+   */
+  async createCSR(alias, cuit, razonSocial) {
+    const cuitLimpio = String(cuit || '').replace(/\D/g, '');
+
+    if (cuitLimpio.length !== 11) {
+      const err = new Error('El CUIT debe tener 11 dígitos para generar el pedido de certificado.');
+      err.status = 400;
+      throw err;
+    }
+
+    if (!alias || !String(alias).trim()) {
+      const err = new Error('Falta el alias del certificado.');
+      err.status = 400;
+      throw err;
+    }
+
     const keys = forge.pki.rsa.generateKeyPair(2048);
     const csr = forge.pki.createCertificationRequest();
     csr.publicKey = keys.publicKey;
-    csr.setSubject([{
-      name: 'commonName',
-      value: alias
-    }, {
-      name: 'organizationName',
-      value: 'Empresa'
-    }]);
+
+    csr.setSubject([
+      { name: 'countryName', value: 'AR' },
+      { name: 'organizationName', value: String(razonSocial || alias).trim() },
+      { name: 'commonName', value: String(alias).trim() },
+      // node-forge no tiene un shortName para serialNumber: se pasa el OID.
+      { type: '2.5.4.5', value: `CUIT ${cuitLimpio}` },
+    ]);
+
     csr.sign(keys.privateKey, forge.md.sha256.create());
-    
+
     return {
       csr: forge.pki.certificationRequestToPem(csr),
-      key: forge.pki.privateKeyToPem(keys.privateKey)
+      key: forge.pki.privateKeyToPem(keys.privateKey),
+      // Se devuelve para que la UI pueda advertir que esta clave no se guarda
+      // en el servidor y hay que resguardarla.
+      advertencia: 'Guardá la clave privada: no queda almacenada en el servidor y sin ella el certificado no sirve.',
     };
   }
 }

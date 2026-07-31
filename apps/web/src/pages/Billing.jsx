@@ -170,11 +170,11 @@ const Billing = () => {
       }
 
       // ── 1. Guardar la venta ──
-      const now = new Date()
+      // La fecha y la hora ya NO se mandan: las decide el servidor en la zona
+      // horaria del negocio. toISOString() devuelve UTC, y en Argentina
+      // (UTC-3) una venta de las 21:30 quedaba asentada al dia siguiente.
       const salePayload = {
         id: `sale_${Date.now()}`,
-        date: now.toISOString().split('T')[0],
-        time: now.toTimeString().split(' ')[0].substring(0, 5),
         payment_method: cart[0]?.method || 'ef',
         items: cart,
         total: totalAmount,

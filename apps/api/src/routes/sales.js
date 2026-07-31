@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { Sale, SaleItem, Product, Stock, StockMovement } = require('../models');
+const { Sale, SaleItem, Product, Stock, StockMovement, Empresa } = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
 const { verificarTotal, normalizarItem, metodoDePago, esPagoMixto } = require('../utils/calculosVenta');
 const logger = require('../utils/logger');
+const { fechaDelNegocio, horaDelNegocio } = require('../utils/fechas');
 const afipService = require('../services/afipService');
 
 // GET /api/sales?date=YYYY-MM-DD — Ventas de una fecha (paginado)
@@ -129,8 +130,24 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
       });
     }
 
+    // La fecha y la hora las decide el SERVIDOR, en la zona horaria del
+    // negocio. Antes venian del navegador con toISOString(), que devuelve UTC:
+    // en Argentina (UTC-3), una venta de las 21:30 quedaba asentada al dia
+    // siguiente. Eso corre el cierre de caja, el listado del dia y los reportes.
+    //
+    // Que las decida el servidor ademas evita que el reloj de una caja
+    // desconfigurada meta ventas con fecha equivocada.
+    const empresa = await Empresa.findByPk(req.empresaId, {
+      attributes: ['timezone'],
+      transaction: t,
+    });
+    const zona = empresa && empresa.timezone;
+
     const saleData = {
-      id, date, time, notes, location, seller,
+      id,
+      date: date || fechaDelNegocio(zona),
+      time: time || horaDelNegocio(zona),
+      notes, location, seller,
       total: verificacion.total,
       // El metodo de pago sale de las lineas cuando todas coinciden. Antes el
       // frontend mandaba el del PRIMER item, con lo cual una venta con lineas

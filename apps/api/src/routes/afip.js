@@ -3,7 +3,7 @@ const router = express.Router();
 const forge = require('node-forge');
 const afipService = require('../services/afipService');
 const afipAuth = require('../services/afipAuth');
-const { Setting, sequelize } = require('../models');
+const { Setting, Empresa, sequelize } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
 const logger = require('../utils/logger');
 
@@ -118,14 +118,42 @@ router.post('/setup', checkPermission('config.editar'), async (req, res) => {
 });
 
 // POST /api/afip/generate-csr — Generar CSR y clave para el trámite en ARCA
+//
+// ARCA exige el CUIT dentro del subject del pedido. Antes no se enviaba, y el
+// archivo resultante era rechazado en la ventanilla: el primer paso del setup
+// no funcionaba.
 router.post('/generate-csr', checkPermission('config.editar'), async (req, res) => {
   try {
     const { alias } = req.body;
-    const result = await afipService.createCSR(alias);
+
+    // El CUIT y la razón social salen de la empresa, no del body: son datos
+    // que ya están cargados y no tiene sentido pedirlos de nuevo.
+    const empresa = await Empresa.findByPk(req.empresaId, {
+      attributes: ['name', 'cuit'],
+    });
+
+    const cuit = (req.body.cuit || (empresa && empresa.cuit) || '').replace(/\D/g, '');
+
+    if (cuit.length !== 11) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Cargá el CUIT de la empresa antes de generar el pedido de certificado.',
+      });
+    }
+
+    const result = await afipService.createCSR(
+      alias || (empresa && empresa.name) || 'AdminApp',
+      cuit,
+      (empresa && empresa.name) || alias
+    );
+
     res.json({ ok: true, data: result });
   } catch (err) {
+    if (err.status === 400) {
+      return res.status(400).json({ ok: false, error: err.message });
+    }
     logger.error({ err, empresaId: req.empresaId }, 'afip:generate-csr');
-    res.status(500).json({ ok: false, error: 'Error al generar el CSR' });
+    res.status(500).json({ ok: false, error: 'Error al generar el pedido de certificado' });
   }
 });
 
