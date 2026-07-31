@@ -1,0 +1,149 @@
+name: CI
+
+# No habia ningun workflow: el repo solo tenia una plantilla de pull request.
+# Nada corria los tests, nada verificaba que las apps buildearan, y nada
+# comprobaba que la imagen de Docker arrancara.
+#
+# Eso permitio que llegara a main un Dockerfile que no podia levantar el
+# contenedor: sequelize-cli buscaba las migraciones en un directorio que no
+# existe en la imagen, salia con codigo 1, y el && del CMD cortaba antes de
+# arrancar el servidor. Un docker build + run lo habria mostrado enseguida.
+
+on:
+  push:
+    branches: [main, chore/monorepo]
+  pull_request:
+
+jobs:
+  api:
+    name: API — tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+
+      - run: npm ci
+        working-directory: apps/api
+
+      - name: Tests
+        run: npm test
+        working-directory: apps/api
+        env:
+          NODE_ENV: test
+
+  web:
+    name: Web — tests y build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - run: npm ci
+        working-directory: apps/web
+
+      - name: Tests
+        run: npm test
+        working-directory: apps/web
+
+      - name: Build
+        run: npm run build
+        working-directory: apps/web
+
+  landing:
+    name: Landing — build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/landing/package-lock.json
+
+      - run: npm ci
+        working-directory: apps/landing
+
+      - name: Build
+        run: npm run build
+        working-directory: apps/landing
+
+  contenedor:
+    name: API — la imagen arranca y migra
+    runs-on: ubuntu-latest
+
+    # Postgres real: es la unica forma de comprobar que las migraciones
+    # efectivamente corren dentro del contenedor. Los tests usan modelos
+    # falsos y no habrian detectado el problema del path.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: adminapp
+          POSTGRES_PASSWORD: adminapp
+          POSTGRES_DB: adminapp_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Construir la imagen
+        run: docker build -t adminapp-api:ci .
+        working-directory: apps/api
+
+      - name: Aplicar las migraciones dentro del contenedor
+        run: |
+          docker run --rm --network host \
+            -e NODE_ENV=production \
+            -e DATABASE_URL='postgresql://adminapp:adminapp@localhost:5432/adminapp_ci' \
+            -e DB_SSL=false \
+            adminapp-api:ci \
+            node scripts/migrar.js
+
+      - name: El servidor levanta y responde el health check
+        run: |
+          docker run -d --name api-ci --network host \
+            -e NODE_ENV=production \
+            -e DATABASE_URL='postgresql://adminapp:adminapp@localhost:5432/adminapp_ci' \
+            -e DB_SSL=false \
+            -e AUTH0_DOMAIN=ci.example.com \
+            -e AUTH0_AUDIENCE=https://ci.example.com/api \
+            -e PORT=5000 \
+            adminapp-api:ci
+
+          # Margen para el arranque: migraciones + conexion + seeds.
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:5000/api/health > /dev/null; then
+              echo "El health check respondio."
+              docker logs api-ci
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "El servidor no respondio en 60s."
+          docker logs api-ci
+          exit 1
+
+      - name: Logs del contenedor si algo fallo
+        if: failure()
+        run: docker logs api-ci || true

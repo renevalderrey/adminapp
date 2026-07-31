@@ -13,6 +13,12 @@ RUN npm ci --omit=dev
 # Codigo fuente
 COPY src/ ./src/
 
+# .sequelizerc le dice a sequelize-cli donde viven las migraciones. El script
+# de arranque ya pasa --migrations-path explicito, asi que no depende de este
+# archivo, pero se copia igual para que un `npx sequelize-cli` corrido a mano
+# dentro del contenedor encuentre todo en su lugar.
+COPY .sequelizerc ./
+
 # Directorio temporal para los uploads de importacion (xlsx/csv).
 # Es efimero: se pierde en cada deploy y no debe guardar nada persistente.
 RUN mkdir -p uploads

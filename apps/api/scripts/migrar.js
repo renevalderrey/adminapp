@@ -87,9 +87,24 @@ function correrMigraciones() {
   return new Promise((resolve, reject) => {
     const raiz = path.resolve(__dirname, '..');
 
+    // --migrations-path va EXPLICITO a proposito.
+    //
+    // sequelize-cli deduce donde estan las migraciones leyendo .sequelizerc
+    // desde el cwd. Ese archivo no se copiaba a la imagen de Docker, con lo
+    // cual dentro del contenedor caia al default path.resolve(cwd,'migrations')
+    // = /app/migrations, que no existe: umzug hacia readdir, ENOENT, y
+    // sequelize-cli salia con codigo 1. Como el CMD encadena con &&, el
+    // servidor NUNCA arrancaba.
+    //
+    // Pasar la ruta por argumento hace que no dependa de que un archivo suelto
+    // llegue a la imagen.
     const proceso = spawn(
       'npx',
-      ['sequelize-cli', 'db:migrate', '--config', 'src/config/sequelize-cli.js'],
+      [
+        'sequelize-cli', 'db:migrate',
+        '--config', 'src/config/sequelize-cli.js',
+        '--migrations-path', 'src/migrations',
+      ],
       { cwd: raiz, stdio: 'inherit', shell: process.platform === 'win32' }
     );
 
