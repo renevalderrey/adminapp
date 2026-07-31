@@ -286,15 +286,15 @@ const Billing = () => {
     // ventas.
     if (settings.afip_environment === 'production') {
       const confirmado = window.confirm(
-        'Estás en entorno de PRODUCCIÓN.
-
-' +
-        'Esto NO es una prueba: va a emitir una factura fiscal real de $1 ante ARCA, ' +
-        'con un número de comprobante que queda consumido y que después vas a tener ' +
-        'que dar de baja con una nota de crédito.
-
-' +
-        '¿Emitir igual?'
+        [
+          'Estás en entorno de PRODUCCIÓN.',
+          '',
+          'Esto NO es una prueba: va a emitir una factura fiscal real de $1 ante ARCA, ' +
+          'con un número de comprobante que queda consumido y que después vas a tener ' +
+          'que dar de baja con una nota de crédito.',
+          '',
+          '¿Emitir igual?',
+        ].join('\n')
       )
       if (!confirmado) return
     }
