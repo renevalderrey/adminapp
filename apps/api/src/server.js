@@ -135,10 +135,66 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// ── Disparador externo de tareas programadas ──
+//
+// El cron de suscripciones corre con setInterval dentro del proceso. En el free
+// tier de Render el servicio duerme a los 15 min sin trafico, y setInterval no
+// dispara mientras duerme: los vencimientos y los avisos NO se procesan de
+// forma confiable. Con la app usandose de dia y durmiendo de noche, el cron
+// puede pasar dias sin correr.
+//
+// Este endpoint permite que un cron externo gratuito (cron-job.org, GitHub
+// Actions, el scheduler de la propia plataforma) lo despierte una vez por dia.
+// Ademas de correr las tareas, la peticion despierta el servicio.
+//
+// Se protege con un secreto compartido y no con la sesion de un usuario:
+// quien lo llama es una maquina, no una persona. Sin CRON_SECRET configurado
+// el endpoint queda deshabilitado, para que no exista una ruta abierta por
+// olvido.
+app.post('/api/tareas/ejecutar', async (req, res) => {
+  const secreto = process.env.CRON_SECRET;
+
+  if (!secreto) {
+    return res.status(404).json({ ok: false, error: 'No disponible' });
+  }
+
+  const recibido = req.headers['x-cron-secret'];
+
+  if (recibido !== secreto) {
+    logger.warn({ ip: req.ip }, 'tareas: intento con secreto invalido');
+    return res.status(401).json({ ok: false, error: 'No autorizado' });
+  }
+
+  try {
+    const resultado = await subscriptionCron.expireTrials();
+    const avisos = await subscriptionCron.avisarVencimientosProximos();
+
+    logger.info({ ...resultado, avisos }, 'tareas: ejecucion manual completada');
+
+    res.json({ ok: true, ...resultado, avisos });
+  } catch (err) {
+    logger.error({ err }, 'tareas: error en la ejecucion manual');
+    res.status(500).json({ ok: false, error: 'Error ejecutando las tareas' });
+  }
+});
+
 // ── Rate Limiting (después de ping) ──
+// El limite se cuenta por IP, y se sube de 200 a 600 requests cada 15 minutos.
+//
+// Por que sube: un comercio con tres cajas sale a internet por un unico router,
+// asi que las tres comparten IP y entre las tres consumen el mismo cupo. Y en
+// un punto de venta una sola operacion dispara varias llamadas (buscar
+// producto, registrar la venta, pedir el CAE, refrescar el listado). Con 200
+// cada 15 minutos, una hora movida corta ventas reales.
+//
+// Por que NO se cuenta por usuario, que seria mas justo: este middleware corre
+// ANTES de la cadena de autenticacion, asi que req.userId todavia no existe.
+// Tomar el `sub` del token sin validarlo permitiria evadir el limite
+// inventando tokens. Contar por IP es menos preciso pero no se puede falsear
+// tan facil, y es lo que protege del abuso sin sesion.
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'development' ? 10000 : 200,
+  max: process.env.NODE_ENV === 'development' ? 10000 : 600,
   standardHeaders: true,
   legacyHeaders: false,
   message: { ok: false, error: 'Demasiadas solicitudes. Intente de nuevo en 15 min.' },

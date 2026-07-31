@@ -74,6 +74,21 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
 
+      # ── Disparador externo de tareas programadas ──
+      # El cron de suscripciones corre con setInterval dentro del proceso, y en
+      # el free tier el servicio duerme a los 15 min sin trafico: los
+      # vencimientos y los avisos no se procesan de forma confiable.
+      #
+      # Con este secreto configurado se habilita POST /api/tareas/ejecutar, que
+      # un cron externo gratuito (cron-job.org, GitHub Actions) puede llamar una
+      # vez por dia mandando la cabecera X-Cron-Secret. La peticion ademas
+      # despierta el servicio.
+      #
+      # Sin la variable, el endpoint responde 404: no queda una ruta abierta
+      # por olvido.
+      - key: CRON_SECRET
+        sync: false
+
 # ── Notas del free tier ──
 #
 # El servicio duerme tras 15 min sin trafico; el primer request despues
