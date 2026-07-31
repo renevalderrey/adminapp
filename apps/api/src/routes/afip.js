@@ -16,7 +16,15 @@ const logger = require('../utils/logger');
 // el de la primera, y las facturas de esta ultima salian emitidas con la
 // identidad fiscal de la otra.
 
-const CLAVES_AFIP = ['afip_cuit', 'afip_cert', 'afip_key', 'afip_environment', 'afip_pv'];
+// tax_condition faltaba en esta lista. El formulario de Ajustes la manda, el
+// backend respondia "guardada correctamente" y la descartaba. Del otro lado,
+// createVoucher lee esa clave y caia siempre al default 'Monotributo': la rama
+// que discrimina IVA para Responsable Inscripto era codigo muerto, y todo RI
+// emitia Factura A sin discriminar. AFIP rechaza eso, y si lo autorizara el
+// comprador se quedaria sin credito fiscal.
+const CLAVES_AFIP = ['afip_cuit', 'afip_cert', 'afip_key', 'afip_environment', 'afip_pv', 'tax_condition'];
+
+const CONDICIONES_FISCALES = ['Monotributo', 'RI', 'Exento'];
 
 // GET /api/afip/status — Verificar conexión
 router.get('/status', checkPermission('config.ver'), async (req, res) => {
@@ -64,7 +72,7 @@ router.get('/cert-info', checkPermission('config.ver'), async (req, res) => {
 // POST /api/afip/setup — Guardar la configuración de AFIP de ESTA empresa
 router.post('/setup', checkPermission('config.editar'), async (req, res) => {
   try {
-    const { cuit, cert, key, environment, pv } = req.body;
+    const { cuit, cert, key, environment, pv, tax_condition } = req.body;
 
     if (environment && !['homologation', 'production'].includes(environment)) {
       return res.status(400).json({
@@ -91,7 +99,21 @@ router.post('/setup', checkPermission('config.editar'), async (req, res) => {
       }
     }
 
-    const valores = { afip_cuit: cuit, afip_cert: cert, afip_key: key, afip_environment: environment, afip_pv: pv };
+    if (tax_condition && !CONDICIONES_FISCALES.includes(tax_condition)) {
+      return res.status(400).json({
+        ok: false,
+        error: `La condición fiscal debe ser una de: ${CONDICIONES_FISCALES.join(', ')}`,
+      });
+    }
+
+    const valores = {
+      afip_cuit: cuit,
+      afip_cert: cert,
+      afip_key: key,
+      afip_environment: environment,
+      afip_pv: pv,
+      tax_condition,
+    };
 
     // El certificado y la clave se guardan juntos o no se guardan: subir uno
     // solo deja una configuracion que no puede firmar.

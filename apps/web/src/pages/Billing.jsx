@@ -278,6 +278,27 @@ const Billing = () => {
       toast.error("Debés configurar AFIP primero en Ajustes.")
       return
     }
+
+    // En produccion este boton NO emite una prueba: emite un comprobante
+    // fiscal REAL de $1, con numero correlativo consumido, que despues hay que
+    // dar de baja con una nota de credito. Antes no chequeaba el entorno ni
+    // pedia confirmacion, y estaba a un clic de distancia en la pantalla de
+    // ventas.
+    if (settings.afip_environment === 'production') {
+      const confirmado = window.confirm(
+        'Estás en entorno de PRODUCCIÓN.
+
+' +
+        'Esto NO es una prueba: va a emitir una factura fiscal real de $1 ante ARCA, ' +
+        'con un número de comprobante que queda consumido y que después vas a tener ' +
+        'que dar de baja con una nota de crédito.
+
+' +
+        '¿Emitir igual?'
+      )
+      if (!confirmado) return
+    }
+
     setLoading(true)
     try {
       const vType = docType === 'afip_a' ? 1 : docType === 'afip_b' ? 6 : 11
@@ -291,11 +312,8 @@ const Billing = () => {
         total: 1, customer: customerDoc,
         date: new Date().toLocaleDateString('es-AR'), isInternal: false,
       })
-      const now = new Date()
       await api.post('/sales', {
         id: `test_${Date.now()}`,
-        date: now.toISOString().split('T')[0],
-        time: now.toTimeString().split(' ')[0].substring(0, 5),
         payment_method: 'ef',
         items: [{ qty: 1, name: "Proteína Testing", price: 1 }],
         total: 1,

@@ -21,6 +21,10 @@ const { fechaParaAfip } = require('../utils/fechas');
 //     empresa en facturar fijaba el entorno para todas las demas.
 // ════════════════════════════════════════════
 
+// AFIP suele responder en menos de 5s. 30s deja margen para un dia lento sin
+// dejar la conexion colgada indefinidamente.
+const TIMEOUT_AFIP_MS = 30000;
+
 class AfipService {
   constructor() {
     // Map<'homologation'|'production', clienteSoap>. El cliente se puede
@@ -46,8 +50,13 @@ class AfipService {
     const wsdlUrl = await this.getWsdlUrl(empresaId);
 
     return new Promise((resolve, reject) => {
-      soap.createClient(wsdlUrl, (err, client) => {
+      // Sin timeout, una llamada colgada a AFIP queda esperando para siempre:
+      // el navegador corta a los 60s y el backend sigue emitiendo, con lo cual
+      // nadie sabe si el comprobante se genero o no.
+      soap.createClient(wsdlUrl, { wsdl_options: { timeout: TIMEOUT_AFIP_MS } }, (err, client) => {
         if (err) return reject(new Error('Error creating WSFE client: ' + err.message));
+
+        client.setTimeout?.(TIMEOUT_AFIP_MS);
         this.wsfeClients.set(entorno, client);
         resolve(client);
       });
@@ -141,6 +150,21 @@ class AfipService {
     });
     const taxCondition = taxSetting?.value || 'Monotributo';
 
+    // El importe se redondea a centavos ANTES de armar el comprobante.
+    //
+    // AFIP valida que ImpTotal sea exactamente ImpTotConc + ImpNeto + ImpOpEx +
+    // ImpTrib + ImpIVA con 2 decimales, y no admite mas de 2 decimales en los
+    // importes. El total podia llegar como una suma de flotantes sin redondear
+    // (3 x 1333.33 da 3999.9899999999998), y entonces ImpTotal no cerraba
+    // contra ImpNeto + ImpIVA, que si estaban redondeados. AFIP rechazaba el
+    // comprobante con un error incomprensible, y solo con ciertos precios: un
+    // fallo intermitente imposible de diagnosticar desde el mostrador.
+    const importe = Math.round((Number(amount) || 0) * 100) / 100;
+
+    if (!(importe >= 0)) {
+      throw new Error('El importe del comprobante no es válido.');
+    }
+
     const lastVoucher = await this.getLastVoucher(pv, type, empresaId);
     const nextVoucher = lastVoucher + 1;
 
@@ -167,9 +191,9 @@ class AfipService {
               CbteDesde: nextVoucher,
               CbteHasta: nextVoucher,
               CbteFch: date,
-              ImpTotal: amount,
+              ImpTotal: importe,
               ImpTotConc: 0,
-              ImpNeto: amount,
+              ImpNeto: importe,
               ImpOpEx: 0,
               ImpTrib: 0,
               ImpIVA: 0,
@@ -185,8 +209,8 @@ class AfipService {
     // logic for Responsable Inscripto (Factura/NC A or B)
     // Types: 1=Factura A, 3=NC A, 6=Factura B, 8=NC B
     if (taxCondition === 'RI' && [1, 3, 6, 8].includes(type)) {
-      const neto = parseFloat((amount / 1.21).toFixed(2));
-      const iva = parseFloat((amount - neto).toFixed(2));
+      const neto = parseFloat((importe / 1.21).toFixed(2));
+      const iva = parseFloat((importe - neto).toFixed(2));
       
       params.FeCAEReq.FeDetReq.FECAEDetRequest[0].ImpNeto = neto;
       params.FeCAEReq.FeDetReq.FECAEDetRequest[0].ImpIVA = iva;

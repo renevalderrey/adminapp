@@ -50,6 +50,16 @@ const Sale = sequelize.define('Sale', {
     allowNull: false,
     defaultValue: false,
   },
+  // Punto de venta de AFIP con el que se emitio el comprobante.
+  //
+  // No se guardaba: la reimpresion tenia el numero clavado en 1 y la
+  // verificacion contra AFIP usaba el punto de venta configurado HOY. Si el
+  // comercio cambia de punto de venta, todos los comprobantes viejos quedan
+  // imposibles de identificar y de reimprimir correctamente.
+  afip_pv: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
   notes: {
     type: DataTypes.TEXT, // Campo "obs"
     allowNull: true,

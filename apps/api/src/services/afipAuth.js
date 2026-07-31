@@ -47,7 +47,21 @@ class AfipAuth {
 
   async isProduction(empresaId) {
     const setting = await this._getSetting('afip_environment', empresaId);
-    return setting && setting.value === 'production';
+    const valor = setting && setting.value;
+
+    if (valor === 'production') return true;
+    if (valor === 'homologation') return false;
+
+    // Sin entorno configurado se asume homologacion, que es lo seguro: emitir
+    // contra produccion por accidente genera comprobantes fiscales reales.
+    // Pero se avisa, porque antes esto pasaba en silencio y el comercio podia
+    // estar facturando contra el servidor de pruebas creyendo que facturaba de
+    // verdad: los comprobantes de homologacion no tienen validez fiscal.
+    logger.warn(
+      { empresaId, valor },
+      'AFIP: entorno no configurado o desconocido, se usa homologacion (los comprobantes NO tienen validez fiscal)'
+    );
+    return false;
   }
 
   async getCertAndKey(empresaId) {

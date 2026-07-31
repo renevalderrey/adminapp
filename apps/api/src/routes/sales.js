@@ -383,8 +383,23 @@ router.post('/:id/facturar', checkPermission('ventas.crear'), async (req, res) =
       return res.status(400).json({ ok: false, error: 'Falta el punto de venta de AFIP' });
     }
 
+    // Una Factura A (o su nota de credito) se emite a un Responsable
+    // Inscripto, y AFIP exige el CUIT del receptor. Sin validarlo, el
+    // comprobante salia con DocTipo 99 (consumidor final) y AFIP lo rechazaba
+    // con un error que el cajero no puede interpretar.
+    const tipoComprobante = parseInt(type, 10) || 6;
+    const cuitReceptor = String(customerCuit || '').replace(/\D/g, '');
+
+    if ([1, 2, 3].includes(tipoComprobante) && cuitReceptor.length !== 11) {
+      return res.status(400).json({
+        ok: false,
+        error: 'CUIT_REQUERIDO',
+        message: 'Una Factura A necesita el CUIT del comprador (11 dígitos).',
+      });
+    }
+
     const resultado = await afipService.createVoucher({
-      type: parseInt(type, 10) || 6,
+      type: tipoComprobante,
       pv: puntoDeVenta,
       customerCuit,
       // El importe sale de la venta guardada, que es el que ya se validó
@@ -399,6 +414,9 @@ router.post('/:id/facturar', checkPermission('ventas.crear'), async (req, res) =
       afip_nro: resultado.voucherNumber,
       afip_vto: resultado.expiration,
       afip_type: resultado.type,
+      // Sin esto no se puede identificar el comprobante mas adelante: la
+      // numeracion de AFIP es correlativa POR PUNTO DE VENTA.
+      afip_pv: puntoDeVenta,
     });
 
     logger.info(
