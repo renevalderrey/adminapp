@@ -125,6 +125,23 @@ URLs* y *Allowed Web Origins*.
 
 ---
 
+## Operación
+
+Runbook completo en [docs/OPERACION.md](docs/OPERACION.md): qué mirar cuando
+algo falla, cómo respaldar y restaurar, cómo activar una suscripción, y la
+lista de lo que hay que hacer antes del primer cliente real.
+
+```bash
+npm --prefix apps/api run db:migrate              # migraciones (con lock)
+npm --prefix apps/api run backup -- --todas       # respaldo de todas las empresas
+npm --prefix apps/api run suscripcion -- listar   # estado de las suscripciones
+```
+
+Health check: `GET /api/health` verifica que se pueda consultar la base.
+`GET /api/ping` solo dice que el proceso responde.
+
+---
+
 ## Limitaciones conocidas de los planes gratuitos
 
 Aplican durante la fase de desarrollo; desaparecen al pasar a planes pagos.
