@@ -5,6 +5,8 @@ const { Op } = require('sequelize');
 const sequelize = require('../config/database');
 const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
+const { verificarTotal, normalizarItem, metodoDePago, esPagoMixto } = require('../utils/calculosVenta');
+const logger = require('../utils/logger');
 
 // GET /api/sales?date=YYYY-MM-DD — Ventas de una fecha (paginado)
 router.get('/', checkPermission('ventas.ver'), async (req, res) => {
@@ -83,8 +85,40 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
   try {
     const { id, date, time, total, payment_method, notes, location, seller, items, afip_cae, afip_nro, afip_vto, afip_type, customer_id, customer_name } = req.body;
 
+    const lineas = Array.isArray(items) ? items : [];
+
+    // El total se recalcula a partir de las lineas y NO se toma del body. Es
+    // el registro contable de la operacion: si el cliente lo manda y el
+    // servidor lo guarda sin mirar, cualquier bug del frontend —o cualquier
+    // request armado a mano— queda asentado como si fuera real.
+    //
+    // Si el declarado no cierra contra las lineas se rechaza en vez de
+    // corregirlo en silencio: en un punto de venta, guardar un total distinto
+    // al que vio el operador y le cobro al cliente es peor que fallar.
+    const verificacion = verificarTotal(total, lineas);
+
+    if (!verificacion.ok) {
+      await t.rollback();
+      logger.warn(
+        { empresaId: req.empresaId, declarado: verificacion.declarado, calculado: verificacion.total },
+        'sales: el total declarado no coincide con las lineas'
+      );
+      return res.status(400).json({
+        ok: false,
+        error: 'TOTAL_INCONSISTENTE',
+        message: `El total enviado ($${verificacion.declarado}) no coincide con la suma de los items ($${verificacion.total}).`,
+      });
+    }
+
     const saleData = {
-      id, date, time, total, payment_method, notes, location, seller,
+      id, date, time, notes, location, seller,
+      total: verificacion.total,
+      // El metodo de pago sale de las lineas cuando todas coinciden. Antes el
+      // frontend mandaba el del PRIMER item, con lo cual una venta con lineas
+      // de distinto metodo quedaba registrada entera bajo el de la primera.
+      // Si las lineas difieren, no se puede deducir uno solo y se respeta el
+      // declarado, que es el comportamiento historico.
+      payment_method: metodoDePago(lineas) || payment_method || 'ef',
       afip_cae, afip_nro, afip_vto, afip_type,
       empresa_id: req.empresaId,
       punto_de_venta_id: req.puntoDeVentaId || null,
@@ -95,16 +129,21 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
       saleData.customer_name = customer_name || null;
     }
 
+    if (esPagoMixto(lineas)) {
+      // Queda registrado para poder dimensionar cuantas ventas mixtas hay
+      // antes de decidir como representarlas.
+      logger.info(
+        { empresaId: req.empresaId, metodoDeclarado: saleData.payment_method },
+        'sales: venta con lineas de distinto metodo de pago'
+      );
+    }
+
     const sale = await Sale.create(saleData, { transaction: t });
 
-    if (Array.isArray(items) && items.length) {
-      const saleItems = items.map(item => ({
+    if (lineas.length) {
+      const saleItems = lineas.map((item) => ({
         sale_id: sale.id,
-        product_name: item.product_name || item.name || item.n || 'Producto',
-        product_id: item.product_id || item.id || null,
-        quantity: item.quantity || item.qty || 1,
-        unit_price: item.unit_price || item.price || item.precio || 0,
-        payment_method: item.payment_method || item.method || item.mp || null,
+        ...normalizarItem(item),
       }));
       await SaleItem.bulkCreate(saleItems, { transaction: t });
 
