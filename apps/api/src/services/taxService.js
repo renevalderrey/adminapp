@@ -49,14 +49,56 @@ class TaxService {
     const startDate = `${targetYear}-01-01`;
     const endDate = `${targetYear}-12-31`;
 
-    // Solo las ventas vigentes son facturación. Una venta anulada no se
-    // declara: contarla puede empujar al usuario a una categoría más alta y
-    // hacerle pagar de más todos los meses del año.
-    const annualBilling = parseFloat(
+    // ── Qué cuenta como facturación para el monotributo ──
+    //
+    // La categoría depende de los ingresos declarados ante ARCA, y ante ARCA
+    // existe lo que tiene CAE. Dos consecuencias, las dos deliberadas:
+    //
+    //  - Una venta SIN CAE no entra. No fue facturada, así que no está en la
+    //    base imponible. (Que exista o no ese caso es decisión del comercio;
+    //    el sistema refleja lo que efectivamente se emitió.)
+    //
+    //  - Una venta anulada internamente PERO con CAE sí entra. Anular en la
+    //    app no da de baja el comprobante: para eso hace falta una nota de
+    //    crédito, que el sistema todavía no emite. Mientras el CAE exista,
+    //    ARCA lo ve.
+    //
+    // La versión anterior filtraba por status='active' e ignoraba el CAE, con
+    // lo cual sumaba ventas nunca facturadas y descontaba comprobantes que
+    // ARCA sigue contando. Podía llevar a declarar de menos.
+    const facturadoAnte = parseFloat(
+      await Sale.sum('total', {
+        where: {
+          empresa_id: empresaId,
+          afip_cae: { [Op.ne]: null },
+          date: { [Op.between]: [startDate, endDate] },
+        },
+      })
+    ) || 0;
+
+    const annualBilling = facturadoAnte;
+
+    // Facturación total del negocio, con y sin comprobante. No define la
+    // categoría, pero se devuelve para que el usuario vea la diferencia entre
+    // lo que vendió y lo que declaró.
+    const ventasTotales = parseFloat(
       await Sale.sum('total', {
         where: {
           empresa_id: empresaId,
           status: 'active',
+          date: { [Op.between]: [startDate, endDate] },
+        },
+      })
+    ) || 0;
+
+    // Comprobantes con CAE que se anularon en la app y siguen vigentes ante
+    // ARCA porque nunca se les emitió nota de crédito.
+    const anuladasConCae = parseFloat(
+      await Sale.sum('total', {
+        where: {
+          empresa_id: empresaId,
+          status: 'voided',
+          afip_cae: { [Op.ne]: null },
           date: { [Op.between]: [startDate, endDate] },
         },
       })
@@ -95,13 +137,27 @@ class TaxService {
     const annualTotal = category.monthly * 12;
     const remaining = Math.max(0, annualTotal - paymentsThisYear);
 
+    const redondear = (n) => Math.round(n * 100) / 100;
+
+    // La categoría se calcula sobre lo facturado con CAE, pero se devuelven las
+    // tres cifras para que el usuario entienda de dónde sale el número. Si
+    // factura una fracción de lo que vende, la diferencia es visible en vez de
+    // estar escondida en el cálculo.
     return {
-      annual_billing: Math.round(annualBilling * 100) / 100,
+      annual_billing: redondear(annualBilling),
+      facturado_con_cae: redondear(facturadoAnte),
+      ventas_totales: redondear(ventasTotales),
+      sin_facturar: redondear(Math.max(0, ventasTotales - facturadoAnte)),
+
+      // Comprobantes anulados en la app que ARCA sigue contando porque nunca
+      // se les emitió nota de crédito. La UI debería mostrarlo como pendiente.
+      anuladas_con_cae_sin_nc: redondear(anuladasConCae),
+
       category: category.category,
       monthly_amount: category.monthly,
-      annual_total: Math.round(annualTotal * 100) / 100,
-      paid_ytd: Math.round(paymentsThisYear * 100) / 100,
-      remaining_ytd: Math.round(remaining * 100) / 100,
+      annual_total: redondear(annualTotal),
+      paid_ytd: redondear(paymentsThisYear),
+      remaining_ytd: redondear(remaining),
     };
   }
 

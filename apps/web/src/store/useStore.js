@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import api from '../services/api';
+import { calcularPrecios } from '@/utils/precios';
 
 const useStore = create((set, get) => ({
   products: [],
@@ -102,17 +103,15 @@ const useStore = create((set, get) => ({
   },
 
   // Helper: Price Calculation
+  //
+  // La formula vive en utils/precios.js para poder testearla. Ver ahi la
+  // convencion de margen (recargo sobre costo) y los dos modos de recargo por
+  // tarjeta. El recargo por defecto pasa a sumarse al precio del cliente:
+  // antes se usaba cashPrice / (1 - r/100), que con un 20% configurado cobraba
+  // un 25% de mas.
   calculatePrices: (product) => {
     const { settings } = get();
-    const cost = parseFloat(product.cost) || 0;
-
-    const margin = product.margin_override ?? settings.margin_efectivo;
-
-    const cashPrice = Math.round(cost * (1 + margin / 100));
-    const cardPrice = Math.round(cashPrice / (1 - settings.recargo_tarjeta / 100));
-    const alliancePrice = Math.round(cashPrice * (1 - settings.descuento_alianza / 100));
-
-    return { cashPrice, cardPrice, alliancePrice };
+    return calcularPrecios(product, settings);
   },
 
   // Cart Management

@@ -59,7 +59,11 @@ class CustomerService {
 
     // Una venta anulada no genera deuda. Sin el filtro por status se le
     // reclamaba al cliente plata por operaciones dadas de baja.
-    const totalSales = await Sale.sum('total', { where: { ...where, status: 'active' } });
+    // Solo las ventas a cuenta corriente generan deuda. Una venta cobrada en
+    // el mostrador no es un saldo pendiente aunque tenga cliente asignado.
+    const totalSales = await Sale.sum('total', {
+      where: { ...where, status: 'active', is_credit: true },
+    });
     const totalPayments = await CustomerPayment.sum('amount', { where });
 
     return (parseFloat(totalSales) || 0) - (parseFloat(totalPayments) || 0);
@@ -74,7 +78,7 @@ class CustomerService {
 
     // Mismo criterio que calculateBalance: las anuladas no son deuda.
     const sales = await Sale.findAll({
-      where: { ...where, status: 'active' },
+      where: { ...where, status: 'active', is_credit: true },
       attributes: ['total', 'date'],
       raw: true,
     });
@@ -182,6 +186,7 @@ class CustomerService {
                    FROM sales
                    WHERE customer_id IS NOT NULL
                      AND status = 'active'
+                     AND is_credit = true
                      AND empresa_id = :empresaId), 0)
          -
          COALESCE((SELECT SUM(CAST(amount AS DECIMAL))
@@ -234,7 +239,7 @@ class CustomerService {
 
     // ── Aging de clientes ──
     const allSales = await Sale.findAll({
-      where: { customer_id: { [Op.ne]: null }, empresa_id: empresaId, status: 'active' },
+      where: { customer_id: { [Op.ne]: null }, empresa_id: empresaId, status: 'active', is_credit: true },
       attributes: ['total', 'date', 'customer_id'],
       raw: true,
     });

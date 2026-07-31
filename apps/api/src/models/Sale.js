@@ -40,6 +40,16 @@ const Sale = sequelize.define('Sale', {
     allowNull: false,
     defaultValue: 'ef',
   },
+  // Venta a cuenta corriente. Las ventas son al contado salvo que se marque:
+  // en el mostrador lo normal es identificar al cliente y cobrarle igual en el
+  // acto. Antes se deducia de customer_id, con lo cual toda venta con cliente
+  // quedaba como deuda impaga y los saldos de cuenta corriente estaban
+  // inflados con operaciones ya cobradas.
+  is_credit: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
   notes: {
     type: DataTypes.TEXT, // Campo "obs"
     allowNull: true,

@@ -83,7 +83,7 @@ router.get('/summary', checkPermission('ventas.ver'), async (req, res) => {
 router.post('/', checkPermission('ventas.crear'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { id, date, time, total, payment_method, notes, location, seller, items, afip_cae, afip_nro, afip_vto, afip_type, customer_id, customer_name } = req.body;
+    const { id, date, time, total, payment_method, notes, location, seller, items, afip_cae, afip_nro, afip_vto, afip_type, customer_id, customer_name, is_credit } = req.body;
 
     const lineas = Array.isArray(items) ? items : [];
 
@@ -145,6 +145,9 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
     if (customer_id) {
       saleData.customer_id = customer_id;
       saleData.customer_name = customer_name || null;
+      // Al contado salvo que se pida lo contrario. Sin cliente asignado no
+      // puede haber cuenta corriente.
+      saleData.is_credit = is_credit === true || is_credit === 'true';
     }
 
     if (esPagoMixto(lineas)) {

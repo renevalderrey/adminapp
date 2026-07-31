@@ -70,8 +70,8 @@ beforeEach(() => {
 describe('calculateBalance', () => {
   it('saldo = ventas menos pagos', async () => {
     mockSale.filas = [
-      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', total: '10000', date: '2026-07-01' },
-      { id: 2, customer_id: 100, empresa_id: EMPRESA, status: 'active', total: '5000', date: '2026-07-10' },
+      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', is_credit: true, total: '10000', date: '2026-07-01' },
+      { id: 2, customer_id: 100, empresa_id: EMPRESA, status: 'active', is_credit: true, total: '5000', date: '2026-07-10' },
     ];
     mockCustomerPayment.filas = [
       { id: 1, customer_id: 100, empresa_id: EMPRESA, amount: '4000', payment_date: '2026-07-15' },
@@ -84,8 +84,8 @@ describe('calculateBalance', () => {
   // plata por una operación que se dio de baja.
   it('no cuenta las ventas anuladas', async () => {
     mockSale.filas = [
-      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', total: '10000', date: '2026-07-01' },
-      { id: 2, customer_id: 100, empresa_id: EMPRESA, status: 'voided', total: '50000', date: '2026-07-05' },
+      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', is_credit: true, total: '10000', date: '2026-07-01' },
+      { id: 2, customer_id: 100, empresa_id: EMPRESA, status: 'voided', is_credit: true, total: '50000', date: '2026-07-05' },
     ];
 
     await expect(customerService.calculateBalance(100, EMPRESA)).resolves.toBe(10000);
@@ -93,8 +93,8 @@ describe('calculateBalance', () => {
 
   it('no mezcla ventas de otra empresa', async () => {
     mockSale.filas = [
-      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', total: '10000', date: '2026-07-01' },
-      { id: 2, customer_id: 100, empresa_id: 99, status: 'active', total: '77000', date: '2026-07-01' },
+      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', is_credit: true, total: '10000', date: '2026-07-01' },
+      { id: 2, customer_id: 100, empresa_id: 99, status: 'active', is_credit: true, total: '77000', date: '2026-07-01' },
     ];
 
     await expect(customerService.calculateBalance(100, EMPRESA)).resolves.toBe(10000);
@@ -109,13 +109,35 @@ describe('calculateBalance', () => {
 
   it('si el cliente pagó de más, el saldo queda negativo (saldo a favor)', async () => {
     mockSale.filas = [
-      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', total: '1000', date: '2026-07-01' },
+      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', is_credit: true, total: '1000', date: '2026-07-01' },
     ];
     mockCustomerPayment.filas = [
       { id: 1, customer_id: 100, empresa_id: EMPRESA, amount: '2500', payment_date: '2026-07-02' },
     ];
 
     await expect(customerService.calculateBalance(100, EMPRESA)).resolves.toBe(-1500);
+  });
+
+
+  // Decision de producto (31/07/2026): las ventas son al contado salvo que se
+  // marquen como cuenta corriente. Antes toda venta con cliente asignado
+  // contaba como deuda, y los saldos estaban inflados con operaciones ya
+  // cobradas en el mostrador.
+  it('una venta al contado no genera deuda, aunque tenga cliente asignado', async () => {
+    mockSale.filas = [
+      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', is_credit: false, total: '9000', date: '2026-07-01' },
+    ];
+
+    await expect(customerService.calculateBalance(100, EMPRESA)).resolves.toBe(0);
+  });
+
+  it('solo suman las ventas marcadas como cuenta corriente', async () => {
+    mockSale.filas = [
+      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', is_credit: true, total: '5000', date: '2026-07-01' },
+      { id: 2, customer_id: 100, empresa_id: EMPRESA, status: 'active', is_credit: false, total: '9000', date: '2026-07-02' },
+    ];
+
+    await expect(customerService.calculateBalance(100, EMPRESA)).resolves.toBe(5000);
   });
 
   it('exige empresaId en vez de operar sobre una empresa arbitraria', async () => {
@@ -137,7 +159,7 @@ describe('calculateAging', () => {
 
   it('ubica la deuda en el tramo correcto según la antigüedad', async () => {
     mockSale.filas = [
-      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', total: '1000', date: '2026-07-20' },
+      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', is_credit: true, total: '1000', date: '2026-07-20' },
     ];
 
     const aging = await customerService.calculateAging(100, EMPRESA);
@@ -157,7 +179,7 @@ describe('calculateAging', () => {
 
   it('si está todo pagado, no queda deuda en ningún tramo', async () => {
     mockSale.filas = [
-      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', total: '1000', date: '2026-07-20' },
+      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', is_credit: true, total: '1000', date: '2026-07-20' },
     ];
     mockCustomerPayment.filas = [
       { id: 1, customer_id: 100, empresa_id: EMPRESA, amount: '1000', payment_date: '2026-07-21' },
@@ -170,7 +192,7 @@ describe('calculateAging', () => {
 
   it('las ventas anuladas no generan deuda en ningún tramo', async () => {
     mockSale.filas = [
-      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'voided', total: '9000', date: '2026-07-20' },
+      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'voided', is_credit: true, total: '9000', date: '2026-07-20' },
     ];
 
     const aging = await customerService.calculateAging(100, EMPRESA);
@@ -182,8 +204,8 @@ describe('calculateAging', () => {
     // Dos ventas de $1000: una de hace 10 días, otra de hace 45.
     // Pagó $1000 de $2000 -> queda 50% impago, prorrateado 50/50.
     mockSale.filas = [
-      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', total: '1000', date: '2026-07-21' },
-      { id: 2, customer_id: 100, empresa_id: EMPRESA, status: 'active', total: '1000', date: '2026-06-16' },
+      { id: 1, customer_id: 100, empresa_id: EMPRESA, status: 'active', is_credit: true, total: '1000', date: '2026-07-21' },
+      { id: 2, customer_id: 100, empresa_id: EMPRESA, status: 'active', is_credit: true, total: '1000', date: '2026-06-16' },
     ];
     mockCustomerPayment.filas = [
       { id: 1, customer_id: 100, empresa_id: EMPRESA, amount: '1000', payment_date: '2026-07-22' },

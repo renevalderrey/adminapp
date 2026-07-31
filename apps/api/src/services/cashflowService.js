@@ -53,23 +53,27 @@ class CashflowService {
 
     // ── Ingresos ──
     //
-    // ATENCION: totalSales y totalCustomerPayments se solapan. Una venta a
-    // cuenta corriente se registra como Sale (se factura) y despues, al
-    // cobrarse, como CustomerPayment. Sumar las dos cuenta el mismo peso dos
-    // veces, y el saldo queda inflado por el total de lo cobrado en cuenta
-    // corriente.
+    // El saldo es BASE EFECTIVO: cuenta la plata que efectivamente entro, no
+    // lo facturado.
     //
-    // No se corrige aca porque el modelo de datos no distingue una venta
-    // cobrada en el mostrador de una a cuenta corriente: haria falta decidir
-    // ese criterio antes de tocar la formula. Queda como pregunta abierta en
-    // docs/ANALISIS.md. Mientras tanto se devuelven los componentes por
-    // separado, para que el numero sea auditable en vez de una caja negra.
-    const allInflows = totalSales + totalCustomerPayments + manualInflows;
+    // Antes se sumaban todas las ventas MAS todas las cobranzas de clientes.
+    // Una venta a cuenta corriente entra dos veces: al facturarse (como venta)
+    // y al cobrarse (como cobranza). El saldo quedaba inflado por el total de
+    // lo cobrado en cuenta corriente.
+    //
+    // Ahora las ventas a credito se excluyen de las ventas y entran recien
+    // cuando se cobran, via CustomerPayment. La columna is_credit permite
+    // separarlas; antes no habia forma de distinguirlas.
+    const ventasContado = parseFloat(
+      await Sale.sum('total', { where: { ...scope, status: 'active', is_credit: false } })
+    ) || 0;
+
+    const allInflows = ventasContado + totalCustomerPayments + manualInflows;
 
     const balance = allInflows - allOutflows;
 
     const sales30d = parseFloat(
-      await Sale.sum('total', { where: { ...scope, status: 'active', date: { [Op.gte]: thirtyDaysAgo } } })
+      await Sale.sum('total', { where: { ...scope, status: 'active', is_credit: false, date: { [Op.gte]: thirtyDaysAgo } } })
     ) || 0;
 
     const customerPayments30d = parseFloat(
@@ -121,7 +125,10 @@ class CashflowService {
       // Componentes del saldo, para que el numero sea auditable desde la UI.
       // Ver la nota de arriba sobre el solapamiento entre ventas y cobranzas.
       detalle: {
-        ventas: redondear(totalSales),
+        // Base efectivo: solo las ventas cobradas en el momento. Las de cuenta
+        // corriente entran en cobranzas_clientes cuando se cobran.
+        ventas_contado: redondear(ventasContado),
+        ventas_a_credito_facturadas: redondear(totalSales - ventasContado),
         cobranzas_clientes: redondear(totalCustomerPayments),
         ingresos_manuales: redondear(manualInflows),
         gastos_fijos: redondear(totalExpenses),
