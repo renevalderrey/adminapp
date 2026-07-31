@@ -57,7 +57,9 @@ class CustomerService {
 
     const where = { customer_id: customerId, empresa_id: empresaId };
 
-    const totalSales = await Sale.sum('total', { where });
+    // Una venta anulada no genera deuda. Sin el filtro por status se le
+    // reclamaba al cliente plata por operaciones dadas de baja.
+    const totalSales = await Sale.sum('total', { where: { ...where, status: 'active' } });
     const totalPayments = await CustomerPayment.sum('amount', { where });
 
     return (parseFloat(totalSales) || 0) - (parseFloat(totalPayments) || 0);
@@ -70,8 +72,9 @@ class CustomerService {
     const buckets = { '0_30': 0, '31_60': 0, '61_90': 0, '90_plus': 0 };
     const where = { customer_id: customerId, empresa_id: empresaId };
 
+    // Mismo criterio que calculateBalance: las anuladas no son deuda.
     const sales = await Sale.findAll({
-      where,
+      where: { ...where, status: 'active' },
       attributes: ['total', 'date'],
       raw: true,
     });
@@ -109,13 +112,22 @@ class CustomerService {
       attributes: [
         'id', 'name', 'tax_id', 'email', 'phone',
         [fn('COALESCE', literal(
-          '(SELECT SUM(CAST(total AS DECIMAL)) FROM sales WHERE sales.customer_id = "Customer".id AND sales.empresa_id = :empresaId)'
+          `(SELECT SUM(CAST(total AS DECIMAL)) FROM sales
+             WHERE sales.customer_id = "Customer".id
+               AND sales.status = 'active'
+               AND sales.empresa_id = :empresaId)`
         ), 0), 'total_purchases'],
         [fn('COALESCE', literal(
-          '(SELECT COUNT(*) FROM sales WHERE sales.customer_id = "Customer".id AND sales.empresa_id = :empresaId)'
+          `(SELECT COUNT(*) FROM sales
+             WHERE sales.customer_id = "Customer".id
+               AND sales.status = 'active'
+               AND sales.empresa_id = :empresaId)`
         ), 0), 'visit_count'],
         [fn('COALESCE', literal(
-          '(SELECT MAX(date) FROM sales WHERE sales.customer_id = "Customer".id AND sales.empresa_id = :empresaId)'
+          `(SELECT MAX(date) FROM sales
+             WHERE sales.customer_id = "Customer".id
+               AND sales.status = 'active'
+               AND sales.empresa_id = :empresaId)`
         ), null), 'last_purchase'],
       ],
       replacements: { empresaId },
@@ -168,7 +180,9 @@ class CustomerService {
       `SELECT
          COALESCE((SELECT SUM(CAST(total AS DECIMAL))
                    FROM sales
-                   WHERE customer_id IS NOT NULL AND empresa_id = :empresaId), 0)
+                   WHERE customer_id IS NOT NULL
+                     AND status = 'active'
+                     AND empresa_id = :empresaId), 0)
          -
          COALESCE((SELECT SUM(CAST(amount AS DECIMAL))
                    FROM customer_payments
@@ -220,7 +234,7 @@ class CustomerService {
 
     // ── Aging de clientes ──
     const allSales = await Sale.findAll({
-      where: { customer_id: { [Op.ne]: null }, empresa_id: empresaId },
+      where: { customer_id: { [Op.ne]: null }, empresa_id: empresaId, status: 'active' },
       attributes: ['total', 'date', 'customer_id'],
       raw: true,
     });
@@ -301,7 +315,9 @@ class CustomerService {
     // pagina son 200 consultas por request. Resolver con un GROUP BY unico.
     const enriched = await Promise.all(
       rows.map(async (c) => {
-        const scopeVentas = { customer_id: c.id, empresa_id: empresaId };
+        // status active en todo: "cuanto me compro" y "cuantas veces vino" no
+        // deben contar operaciones anuladas.
+        const scopeVentas = { customer_id: c.id, empresa_id: empresaId, status: 'active' };
 
         const totalSales = parseFloat(await Sale.sum('total', { where: scopeVentas })) || 0;
         const visitCount = await Sale.count({ where: scopeVentas });
