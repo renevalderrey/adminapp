@@ -49,30 +49,43 @@ class TaxService {
     const startDate = `${targetYear}-01-01`;
     const endDate = `${targetYear}-12-31`;
 
+    // Solo las ventas vigentes son facturación. Una venta anulada no se
+    // declara: contarla puede empujar al usuario a una categoría más alta y
+    // hacerle pagar de más todos los meses del año.
     const annualBilling = parseFloat(
       await Sale.sum('total', {
-        where: { empresa_id: empresaId, date: { [Op.between]: [startDate, endDate] } },
+        where: {
+          empresa_id: empresaId,
+          status: 'active',
+          date: { [Op.between]: [startDate, endDate] },
+        },
       })
     ) || 0;
 
-    const config = await this.getConfig('monotributo');
+    // Faltaba empresaId. Al quitarse el default `empresaId = 1` en la auditoría
+    // de aislamiento, esta llamada quedó pasando undefined, y Sequelize rechaza
+    // un where con undefined: el endpoint devolvía 500.
+    const config = await this.getConfig('monotributo', empresaId);
     const scales = config.config.scales || DEFAULT_MONOTRIBUTO_SCALES;
 
-    let category = null;
-    for (const s of scales) {
-      if (annualBilling <= s.max_income) {
-        category = s;
-        break;
-      }
-    }
+    // Las escalas se recorren de menor a mayor, así que se ordenan por las
+    // dudas: vienen de una config editable por el usuario y nada garantiza el
+    // orden. Sin esto, una lista desordenada asigna una categoría equivocada.
+    const escalasOrdenadas = [...scales].sort((a, b) => a.max_income - b.max_income);
 
+    let category = escalasOrdenadas.find((s) => annualBilling <= s.max_income);
+
+    // Si supera la última escala, se toma la más alta disponible.
     if (!category) {
-      category = scales[scales.length - 1];
+      category = escalasOrdenadas[escalasOrdenadas.length - 1];
     }
 
+    // Los pagos de impuestos de otra empresa no pueden descontarse de la deuda
+    // de esta. Sin el filtro, el usuario veía una deuda menor a la real.
     const paymentsThisYear = parseFloat(
       await TaxPayment.sum('amount', {
         where: {
+          empresa_id: empresaId,
           tax_type: 'monotributo',
           payment_date: { [Op.between]: [startDate, endDate] },
         },

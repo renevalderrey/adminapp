@@ -15,6 +15,22 @@
 //  NO lo atrapan estos tests. Para eso hace falta el test de integracion.
 // ════════════════════════════════════════════
 
+/**
+ * Reproduce el rechazo de Sequelize ante un valor undefined en el where.
+ *
+ * Sequelize real lanza: WHERE parameter "x" has invalid "undefined" value.
+ * Sin esto, el doble seria mas permisivo que la base y dejaria pasar
+ * justamente el bug mas comun despues de un refactor de firmas: una llamada
+ * que se olvido de pasar empresaId.
+ */
+function validarWhere(where = {}) {
+  for (const [campo, valor] of Object.entries(where)) {
+    if (valor === undefined) {
+      throw new Error(`WHERE parameter "${campo}" has invalid "undefined" value`);
+    }
+  }
+}
+
 /** Evalua un where simple contra una fila. Soporta igualdad y arrays (IN). */
 function coincide(fila, where = {}) {
   return Object.entries(where).every(([campo, valor]) => {
@@ -69,6 +85,7 @@ function crearModelo(filas = [], relaciones = {}) {
 
     async findOne(opciones = {}) {
       modelo.llamadas.push({ metodo: 'findOne', ...opciones });
+      validarWhere(opciones.where);
       const fila = modelo.filas.find((f) => coincide(f, opciones.where));
       return modelo._hidratar(fila, opciones);
     },
@@ -81,6 +98,7 @@ function crearModelo(filas = [], relaciones = {}) {
 
     async findAll(opciones = {}) {
       modelo.llamadas.push({ metodo: 'findAll', ...opciones });
+      validarWhere(opciones.where);
       return modelo.filas
         .filter((f) => coincide(f, opciones.where))
         .map((f) => modelo._hidratar(f, opciones));
@@ -88,6 +106,7 @@ function crearModelo(filas = [], relaciones = {}) {
 
     async count(opciones = {}) {
       modelo.llamadas.push({ metodo: 'count', ...opciones });
+      validarWhere(opciones.where);
       return modelo.filas.filter((f) => coincide(f, opciones.where)).length;
     },
 
@@ -98,6 +117,7 @@ function crearModelo(filas = [], relaciones = {}) {
      */
     async sum(campo, opciones = {}) {
       modelo.llamadas.push({ metodo: 'sum', campo, ...opciones });
+      validarWhere(opciones.where);
       const filtradas = modelo.filas.filter((f) => coincide(f, opciones.where));
       if (filtradas.length === 0) return null; // Sequelize devuelve null, no 0
       const total = filtradas.reduce((acc, f) => acc + parseFloat(f[campo] || 0), 0);
@@ -115,4 +135,4 @@ function crearModelo(filas = [], relaciones = {}) {
   return modelo;
 }
 
-module.exports = { crearModelo, coincide };
+module.exports = { crearModelo, coincide, validarWhere };
