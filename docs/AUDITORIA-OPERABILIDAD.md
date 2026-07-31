@@ -214,16 +214,8 @@ que está obligado a conservar), o recuperar algo que alguien borró por error.
 
 ### Requiere código
 
-5. **65 bloques `catch` devuelven 500 sin loguear nada**, incluidos crear y
-   anular venta. Se corrigieron los de las rutas auditadas; el resto no.
-6. **Los errores 500 no llevan identificador.** No hay forma de atar el reporte
-   de un usuario ("me dio error a las 3") con una línea del log.
-7. **El onboarding hace cuatro `create` sin transacción.** Si falla el último,
-   queda una empresa a medio crear.
-8. **`sendEmail` devuelve `ok: true` sin `RESEND_API_KEY`.** Las invitaciones se
-   pierden en silencio y el usuario cree que se enviaron.
-9. **La llamada a Auth0 `/userinfo` no tiene timeout**, y está en el camino de
-   todos los requests.
+> **CERRADO** (31/07/2026). Los cinco puntos de esta sección están corregidos.
+> El detalle está más abajo, en «Cierre de los pendientes de código».
 
 ---
 
@@ -239,3 +231,149 @@ Sequelize con una clave privada en los parámetros y se verificó que sale
 
 Los de severidad media y baja no se verificaron uno por uno. El informe crudo
 está en `auditoria-frente5-hallazgos.json`.
+
+---
+
+## Cierre de los pendientes de código
+
+**Fecha:** 31 de julio de 2026. Los cinco puntos que quedaban abiertos, más tres
+fugas entre empresas cliente que aparecieron mientras se los corregía.
+
+### 79 catch devolvían 500 sin loguear, y con el mensaje del error adentro
+
+El relevamiento decía 65; el conteo final fue **79 apariciones literales** de:
+
+```js
+} catch (err) {
+  res.status(500).json({ ok: false, error: err.message });
+}
+```
+
+Dos problemas en dos líneas. El error no se registraba en ningún lado —incluía
+crear y anular venta, las dos operaciones más críticas del sistema— y
+`err.message` viajaba al cliente: un error de Sequelize trae nombres de tabla,
+de columna y de constraint.
+
+Nuevo `utils/errores.js` con `fallo(req, res, err, mensaje)`, que loguea con el
+contexto completo y responde un mensaje en castellano. Los 79 sitios migrados,
+más los 22 que ya logueaban pero no llevaban identificador.
+
+Para los errores que **sí** son para el usuario —«Stock insuficiente en
+"Depósito" para "Harina" (disponible: 2, requerido: 5)»— se agregó
+`ErrorDeNegocio`: `fallo` respeta su mensaje y su status, y lo registra como
+aviso en vez de como error. Sin esa distinción, taparlos con un genérico dejaba
+al usuario sin saber qué corregir.
+
+### Los 500 no tenían identificador
+
+Nuevo `middleware/requestId.js`. Cada request lleva un id que aparece en tres
+lugares a la vez: la cabecera `X-Request-Id`, el cuerpo del error, y **cada
+línea de log de ese request**.
+
+El id que llega de afuera se reusa —para poder seguir un request entre saltos—
+solo si es inofensivo: sin saltos de línea, que permitirían inyectar entradas
+falsas en el log.
+
+El frontend lo muestra: el interceptor de axios agrega `(código: a1b2c3d4)` al
+mensaje de cualquier 5xx. Se hizo en el interceptor y no pantalla por pantalla
+porque las 18 páginas ya muestran `err.response.data.error`.
+
+De paso, el log de acceso en producción pasó de la cadena estilo Apache de
+`combined` a campos estructurados: ahora se puede filtrar por `requestId`, por
+`status` o por `url` sin escribir una expresión regular. Y un 401 por token
+vencido dejó de loguearse como error con stack completo — tapaba los errores
+reales.
+
+### El onboarding creaba cuatro filas sin transacción
+
+Si fallaba la tercera, quedaba una empresa y un punto de venta creados, sin
+membresía y sin suscripción: el usuario no podía entrar (no hay
+`UsuarioEmpresa`) ni volver a registrarse (la empresa ya existe). Una cuenta
+zombi que solo se arregla a mano en la base.
+
+Las cuatro creaciones van ahora en una transacción. El email queda **fuera** a
+propósito: mandarlo no es reversible, y que el proveedor de correo esté caído no
+es razón para deshacer una empresa que se creó bien.
+
+### `sendEmail` decía `ok: true` sin `RESEND_API_KEY`
+
+Devolvía `{ ok: true, mock: true }`. Quien invitaba a alguien veía «Invitación
+enviada» mientras el destinatario no recibía nada, y no había forma de darse
+cuenta.
+
+Ahora devuelve `ok: false`, avisa una vez al arrancar si falta la clave, y los
+que llaman lo manejan:
+
+- **Invitar** responde 201 con `email_enviado: false` y le dice al usuario que
+  pase el enlace a mano. La invitación es válida igual.
+- **Re-enviar** responde 502: enviar era la única acción pedida.
+- **El cron** solo cuenta los avisos que salieron de verdad. Antes el log decía
+  «5 avisos enviados» con el correo sin configurar.
+
+### La llamada a Auth0 `/userinfo` no tenía timeout
+
+Está en el camino de todos los requests que llegan con un token sin `name` o sin
+`email`, y `fetch()` no tiene timeout por defecto. Si Auth0 se ponía lento, cada
+request se colgaba —no fallaba, se colgaba— hasta el timeout del cliente: un
+problema de Auth0 se convertía en una caída total de AdminApp.
+
+Timeout de 3 s con `AbortSignal.timeout`. El perfil es opcional: si no llega, se
+sigue con lo que traiga el token. El `catch` además dejó de estar vacío.
+
+---
+
+## Tres fugas entre empresas cliente que seguían abiertas
+
+No son del Frente 5. Aparecieron leyendo los `catch` de cada ruta, y son de la
+misma clase que las del Frente 1: **el Frente 1 no las había encontrado.**
+
+| Endpoint | Qué permitía |
+|---|---|
+| `GET /api/products/:id/cost-history` | Leer la evolución de costos de un producto de otra empresa |
+| `GET /api/products/:id/recipe` | Leer la fórmula: qué insumos lleva y en qué proporción |
+| `DELETE /api/products/:id/recipe` | **Borrar** la receta de otra empresa cliente |
+
+Las tres consultaban `where: { product_id: req.params.id }` sin resolver antes
+el producto con scoping. `POST /:id/recipe` sí tenía el chequeo: se corrigió una
+de las cuatro.
+
+Y cinco rutas más, en `empresas.js`, que toman el id de la **URL** en vez del
+contexto:
+
+| Endpoint | Qué permitía |
+|---|---|
+| `GET /:empresaId/puntos-de-venta` | Listar las sucursales de otra empresa |
+| `POST /:empresaId/puntos-de-venta` | Crearle una sucursal |
+| `GET /:empresaId/invitaciones` | Ver a quién invitó, con los emails |
+| `GET /:empresaId/usuarios` | Listar su equipo, con nombres y emails |
+| `POST /:empresaId/usuarios` | **Agregar un usuario —incluido uno mismo— a su equipo, con el rol que se pida** |
+
+`checkPermission` verifica el permiso en la empresa **activa** del usuario, no
+en la de la URL. `requireEmpresaPropia` existía y estaba puesto en dos rutas;
+faltaba en estas cinco. Alcanzaba con cambiar el número de la URL.
+
+### Cómo se evita que vuelvan
+
+Tres guardias estáticas nuevas en `src/tests/observabilidad.test.js`, del mismo
+estilo que las del Frente 1: leen el fuente y fallan si el patrón reaparece.
+
+1. Toda ruta con `:empresaId` tiene que llevar `requireEmpresaPropia`.
+2. Nada de `where: { algo_id: req.params.x }` sin `empresa_id` (con una lista de
+   excepciones legítimas, cada una con su motivo).
+3. Ningún `catch` responde 500 con `err.message`.
+
+Se verificó que las tres **fallan** contra la versión anterior del código: 5
+hallazgos de la primera, 7 de la segunda, 79 de la tercera. Una guardia que
+nunca falla no sirve de nada.
+
+### Otros dos arreglos del camino
+
+- **Transacciones que quedaban abiertas.** `DELETE /api/suppliers/:id` y
+  `POST /api/stock/transfer` hacían `return` en un 404 o en una validación sin
+  hacer rollback: cada uno se llevaba una conexión del pool hasta el timeout.
+- **La importación entera fallaba al reportar una fila mala.** En
+  `routes/import.js` el `catch` del bucle usaba `data`, declarado dentro del
+  `try`: tiraba `ReferenceError` justo cuando había un error que explicar, y la
+  importación devolvía 500 en vez de reportar la fila y seguir.
+
+**Suite:** 252 → **308 tests**.

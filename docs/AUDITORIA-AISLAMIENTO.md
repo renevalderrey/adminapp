@@ -214,3 +214,47 @@ siguiente paso natural, y el que da la garantía más fuerte.
 Este documento cubre solo el Frente 1 de `ANALISIS.md`. Siguen abiertos la
 verificación de la lógica financiera (0% de cobertura sobre ~9.500 líneas) y el
 estado real de la integración AFIP.
+
+---
+
+## Adenda: ocho endpoints que esta auditoría no encontró
+
+**31 de julio de 2026.** Aparecieron revisando los bloques `catch` de cada ruta,
+no buscando fugas. Son de la misma clase que los 20 de arriba.
+
+**En `products.js`** — consultaban por `product_id` sin resolver antes el
+producto con scoping:
+
+- `GET /:id/cost-history` — la evolución de costos de un producto ajeno.
+- `GET /:id/recipe` — la fórmula: qué insumos lleva y en qué proporción.
+- `DELETE /:id/recipe` — **borrar** la receta de otra empresa cliente.
+
+`POST /:id/recipe` sí tenía el chequeo. Se había corregido una de las cuatro.
+
+**En `empresas.js`** — rutas que toman el id de la URL en vez del contexto, sin
+`requireEmpresaPropia`:
+
+- `GET /:empresaId/puntos-de-venta`
+- `POST /:empresaId/puntos-de-venta`
+- `GET /:empresaId/invitaciones` (emails de los invitados)
+- `GET /:empresaId/usuarios` (nombres y emails del equipo)
+- `POST /:empresaId/usuarios` — **agregar un usuario, incluido uno mismo, al
+  equipo de otra empresa, con el rol que se pida.**
+
+`checkPermission` verifica el permiso en la empresa **activa**, no en la de la
+URL. El middleware existía y estaba puesto en dos rutas.
+
+### Por qué no las encontró
+
+Las guardias de este frente buscan `findByPk` con id del cliente y fallbacks a
+`empresa_id: 1`. Ninguno de estos ocho casos usa esos patrones: los de
+`products.js` usan `where: { product_id: ... }`, y los de `empresas.js` filtran
+correctamente por `empresa_id` — solo que por el de la URL.
+
+Se agregaron dos guardias nuevas en `src/tests/observabilidad.test.js` que
+cubren exactamente esas dos formas, verificadas contra la versión anterior del
+código: detectan los 7 y los 5 casos respectivamente.
+
+**La lección se sostiene: los guardias estáticos atrapan la repetición de un
+patrón conocido, no la clase entera del problema.** Sigue faltando el test de
+integración contra base real.

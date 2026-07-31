@@ -197,6 +197,14 @@ no solo el objetivo — el objetivo sin método es una intención.
 >
 > Queda pendiente: cifrar la clave privada de AFIP en reposo, y los tests de
 > integración contra base real.
+>
+> **La auditoría no fue exhaustiva.** El 31/07/2026, revisando otra cosa,
+> aparecieron ocho endpoints vulnerables más que este frente había dado por
+> cubiertos: `GET/DELETE /api/products/:id/recipe`,
+> `GET /api/products/:id/cost-history`, y cinco rutas `/:empresaId/...` de
+> `empresas.js` sin `requireEmpresaPropia`. Están corregidos y con guardias
+> estáticas. El detalle, en
+> [AUDITORIA-OPERABILIDAD.md](AUDITORIA-OPERABILIDAD.md#tres-fugas-entre-empresas-cliente-que-seguían-abiertas).
 
 **Bloquea vender. Es lo primero.**
 
@@ -356,6 +364,17 @@ manualmente al principio, pero no escala.
 >
 > Había además credenciales reales del hosting original commiteadas. Se
 > redactaron, pero SIGUEN EN EL HISTORIAL: hay que rotarlas.
+>
+> **Actualización (31/07/2026).** Los cinco pendientes de código quedaron
+> cerrados: los 79 `catch` que devolvían 500 sin loguear (y con el mensaje del
+> error adentro), el identificador de request de punta a punta, la transacción
+> del onboarding, `sendEmail` mintiendo `ok: true`, y el timeout de Auth0.
+>
+> En el camino aparecieron **ocho fugas entre empresas cliente que el Frente 1
+> no había encontrado** — tres en recetas e historial de costos, y cinco rutas
+> `/:empresaId/...` sin `requireEmpresaPropia`, incluida una que permitía
+> agregarse uno mismo al equipo de otra empresa. Corregidas, con guardias
+> estáticas que fallan si el patrón reaparece. Suite: 252 → 308 tests.
 
 **No bloquea la primera venta, sí bloquea dormir tranquilo.**
 
