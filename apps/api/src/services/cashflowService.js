@@ -40,8 +40,32 @@ class CashflowService {
       await CashFlowEntry.sum('amount', { where: { ...scope, type: 'outflow' } })
     ) || 0;
 
+    // ── Egresos ──
+    //
+    // Se suman SOLO los pagos hechos, no las deudas contraidas. Antes se
+    // restaban las dos: recibir mercaderia genera un SupplierMovement de tipo
+    // 'deuda', y pagarla genera uno de tipo 'pago'. Contar ambos descontaba
+    // cada compra a credito dos veces del saldo de caja.
+    //
+    // Una deuda no es plata que salio: es plata que va a salir. Pertenece a
+    // "cuentas por pagar", no al saldo de caja.
+    const allOutflows = totalExpenses + totalSupplierPayments + totalTaxPayments + manualOutflows;
+
+    // ── Ingresos ──
+    //
+    // ATENCION: totalSales y totalCustomerPayments se solapan. Una venta a
+    // cuenta corriente se registra como Sale (se factura) y despues, al
+    // cobrarse, como CustomerPayment. Sumar las dos cuenta el mismo peso dos
+    // veces, y el saldo queda inflado por el total de lo cobrado en cuenta
+    // corriente.
+    //
+    // No se corrige aca porque el modelo de datos no distingue una venta
+    // cobrada en el mostrador de una a cuenta corriente: haria falta decidir
+    // ese criterio antes de tocar la formula. Queda como pregunta abierta en
+    // docs/ANALISIS.md. Mientras tanto se devuelven los componentes por
+    // separado, para que el numero sea auditable en vez de una caja negra.
     const allInflows = totalSales + totalCustomerPayments + manualInflows;
-    const allOutflows = totalExpenses + totalSupplierPayments + totalSupplierDebts + totalTaxPayments + manualOutflows;
+
     const balance = allInflows - allOutflows;
 
     const sales30d = parseFloat(
@@ -63,17 +87,49 @@ class CashflowService {
       await TaxPayment.sum('amount', { where: { empresa_id: empresaId, payment_date: { [Op.gte]: thirtyDaysAgo } } })
     ) || 0;
 
-    const projectedInflows30d = (sales30d + customerPayments30d) * 1.1;
-    const projectedOutflows30d = gastosFijosMensuales + monthlyTaxPayments;
-    const projected30d = balance + projectedInflows30d - projectedOutflows30d;
-    const projected60d = projected30d + projectedInflows30d - projectedOutflows30d;
+    // Lo que efectivamente entro y salio en los ultimos 30 dias.
+    const ingresosReales30d = sales30d + customerPayments30d;
+    const egresosReales30d = gastosFijosMensuales + monthlyTaxPayments;
+
+    // La proyeccion asume que el proximo mes se repite el anterior con un 10%
+    // de crecimiento. Ese 1.1 estaba hardcodeado y sin explicar, y ademas se
+    // devolvia en el campo total_inflows_30d, que la pantalla rotula
+    // "Entradas 30d": el usuario leia como dato historico un numero inventado
+    // un 10% por encima de la realidad.
+    //
+    // Ahora los reales y la proyeccion son campos distintos.
+    const FACTOR_CRECIMIENTO = 1.1;
+    const proyeccionIngresos30d = ingresosReales30d * FACTOR_CRECIMIENTO;
+
+    const projected30d = balance + proyeccionIngresos30d - egresosReales30d;
+    const projected60d = projected30d + proyeccionIngresos30d - egresosReales30d;
+
+    const redondear = (n) => Math.round(n * 100) / 100;
 
     return {
-      balance: Math.round(balance * 100) / 100,
-      total_inflows_30d: Math.round(projectedInflows30d * 100) / 100,
-      total_outflows_30d: Math.round(projectedOutflows30d * 100) / 100,
-      projected_30d: Math.round(projected30d * 100) / 100,
-      projected_60d: Math.round(projected60d * 100) / 100,
+      balance: redondear(balance),
+
+      // Historico real de los ultimos 30 dias.
+      total_inflows_30d: redondear(ingresosReales30d),
+      total_outflows_30d: redondear(egresosReales30d),
+
+      // Proyeccion, con el supuesto explicito.
+      projected_30d: redondear(projected30d),
+      projected_60d: redondear(projected60d),
+      supuesto_crecimiento: FACTOR_CRECIMIENTO,
+
+      // Componentes del saldo, para que el numero sea auditable desde la UI.
+      // Ver la nota de arriba sobre el solapamiento entre ventas y cobranzas.
+      detalle: {
+        ventas: redondear(totalSales),
+        cobranzas_clientes: redondear(totalCustomerPayments),
+        ingresos_manuales: redondear(manualInflows),
+        gastos_fijos: redondear(totalExpenses),
+        pagos_proveedores: redondear(totalSupplierPayments),
+        pagos_impuestos: redondear(totalTaxPayments),
+        egresos_manuales: redondear(manualOutflows),
+        deuda_proveedores_pendiente: redondear(totalSupplierDebts - totalSupplierPayments),
+      },
     };
   }
 
