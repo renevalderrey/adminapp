@@ -12,17 +12,22 @@ module.exports = {
       updated_at: { allowNull: false, type: Sequelize.DATE, defaultValue: Sequelize.literal('CURRENT_TIMESTAMP') },
     });
 
+    // `field`, no `key`. addConstraint espera { table, field }; el que usa
+    // { model, key } es la definicion de columna de addColumn. Con `key` esta
+    // migracion tiraba "references object with table and field must be
+    // specified" y cortaba la cadena: **una base nueva no se podia crear**.
+    // El resto de las migraciones ya usaba la forma correcta.
     await queryInterface.addConstraint('tiendanube_mappings', {
       fields: ['empresa_id'],
       type: 'foreign key',
-      references: { table: 'empresas', key: 'id' },
+      references: { table: 'empresas', field: 'id' },
       onDelete: 'CASCADE',
     });
 
     await queryInterface.addConstraint('tiendanube_mappings', {
       fields: ['product_id'],
       type: 'foreign key',
-      references: { table: 'products', key: 'id' },
+      references: { table: 'products', field: 'id' },
       onDelete: 'CASCADE',
     });
 
