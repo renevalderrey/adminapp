@@ -10,13 +10,25 @@ async function expireTrials() {
   try {
     const now = new Date();
 
+    // El periodo de gracia es opcional: grace_period_ends puede ser NULL.
+    //
+    // La version anterior exigia `grace_period_ends < now` sin contemplarlo, y
+    // en SQL comparar NULL con cualquier cosa devuelve NULL, que no matchea en
+    // un WHERE. Resultado: toda suscripcion sin periodo de gracia quedaba en
+    // estado trialing PARA SIEMPRE. La que crea setup.js es una de esas.
+    //
+    // Ahora: si hay periodo de gracia, se respeta; si no, alcanza con que haya
+    // terminado el trial.
     const [expiredTrials] = await Suscripcion.update(
       { status: 'expired' },
       {
         where: {
           status: 'trialing',
           trial_ends_at: { [Op.lt]: now },
-          grace_period_ends: { [Op.lt]: now },
+          [Op.or]: [
+            { grace_period_ends: { [Op.lt]: now } },
+            { grace_period_ends: null },
+          ],
         },
       }
     );
@@ -25,12 +37,17 @@ async function expireTrials() {
       logger.info({ count: expiredTrials }, 'Trials expired');
     }
 
+    // Mismo criterio para las que quedaron impagas: sin periodo de gracia
+    // definido, vencen de inmediato.
     const [pastDueCancelled] = await Suscripcion.update(
       { status: 'expired' },
       {
         where: {
           status: 'past_due',
-          grace_period_ends: { [Op.lt]: now },
+          [Op.or]: [
+            { grace_period_ends: { [Op.lt]: now } },
+            { grace_period_ends: null },
+          ],
         },
       }
     );

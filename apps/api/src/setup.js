@@ -47,12 +47,20 @@ async function setupDefaultData() {
     // Crear suscripción trial para la empresa default
     const trialEnd = new Date();
     trialEnd.setDate(trialEnd.getDate() + 15);
+
+    // El periodo de gracia se define explicitamente, igual que en el
+    // onboarding. Antes faltaba y quedaba NULL: con la version anterior de
+    // expireTrials, esa suscripcion no vencia nunca.
+    const graceEnd = new Date(trialEnd);
+    graceEnd.setDate(graceEnd.getDate() + 3);
+
     await Suscripcion.create({
       empresa_id: empresa.id,
       plan: 'free',
       status: 'trialing',
       trial_starts_at: new Date(),
       trial_ends_at: trialEnd,
+      grace_period_ends: graceEnd,
     });
 
     // Vincular dev user si BYPASS_AUTH está activo

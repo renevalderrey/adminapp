@@ -423,13 +423,18 @@ router.delete('/:id', checkPermission('config.editar'), requireEmpresa, requireE
 
 // ── SUSCRIPCIÓN ──
 
-router.get('/:id/suscripcion', async (req, res) => {
+// No tenia ni checkPermission ni validacion del :id: cualquier usuario
+// autenticado podia leer el estado de suscripcion, el plan y las fechas de
+// vencimiento de cualquier otra empresa cliente enumerando ids.
+router.get('/:id/suscripcion', requireEmpresa, requireEmpresaPropia(), async (req, res) => {
   try {
-    const suscripcion = await Suscripcion.findOne({ where: { empresa_id: req.params.id } });
+    const suscripcion = await Suscripcion.findOne({ where: { empresa_id: req.empresaId } });
     if (!suscripcion) return res.status(404).json({ ok: false, error: 'Suscripción no encontrada' });
+
     res.json({ ok: true, data: suscripcion });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    logger.error({ err, empresaId: req.empresaId }, 'empresas:suscripcion');
+    res.status(500).json({ ok: false, error: 'Error al obtener la suscripción' });
   }
 });
 
