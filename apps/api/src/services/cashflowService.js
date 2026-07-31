@@ -19,7 +19,10 @@ class CashflowService {
     const scope = { empresa_id: empresaId };
     if (puntoDeVentaId) scope.punto_de_venta_id = puntoDeVentaId;
 
-    const totalSales = parseFloat(await Sale.sum('total', { where: scope })) || 0;
+    // Las ventas anuladas no ingresaron plata a la caja.
+    const totalSales = parseFloat(
+      await Sale.sum('total', { where: { ...scope, status: 'active' } })
+    ) || 0;
     const totalCustomerPayments = parseFloat(await CustomerPayment.sum('amount', { where: { empresa_id: empresaId } })) || 0;
     const totalExpenses = parseFloat(await FixedExpense.sum('amount', { where: { empresa_id: empresaId } })) || 0;
     const totalSupplierPayments = parseFloat(
@@ -42,14 +45,17 @@ class CashflowService {
     const balance = allInflows - allOutflows;
 
     const sales30d = parseFloat(
-      await Sale.sum('total', { where: { ...scope, date: { [Op.gte]: thirtyDaysAgo } } })
+      await Sale.sum('total', { where: { ...scope, status: 'active', date: { [Op.gte]: thirtyDaysAgo } } })
     ) || 0;
 
     const customerPayments30d = parseFloat(
       await CustomerPayment.sum('amount', { where: { empresa_id: empresaId, payment_date: { [Op.gte]: thirtyDaysAgo } } })
     ) || 0;
 
-    const expenses30d = parseFloat(
+    // OJO: los gastos fijos no tienen columna de fecha en el modelo, asi que
+    // "30d" es en realidad el total de gastos fijos mensuales configurados.
+    // El nombre inducia a pensar que estaba filtrado por periodo.
+    const gastosFijosMensuales = parseFloat(
       await FixedExpense.sum('amount', { where: { empresa_id: empresaId } })
     ) || 0;
 
@@ -58,7 +64,7 @@ class CashflowService {
     ) || 0;
 
     const projectedInflows30d = (sales30d + customerPayments30d) * 1.1;
-    const projectedOutflows30d = expenses30d + monthlyTaxPayments;
+    const projectedOutflows30d = gastosFijosMensuales + monthlyTaxPayments;
     const projected30d = balance + projectedInflows30d - projectedOutflows30d;
     const projected60d = projected30d + projectedInflows30d - projectedOutflows30d;
 
@@ -137,7 +143,7 @@ class CashflowService {
 
     const movements = [];
 
-    const salesScope = { ...scope, date: { [Op.between]: [from, to] } };
+    const salesScope = { ...scope, status: 'active', date: { [Op.between]: [from, to] } };
     const sales = await Sale.findAll({
       where: salesScope,
       attributes: [['id', 'ref_id'], ['date', 'movement_date'], ['total', 'amount']],

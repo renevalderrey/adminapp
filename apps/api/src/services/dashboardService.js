@@ -87,7 +87,7 @@ class DashboardService {
         [fn('COALESCE', fn('SUM', col('total')), 0), 'total'],
         [fn('COUNT', col('id')), 'count'],
       ],
-      where: { empresa_id: empresaId, date: { [Op.between]: [from, to] } },
+      where: { empresa_id: empresaId, status: 'active', date: { [Op.between]: [from, to] } },
       raw: true,
     });
     return {
@@ -102,7 +102,7 @@ class DashboardService {
         'payment_method',
         [fn('SUM', col('total')), 'total'],
       ],
-      where: { empresa_id: empresaId, date: { [Op.between]: [from, to] } },
+      where: { empresa_id: empresaId, status: 'active', date: { [Op.between]: [from, to] } },
       group: ['payment_method'],
       raw: true,
     });
@@ -133,8 +133,15 @@ class DashboardService {
 
     let withDebt = 0;
     for (const id of customerIds) {
-      const salesTotal = await Sale.sum('total', { where: { customer_id: id } }) || 0;
-      const paymentsTotal = await CustomerPayment.sum('amount', { where: { customer_id: id } }) || 0;
+      // Faltaba empresa_id: se sumaban las ventas y los pagos de ese cliente
+      // en TODAS las empresas cliente. Y sin status, las anuladas contaban como
+      // deuda, inflando el conteo de clientes con saldo pendiente.
+      const salesTotal = await Sale.sum('total', {
+        where: { customer_id: id, empresa_id: empresaId, status: 'active' },
+      }) || 0;
+      const paymentsTotal = await CustomerPayment.sum('amount', {
+        where: { customer_id: id, empresa_id: empresaId },
+      }) || 0;
       if (parseFloat(salesTotal) > parseFloat(paymentsTotal)) {
         withDebt++;
       }
@@ -153,27 +160,33 @@ class DashboardService {
     const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     const totalReceivables = await Sale.sum('total', {
-      where: { empresa_id: empresaId, customer_id: { [Op.ne]: null } },
+      where: { empresa_id: empresaId, status: 'active', customer_id: { [Op.ne]: null } },
     }) || 0;
     const totalPayments = await CustomerPayment.sum('amount', {
       where: { empresa_id: empresaId },
     }) || 0;
     const total = Math.max(0, parseFloat(totalReceivables) - parseFloat(totalPayments));
 
+    // Los tramos eran [90,60], [60,30], [30,hoy] con Op.between, que es
+    // inclusivo en los dos extremos: una venta con fecha exactamente igual a un
+    // corte se contaba en DOS tramos y el total por antiguedad daba de mas.
+    // Ahora cada tramo es semiabierto: (corte_viejo, corte_nuevo].
+    const aCuenta = { empresa_id: empresaId, status: 'active', customer_id: { [Op.ne]: null } };
+
     const bucket0_30 = await Sale.sum('total', {
-      where: { empresa_id: empresaId, customer_id: { [Op.ne]: null }, date: { [Op.between]: [thirtyDaysAgoDate, now] } },
+      where: { ...aCuenta, date: { [Op.gt]: thirtyDaysAgoDate, [Op.lte]: now } },
     }) || 0;
 
     const bucket31_60 = await Sale.sum('total', {
-      where: { empresa_id: empresaId, customer_id: { [Op.ne]: null }, date: { [Op.between]: [sixtyDaysAgo, thirtyDaysAgoDate] } },
+      where: { ...aCuenta, date: { [Op.gt]: sixtyDaysAgo, [Op.lte]: thirtyDaysAgoDate } },
     }) || 0;
 
     const bucket61_90 = await Sale.sum('total', {
-      where: { empresa_id: empresaId, customer_id: { [Op.ne]: null }, date: { [Op.between]: [ninetyDaysAgo, sixtyDaysAgo] } },
+      where: { ...aCuenta, date: { [Op.gt]: ninetyDaysAgo, [Op.lte]: sixtyDaysAgo } },
     }) || 0;
 
     const bucket90plus = await Sale.sum('total', {
-      where: { empresa_id: empresaId, customer_id: { [Op.ne]: null }, date: { [Op.lt]: ninetyDaysAgo } },
+      where: { ...aCuenta, date: { [Op.lte]: ninetyDaysAgo } },
     }) || 0;
 
     return {

@@ -128,8 +128,18 @@ router.get('/profit', checkPermission('reportes.ver'), async (req, res) => {
     const to = req.query.to || new Date().toISOString().split('T')[0];
     const empresaId = req.empresaId;
 
-    const totalRevenue = parseFloat(await Sale.sum('total', { where: { empresa_id: empresaId, date: { [Op.between]: [from, to] } } })) || 0;
+    const totalRevenue = parseFloat(await Sale.sum('total', {
+      where: { empresa_id: empresaId, status: 'active', date: { [Op.between]: [from, to] } },
+    })) || 0;
 
+    // LIMITACION CONOCIDA: el costo de la mercaderia vendida se calcula con el
+    // costo ACTUAL del producto, no con el que tenia al momento de la venta.
+    // Si se actualiza el costo de un producto, la ganancia de los periodos ya
+    // cerrados cambia retroactivamente.
+    //
+    // Resolverlo bien exige guardar unit_cost en sale_items al registrar la
+    // venta (migracion + decidir que hacer con el historico existente). Ver
+    // docs/ANALISIS.md.
     const costOfGoods = parseFloat(await SaleItem.sum(
       sequelize.literal('"SaleItem"."quantity" * COALESCE("product"."cost", 0)'),
       {
@@ -144,7 +154,7 @@ router.get('/profit', checkPermission('reportes.ver'), async (req, res) => {
             model: Sale,
             as: 'sale',
             attributes: [],
-            where: { empresa_id: empresaId, date: { [Op.between]: [from, to] } },
+            where: { empresa_id: empresaId, status: 'active', date: { [Op.between]: [from, to] } },
             required: true,
           },
         ],
