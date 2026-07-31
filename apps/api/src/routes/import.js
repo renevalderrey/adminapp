@@ -243,7 +243,12 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
 
         const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
 
-        const cost = toNum(data.cost) || 0;
+        // Sin `|| 0`: si la columna costo no viene o esta vacia, toNum
+        // devuelve undefined y el campo NO se toca. Antes se forzaba a 0, con
+        // lo cual importar una planilla parcial (por ejemplo solo para
+        // actualizar stock) ponia en cero el costo de cada producto y se
+        // llevaba puestos todos los precios derivados de el.
+        const cost = toNum(data.cost);
         const marginOverride = toNum(data.margin_override);
         const priceOverride = toNum(data.price_override);
         const wholesaleMargin = toNum(data.wholesale_margin);
@@ -258,7 +263,7 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
 
         const productData = {
           name: data.name, description: data.description, sku: data.sku, barcode: data.barcode,
-          cost, brand_id: brandId, supplier_id: supplierId,
+          brand_id: brandId, supplier_id: supplierId,
           category: data.category || 'otro',
           unit_type: ['unidad', 'kg', 'gr', 'litro', 'ml'].includes(data.unit_type) ? data.unit_type : 'unidad',
           unit_size: unitSize,
@@ -266,6 +271,7 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
           empresa_id: empresaId,
         };
 
+        if (cost !== undefined) productData.cost = cost;
         if (marginOverride !== undefined) productData.margin_override = marginOverride;
         if (priceOverride !== undefined) productData.price_override = priceOverride;
         if (wholesaleMargin !== undefined) productData.wholesale_margin = wholesaleMargin;
@@ -280,8 +286,12 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
           created++;
         }
 
-        if (data.quantity !== undefined) {
-          const qty = parseInt(data.quantity) || 0;
+        // Antes alcanzaba con que la columna existiera: una celda vacia es
+        // '' , que no es undefined, y parseInt('') || 0 daba 0. Importar una
+        // planilla con la columna cantidad en blanco vaciaba el inventario.
+        const qtyImportada = parseInt(data.quantity, 10);
+        if (Number.isFinite(qtyImportada)) {
+          const qty = qtyImportada;
           const location = data.location || defaultLocation;
           const [stock] = await Stock.findOrCreate({
             where: { product_id: product.id, location, empresa_id: empresaId },

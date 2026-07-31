@@ -54,7 +54,27 @@ router.put('/stock/:id', checkPermission('stock.editar'), async (req, res) => {
     const oldQty = stock.quantity;
     const oldAvail = stock.available;
 
-    await stock.update(req.body);
+    // Solo estos campos. Antes era update(req.body) crudo: el cliente podia
+    // mandar empresa_id, product_id o punto_de_venta_id y mover la fila de
+    // stock a otra empresa o a otro producto.
+    const cambios = {};
+    if (quantity !== undefined) cambios.quantity = quantity;
+    if (available !== undefined) cambios.available = available;
+    if (req.body.min_stock !== undefined) cambios.min_stock = req.body.min_stock;
+    if (req.body.location !== undefined) cambios.location = req.body.location;
+    if (req.body.current_batch !== undefined) cambios.current_batch = req.body.current_batch;
+    if (req.body.expiration_date !== undefined) cambios.expiration_date = req.body.expiration_date;
+    if (req.body.purchase_date !== undefined) cambios.purchase_date = req.body.purchase_date;
+
+    // quantity y available describen el mismo inventario: available es lo que
+    // se puede vender, quantity lo que hay fisicamente. Mover una sin la otra
+    // las hace divergir hasta que available supera a quantity.
+    if (cambios.quantity !== undefined && cambios.available === undefined) {
+      const delta = cambios.quantity - oldQty;
+      cambios.available = Math.max(0, oldAvail + delta);
+    }
+
+    await stock.update(cambios);
 
     if (quantity !== undefined || available !== undefined) {
       const StockMovement = require('../models/StockMovement');
@@ -109,7 +129,20 @@ router.post('/stock', checkPermission('stock.editar'), async (req, res) => {
     });
 
     if (!created) {
-      await stock.update({ quantity: quantity ?? stock.quantity, available: available ?? stock.available, min_stock: min_stock ?? stock.min_stock });
+      // Si solo viene quantity, available se mueve el mismo delta: son dos
+      // vistas del mismo inventario y actualizar una sola las desincroniza.
+      const nuevaQty = quantity ?? stock.quantity;
+      const nuevaDisp = available ?? (
+        quantity !== undefined
+          ? Math.max(0, stock.available + (quantity - stock.quantity))
+          : stock.available
+      );
+
+      await stock.update({
+        quantity: nuevaQty,
+        available: nuevaDisp,
+        min_stock: min_stock ?? stock.min_stock,
+      });
     }
 
     res.json({ ok: true, data: stock });
@@ -224,7 +257,12 @@ router.put('/expenses/:id', checkPermission('gastos.editar'), async (req, res) =
 // DELETE /api/expenses/:id
 router.delete('/expenses/:id', checkPermission('gastos.eliminar'), async (req, res) => {
   try {
-    const deleted = await FixedExpense.destroy({ where: { id: req.params.id } });
+    // Sin empresa_id esto borraba el gasto fijo de otra empresa cliente. Y los
+    // gastos fijos son la base del punto de equilibrio: borrarle uno a otro
+    // cliente le cambia el precio que el sistema le recomienda cobrar.
+    const deleted = await FixedExpense.destroy({
+      where: { id: req.params.id, empresa_id: req.empresaId },
+    });
     if (!deleted) return res.status(404).json({ ok: false, error: 'Gasto no encontrado' });
     res.json({ ok: true, message: 'Gasto eliminado' });
   } catch (err) {

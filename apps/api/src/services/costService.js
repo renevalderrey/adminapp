@@ -8,7 +8,13 @@ class CostService {
    * Calcula el costo unitario de un producto en base a su receta activa
    * Fórmula: Sum(Cantidad * Costo Ingrediente) / (Rendimiento * (1 - Merma / 100))
    */
-  async calculateProductCost(productId) {
+  /**
+   * @param {number} productId
+   * @param {import('sequelize').Transaction|null} [transaction] Obligatoria si
+   *   se llama desde dentro de una transacción: sin ella las consultas van por
+   *   otra conexión y, por MVCC, no ven los UPDATE todavía sin commitear.
+   */
+  async calculateProductCost(productId, transaction = null) {
     // Buscar la receta del producto con sus ingredientes
     const recipe = await Recipe.findOne({
       where: { product_id: productId },
@@ -18,12 +24,13 @@ class CostService {
           as: 'items',
           include: [{ model: Product, as: 'ingredient', attributes: ['id', 'cost'] }]
         }
-      ]
+      ],
+      transaction,
     });
 
     // Si no tiene receta, retorna su costo manual actual
     if (!recipe) {
-      const product = await Product.findByPk(productId, { attributes: ['cost'] });
+      const product = await Product.findByPk(productId, { attributes: ['cost'], transaction });
       return product ? parseFloat(product.cost) : 0;
     }
 
@@ -41,7 +48,21 @@ class CostService {
 
     // Aplicar fórmula
     const denominator = recipeYield * (1 - (lossPercentage / 100));
-    if (denominator <= 0) return 0;
+
+    // Una merma del 100% o más deja el denominador en cero o negativo: no hay
+    // producto terminado, así que no hay costo unitario que calcular.
+    //
+    // Antes se devolvía 0 en silencio, y ese 0 se persistía como costo del
+    // producto en recalculateCascadingCosts. El producto pasaba a costar nada,
+    // el margen se calculaba sobre cero y terminaba vendiéndose regalado.
+    // Es preferible fallar: la receta está mal cargada.
+    if (denominator <= 0) {
+      const err = new Error(
+        `Receta inválida para el producto ${productId}: con rendimiento ${recipeYield} y merma ${lossPercentage}% no queda producto terminado.`
+      );
+      err.status = 400;
+      throw err;
+    }
 
     const finalCost = ingredientsTotalCost / denominator;
     return parseFloat(finalCost.toFixed(2));
@@ -65,9 +86,15 @@ class CostService {
     const oldCost = parseFloat(product.cost) || 0;
     const recipe = await Recipe.findOne({ where: { product_id: productId }, transaction });
     
+    // La transacción tiene que viajar hasta acá. Sin ella, calculateProductCost
+    // abría sus propias consultas por otra conexión y, por MVCC, leía los
+    // costos ANTERIORES al UPDATE que se acababa de hacer dentro de esta misma
+    // transacción. El costo recalculado salía igual al viejo, no superaba el
+    // umbral de 0.01 de más abajo y no se actualizaba nada: la propagación en
+    // cascada —el propósito entero de esta función— era un no-op.
     let newCost = oldCost;
     if (recipe) {
-      newCost = await this.calculateProductCost(productId);
+      newCost = await this.calculateProductCost(productId, transaction);
     }
 
     // Si hay variación, actualizar y registrar historial

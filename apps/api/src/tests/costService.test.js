@@ -142,6 +142,51 @@ describe('calculateProductCost', () => {
     // sin ningun aviso al usuario. Ver la nota en docs/ANALISIS.md.
     await expect(costService.calculateProductCost(1)).resolves.toBe(50);
   });
+
+  // Una merma del 100% deja el denominador en cero: no queda producto
+  // terminado. Antes devolvia 0 en silencio y ese 0 se persistia como costo
+  // del producto, con lo cual pasaba a venderse regalado.
+  it('rechaza una merma del 100% en vez de devolver costo cero', async () => {
+    armarCatalogo({
+      productos: [{ id: 1, cost: '0' }, { id: 10, cost: '100' }],
+      recetas: [{
+        product_id: 1,
+        yield: '1',
+        loss_percentage: '100',
+        items: [{ ingredient_product_id: 10, quantity: '1' }],
+      }],
+    });
+
+    await expect(costService.calculateProductCost(1)).rejects.toThrow(/Receta invalida|Receta inválida/);
+  });
+
+  it('rechaza una merma mayor al 100%', async () => {
+    armarCatalogo({
+      productos: [{ id: 1, cost: '0' }, { id: 10, cost: '100' }],
+      recetas: [{
+        product_id: 1,
+        yield: '1',
+        loss_percentage: '150',
+        items: [{ ingredient_product_id: 10, quantity: '1' }],
+      }],
+    });
+
+    await expect(costService.calculateProductCost(1)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('una merma del 99% encarece muchisimo pero sigue siendo valida', async () => {
+    armarCatalogo({
+      productos: [{ id: 1, cost: '0' }, { id: 10, cost: '100' }],
+      recetas: [{
+        product_id: 1,
+        yield: '1',
+        loss_percentage: '99',
+        items: [{ ingredient_product_id: 10, quantity: '1' }],
+      }],
+    });
+
+    await expect(costService.calculateProductCost(1)).resolves.toBe(10000);
+  });
 });
 
 describe('checkCircularDependency', () => {
