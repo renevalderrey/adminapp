@@ -22,6 +22,12 @@
 //      SKU igual es una afirmacion del proveedor; el nombre es una heuristica.
 // ════════════════════════════════════════════
 
+// El lector de importes se mudo a utils/importes.js: lo necesita tambien la
+// importacion de productos, que hasta ahora usaba parseFloat y leia 1.234,50
+// como 1.234. Se sigue reexportando desde aca para no tocar a sus
+// consumidores ni al test que ya lo cubre.
+const { aNumero } = require('../utils/importes');
+
 /** Debajo de esto, dos nombres no son el mismo producto. */
 const UMBRAL_POR_DEFECTO = 0.45;
 
@@ -129,31 +135,6 @@ function parsearTexto(texto) {
   }
 
   return { items, ignoradas };
-}
-
-/**
- * Convierte un importe escrito por una persona a numero.
- *
- * Reglas, en orden:
- *  - Si tiene coma, la coma es el decimal y los puntos son miles (1.234,50).
- *  - Si tiene solo puntos y el ultimo grupo es de 3 digitos, son miles (1.234).
- *  - Si tiene solo puntos y el ultimo grupo no es de 3, es decimal (1234.5).
- */
-function aNumero(texto) {
-  let limpio = String(texto).trim();
-
-  if (limpio.includes(',')) {
-    limpio = limpio.replace(/\./g, '').replace(',', '.');
-  } else if (limpio.includes('.')) {
-    const partes = limpio.split('.');
-    const ultima = partes[partes.length - 1];
-
-    if (partes.length > 1 && ultima.length === 3) limpio = partes.join('');
-  }
-
-  const numero = Number(limpio);
-
-  return Number.isFinite(numero) ? numero : null;
 }
 
 /**

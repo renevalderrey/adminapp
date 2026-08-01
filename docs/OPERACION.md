@@ -309,8 +309,9 @@ npm --prefix apps/api run db:migrate
 
 ### Migraciones pendientes de correr
 
-Cuatro, de las auditorías recientes. Tres dejan el histórico en su valor por
-defecto y puede hacer falta completarlo a mano:
+Seis. Cuatro son de las auditorías recientes y dos entran con Inventario. Las
+que dejan el histórico en su valor por defecto pueden necesitar que se lo
+complete a mano:
 
 | Migración | Qué agrega | Ojo con el histórico |
 |---|---|---|
@@ -318,20 +319,137 @@ defecto y puede hacer falta completarlo a mano:
 | `20260731-ventas-a-cuenta-corriente` | `sales.is_credit` | Las ventas viejas quedan como **contado**. Si hay cuentas corrientes en uso, hay que marcar las impagas |
 | `20260731-guardar-punto-de-venta-afip` | `sales.afip_pv` | Queda NULL. Para los comprobantes ya emitidos, completar con el punto de venta que se usaba |
 | `20260803-intentos-de-facturacion` | `sales.afip_ultimo_error`, `sales.afip_ultimo_intento` y el índice `(empresa_id, date)` | **Sin `UPDATE`.** Las dos columnas quedan en NULL y toda venta activa sin CAE anterior a la migración se muestra como **Registrada**, nunca como Rechazada |
+| `20260804-identidad-de-sucursal-en-stock` | `stock.punto_de_venta_id` pasa a `NOT NULL`, se consolidan los duplicados y `location` queda como espejo | **Es la única que modifica datos de inventario: fusiona filas.** No se corre sin haber mirado antes el informe de acá abajo. Cada fila que desaparece queda entera en `stock_migracion_sucursal` |
+| `20260805-historial-de-costos-con-autor` | `product_cost_history.usuario_id` y `.empresa_id` | `empresa_id` se completa desde el producto y queda NULL solo si el producto ya no existe. **`usuario_id` queda NULL en todo el histórico anterior**: ese dato no existe y no se puede inferir, así que la pantalla lo muestra sin autor |
+
+> Las dos últimas llegan con la funcionalidad de Inventario. Si `db:migrate` no
+> las nombra, todavía no están en el repositorio y no hay nada que hacer.
 
 El `UPDATE` de cada caso está en el comentario de la migración.
 
-La última no lleva ninguno a propósito: no hay forma de saber cuáles de las
-ventas viejas sin CAE fallaron y cuáles se registraron así queriendo, y adivinar
-sobre una obligación fiscal es peor que no saber. Es aditiva y sobre columnas
-nulas, así que es segura mientras la versión anterior de la aplicación sigue
-corriendo.
+`20260803-intentos-de-facturacion` no lleva ninguno a propósito: no hay forma de
+saber cuáles de las ventas viejas sin CAE fallaron y cuáles se registraron así
+queriendo, y adivinar sobre una obligación fiscal es peor que no saber. Es
+aditiva y sobre columnas nulas, así que es segura mientras la versión anterior
+de la aplicación sigue corriendo. `20260805-historial-de-costos-con-autor` es
+aditiva por el mismo motivo y puede correrse antes, después o sin la de stock.
+
+### Identidad de sucursal en stock: mirar el informe antes de migrar
+
+`20260804-identidad-de-sucursal-en-stock` es la única migración del sistema que
+**cambia cantidades de inventario**. Hasta hoy la sucursal de una fila de stock
+era un texto libre (`location`) y el `punto_de_venta_id` podía estar vacío; a
+partir de esta migración la sucursal es el id, es obligatorio, y **dos filas del
+mismo producto en la misma sucursal no pueden existir**. Las que hoy están
+repetidas se fusionan sumando sus cantidades.
+
+Sumar puede estar mal, y la migración no tiene cómo saberlo. Por eso primero se
+mira el informe.
+
+#### 1. Cómo se corre el informe
+
+```
+npm --prefix apps/api run informe:stock
+```
+
+**No escribe nada**: ni una fila, ni una tabla, ni un índice. Se puede correr
+las veces que haga falta, y correrlo por error contra producción no cambia un
+solo dato. Es la vista previa, no un ensayo.
+
+Corre exactamente la misma función que después va a correr la migración, así
+que lo que muestra es lo que va a pasar, no una segunda opinión.
+
+#### 2. Cómo se lee
+
+Tiene tres partes.
+
+**El resumen**, arriba. Cuántas filas de stock hay, cuántas no tienen sucursal
+hoy, cuántas se resuelven por coincidencia de código y cuántas caen a la
+sucursal por defecto, cuántas sucursales hay que crear, cuántas fusiones habría
+y **cuántas quedaron marcadas «revisar»**. Con eso solo ya se sabe si esto es un
+trámite o hay que sentarse a mirar.
+
+**El detalle por empresa.** Las sucursales que tiene, a dónde va cada grupo de
+filas, y **cada fusión una por una**: el producto, la sucursal destino, las
+filas que se juntan con su `location`, su cantidad, su lote y cuándo se
+escribieron por última vez, y qué queda después.
+
+**Los totales**, al pie. El número que importa es **la suma de cantidades**:
+tiene que ser exactamente la misma antes y después de migrar. La migración lo
+verifica sola —compara producto por producto adentro de una única transacción— y
+si no da, **aborta y no queda nada aplicado**. No hace falta comprobarlo a mano
+después; lo que hay que confirmar es que el chequeo corrió.
+
+Dos cosas más que conviene saber al leer:
+
+- **Ninguna fila se pierde.** Cada fila que desaparece al fusionarse se copia
+  entera —con todas sus columnas— a la tabla `stock_migracion_sucursal` antes de
+  borrarse. Ahí queda para siempre: qué decía, con cuál se fusionó y por qué se
+  marcó.
+- Si el informe dice «no encontró duplicados», es que los leyó y no había. Es
+  distinto de una lista vacía porque el script no llegó a mirar: el informe
+  siempre dice cuántas filas leyó.
+
+#### 3. Qué hacer si aparecen fusiones marcadas «revisar»
+
+**La marca no es un error.** Es la única señal que hay para distinguir dos
+situaciones que en la base se ven idénticas:
+
+- **Dos pilas.** 40 unidades en el depósito y 12 en el mostrador, anotadas
+  distinto porque no había sucursales de verdad. Sumar es correcto: son 52.
+- **Una sola pila anotada dos veces.** Alguien cargó 100 unidades por la
+  pantalla y después importó la lista del proveedor, que traía las mismas 100.
+  Sumar da 200 sobre una estantería que tiene 100.
+
+En la fila de stock no queda registrado quién la escribió, así que no hay forma
+de decidirlo desde la computadora. Las señales que marcan una fusión son: las
+dos filas tienen la misma cantidad, no hay dos lotes distintos que las separen,
+se escribieron con menos de 24 horas de diferencia, alguna tiene cantidad
+negativa, o alguna tiene disponible mayor que la cantidad.
+
+**Se resuelve contando la mercadería.** No leyendo más el informe: el informe ya
+dijo todo lo que sabe. Se agarra la lista de fusiones marcadas y se cuenta lo
+que hay en la estantería de cada uno de esos productos.
+
+- **Si el recuento coincide con la suma**, eran dos pilas. No hay nada que
+  hacer: se autoriza la migración.
+- **Si el recuento dice que la suma infló el inventario**, la fila original está
+  entera en `stock_migracion_sucursal` y se corrige **con un ajuste de stock**
+  desde la pantalla, no revirtiendo la migración. Revertir para arreglar una
+  cantidad es mover una montaña para correr una silla, y además pisa todo lo que
+  se haya vendido desde el deploy.
+- **Si son muchas** —tantas que contarlas no es realista antes del deploy—, la
+  salida es al revés: **corregir los duplicados a mano primero y migrar
+  después**. Se unifican las filas repetidas desde la pantalla de Inventario, se
+  vuelve a correr el informe, y se migra cuando la lista de marcadas esté vacía o
+  sea corta. El informe se puede correr todas las veces que haga falta.
+
+#### 4. Volver atrás
+
+La migración tiene `down()` y restaura desde `stock_migracion_sucursal`: vuelve
+a insertar las filas fusionadas con su id original, devuelve los
+`punto_de_venta_id` y los `location` anteriores, y borra las sucursales que
+creó.
+
+> **El `down` restaura exactamente lo que archivó y pisa cualquier movimiento de
+> stock posterior a la migración.** Si entre el deploy y el rollback se vendió,
+> se compró o se transfirió mercadería, esos movimientos se pierden. **Es para
+> volver atrás minutos después de un deploy, no semanas después.** Un `down` que
+> intentara reconciliar lo que pasó en el medio estaría adivinando.
+
+Además el `down` **falla a propósito** si mientras tanto quedaron dos filas con
+el mismo `(product_id, location)`: elegir cuál sobrevive es una decisión de
+negocio, no de la migración. Es el mismo criterio que el `down` de
+`20260730-settings-pk-por-empresa`.
 
 ### Rollback
 
 Las migraciones tienen `down()`. Revertir la de `settings` **falla a propósito**
 si dos empresas cargaron la misma clave: elegir cuál sobrevive es una decisión
 de negocio, no de la migración.
+
+Revertir la de stock tiene su propia advertencia y no es equivalente a las
+demás: ver «Identidad de sucursal en stock» acá arriba, punto 4.
 
 ### Al escalar a más de una instancia
 

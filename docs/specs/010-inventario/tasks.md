@@ -126,7 +126,7 @@ cambiado de comportamiento y sin que se haya tocado un solo dato.
 Estas cuatro tareas no cambian nada visible. Existen para que la migración y el
 informe corran **el mismo código**, que es la decisión 4 del plan.
 
-- [ ] **T1001** [P] Crear `apps/api/src/utils/importes.js` moviendo `aNumero`
+- [x] **T1001** [P] Crear `apps/api/src/utils/importes.js` moviendo `aNumero`
       desde `services/comparadorService.js:142`, y dejar en `comparadorService`
       un reexport (`:303`) para no tocar a sus consumidores. Test en
       `apps/api/src/tests/importes.test.js`.
@@ -138,7 +138,7 @@ informe corran **el mismo código**, que es la decisión 4 del plan.
       FR-099: una celda de costo vacía que se lee como cero pone en cero el costo
       de un producto y el margen que muestra el POS pasa a ser mentira.
 
-- [ ] **T1002** [P] Crear `apps/api/src/utils/stockBajo.js` con
+- [x] **T1002** [P] Crear `apps/api/src/utils/stockBajo.js` con
       `UMBRAL_POR_DEFECTO = 3` y `esStockBajo(fila, umbral)` —el `min_stock` de la
       fila si está cargado, si no el umbral—, que es la regla que ya usa
       `GET /api/faltantes` con el `3` literal en `general.js:416`. Test en
@@ -151,7 +151,7 @@ informe corran **el mismo código**, que es la decisión 4 del plan.
       el 3. Sin ese test, portarla al frontend con el número adentro pasa
       inadvertido y FR-017 queda incumplido sin que nada falle.
 
-- [ ] **T1003** [P] Crear `apps/api/src/utils/sucursalDeStock.js` con las tres
+- [x] **T1003** [P] Crear `apps/api/src/utils/sucursalDeStock.js` con las tres
       funciones de la decisión 2:
       `resolverSucursal({ empresaId, puntoDeVentaId, code, transaction })`,
       `sucursalPorDefecto(empresaId, { transaction })` y `ubicacionDeStock(pv)`.
@@ -175,7 +175,7 @@ informe corran **el mismo código**, que es la decisión 4 del plan.
       y `puntos_de_venta.name` es `VARCHAR(100)`; sin el recorte el `INSERT` de
       una fila de stock falla).
 
-- [ ] **T1004** Crear `apps/api/src/utils/consolidacionDeStock.js` con
+- [x] **T1004** Crear `apps/api/src/utils/consolidacionDeStock.js` con
       `planificar({ filas, puntosDeVenta })` → `{ asignaciones, fusiones, avisos }`.
       **No toca la base**: recibe las filas ya leídas y devuelve qué habría que
       hacer. Agrupa por `(empresa_id, product_id, punto_de_venta_id)`; sobrevive
@@ -214,7 +214,7 @@ Esta fase existe porque una migración que fusiona filas de inventario no se cor
 a ciegas. El informe usa la misma función que la migración (T1004), así que es
 una vista previa de verdad y no una segunda implementación que dice otra cosa.
 
-- [ ] **T1005** Crear `apps/api/scripts/informe-stock-sucursal.js`: lee las filas
+- [x] **T1005** Crear `apps/api/scripts/informe-stock-sucursal.js`: lee las filas
       de `stock` y los `puntos_de_venta` de todas las empresas, llama a
       `planificar()` de T1004 e **imprime**. Se agrega
       `"informe:stock": "node scripts/informe-stock-sucursal.js"` a los scripts de
@@ -238,7 +238,7 @@ una vista previa de verdad y no una segunda implementación que dice otra cosa.
       fusionar» y «el informe no encontró duplicados» son la misma pantalla y hay
       que poder distinguirlas de «el script no llegó a mirar»—.
 
-- [ ] **T1006** Documentar el procedimiento en `docs/OPERACION.md`, en una
+- [x] **T1006** Documentar el procedimiento en `docs/OPERACION.md`, en una
       sección propia debajo de «Migraciones pendientes de correr» (`:310`).
       Tres cosas, en este orden: **(1) cómo se corre el informe** —`npm --prefix
       apps/api run informe:stock`, que no escribe nada y se puede correr las veces
