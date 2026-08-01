@@ -13,6 +13,32 @@ const { findScoped } = require('../utils/tenantScope');
 const { fallo } = require('../utils/errores');
 const requireSuperadmin = require('../middleware/requireSuperadmin');
 
+// ── Qué se puede editar de un producto ──
+//
+// Todo lo que NO está acá se ignora, aunque venga en el cuerpo. Lo importante
+// que queda afuera: `empresa_id` —que decide de quién es el producto— y `id`.
+//
+// Se enumera lo permitido y no lo prohibido a propósito: con una lista de
+// prohibidos, cada columna nueva del modelo queda editable por omisión, y nadie
+// se acuerda de agregarla.
+const CAMPOS_EDITABLES = [
+  'name', 'description', 'sku', 'barcode', 'cost',
+  'brand_id', 'supplier_id',
+  'margin_override', 'price_override', 'wholesale_margin', 'wholesale_price',
+  'category', 'unit_type', 'unit_size', 'taxed', 'image_url', 'is_active',
+  'tiendanube_variant_id',
+];
+
+function camposEditables(body = {}) {
+  const limpio = {};
+
+  for (const campo of CAMPOS_EDITABLES) {
+    if (body[campo] !== undefined) limpio[campo] = body[campo];
+  }
+
+  return limpio;
+}
+
 // GET /api/products — Listar productos (con marca y stock, paginado)
 router.get('/', checkPermission('products.ver'), async (req, res) => {
   try {
@@ -129,7 +155,17 @@ router.put('/:id', checkPermission('products.editar'), async (req, res) => {
     }
 
     const oldCost = parseFloat(product.cost) || 0;
-    await product.update(req.body, { transaction: t });
+
+    // Lista blanca, no `req.body` entero.
+    //
+    // `update(req.body)` escribe cualquier columna que venga en el cuerpo,
+    // incluida `empresa_id`: mandandola se mueve el producto a otra empresa
+    // cliente. El scoping de findScoped no alcanza — sirve para encontrar el
+    // producto, no para impedir que despues se lo saque de la empresa.
+    //
+    // Tambien evita que se pisen `id` y las marcas de tiempo.
+    await product.update(camposEditables(req.body), { transaction: t });
+
     const newCost = parseFloat(product.cost) || 0;
 
     if (req.body.cost !== undefined && Math.abs(oldCost - newCost) >= 0.01) {

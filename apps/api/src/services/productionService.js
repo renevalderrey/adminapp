@@ -70,16 +70,21 @@ class ProductionService {
     };
   }
 
-  async validateStockForProduction(recipeItems, quantityProduced, location = 'general', puntoDeVentaId = null) {
+  async validateStockForProduction(recipeItems, quantityProduced, location = 'general', puntoDeVentaId = null, empresaId) {
+    assertEmpresaId(empresaId);
+
     const warnings = [];
 
     for (const item of recipeItems) {
       const qty = parseFloat(item.quantity) || 0;
       const requiredQty = qty * quantityProduced;
 
+      // Con empresa_id explicito y no confiando en que product_id ya la
+      // implica: esa invariante es cierta hoy y nadie la escribio en ningun
+      // lado, que es como dejan de ser ciertas.
       const where = puntoDeVentaId
-        ? { product_id: item.ingredient_product_id, punto_de_venta_id: puntoDeVentaId }
-        : { product_id: item.ingredient_product_id, location };
+        ? { empresa_id: empresaId, product_id: item.ingredient_product_id, punto_de_venta_id: puntoDeVentaId }
+        : { empresa_id: empresaId, product_id: item.ingredient_product_id, location };
       const stockRecord = await Stock.findOne({ where });
 
       const available = stockRecord ? parseFloat(stockRecord.quantity) || 0 : 0;
@@ -122,7 +127,7 @@ class ProductionService {
 
     const targetLocation = location || 'general';
 
-    const warnings = await this.validateStockForProduction(items, quantity_produced, targetLocation, puntoDeVentaId);
+    const warnings = await this.validateStockForProduction(items, quantity_produced, targetLocation, puntoDeVentaId, empresaId);
 
     const t = await sequelize.transaction();
 
@@ -158,12 +163,16 @@ class ProductionService {
 
         orderItems.push(orderItem);
 
+        // empresa_id va en el where Y en los defaults. Sin el, una fila de
+        // stock creada aca cae en la empresa 1 por el valor por defecto de la
+        // columna: la produccion de un cliente le crea inventario a otro, y a
+        // quien produjo el stock le queda invisible.
         const stockWhere = puntoDeVentaId
-          ? { product_id: item.ingredient_product_id, punto_de_venta_id: puntoDeVentaId }
-          : { product_id: item.ingredient_product_id, location: targetLocation };
+          ? { empresa_id: empresaId, product_id: item.ingredient_product_id, punto_de_venta_id: puntoDeVentaId }
+          : { empresa_id: empresaId, product_id: item.ingredient_product_id, location: targetLocation };
         const stockDefaults = puntoDeVentaId
-          ? { quantity: 0, available: 0, punto_de_venta_id: puntoDeVentaId, location: targetLocation }
-          : { quantity: 0, available: 0, location: targetLocation };
+          ? { empresa_id: empresaId, quantity: 0, available: 0, punto_de_venta_id: puntoDeVentaId, location: targetLocation }
+          : { empresa_id: empresaId, quantity: 0, available: 0, location: targetLocation };
         const [stockRecord] = await Stock.findOrCreate({
           where: stockWhere,
           defaults: stockDefaults,
@@ -176,11 +185,11 @@ class ProductionService {
       }
 
       const finishedWhere = puntoDeVentaId
-        ? { product_id, punto_de_venta_id: puntoDeVentaId }
-        : { product_id, location: targetLocation };
+        ? { empresa_id: empresaId, product_id, punto_de_venta_id: puntoDeVentaId }
+        : { empresa_id: empresaId, product_id, location: targetLocation };
       const finishedDefaults = puntoDeVentaId
-        ? { quantity: 0, available: 0, punto_de_venta_id: puntoDeVentaId, location: targetLocation, current_batch: batch_code, purchase_date: production_date }
-        : { quantity: 0, available: 0, location: targetLocation, current_batch: batch_code, purchase_date: production_date };
+        ? { empresa_id: empresaId, quantity: 0, available: 0, punto_de_venta_id: puntoDeVentaId, location: targetLocation, current_batch: batch_code, purchase_date: production_date }
+        : { empresa_id: empresaId, quantity: 0, available: 0, location: targetLocation, current_batch: batch_code, purchase_date: production_date };
       const [finishedStock] = await Stock.findOrCreate({
         where: finishedWhere,
         defaults: finishedDefaults,
@@ -267,11 +276,11 @@ class ProductionService {
         const qtyUsed = parseFloat(item.quantity_used) || 0;
 
         const stockWhere = pvId
-          ? { product_id: item.ingredient_product_id, punto_de_venta_id: pvId }
-          : { product_id: item.ingredient_product_id, location: loc };
+          ? { empresa_id: empresaId, product_id: item.ingredient_product_id, punto_de_venta_id: pvId }
+          : { empresa_id: empresaId, product_id: item.ingredient_product_id, location: loc };
         const [stockRecord] = await Stock.findOrCreate({
           where: stockWhere,
-          defaults: { quantity: 0, available: 0 },
+          defaults: { empresa_id: empresaId, quantity: 0, available: 0, location: loc },
           transaction: t,
         });
 
@@ -283,11 +292,11 @@ class ProductionService {
       }
 
       const finishedWhere = pvId
-        ? { product_id: order.product_id, punto_de_venta_id: pvId }
-        : { product_id: order.product_id, location: loc };
+        ? { empresa_id: empresaId, product_id: order.product_id, punto_de_venta_id: pvId }
+        : { empresa_id: empresaId, product_id: order.product_id, location: loc };
       const [finishedStock] = await Stock.findOrCreate({
         where: finishedWhere,
-        defaults: { quantity: 0, available: 0 },
+        defaults: { empresa_id: empresaId, quantity: 0, available: 0, location: loc },
         transaction: t,
       });
 
