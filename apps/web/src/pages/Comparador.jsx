@@ -146,7 +146,7 @@ export default function Comparador() {
             Exportar
           </button>
 
-          <Can permission="proveedores.crear">
+          <Can codigo="proveedores.crear">
             <button
               className="inline-flex h-[34px] items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px]
                          font-semibold text-white shadow-nivel-1 transition-colors hover:bg-brand-dark"
@@ -199,7 +199,7 @@ export default function Comparador() {
                   </span>
                 )}
 
-                <Can permission="proveedores.editar">
+                <Can codigo="proveedores.editar">
                   <button
                     onClick={() => alternarActiva(lista)}
                     title={lista.activa ? 'Sacar de la comparación' : 'Volver a incluirla'}
@@ -210,7 +210,7 @@ export default function Comparador() {
                   </button>
                 </Can>
 
-                <Can permission="proveedores.eliminar">
+                <Can codigo="proveedores.eliminar">
                   <button
                     onClick={() => eliminar(lista)}
                     title="Eliminar"

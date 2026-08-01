@@ -294,7 +294,7 @@ const Inventory = () => {
             </Button>
 
             <div className="ml-auto">
-              <Can permission="products.editar">
+              <Can codigo="products.editar">
                 <Button size="sm" onClick={() => setPreciosAbierto(true)}>
                   <Tags className="h-4 w-4 mr-1" /> Actualizar precios
                 </Button>

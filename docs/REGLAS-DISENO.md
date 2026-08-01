@@ -258,23 +258,58 @@ La maqueta **no usa `<table>`**: usa grid, con las mismas
 `grid-template-columns` en el encabezado y en las filas. Permite alinear las
 columnas y que cada fila sea clickeable entera.
 
+**El marco lo pone `apps/web/src/components/TablaGrid.jsx`**, con cuatro
+piezas. `apps/web/src/pages/InvoicesList.jsx` es la primera pantalla que lo
+aplica y sirve de ejemplo completo.
+
 ```jsx
-const COLUMNAS = 'grid-cols-[80px_116px_minmax(0,1fr)_128px] gap-x-4'
+import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid'
 
-<div className={`grid ${COLUMNAS} border-b border-border bg-surface-2 px-5 py-2.5 eyebrow`}>
-  <span>Hora</span><span>Tipo</span><span>Cliente</span>
-  <span className="text-right">Total</span>
-</div>
+// Las columnas las escribe cada pantalla, y son el MISMO string en el
+// encabezado y en las filas: si difieren, las etiquetas dejan de estar sobre
+// sus datos y se lee un importe bajo «Estado».
+const COLUMNAS = '80px 116px minmax(0,1fr) 128px'
 
-<div className={`grid ${COLUMNAS} cursor-pointer items-center border-b border-border
-                 px-5 py-4 hover:bg-surface-2`}>
-  …
-</div>
+<TablaGrid anchoMinimo={1020}>
+  <Encabezado columnas={COLUMNAS}>
+    <span>Hora</span><span>Tipo</span><span>Cliente</span>
+    <span className="text-right">Total</span>
+  </Encabezado>
+
+  {filas.map(f => (
+    <Fila key={f.id} columnas={COLUMNAS} onClick={() => abrir(f)}>
+      <span className="num text-[13px] text-fg-2">{f.hora}</span>
+      …
+      <span className="flex justify-end gap-0.5">
+        <BotonDeFila title="Imprimir" onClick={() => imprimir(f)}>
+          <Printer />
+        </BotonDeFila>
+      </span>
+    </Fila>
+  ))}
+</TablaGrid>
 ```
 
-Reglas: encabezado en `surface-2` con `.eyebrow`; importes alineados a la
-derecha y en mono; acciones al final, como botones de ícono de 29px que
-aparecen en `fg-3` y se oscurecen al hover.
+| Lo pone el componente | Lo escribe cada pantalla |
+|---|---|
+| Encabezado en `surface-2` con `.eyebrow` y padding `11px 20px` | Cuáles son las columnas y qué dice cada celda |
+| Filas con padding `15px 20px`, `border-b border-border`, hover a `surface-2` y `cursor-pointer` | El `grid-template-columns` y el ancho mínimo |
+| 16px de separación entre columnas, idéntica arriba y abajo | La opacidad de una fila apagada, los badges, los `.num` |
+| Botones de ícono de 29px, `rounded-lg`, `fg-3` → `surface-3`/`foreground`, ícono de 15px | Qué acciones hay y qué hace cada una |
+| Que un botón de fila **frene la propagación** del clic | — |
+| El scroll horizontal dentro de la tarjeta | — |
+
+**El componente no recibe una definición de columnas.** No hay `columnas={[…]}`
+con renderers: con una sola pantalla construida no hay evidencia de qué
+necesitan las otras cinco, y esta ya pide fila clickeable, opacidad al 55 %,
+una celda de dos líneas, otra alineada a la derecha y botones que frenan el
+clic. Cada una de esas se vuelve un prop, y para la sexta pantalla el
+componente tiene dieciocho props y nadie se anima a tocarlo.
+
+Lo demás sigue igual: importes alineados a la derecha y en mono; acciones al
+final; **cero hex y cero `dark:`**, que verifica
+`apps/web/src/tests/guardiasDeDiseno.test.js` — cuando una pantalla nueva
+aplique el patrón, se agrega a la lista de esa guardia.
 
 ### Botones
 

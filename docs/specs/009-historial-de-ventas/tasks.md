@@ -255,7 +255,7 @@ guarda el nombre donde corresponde. La API está terminada.
 **Purpose**: la pantalla queda como la maqueta y **queda fijado el patrón que van
 a copiar las otras cinco pantallas**.
 
-- [ ] **T913** [P] Actualizar `apps/web/src/services/api.js`: `getSales` pasa de
+- [x] **T913** [P] Actualizar `apps/web/src/services/api.js`: `getSales` pasa de
       cuatro posicionales `(date, location, page, limit)` a un objeto
       (`api.get('/sales', { params })`), y se suman
       `getSale = (id) => api.get('/sales/' + id)` y
@@ -268,7 +268,7 @@ a copiar las otras cinco pantallas**.
       import que aparezca después encuentra el aviso, porque `build` no lo ve y
       un `sale.items.map` sobre el listado tira recién en runtime.
 
-- [ ] **T914** [P] **Crear `apps/web/src/components/TablaGrid.jsx` — solo el
+- [x] **T914** [P] **Crear `apps/web/src/components/TablaGrid.jsx` — solo el
       marco.** Cuatro piezas: `TablaGrid` (contenedor con `overflow-x-auto` y
       ancho mínimo interno), `Encabezado`, `Fila` y `BotonDeFila`. Reciben las
       `gridTemplateColumns` como string y renderizan `children`. **No hay
@@ -284,7 +284,7 @@ a copiar las otras cinco pantallas**.
       la sexta pantalla el componente tiene dieciocho props y nadie se anima a
       tocarlo.
 
-- [ ] **T915** [P] Crear `apps/web/src/utils/estadoVenta.js` — mapa
+- [x] **T915** [P] Crear `apps/web/src/utils/estadoVenta.js` — mapa
       `codigo → { texto, fondo, linea, icono }` con los cinco tríos de tokens de
       `data-model.md`, **y el ícono `Ban` de lucide en `anulada`**, que toma el
       color del estado como cualquier ícono del sistema
@@ -298,7 +298,7 @@ a copiar las otras cinco pantallas**.
       distinguen sin leer. El ícono cambia la forma sin tocar la paleta, y el
       criterio de éxito 3 pasa a verificarse a nivel de badge y no solo de fila.
 
-- [ ] **T916** Reescribir la tabla de `apps/web/src/pages/InvoicesList.jsx` sobre
+- [x] **T916** Reescribir la tabla de `apps/web/src/pages/InvoicesList.jsx` sobre
       `TablaGrid`: siete columnas
       `80px 116px 132px minmax(0,1fr) 116px 128px 128px` con `gap: 0 16px`,
       idénticas en encabezado y filas; `Hora · Tipo · Comprobante · Cliente ·
@@ -321,7 +321,7 @@ a copiar las otras cinco pantallas**.
       El `min-width: 1140px` de la maqueta **no** se copia al contenedor de la
       página.
 
-- [ ] **T917** Arreglar la impresión en `InvoicesList.jsx`: `handlePrint`
+- [x] **T917** Arreglar la impresión en `InvoicesList.jsx`: `handlePrint`
       (`:74`) usa hoy `sale.items`, que el listado ya no trae — pasa a pedir
       `getSale(id)` antes de imprimir. Y el nombre del cliente deja de salir de
       parsear `notes` buscando `'Cliente:'` (`:78`): sale de
@@ -343,7 +343,7 @@ puede imprimir. Todavía no hay panel, ni filtros nuevos, ni export.
 
 **Purpose**: se puede abrir el detalle de un comprobante sin perder la lista.
 
-- [ ] **T918** Crear `apps/web/src/components/PanelVenta.jsx` sobre `Sheet` /
+- [x] **T918** Crear `apps/web/src/components/PanelVenta.jsx` sobre `Sheet` /
       `SheetContent` de `@/components/ui/sheet`, pisando el `sm:max-w-sm` y el
       `shadow-lg` que trae por defecto con
       `w-[520px] max-w-[92vw] shadow-nivel-3 anim-panel`, y engancharlo al clic
@@ -362,7 +362,7 @@ puede imprimir. Todavía no hay panel, ni filtros nuevos, ni export.
       `anim-panel`. Esta es la primera pantalla que usa `anim-panel` y
       `shadow-nivel-3` (`index.css:211-262`).
 
-- [ ] **T919** Corregir «Verificar en AFIP» para que consulte con el `afip_pv`
+- [x] **T919** Corregir «Verificar en AFIP» para que consulte con el `afip_pv`
       **de la venta** y caiga a `settings.afip_pv` **solo** si la venta no lo
       tiene (`InvoicesList.jsx:105` usa siempre el configurado hoy).
       **Verificación**: una venta con `afip_pv = 5` consulta con 5 aunque
@@ -371,7 +371,7 @@ puede imprimir. Todavía no hay panel, ni filtros nuevos, ni export.
       cayendo a `settings.afip_pv`. Es la única de las dos reglas de punto de
       venta que se puede construir completa, porque acá el dato existe.
 
-- [ ] **T920** Mostrar «Anular venta» en el pie del panel **deshabilitada con la
+- [x] **T920** Mostrar «Anular venta» en el pie del panel **deshabilitada con la
       explicación** sobre una venta con CAE, no ausente (FR-056), y manejar el
       400 de T910 mostrando su mensaje. Sobre ventas anuladas (D o E) no aparece
       ni anulación ni reintento.
@@ -390,7 +390,7 @@ detalle correcto, con las acciones correctas, y al cerrar la lista quedó igual.
 **Purpose**: una venta Rechazada pasa a Autorizada en tres clics, sin salir de la
 pantalla.
 
-- [ ] **T921** Agregar «Reintentar facturación» como acción principal del pie del
+- [x] **T921** Agregar «Reintentar facturación» como acción principal del pie del
       panel, llamando a `POST /api/sales/:id/facturar` con **body vacío**. Se
       ofrece solo si `afip_cae` es `null`, `status === 'active'` y el usuario
       tiene `ventas.crear` (`Can` / `usePermission`). Mientras el pedido está en
@@ -404,7 +404,7 @@ pantalla.
       camino normal (FR-051)—; una venta Registrada (sin error guardado) también
       lo ofrece, porque una venta interna también se puede facturar después.
 
-- [ ] **T922** Manejar en el panel los dos errores que tienen camino propio:
+- [x] **T922** Manejar en el panel los dos errores que tienen camino propio:
       `400 CUIT_REQUERIDO` → pedir el CUIT y reintentar **en el mismo paso**,
       mandando solo `customerCuit`; `502` → mostrar el mensaje de AFIP **tal
       cual**, dejar la venta como Rechazada y volver a habilitar el botón.
@@ -426,7 +426,7 @@ del panel.
 **Purpose**: se puede responder «cuánto facturó Ortiz la semana pasada» sin abrir
 siete días de a uno.
 
-- [ ] **T923** Reemplazar el campo de fecha única de `InvoicesList.jsx:39` por un
+- [x] **T923** Reemplazar el campo de fecha única de `InvoicesList.jsx:39` por un
       rango desde/hasta, inicializado con el `rango` que devolvió la API —**no**
       con `new Date().toISOString().split('T')[0]`—, y validar antes de consultar:
       rango invertido y rango de más de un año avisan y **no consultan**.
@@ -436,7 +436,7 @@ siete días de a uno.
       resolvió del lado del servidor. El listado sale ordenado por fecha y hora
       descendente, lo más nuevo arriba.
 
-- [ ] **T924** Reescribir el filtro de sucursal para que mande
+- [x] **T924** Reescribir el filtro de sucursal para que mande
       `punto_de_venta_id` (no `pv.location`), con «Todas las sucursales» y con las
       sucursales inactivas presentes en el resultado marcadas «(inactiva)». El
       valor inicial sale del selector del encabezado, pero **el filtro de la
@@ -457,7 +457,7 @@ siete días de a uno.
       y FR-073 no se puede cumplir. Por eso T905 devuelve `sucursales` con las del
       resultado.
 
-- [ ] **T925** Agregar el filtro de tipo de comprobante con las cuatro opciones
+- [x] **T925** Agregar el filtro de tipo de comprobante con las cuatro opciones
       —Factura A, Factura B, Factura C y «Sin comprobante fiscal»— mandando
       `tipo` a la API, y hacer que **cambiar cualquier filtro vuelva a la página
       1**.
@@ -467,7 +467,7 @@ siete días de a uno.
       no existe; el contador «de M» y el total del período de arriba corresponden
       al resultado **filtrado** y no al total del día.
 
-- [ ] **T926** Mover la búsqueda al servidor: sacar `filteredSales`
+- [x] **T926** Mover la búsqueda al servidor: sacar `filteredSales`
       (`InvoicesList.jsx:134`) y mandar `q`, con el mensaje de vacío que dice que
       no hay resultados **con esos filtros** y ofrece limpiarlos.
       **Verificación**: **un CAE que está en la página 4 del rango se encuentra**
@@ -489,7 +489,7 @@ coherentes. Los tres defectos del relevamiento están cerrados.
 **Purpose**: el listado que se está viendo se baja en `.xlsx` y se le manda al
 contador.
 
-- [ ] **T927** Crear `apps/web/src/utils/exportarVentas.js` — función pura
+- [x] **T927** Crear `apps/web/src/utils/exportarVentas.js` — función pura
       `filas → hoja xlsx` que escribe el CAE como celda de **texto** explícita
       (`t: 's'`, `z: '@'`) y el total como **número** (`Number()` sobre el string
       que devuelve `DECIMAL`), con las diez columnas de FR-092 en orden, y arma
@@ -505,7 +505,7 @@ contador.
       archivo abre, se ve bien, y está mal. Que Excel lo abra bien es paso
       manual (riesgo 9).
 
-- [ ] **T928** Enganchar el botón «Exportar» del encabezado de
+- [x] **T928** Enganchar el botón «Exportar» del encabezado de
       `InvoicesList.jsx`: pide `exportSales(params)` con los filtros vigentes y
       arma el archivo con `exportarVentas`. Los dos avisos se dan **antes** de
       pedir nada, comparando contra el `total` que ya trajo el listado: más de
@@ -528,7 +528,7 @@ coincide fila por fila con la pantalla. La funcionalidad está completa.
 **Purpose**: el patrón no se puede repetir mal, y quien opera se entera de lo que
 cambió para él.
 
-- [ ] **T929** Crear `apps/web/src/tests/guardiasDeDiseno.test.js` — guardia
+- [x] **T929** Crear `apps/web/src/tests/guardiasDeDiseno.test.js` — guardia
       estática con la forma de `aislamientoEmpresas.test.js`: lee
       `InvoicesList.jsx`, `TablaGrid.jsx` y `PanelVenta.jsx` como texto y falla si
       aparece un valor hexadecimal, una regla `dark:`, un `<table` o un import de
@@ -540,7 +540,7 @@ cambió para él.
       `src/tests/` es para que las otras cinco pantallas se sumen a la misma
       guardia cuando apliquen el patrón.
 
-- [ ] **T930** [P] Actualizar `docs/REGLAS-DISENO.md`: la sección «Tabla»
+- [x] **T930** [P] Actualizar `docs/REGLAS-DISENO.md`: la sección «Tabla»
       (`:255-277`) pasa a apuntar a `apps/web/src/components/TablaGrid.jsx`
       además de a `Comparador.jsx`, con el ejemplo de las cuatro piezas y la
       línea de qué se comparte y qué escribe cada pantalla.
@@ -549,7 +549,7 @@ cambió para él.
       esto, la próxima pantalla copia a mano `15px 20px` y alguna queda en
       `py-3.5`, y nada lo detectaría porque no hay test visual.
 
-- [ ] **T931** [P] Actualizar `docs/OPERACION.md` con lo único que cambia para
+- [x] **T931** [P] Actualizar `docs/OPERACION.md` con lo único que cambia para
       quien opera: sumar `20260803-intentos-de-facturacion` a «Migraciones
       pendientes de correr» (`:247`, aditiva, sin `UPDATE` de histórico —las dos
       columnas quedan en `NULL` y toda venta activa sin CAE anterior se muestra

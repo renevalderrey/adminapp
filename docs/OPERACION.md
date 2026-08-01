@@ -106,11 +106,32 @@ El mensaje de AFIP se devuelve tal cual al usuario y queda en el log con
 Pasa cuando la venta se guardó pero AFIP falló. **Es el caso previsto**: la
 venta existe y se puede reintentar.
 
+**Lo resuelve el usuario, sin llamar a nadie.** En **Historial de ventas** la
+venta aparece como **Rechazada**; abriendo la fila, el panel muestra el mensaje
+con el que AFIP la rechazó, la fecha del intento y un botón **Reintentar
+facturación**. Si lo que falta es el CUIT del comprador, el mismo panel lo pide
+y reintenta ahí.
+
+El error queda guardado en la venta (`afip_ultimo_error`, `afip_ultimo_intento`),
+así que **sobrevive a cerrar la pestaña**: antes solo se veía en la respuesta
+HTTP del momento y después la venta quedaba indistinguible de una venta interna
+hecha a propósito.
+
+Como salida de emergencia —sin sesión, o para automatizar— el endpoint sigue
+estando:
+
 ```
 POST /api/sales/<id>/facturar
 ```
 
-Es idempotente: si ya tiene CAE, devuelve el que tiene.
+Con el body vacío alcanza: el servidor resuelve el tipo de comprobante desde la
+condición fiscal de la empresa, el CUIT desde la ficha del cliente de la venta y
+el punto de venta desde la venta o desde `settings.afip_pv`.
+
+Es idempotente: si ya tiene CAE, devuelve el que tiene. Y toma la venta **con
+lock**, así que dos reintentos simultáneos dejan un solo CAE, y un reintento que
+corre contra una anulación no puede emitir un comprobante sobre una venta
+anulada.
 
 > El flujo está en este orden a propósito. Antes se pedía el CAE **antes** de
 > guardar, y si el guardado fallaba quedaba un comprobante fiscal emitido sin
@@ -118,10 +139,18 @@ Es idempotente: si ya tiene CAE, devuelve el que tiene.
 
 ### Se anuló una venta que ya tenía CAE
 
-**Anular en la app no da de baja el comprobante ante ARCA.** Para eso hace falta
-una nota de crédito, que el sistema todavía no emite.
+**De acá en adelante no puede pasar: la API lo rechaza.**
+`PUT /api/sales/<id>/void` sobre una venta con `afip_cae` devuelve 400 con el
+motivo en castellano, y no toca el stock. El bloqueo está en la API y no solo en
+la pantalla: un `curl` tampoco puede. En el Historial de ventas el botón
+**Anular venta** aparece deshabilitado con la explicación, no ausente.
 
-Para saber cuántas hay pendientes:
+**Las que hay son histórico**, de cuando se permitía. Se muestran con etiqueta y
+color propios —«Anulada · vigente ante ARCA», en ámbar— porque no son una
+anulada común: **anular en la app no da de baja el comprobante ante ARCA**. Para
+eso hace falta una nota de crédito, que el sistema todavía no emite.
+
+Para saber cuántas hay pendientes, la forma sigue siendo la misma:
 
 ```
 GET /api/taxes/monotributo → anuladas_con_cae_sin_nc
@@ -246,16 +275,23 @@ npm --prefix apps/api run db:migrate
 
 ### Migraciones pendientes de correr
 
-Tres, de las auditorías recientes. Las dos últimas dejan el histórico en su
-valor por defecto y puede hacer falta completarlo a mano:
+Cuatro, de las auditorías recientes. Tres dejan el histórico en su valor por
+defecto y puede hacer falta completarlo a mano:
 
 | Migración | Qué agrega | Ojo con el histórico |
 |---|---|---|
 | `20260730-settings-pk-por-empresa` | PK compuesta en `settings` | La config de AFIP existente queda asignada a la empresa 1 |
 | `20260731-ventas-a-cuenta-corriente` | `sales.is_credit` | Las ventas viejas quedan como **contado**. Si hay cuentas corrientes en uso, hay que marcar las impagas |
 | `20260731-guardar-punto-de-venta-afip` | `sales.afip_pv` | Queda NULL. Para los comprobantes ya emitidos, completar con el punto de venta que se usaba |
+| `20260803-intentos-de-facturacion` | `sales.afip_ultimo_error`, `sales.afip_ultimo_intento` y el índice `(empresa_id, date)` | **Sin `UPDATE`.** Las dos columnas quedan en NULL y toda venta activa sin CAE anterior a la migración se muestra como **Registrada**, nunca como Rechazada |
 
 El `UPDATE` de cada caso está en el comentario de la migración.
+
+La última no lleva ninguno a propósito: no hay forma de saber cuáles de las
+ventas viejas sin CAE fallaron y cuáles se registraron así queriendo, y adivinar
+sobre una obligación fiscal es peor que no saber. Es aditiva y sobre columnas
+nulas, así que es segura mientras la versión anterior de la aplicación sigue
+corriendo.
 
 ### Rollback
 

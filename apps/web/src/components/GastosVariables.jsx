@@ -141,7 +141,7 @@ export default function GastosVariables() {
         </div>
       </div>
 
-      <Can permission="gastos.crear">
+      <Can codigo="gastos.crear">
         <Card>
           <CardContent className="py-4">
             <form onSubmit={agregar} className="grid grid-cols-1 md:grid-cols-[1fr_1.5fr_auto_auto_auto] gap-2 items-end">
@@ -249,7 +249,7 @@ export default function GastosVariables() {
                         -${item.monto.toLocaleString('es-AR')}
                       </TableCell>
                       <TableCell className="w-10">
-                        <Can permission="gastos.eliminar">
+                        <Can codigo="gastos.eliminar">
                           <Button variant="ghost" size="icon"
                             className="h-7 w-7 text-muted-foreground hover:text-destructive"
                             onClick={() => eliminar(item)}>

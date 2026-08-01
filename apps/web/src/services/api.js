@@ -145,8 +145,24 @@ export const bulkProducts = (products) => api.post('/products/bulk', { products 
 
 // ═══════ VENTAS ═══════
 
-export const getSales = (date, location, page, limit) =>
-  api.get('/sales', { params: { date, location, page, limit } });
+/**
+ * Historial de ventas: rango, sucursal, tipo, busqueda y paginado.
+ *
+ * ⚠ EL LISTADO YA NO TRAE `items`. Ninguna de las siete columnas los muestra,
+ * y ese include obligaba a Sequelize a armar una subconsulta por pagina para
+ * no mostrar nada. Los items salen de `getSale(id)`, que es el detalle del
+ * panel lateral. Un `sale.items.map()` sobre esta respuesta no falla en el
+ * build: tira recien en runtime, con la pantalla abierta.
+ *
+ * Los parametros van como objeto y no posicionales: son siete
+ * (`desde`, `hasta`, `punto_de_venta_id`, `tipo`, `q`, `page`, `limit`) y con
+ * posicionales habria que pasar `undefined` en el medio para llegar al ultimo.
+ */
+export const getSales = (params) => api.get('/sales', { params });
+export const getSale = (id) => api.get(`/sales/${id}`);
+/** Todo el resultado del filtro, sin paginar, con las diez columnas del
+ *  archivo ya armadas. El `.xlsx` lo construye el navegador. */
+export const exportSales = (params) => api.get('/sales/export', { params });
 export const getSalesSummary = (from, to) => api.get('/sales/summary', { params: { from, to } });
 export const createSale = (data) => api.post('/sales', data);
 export const voidSale = (id) => api.put(`/sales/${id}/void`);
