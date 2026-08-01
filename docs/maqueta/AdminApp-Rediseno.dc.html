@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="crossorigin" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+:root{
+--bg:#F6F7F8; --surface:#FFFFFF; --surface-2:#FAFBFB; --surface-3:#F1F3F4;
+--border:#E5E8EA; --border-2:#D5DADE;
+--fg:#101418; --fg-2:#5A646E; --fg-3:#8B959E;
+--brand:#00B4B6; --brand-2:#008B8E; --brand-soft:#E4F6F6; --brand-line:#9FE0E0; --deep:#0B3055;
+--ok:#0F7B45; --ok-soft:#E6F4EC; --ok-line:#A7D9BE;
+--warn:#9A5B08; --warn-soft:#FBF0DE; --warn-line:#EBC48A;
+--dan:#C42B2B; --dan-soft:#FBEAEA; --dan-line:#EFB4B4;
+--info:#1F5FA8; --info-soft:#E8F0FA; --info-line:#A9C6E8;
+--shadow-1:0 1px 2px rgba(16,24,40,.06);
+--shadow-2:0 4px 16px rgba(16,24,40,.08);
+--shadow-3:0 24px 60px rgba(16,24,40,.16);
+}
+:root[data-theme="dark"]{
+--bg:#0A0C0D; --surface:#131719; --surface-2:#171B1E; --surface-3:#1E2326;
+--border:#262C30; --border-2:#333A3F;
+--fg:#EDF0F2; --fg-2:#98A3AC; --fg-3:#6C777F;
+--brand:#00C2C4; --brand-2:#00B4B6; --brand-soft:#0E2C2D; --brand-line:#1C4E4F;
+--ok:#4ADE80; --ok-soft:#0F2A1B; --ok-line:#1E5136;
+--warn:#F0B45E; --warn-soft:#2C2010; --warn-line:#57411D;
+--dan:#F27272; --dan-soft:#2E1414; --dan-line:#5A2626;
+--info:#7FB2F0; --info-soft:#12203300; --info-line:#24405F;
+--shadow-1:0 1px 2px rgba(0,0,0,.4);
+--shadow-2:0 4px 16px rgba(0,0,0,.45);
+--shadow-3:0 24px 60px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--fg);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+a{color:var(--brand);text-decoration:none}
+a:hover{color:var(--brand-2)}
+button{font:inherit;color:inherit;border:none;background:none;cursor:pointer}
+input,select,textarea{font:inherit;color:inherit}
+input:focus-visible,button:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:color-mix(in srgb, var(--brand) 26%, transparent);border-radius:999px;border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb, var(--brand) 48%, transparent);background-clip:content-box;border:3px solid transparent}
+@keyframes omFade{from{opacity:0}to{opacity:1}}
+@keyframes omSheet{from{transform:translateX(28px);opacity:0}to{transform:none;opacity:1}}
+@keyframes omPop{from{transform:translateY(-8px) scale(.985);opacity:0}to{transform:none;opacity:1}}
+@keyframes omRise{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+</style>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-panel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></symbol>
+<symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"></circle><circle cx="19" cy="21" r="1"></circle><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"></path></symbol>
+<symbol id="i-receipt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"></path><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path><path d="M12 17.5v-11"></path></symbol>
+<symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></symbol>
+<symbol id="i-factory" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"></path><path d="M17 18h1"></path><path d="M12 18h1"></path><path d="M7 18h1"></path></symbol>
+<symbol id="i-package" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path><path d="m3.3 7 8.7 5 8.7-5"></path><path d="M12 22V12"></path></symbol>
+<symbol id="i-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></symbol>
+<symbol id="i-truck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"></path><path d="M15 18H9"></path><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"></path><circle cx="7" cy="18" r="2"></circle><circle cx="17" cy="18" r="2"></circle></symbol>
+<symbol id="i-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><path d="M12 11h4"></path><path d="M12 16h4"></path><path d="M8 11h.01"></path><path d="M8 16h.01"></path></symbol>
+<symbol id="i-dollar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></symbol>
+<symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path></symbol>
+<symbol id="i-filecheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="m9 15 2 2 4-4"></path></symbol>
+<symbol id="i-report" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M8 13h2"></path><path d="M14 13h2"></path><path d="M8 17h2"></path><path d="M14 17h2"></path></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></symbol>
+<symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></symbol>
+<symbol id="i-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></symbol>
+<symbol id="i-cright" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></symbol>
+<symbol id="i-cdown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></symbol>
+<symbol id="i-cleft" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></symbol>
+<symbol id="i-updown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 15 5 5 5-5"></path><path d="m7 9 5-5 5 5"></path></symbol>
+<symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></symbol>
+<symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></symbol>
+<symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></symbol>
+<symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 17 13.5 8.5 8.5 13.5 2 6"></polyline><polyline points="16 17 22 17 22 11"></polyline></symbol>
+<symbol id="i-printer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8" rx="1"></rect></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></symbol>
+<symbol id="i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"></path></symbol>
+<symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="4" x2="14" y2="4"></line><line x1="10" y1="4" x2="3" y2="4"></line><line x1="21" y1="12" x2="12" y2="12"></line><line x1="8" y1="12" x2="3" y2="12"></line><line x1="21" y1="20" x2="16" y2="20"></line><line x1="12" y1="20" x2="3" y2="20"></line><line x1="14" y1="2" x2="14" y2="6"></line><line x1="8" y1="10" x2="8" y2="14"></line><line x1="16" y1="18" x2="16" y2="22"></line></symbol>
+<symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></symbol>
+<symbol id="i-external" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"></path><path d="M10 14 21 3"></path><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></symbol>
+<symbol id="i-dots" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle><circle cx="5" cy="12" r="1.6"></circle></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></symbol>
+<symbol id="i-building" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"></path><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"></path><path d="M10 6h4"></path><path d="M10 10h4"></path><path d="M10 14h4"></path></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></symbol>
+<symbol id="i-sidebar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M9 3v18"></path></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></symbol>
+<symbol id="i-okcircle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></symbol>
+<symbol id="i-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"></path><path d="M20 7H4"></path><path d="m8 21-4-4 4-4"></path><path d="M4 17h16"></path></symbol>
+<symbol id="i-card" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></symbol>
+<symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></symbol>
+<symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"></polygon></symbol>
+<symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></symbol>
+</defs></svg>
+
+<div style="display:flex;height:100vh;width:100%;overflow:hidden;background:var(--bg);color:var(--fg);font-size:14px;line-height:1.45">
+
+  <aside style="width:{{ navWidth }};flex-shrink:0;display:flex;flex-direction:column;background:var(--surface);border-right:1px solid var(--border);transition:width .18s ease;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:10px;height:60px;padding:0 14px;flex-shrink:0">
+      <img src="assets/logo_sin_fondo.png" alt="AdminApp" style="width:28px;height:28px;object-fit:contain;border-radius:7px;flex-shrink:0" />
+      <sc-if value="{{ navOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;min-width:0;flex:1">
+          <span style="font-size:14.5px;font-weight:650;letter-spacing:-.01em;white-space:nowrap">AdminApp</span>
+        </div>
+        <button onClick="{{ toggleNav }}" title="Contraer barra lateral" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-3);flex-shrink:0" style-hover="background:var(--surface-3);color:var(--fg-2)">
+          <svg style="width:16px;height:16px"><use href="#i-sidebar"></use></svg>
+        </button>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ navOpen }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:0 12px 12px">
+        <button onClick="{{ openPalette }}" style="width:100%;display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--fg-3);font-size:13px" style-hover="border-color:var(--border-2);color:var(--fg-2)">
+          <svg style="width:15px;height:15px;flex-shrink:0"><use href="#i-search"></use></svg>
+          <span style="flex:1;text-align:left">Buscar o ir a…</span>
+          <kbd style="font-family:'JetBrains Mono',monospace;font-size:10.5px;padding:2px 5px;border-radius:4px;background:var(--surface-3);color:var(--fg-3);border:1px solid var(--border)">⌘K</kbd>
+        </button>
+      </div>
+    </sc-if>
+
+    <nav style="flex:1;overflow-y:auto;overflow-x:hidden;padding:0 12px 12px;display:flex;flex-direction:column;gap:18px">
+      <sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="4">
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <sc-if value="{{ g.showLabel }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:6px;padding:0 8px 6px;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3)">{{ g.label }}</div>
+          </sc-if>
+          <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="4">
+            <button onClick="{{ it.go }}" title="{{ it.label }}" style="display:flex;align-items:center;gap:10px;width:100%;height:34px;padding:0 8px;border-radius:8px;text-align:left;font-size:13.5px;font-weight:{{ it.weight }};color:{{ it.fg }};background:{{ it.bg }};box-shadow:{{ it.ring }}" style-hover="background:var(--surface-3)">
+              <svg style="width:16.5px;height:16.5px;flex-shrink:0;color:{{ it.iconFg }}"><use href="{{ it.icon }}"></use></svg>
+              <sc-if value="{{ navOpen }}" hint-placeholder-val="{{ true }}">
+                <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.label }}</span>
+                <sc-if value="{{ it.badge }}">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:999px;background:{{ it.badgeBg }};color:{{ it.badgeFg }}">{{ it.badge }}</span>
+                </sc-if>
+              </sc-if>
+            </button>
+          </sc-for>
+        </div>
+      </sc-for>
+    </nav>
+
+    <div style="border-top:1px solid var(--border);padding:10px 12px;flex-shrink:0;display:flex;align-items:center;gap:9px">
+      <div style="width:28px;height:28px;border-radius:999px;background:var(--brand-soft);color:var(--brand-2);display:grid;place-items:center;font-size:11.5px;font-weight:650;flex-shrink:0;border:1px solid var(--brand-line)">MR</div>
+      <sc-if value="{{ navOpen }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+          <span style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Marina Rossi</span>
+          <span style="font-size:11px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Administradora</span>
+        </div>
+        <button title="Cerrar sesión" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-3);flex-shrink:0" style-hover="background:var(--dan-soft);color:var(--dan)">
+          <svg style="width:15px;height:15px"><use href="#i-logout"></use></svg>
+        </button>
+      </sc-if>
+    </div>
+  </aside>
+
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
+
+    <header style="height:60px;flex-shrink:0;display:flex;align-items:center;gap:12px;padding:0 20px 0 16px;border-bottom:1px solid var(--border);background:var(--surface)">
+      <sc-if value="{{ navClosed }}">
+        <button onClick="{{ toggleNav }}" title="Expandir barra lateral" style="width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:var(--fg-3)" style-hover="background:var(--surface-3);color:var(--fg-2)">
+          <svg style="width:16px;height:16px"><use href="#i-sidebar"></use></svg>
+        </button>
+      </sc-if>
+      <div style="display:flex;align-items:center;gap:7px;min-width:0;font-size:13px">
+        <span style="color:var(--fg-3);white-space:nowrap">{{ crumbGroup }}</span>
+        <svg style="width:13px;height:13px;color:var(--fg-3);flex-shrink:0"><use href="#i-cright"></use></svg>
+        <span style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ crumbPage }}</span>
+      </div>
+
+      <div style="flex:1"></div>
+
+      <button onClick="{{ openPalette }}" style="display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--fg-3);font-size:12.5px;min-width:190px" style-hover="border-color:var(--border-2)">
+        <svg style="width:14px;height:14px"><use href="#i-search"></use></svg>
+        <span style="flex:1;text-align:left">Buscar…</span>
+        <kbd style="font-family:'JetBrains Mono',monospace;font-size:10px;padding:1px 5px;border-radius:4px;background:var(--surface-3);border:1px solid var(--border)">⌘K</kbd>
+      </button>
+
+      <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);cursor:pointer" style-hover="border-color:var(--border-2)">
+        <svg style="width:14px;height:14px;color:var(--fg-3)"><use href="#i-building"></use></svg>
+        <span style="font-size:12.5px;font-weight:600;white-space:nowrap">Nordika SRL</span>
+        <span style="width:1px;height:14px;background:var(--border)"></span>
+        <svg style="width:13px;height:13px;color:var(--fg-3)"><use href="#i-pin"></use></svg>
+        <span style="font-size:12.5px;color:var(--fg-2);white-space:nowrap">Sucursal Centro</span>
+        <svg style="width:12px;height:12px;color:var(--fg-3)"><use href="#i-updown"></use></svg>
+      </div>
+
+      <button onClick="{{ openPalette }}" style="display:flex;align-items:center;gap:6px;height:32px;padding:0 12px 0 9px;border-radius:8px;background:var(--brand);color:#fff;font-size:13px;font-weight:600;box-shadow:var(--shadow-1)" style-hover="background:var(--brand-2)">
+        <svg style="width:15px;height:15px"><use href="#i-plus"></use></svg>Nuevo
+      </button>
+
+      <button title="Notificaciones" style="position:relative;width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--fg-2)" style-hover="background:var(--surface-3)">
+        <svg style="width:17px;height:17px"><use href="#i-bell"></use></svg>
+        <span style="position:absolute;top:5px;right:6px;width:7px;height:7px;border-radius:999px;background:var(--dan);border:1.5px solid var(--surface)"></span>
+      </button>
+
+      <button onClick="{{ toggleTheme }}" title="Cambiar tema" style="width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--fg-2)" style-hover="background:var(--surface-3)">
+        <svg style="width:17px;height:17px"><use href="{{ themeIcon }}"></use></svg>
+      </button>
+    </header>
+
+    <main style="flex:1;overflow-y:auto;min-height:0">
+
+      <sc-if value="{{ isPanel }}" hint-placeholder-val="{{ true }}">
+        <div style="max-width:1320px;min-width:1140px;margin:0 auto;padding:32px 36px 56px;display:flex;flex-direction:column;gap:28px;animation:omRise .22s ease both">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+            <div>
+              <h1 style="margin:0;font-size:24px;font-weight:660;letter-spacing:-.022em">Panel de control</h1>
+              <p style="margin:6px 0 0;font-size:13.5px;color:var(--fg-2);max-width:56ch;text-wrap:pretty">Cómo viene el negocio hoy y qué necesita tu intervención. Actualizado hace 2 minutos.</p>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button style="display:flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:13px;font-weight:500" style-hover="background:var(--surface-3)">
+                <svg style="width:14px;height:14px;color:var(--fg-3)"><use href="#i-clock"></use></svg>Últimos 30 días
+                <svg style="width:12px;height:12px;color:var(--fg-3)"><use href="#i-cdown"></use></svg>
+              </button>
+              <button style="display:flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:13px;font-weight:500" style-hover="background:var(--surface-3)">
+                <svg style="width:14px;height:14px;color:var(--fg-3)"><use href="#i-download"></use></svg>Exportar
+              </button>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px">
+            <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 18px 16px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow-1)">
+                <span style="font-size:11.5px;font-weight:600;color:var(--fg-2);letter-spacing:.01em">{{ k.label }}</span>
+                <div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:600;letter-spacing:-.03em">{{ k.value }}</span>
+                  <span style="display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:600;color:{{ k.deltaFg }}">
+                    <svg style="width:12px;height:12px"><use href="{{ k.deltaIcon }}"></use></svg>{{ k.delta }}
+                  </span>
+                </div>
+                <div style="display:flex;align-items:flex-end;gap:3px;height:28px">
+                  <sc-for list="{{ k.bars }}" as="b" hint-placeholder-count="12">
+                    <div style="flex:1;border-radius:2px;background:var(--brand);opacity:{{ b.o }};height:{{ b.h }}"></div>
+                  </sc-for>
+                </div>
+                <span style="font-size:11.5px;color:var(--fg-3)">{{ k.note }}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:24px;align-items:start">
+            <div style="display:flex;flex-direction:column;gap:24px;min-width:0">
+
+              <section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-1);overflow:hidden">
+                <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border)">
+                  <h2 style="margin:0;font-size:14px;font-weight:640;letter-spacing:-.01em">Requiere tu atención</h2>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:var(--dan-soft);color:var(--dan)">4</span>
+                  <div style="flex:1"></div>
+                  <button style="font-size:12.5px;color:var(--fg-2);font-weight:500" style-hover="color:var(--brand)">Ver todo</button>
+                </div>
+                <div style="display:flex;flex-direction:column">
+                  <sc-for list="{{ alerts }}" as="a" hint-placeholder-count="4">
+                    <button onClick="{{ a.go }}" style="display:flex;align-items:center;gap:14px;padding:15px 20px;text-align:left;border-bottom:1px solid var(--border);width:100%" style-hover="background:var(--surface-2)">
+                      <span style="width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex-shrink:0;background:{{ a.bg }};color:{{ a.fg }};border:1px solid {{ a.line }}">
+                        <svg style="width:16px;height:16px"><use href="{{ a.icon }}"></use></svg>
+                      </span>
+                      <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+                        <span style="font-size:13.5px;font-weight:570">{{ a.title }}</span>
+                        <span style="font-size:12.5px;color:var(--fg-2)">{{ a.meta }}</span>
+                      </span>
+                      <span style="font-size:12.5px;font-weight:600;color:var(--brand);display:flex;align-items:center;gap:5px;flex-shrink:0">{{ a.cta }}
+                        <svg style="width:13px;height:13px"><use href="#i-arrow"></use></svg>
+                      </span>
+                    </button>
+                  </sc-for>
+                </div>
+              </section>
+
+              <section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-1);overflow:hidden">
+                <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border)">
+                  <h2 style="margin:0;font-size:14px;font-weight:640;letter-spacing:-.01em">Actividad reciente</h2>
+                  <div style="flex:1"></div>
+                  <button onClick="{{ goVentas }}" style="font-size:12.5px;color:var(--fg-2);font-weight:500" style-hover="color:var(--brand)">Historial completo</button>
+                </div>
+                <div style="padding:6px 20px 14px">
+                  <sc-for list="{{ activity }}" as="ev" hint-placeholder-count="5">
+                    <div style="display:flex;gap:14px;padding:11px 0">
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--fg-3);width:44px;flex-shrink:0;padding-top:1px">{{ ev.time }}</span>
+                      <span style="width:7px;height:7px;border-radius:999px;margin-top:6px;flex-shrink:0;background:{{ ev.dot }}"></span>
+                      <span style="flex:1;min-width:0;font-size:13px;color:var(--fg-2)"><strong style="color:var(--fg);font-weight:590">{{ ev.who }}</strong> {{ ev.what }}</span>
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:550;flex-shrink:0">{{ ev.amount }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </section>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:24px;min-width:0">
+              <section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-1);overflow:hidden">
+                <div style="padding:16px 20px;border-bottom:1px solid var(--border)">
+                  <h2 style="margin:0;font-size:14px;font-weight:640;letter-spacing:-.01em">Pendientes</h2>
+                </div>
+                <div style="display:flex;flex-direction:column">
+                  <sc-for list="{{ pendings }}" as="p" hint-placeholder-count="4">
+                    <button onClick="{{ p.go }}" style="display:flex;align-items:center;gap:12px;padding:13px 20px;border-bottom:1px solid var(--border);text-align:left;width:100%" style-hover="background:var(--surface-2)">
+                      <svg style="width:15px;height:15px;color:var(--fg-3);flex-shrink:0"><use href="{{ p.icon }}"></use></svg>
+                      <span style="flex:1;font-size:13px">{{ p.label }}</span>
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:{{ p.fg }}">{{ p.count }}</span>
+                    </button>
+                  </sc-for>
+                </div>
+              </section>
+
+              <section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-1);padding:16px 20px 20px">
+                <h2 style="margin:0 0 14px;font-size:14px;font-weight:640;letter-spacing:-.01em">Accesos rápidos</h2>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                  <sc-for list="{{ quick }}" as="q" hint-placeholder-count="4">
+                    <button onClick="{{ q.go }}" style="display:flex;flex-direction:column;align-items:flex-start;gap:9px;padding:13px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);text-align:left" style-hover="border-color:var(--brand-line);background:var(--brand-soft)">
+                      <svg style="width:17px;height:17px;color:var(--brand-2)"><use href="{{ q.icon }}"></use></svg>
+                      <span style="font-size:12.5px;font-weight:570;line-height:1.3">{{ q.label }}</span>
+                    </button>
+                  </sc-for>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isPos }}">
+        <div style="display:flex;height:100%;min-height:0;min-width:1080px;animation:omFade .2s ease both">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--border)">
+            <div style="padding:20px 28px 14px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;gap:14px;flex-shrink:0">
+              <div style="display:flex;align-items:center;gap:14px">
+                <div style="position:relative;flex:1">
+                  <svg style="width:17px;height:17px;color:var(--fg-3);position:absolute;left:13px;top:50%;transform:translateY(-50%);pointer-events:none"><use href="#i-search"></use></svg>
+                  <input value="{{ posQ }}" onChange="{{ setPosQ }}" placeholder="Escaneá un código o buscá por nombre, marca o SKU…" style="width:100%;height:44px;padding:0 14px 0 40px;border-radius:10px;border:1px solid var(--border);background:var(--surface-2);font-size:14.5px" />
+                </div>
+                <span style="font-size:12px;color:var(--fg-3);white-space:nowrap">Enter agrega el primer resultado</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <sc-for list="{{ posCats }}" as="c" hint-placeholder-count="5">
+                  <button onClick="{{ c.pick }}" style="height:29px;padding:0 12px;border-radius:999px;font-size:12.5px;font-weight:{{ c.weight }};border:1px solid {{ c.line }};background:{{ c.bg }};color:{{ c.fg }}" style-hover="border-color:var(--border-2)">{{ c.label }}</button>
+                </sc-for>
+                <div style="flex:1"></div>
+                <button onClick="{{ toggleStock }}" style="display:flex;align-items:center;gap:7px;height:29px;padding:0 11px;border-radius:8px;border:1px solid {{ stockLine }};background:{{ stockBg }};color:{{ stockFg }};font-size:12.5px;font-weight:500">
+                  <span style="width:14px;height:14px;border-radius:4px;border:1.5px solid {{ stockBox }};display:grid;place-items:center;background:{{ stockFill }}">
+                    <sc-if value="{{ posStock }}"><svg style="width:10px;height:10px;color:#fff"><use href="#i-check"></use></svg></sc-if>
+                  </span>Solo con stock
+                </button>
+              </div>
+            </div>
+
+            <div style="flex:1;overflow-y:auto;padding:0 28px 28px">
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) 104px 104px 104px 44px;gap:0 16px;padding:14px 16px 10px;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3);position:sticky;top:0;background:var(--bg);z-index:1">
+                <span>Producto</span><span style="text-align:right">Efectivo</span><span style="text-align:right">Tarjeta</span><span style="text-align:right">Alianza</span><span></span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <sc-for list="{{ posList }}" as="p" hint-placeholder-count="8">
+                  <div style="display:grid;grid-template-columns:minmax(0,1fr) 104px 104px 104px 44px;gap:0 16px;align-items:center;padding:14px 16px;border-radius:11px;border:1px solid var(--border);background:var(--surface);opacity:{{ p.opacity }}" style-hover="border-color:var(--brand-line)">
+                    <div style="min-width:0;display:flex;flex-direction:column;gap:3px">
+                      <span style="font-size:14px;font-weight:560;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</span>
+                      <span style="font-size:12px;color:var(--fg-3);display:flex;align-items:center;gap:8px">
+                        <span>{{ p.brand }}</span><span style="color:var(--border-2)">·</span>
+                        <span style="font-family:'JetBrains Mono',monospace">{{ p.sku }}</span><span style="color:var(--border-2)">·</span>
+                        <span style="color:{{ p.stockFg }};font-weight:550">{{ p.stockLabel }}</span>
+                      </span>
+                    </div>
+                    <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:560">{{ p.cash }}</span>
+                    <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--fg-2)">{{ p.card }}</span>
+                    <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--fg-2)">{{ p.alliance }}</span>
+                    <button onClick="{{ p.add }}" disabled="{{ p.disabled }}" title="Agregar al ticket" style="width:32px;height:32px;border-radius:8px;display:grid;place-items:center;background:{{ p.addBg }};color:{{ p.addFg }};border:1px solid {{ p.addLine }};justify-self:end">
+                      <svg style="width:16px;height:16px"><use href="#i-plus"></use></svg>
+                    </button>
+                  </div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ posEmpty }}">
+                <div style="padding:64px 0;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px">
+                  <svg style="width:32px;height:32px;color:var(--fg-3);opacity:.5"><use href="#i-package"></use></svg>
+                  <p style="margin:0;font-size:14px;font-weight:560">Sin resultados</p>
+                  <p style="margin:0;font-size:13px;color:var(--fg-2);max-width:38ch">Probá con otro término, o quitá el filtro de stock para ver productos agotados.</p>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+
+          <aside style="width:400px;flex-shrink:0;display:flex;flex-direction:column;background:var(--surface);min-height:0">
+            <div style="display:flex;align-items:center;gap:10px;padding:18px 20px 14px;border-bottom:1px solid var(--border);flex-shrink:0">
+              <svg style="width:17px;height:17px;color:var(--fg-2)"><use href="#i-cart"></use></svg>
+              <h2 style="margin:0;font-size:14.5px;font-weight:640">Ticket</h2>
+              <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:var(--surface-3);color:var(--fg-2)">{{ cartCount }}</span>
+              <div style="flex:1"></div>
+              <button onClick="{{ clearCart }}" style="font-size:12.5px;color:var(--fg-3);font-weight:500" style-hover="color:var(--dan)">Vaciar</button>
+            </div>
+
+            <div style="flex:1;overflow-y:auto;min-height:0;padding:12px 16px;display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ cartRows }}" as="c" hint-placeholder-count="2">
+                <div style="border:1px solid var(--border);border-radius:10px;padding:11px 12px;background:var(--surface-2);display:flex;flex-direction:column;gap:10px">
+                  <div style="display:flex;align-items:flex-start;gap:8px">
+                    <div style="flex:1;min-width:0">
+                      <p style="margin:0;font-size:13.5px;font-weight:560;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</p>
+                      <p style="margin:2px 0 0;font-size:11.5px;color:var(--fg-3);font-family:'JetBrains Mono',monospace">{{ c.unit }} c/u</p>
+                    </div>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:14.5px;font-weight:600">{{ c.total }}</span>
+                    <button onClick="{{ c.remove }}" title="Quitar" style="width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--fg-3);flex-shrink:0" style-hover="background:var(--dan-soft);color:var(--dan)">
+                      <svg style="width:13px;height:13px"><use href="#i-x"></use></svg>
+                    </button>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <div style="display:flex;align-items:center;border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden">
+                      <button onClick="{{ c.dec }}" style="width:28px;height:28px;display:grid;place-items:center;color:var(--fg-2)" style-hover="background:var(--surface-3)"><svg style="width:13px;height:13px"><use href="#i-minus"></use></svg></button>
+                      <span style="width:30px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600">{{ c.qty }}</span>
+                      <button onClick="{{ c.inc }}" style="width:28px;height:28px;display:grid;place-items:center;color:var(--fg-2)" style-hover="background:var(--surface-3)"><svg style="width:13px;height:13px"><use href="#i-plus"></use></svg></button>
+                    </div>
+                    <div style="flex:1"></div>
+                    <div style="display:flex;gap:4px">
+                      <sc-for list="{{ c.methods }}" as="m" hint-placeholder-count="3">
+                        <button onClick="{{ m.pick }}" style="height:26px;padding:0 9px;border-radius:7px;font-size:11.5px;font-weight:600;border:1px solid {{ m.line }};background:{{ m.bg }};color:{{ m.fg }}">{{ m.label }}</button>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ cartEmpty }}">
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:48px 20px;text-align:center">
+                  <svg style="width:28px;height:28px;color:var(--fg-3);opacity:.45"><use href="#i-cart"></use></svg>
+                  <p style="margin:0;font-size:13.5px;font-weight:560">Ticket vacío</p>
+                  <p style="margin:0;font-size:12.5px;color:var(--fg-3);max-width:30ch">Buscá un producto y presioná <kbd style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:1px 4px;border-radius:4px;background:var(--surface-3);border:1px solid var(--border)">Enter</kbd></p>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="border-top:1px solid var(--border);padding:16px 20px 18px;flex-shrink:0;display:flex;flex-direction:column;gap:13px;background:var(--surface-2)">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <label style="font-size:11.5px;font-weight:600;color:var(--fg-2)">Comprobante</label>
+                <div style="display:flex;gap:6px">
+                  <sc-for list="{{ docTypes }}" as="d" hint-placeholder-count="3">
+                    <button onClick="{{ d.pick }}" style="flex:1;height:32px;border-radius:8px;font-size:12.5px;font-weight:{{ d.weight }};border:1px solid {{ d.line }};background:{{ d.bg }};color:{{ d.fg }}">{{ d.label }}</button>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <label style="font-size:11.5px;font-weight:600;color:var(--fg-2)">Cliente <span style="font-weight:400;color:var(--fg-3)">— opcional</span></label>
+                <div style="position:relative">
+                  <svg style="width:14px;height:14px;color:var(--fg-3);position:absolute;left:11px;top:50%;transform:translateY(-50%);pointer-events:none"><use href="#i-search"></use></svg>
+                  <input placeholder="Consumidor final" style="width:100%;height:34px;padding:0 12px 0 33px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:13px" />
+                </div>
+              </div>
+
+              <sc-if value="{{ isFiscal }}" hint-placeholder-val="{{ true }}">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <label style="font-size:11.5px;font-weight:600;color:var(--fg-2)">Condición IVA</label>
+                    <select style="height:34px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:13px;padding:0 8px">
+                      <option>Consumidor final</option><option>Resp. inscripto</option><option>Monotributo</option><option>Exento</option>
+                    </select>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <label style="font-size:11.5px;font-weight:600;color:var(--fg-2)">CUIT / DNI</label>
+                    <input placeholder="Opcional" style="height:34px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:13px;padding:0 10px;font-family:'JetBrains Mono',monospace" />
+                  </div>
+                </div>
+              </sc-if>
+
+              <div style="border-top:1px dashed var(--border);padding-top:12px;display:flex;flex-direction:column;gap:5px">
+                <div style="display:flex;justify-content:space-between;font-size:12.5px;color:var(--fg-2)"><span>Subtotal</span><span style="font-family:'JetBrains Mono',monospace">{{ cartSubtotal }}</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:12.5px;color:var(--fg-2)"><span>IVA 21%</span><span style="font-family:'JetBrains Mono',monospace">{{ cartTax }}</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px">
+                  <span style="font-size:14px;font-weight:640">Total</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:640;letter-spacing:-.03em">{{ cartTotal }}</span>
+                </div>
+              </div>
+
+              <button onClick="{{ confirmSale }}" style="height:44px;border-radius:10px;background:var(--brand);color:#fff;font-size:14.5px;font-weight:640;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:var(--shadow-1)" style-hover="background:var(--brand-2)">
+                Confirmar venta
+                <kbd style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;padding:2px 6px;border-radius:5px;background:rgba(255,255,255,.2)">⌘↵</kbd>
+              </button>
+            </div>
+          </aside>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isVentas }}">
+        <div style="max-width:1320px;min-width:1140px;margin:0 auto;padding:32px 36px 56px;display:flex;flex-direction:column;gap:24px;animation:omRise .22s ease both">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+            <div>
+              <h1 style="margin:0;font-size:24px;font-weight:660;letter-spacing:-.022em">Historial de ventas</h1>
+              <p style="margin:6px 0 0;font-size:13.5px;color:var(--fg-2);max-width:60ch;text-wrap:pretty">Consultá, verificá contra AFIP y reimprimí comprobantes. Hacé clic en una fila para ver el detalle completo.</p>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button style="display:flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:13px;font-weight:500" style-hover="background:var(--surface-3)">
+                <svg style="width:14px;height:14px;color:var(--fg-3)"><use href="#i-download"></use></svg>Exportar
+              </button>
+              <button onClick="{{ goPos }}" style="display:flex;align-items:center;gap:7px;height:34px;padding:0 13px 0 10px;border-radius:8px;background:var(--brand);color:#fff;font-size:13px;font-weight:600" style-hover="background:var(--brand-2)">
+                <svg style="width:15px;height:15px"><use href="#i-plus"></use></svg>Nueva venta
+              </button>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+            <div style="position:relative;flex:1;min-width:240px">
+              <svg style="width:15px;height:15px;color:var(--fg-3);position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none"><use href="#i-search"></use></svg>
+              <input placeholder="Buscar por número, CAE o cliente…" style="width:100%;height:36px;padding:0 12px 0 35px;border-radius:9px;border:1px solid var(--border);background:var(--surface);font-size:13.5px" />
+            </div>
+            <button style="display:flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:9px;border:1px solid var(--border);background:var(--surface);font-size:13px" style-hover="background:var(--surface-3)"><svg style="width:14px;height:14px;color:var(--fg-3)"><use href="#i-clock"></use></svg>Hoy<svg style="width:12px;height:12px;color:var(--fg-3)"><use href="#i-cdown"></use></svg></button>
+            <button style="display:flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:9px;border:1px solid var(--border);background:var(--surface);font-size:13px" style-hover="background:var(--surface-3)"><svg style="width:14px;height:14px;color:var(--fg-3)"><use href="#i-pin"></use></svg>Todas las sucursales<svg style="width:12px;height:12px;color:var(--fg-3)"><use href="#i-cdown"></use></svg></button>
+            <button style="display:flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:9px;border:1px solid var(--border);background:var(--surface);font-size:13px" style-hover="background:var(--surface-3)"><svg style="width:14px;height:14px;color:var(--fg-3)"><use href="#i-filecheck"></use></svg>Tipo<svg style="width:12px;height:12px;color:var(--fg-3)"><use href="#i-cdown"></use></svg></button>
+            <div style="flex:1"></div>
+            <button style="display:flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:9px;border:1px solid var(--border);background:var(--surface);font-size:13px;color:var(--fg-2)" style-hover="background:var(--surface-3)"><svg style="width:14px;height:14px"><use href="#i-sliders"></use></svg>Columnas</button>
+          </div>
+
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-1);overflow:hidden">
+            <div style="display:grid;grid-template-columns:80px 116px 132px minmax(0,1fr) 116px 128px 128px;gap:0 16px;padding:11px 20px;border-bottom:1px solid var(--border);background:var(--surface-2);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3)">
+              <span>Hora</span><span>Tipo</span><span>Comprobante</span><span>Cliente</span><span>Estado</span><span style="text-align:right">Total</span><span style="text-align:right">Acciones</span>
+            </div>
+            <sc-for list="{{ sales }}" as="s" hint-placeholder-count="7">
+              <div onClick="{{ s.open }}" style="display:grid;grid-template-columns:80px 116px 132px minmax(0,1fr) 116px 128px 128px;gap:0 16px;align-items:center;padding:15px 20px;border-bottom:1px solid var(--border);cursor:pointer;opacity:{{ s.opacity }}" style-hover="background:var(--surface-2)">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--fg-2)">{{ s.time }}</span>
+                <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;background:{{ s.typeBg }};color:{{ s.typeFg }};border:1px solid {{ s.typeLine }};width:fit-content">
+                  <svg style="width:12px;height:12px"><use href="{{ s.typeIcon }}"></use></svg>{{ s.type }}
+                </span>
+                <span style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:560">{{ s.number }}</span>
+                  <span style="font-size:11px;color:var(--fg-3);font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.cae }}</span>
+                </span>
+                <span style="font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.customer }}</span>
+                <span style="font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;background:{{ s.stBg }};color:{{ s.stFg }};border:1px solid {{ s.stLine }};width:fit-content">{{ s.status }}</span>
+                <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600">{{ s.total }}</span>
+                <span style="display:flex;justify-content:flex-end;gap:2px">
+                  <button title="Imprimir" style="width:29px;height:29px;border-radius:7px;display:grid;place-items:center;color:var(--fg-3)" style-hover="background:var(--surface-3);color:var(--fg)"><svg style="width:15px;height:15px"><use href="#i-printer"></use></svg></button>
+                  <button title="Verificar en AFIP" style="width:29px;height:29px;border-radius:7px;display:grid;place-items:center;color:var(--fg-3)" style-hover="background:var(--surface-3);color:var(--fg)"><svg style="width:15px;height:15px"><use href="#i-shield"></use></svg></button>
+                  <button title="Más acciones" style="width:29px;height:29px;border-radius:7px;display:grid;place-items:center;color:var(--fg-3)" style-hover="background:var(--surface-3);color:var(--fg)"><svg style="width:15px;height:15px"><use href="#i-dots"></use></svg></button>
+                </span>
+              </div>
+            </sc-for>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 20px;font-size:12.5px;color:var(--fg-2)">
+              <span>Mostrando 7 de 148 comprobantes</span>
+              <div style="display:flex;align-items:center;gap:4px">
+                <button style="height:29px;padding:0 10px;border-radius:7px;border:1px solid var(--border);font-size:12.5px;color:var(--fg-3)">Anterior</button>
+                <button style="width:29px;height:29px;border-radius:7px;background:var(--brand);color:#fff;font-size:12.5px;font-weight:600">1</button>
+                <button style="width:29px;height:29px;border-radius:7px;font-size:12.5px" style-hover="background:var(--surface-3)">2</button>
+                <button style="width:29px;height:29px;border-radius:7px;font-size:12.5px" style-hover="background:var(--surface-3)">3</button>
+                <button style="height:29px;padding:0 10px;border-radius:7px;border:1px solid var(--border);font-size:12.5px" style-hover="background:var(--surface-3)">Siguiente</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isInv }}">
+        <div style="max-width:1320px;min-width:1140px;margin:0 auto;padding:32px 36px 56px;display:flex;flex-direction:column;gap:24px;animation:omRise .22s ease both">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+            <div>
+              <h1 style="margin:0;font-size:24px;font-weight:660;letter-spacing:-.022em">Inventario</h1>
+              <p style="margin:6px 0 0;font-size:13.5px;color:var(--fg-2);max-width:60ch;text-wrap:pretty">Stock por sucursal, costos y márgenes. Hacé clic en un producto para editarlo sin salir de la lista.</p>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button style="display:flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:13px;font-weight:500" style-hover="background:var(--surface-3)"><svg style="width:14px;height:14px;color:var(--fg-3)"><use href="#i-swap"></use></svg>Transferir</button>
+              <button style="display:flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:13px;font-weight:500" style-hover="background:var(--surface-3)"><svg style="width:14px;height:14px;color:var(--fg-3)"><use href="#i-download"></use></svg>Importar</button>
+              <button style="display:flex;align-items:center;gap:7px;height:34px;padding:0 13px 0 10px;border-radius:8px;background:var(--brand);color:#fff;font-size:13px;font-weight:600" style-hover="background:var(--brand-2)"><svg style="width:15px;height:15px"><use href="#i-plus"></use></svg>Nuevo producto</button>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:24px;padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-1);flex-wrap:wrap">
+            <sc-for list="{{ invStats }}" as="s" hint-placeholder-count="4">
+              <div style="display:flex;flex-direction:column;gap:3px;min-width:104px">
+                <span style="font-size:11.5px;font-weight:550;color:var(--fg-2)">{{ s.label }}</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:21px;font-weight:600;letter-spacing:-.02em;color:{{ s.fg }}">{{ s.value }}</span>
+              </div>
+            </sc-for>
+            <div style="flex:1"></div>
+            <div style="display:flex;gap:3px;padding:3px;border-radius:9px;background:var(--surface-3)">
+              <sc-for list="{{ invBranches }}" as="b" hint-placeholder-count="3">
+                <button onClick="{{ b.pick }}" style="height:28px;padding:0 13px;border-radius:7px;font-size:12.5px;font-weight:{{ b.weight }};background:{{ b.bg }};color:{{ b.fg }};box-shadow:{{ b.shadow }}">{{ b.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+            <div style="position:relative;flex:1;min-width:240px">
+              <svg style="width:15px;height:15px;color:var(--fg-3);position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none"><use href="#i-search"></use></svg>
+              <input placeholder="Buscar por nombre, marca, SKU o categoría…" style="width:100%;height:36px;padding:0 12px 0 35px;border-radius:9px;border:1px solid var(--border);background:var(--surface);font-size:13.5px" />
+            </div>
+            <button style="display:flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:9px;border:1px solid var(--border);background:var(--surface);font-size:13px" style-hover="background:var(--surface-3)"><svg style="width:14px;height:14px;color:var(--fg-3)"><use href="#i-package"></use></svg>Categoría<svg style="width:12px;height:12px;color:var(--fg-3)"><use href="#i-cdown"></use></svg></button>
+            <button style="display:flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:9px;border:1px solid var(--warn-line);background:var(--warn-soft);color:var(--warn);font-size:13px;font-weight:550" style-hover="filter:brightness(.98)"><svg style="width:14px;height:14px"><use href="#i-alert"></use></svg>Stock bajo</button>
+            <div style="flex:1"></div>
+            <button style="display:flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:9px;border:1px solid var(--border);background:var(--surface);font-size:13px;color:var(--fg-2)" style-hover="background:var(--surface-3)"><svg style="width:14px;height:14px"><use href="#i-sliders"></use></svg>Columnas</button>
+          </div>
+
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-1);overflow:hidden">
+            <div style="display:grid;grid-template-columns:minmax(0,1.6fr) 116px 116px 104px 104px 92px 92px 56px;gap:0 14px;padding:11px 20px;border-bottom:1px solid var(--border);background:var(--surface-2);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3)">
+              <span>Producto</span><span>Marca</span><span>Categoría</span><span style="text-align:right">Costo</span><span style="text-align:right">Precio</span><span style="text-align:center">Centro</span><span style="text-align:center">Depósito</span><span></span>
+            </div>
+            <sc-for list="{{ invRows }}" as="p" hint-placeholder-count="8">
+              <div onClick="{{ p.open }}" style="display:grid;grid-template-columns:minmax(0,1.6fr) 116px 116px 104px 104px 92px 92px 56px;gap:0 14px;align-items:center;padding:15px 20px;border-bottom:1px solid var(--border);cursor:pointer" style-hover="background:var(--surface-2)">
+                <span style="min-width:0;display:flex;flex-direction:column;gap:2px">
+                  <span style="font-size:13.5px;font-weight:560;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--fg-3)">{{ p.sku }}</span>
+                </span>
+                <span style="font-size:13px;color:var(--fg-2)">{{ p.brand }}</span>
+                <span style="font-size:12px;padding:3px 8px;border-radius:6px;background:var(--surface-3);color:var(--fg-2);width:fit-content">{{ p.cat }}</span>
+                <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--fg-2)">{{ p.cost }}</span>
+                <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13.5px;font-weight:560">{{ p.price }}</span>
+                <span style="text-align:center"><span style="display:inline-block;min-width:38px;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;padding:3px 8px;border-radius:6px;background:{{ p.s1Bg }};color:{{ p.s1Fg }};border:1px solid {{ p.s1Line }}">{{ p.s1 }}</span></span>
+                <span style="text-align:center"><span style="display:inline-block;min-width:38px;font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:600;padding:3px 8px;border-radius:6px;background:{{ p.s2Bg }};color:{{ p.s2Fg }};border:1px solid {{ p.s2Line }}">{{ p.s2 }}</span></span>
+                <span style="display:flex;justify-content:flex-end">
+                  <button title="Editar" style="width:29px;height:29px;border-radius:7px;display:grid;place-items:center;color:var(--fg-3)" style-hover="background:var(--surface-3);color:var(--fg)"><svg style="width:15px;height:15px"><use href="#i-pencil"></use></svg></button>
+                </span>
+              </div>
+            </sc-for>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 20px;font-size:12.5px;color:var(--fg-2)">
+              <span>Mostrando 8 de 312 productos</span>
+              <div style="display:flex;align-items:center;gap:4px">
+                <button style="height:29px;padding:0 10px;border-radius:7px;border:1px solid var(--border);font-size:12.5px;color:var(--fg-3)">Anterior</button>
+                <button style="width:29px;height:29px;border-radius:7px;background:var(--brand);color:#fff;font-size:12.5px;font-weight:600">1</button>
+                <button style="width:29px;height:29px;border-radius:7px;font-size:12.5px" style-hover="background:var(--surface-3)">2</button>
+                <button style="height:29px;padding:0 10px;border-radius:7px;border:1px solid var(--border);font-size:12.5px" style-hover="background:var(--surface-3)">Siguiente</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isCompras }}">
+        <div style="max-width:1320px;min-width:1140px;margin:0 auto;padding:32px 36px 56px;display:flex;flex-direction:column;gap:24px;animation:omRise .22s ease both">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+            <div>
+              <h1 style="margin:0;font-size:24px;font-weight:660;letter-spacing:-.022em">Órdenes de compra</h1>
+              <p style="margin:6px 0 0;font-size:13.5px;color:var(--fg-2);max-width:60ch;text-wrap:pretty">Seguimiento de pedidos a proveedores y recepción de mercadería. La recepción actualiza el stock.</p>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button style="display:flex;align-items:center;gap:7px;height:34px;padding:0 13px 0 10px;border-radius:8px;background:var(--brand);color:#fff;font-size:13px;font-weight:600" style-hover="background:var(--brand-2)"><svg style="width:15px;height:15px"><use href="#i-plus"></use></svg>Nueva orden</button>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+            <div style="display:flex;gap:3px;padding:3px;border-radius:9px;background:var(--surface-3)">
+              <sc-for list="{{ poTabs }}" as="t" hint-placeholder-count="4">
+                <button onClick="{{ t.pick }}" style="height:28px;padding:0 13px;border-radius:7px;font-size:12.5px;font-weight:{{ t.weight }};background:{{ t.bg }};color:{{ t.fg }};box-shadow:{{ t.shadow }};display:flex;align-items:center;gap:6px">{{ t.label }}<span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--fg-3)">{{ t.count }}</span></button>
+              </sc-for>
+            </div>
+            <div style="position:relative;flex:1;min-width:220px">
+              <svg style="width:15px;height:15px;color:var(--fg-3);position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none"><use href="#i-search"></use></svg>
+              <input placeholder="Buscar por proveedor o número de orden…" style="width:100%;height:36px;padding:0 12px 0 35px;border-radius:9px;border:1px solid var(--border);background:var(--surface);font-size:13.5px" />
+            </div>
+            <button style="display:flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:9px;border:1px solid var(--border);background:var(--surface);font-size:13px" style-hover="background:var(--surface-3)"><svg style="width:14px;height:14px;color:var(--fg-3)"><use href="#i-clock"></use></svg>Últimos 90 días<svg style="width:12px;height:12px;color:var(--fg-3)"><use href="#i-cdown"></use></svg></button>
+          </div>
+
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-1);overflow:hidden">
+            <div style="display:grid;grid-template-columns:96px minmax(0,1fr) 112px 96px 148px 132px 120px;gap:0 16px;padding:11px 20px;border-bottom:1px solid var(--border);background:var(--surface-2);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3)">
+              <span>Orden</span><span>Proveedor</span><span>Fecha</span><span style="text-align:center">Ítems</span><span>Recepción</span><span style="text-align:right">Total</span><span style="text-align:right">Acciones</span>
+            </div>
+            <sc-for list="{{ orders }}" as="o" hint-placeholder-count="6">
+              <div onClick="{{ o.open }}" style="display:grid;grid-template-columns:96px minmax(0,1fr) 112px 96px 148px 132px 120px;gap:0 16px;align-items:center;padding:15px 20px;border-bottom:1px solid var(--border);cursor:pointer;opacity:{{ o.opacity }}" style-hover="background:var(--surface-2)">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:560">{{ o.id }}</span>
+                <span style="font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ o.supplier }}</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--fg-2)">{{ o.date }}</span>
+                <span style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--fg-2)">{{ o.items }}</span>
+                <span style="display:flex;flex-direction:column;gap:5px">
+                  <span style="font-size:12px;font-weight:600;color:{{ o.stFg }}">{{ o.status }}</span>
+                  <span style="height:4px;border-radius:999px;background:var(--surface-3);overflow:hidden;display:block">
+                    <span style="display:block;height:100%;border-radius:999px;background:{{ o.stFg }};width:{{ o.pct }}"></span>
+                  </span>
+                </span>
+                <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600">{{ o.total }}</span>
+                <span style="display:flex;justify-content:flex-end;gap:2px">
+                  <sc-if value="{{ o.receivable }}">
+                    <button onClick="{{ o.open }}" style="height:29px;padding:0 10px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--ok);background:var(--ok-soft);border:1px solid var(--ok-line)">Recibir</button>
+                  </sc-if>
+                  <button title="Más acciones" style="width:29px;height:29px;border-radius:7px;display:grid;place-items:center;color:var(--fg-3)" style-hover="background:var(--surface-3);color:var(--fg)"><svg style="width:15px;height:15px"><use href="#i-dots"></use></svg></button>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isAfip }}">
+        <div style="max-width:1320px;min-width:1140px;margin:0 auto;padding:32px 36px 56px;display:flex;flex-direction:column;gap:24px;animation:omRise .22s ease both">
+          <div>
+            <h1 style="margin:0;font-size:24px;font-weight:660;letter-spacing:-.022em">Configuración</h1>
+            <p style="margin:6px 0 0;font-size:13.5px;color:var(--fg-2);max-width:60ch;text-wrap:pretty">Datos de la empresa, facturación electrónica, equipo y suscripción.</p>
+          </div>
+
+          <div style="display:flex;gap:2px;border-bottom:1px solid var(--border)">
+            <sc-for list="{{ cfgTabs }}" as="t" hint-placeholder-count="4">
+              <button onClick="{{ t.pick }}" style="height:38px;padding:0 14px;font-size:13.5px;font-weight:{{ t.weight }};color:{{ t.fg }};box-shadow:{{ t.shadow }};margin-bottom:-1px">{{ t.label }}</button>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:14px;padding:16px 20px;border-radius:12px;background:var(--ok-soft);border:1px solid var(--ok-line)">
+            <span style="width:34px;height:34px;border-radius:10px;background:var(--ok);color:#fff;display:grid;place-items:center;flex-shrink:0"><svg style="width:18px;height:18px"><use href="#i-shield"></use></svg></span>
+            <div style="flex:1;min-width:0">
+              <p style="margin:0;font-size:13.5px;font-weight:620;color:var(--ok)">Conectado a AFIP · Ambiente de producción</p>
+              <p style="margin:3px 0 0;font-size:12.5px;color:var(--fg-2)">CUIT 30-71234567-4 · Punto de venta 0005 · Certificado vigente hasta 14/03/2028 · Último CAE hace 12 minutos</p>
+            </div>
+            <button style="height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--ok-line);background:var(--surface);font-size:12.5px;font-weight:550;display:flex;align-items:center;gap:6px" style-hover="background:var(--surface-2)"><svg style="width:13px;height:13px"><use href="#i-refresh"></use></svg>Probar conexión</button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:24px;align-items:start">
+            <section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-1);overflow:hidden">
+              <div style="padding:16px 22px;border-bottom:1px solid var(--border)">
+                <h2 style="margin:0;font-size:14px;font-weight:640">Puesta en marcha</h2>
+                <p style="margin:4px 0 0;font-size:12.5px;color:var(--fg-2)">Cuatro pasos, una sola vez. Ya está completo — se conserva como referencia.</p>
+              </div>
+              <div style="padding:8px 22px 22px">
+                <sc-for list="{{ steps }}" as="s" hint-placeholder-count="4">
+                  <div style="display:flex;gap:16px;padding:16px 0;border-bottom:1px solid var(--border)">
+                    <span style="width:26px;height:26px;border-radius:999px;flex-shrink:0;display:grid;place-items:center;font-size:12px;font-weight:640;background:{{ s.bg }};color:{{ s.fg }};border:1px solid {{ s.line }}">
+                      <sc-if value="{{ s.done }}" hint-placeholder-val="{{ true }}"><svg style="width:13px;height:13px"><use href="#i-check"></use></svg></sc-if>
+                      <sc-if value="{{ s.pending }}">{{ s.n }}</sc-if>
+                    </span>
+                    <div style="flex:1;min-width:0">
+                      <p style="margin:0;font-size:13.5px;font-weight:590">{{ s.title }}</p>
+                      <p style="margin:4px 0 0;font-size:12.5px;color:var(--fg-2);line-height:1.55;max-width:64ch;text-wrap:pretty">{{ s.body }}</p>
+                    </div>
+                    <button style="height:29px;padding:0 11px;border-radius:7px;border:1px solid var(--border);font-size:12.5px;font-weight:500;flex-shrink:0;display:flex;align-items:center;gap:6px;align-self:flex-start" style-hover="background:var(--surface-3)">{{ s.action }}<svg style="width:12px;height:12px;color:var(--fg-3)"><use href="{{ s.actionIcon }}"></use></svg></button>
+                  </div>
+                </sc-for>
+                <div style="display:flex;gap:11px;padding:16px 0 0">
+                  <svg style="width:15px;height:15px;color:var(--warn);flex-shrink:0;margin-top:1px"><use href="#i-info"></use></svg>
+                  <p style="margin:0;font-size:12.5px;color:var(--fg-2);line-height:1.55;max-width:70ch">Las llaves privadas se guardan cifradas en el servidor y nunca se muestran completas. Si sospechás que el archivo <code style="font-family:'JetBrains Mono',monospace;font-size:11.5px;padding:1px 5px;border-radius:4px;background:var(--surface-3)">.key</code> se filtró, revocá el certificado en AFIP y repetí el paso 1.</p>
+                </div>
+              </div>
+            </section>
+
+            <section style="background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-1);overflow:hidden;position:sticky;top:0">
+              <div style="padding:16px 20px;border-bottom:1px solid var(--border)">
+                <h2 style="margin:0;font-size:14px;font-weight:640">Datos de facturación</h2>
+              </div>
+              <div style="padding:18px 20px;display:flex;flex-direction:column;gap:16px">
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <label style="font-size:12px;font-weight:600;color:var(--fg-2)">CUIT emisor</label>
+                  <input value="30712345674" style="height:36px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);font-size:13.5px;padding:0 11px;font-family:'JetBrains Mono',monospace" />
+                  <span style="font-size:11.5px;color:var(--ok);display:flex;align-items:center;gap:5px"><svg style="width:12px;height:12px"><use href="#i-okcircle"></use></svg>Validado contra el padrón</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <label style="font-size:12px;font-weight:600;color:var(--fg-2)">Punto de venta</label>
+                    <input value="0005" style="height:36px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);font-size:13.5px;padding:0 11px;font-family:'JetBrains Mono',monospace" />
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <label style="font-size:12px;font-weight:600;color:var(--fg-2)">Condición IVA</label>
+                    <select style="height:36px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);font-size:13.5px;padding:0 8px"><option>Responsable inscripto</option><option>Monotributo</option></select>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <label style="font-size:12px;font-weight:600;color:var(--fg-2)">Ambiente</label>
+                  <div style="display:flex;gap:6px">
+                    <button style="flex:1;height:34px;border-radius:8px;font-size:12.5px;font-weight:600;border:1px solid var(--border);background:var(--surface-2);color:var(--fg-2)">Homologación</button>
+                    <button style="flex:1;height:34px;border-radius:8px;font-size:12.5px;font-weight:600;border:1px solid var(--brand);background:var(--brand-soft);color:var(--brand-2)">Producción</button>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:9px;padding-top:4px;border-top:1px solid var(--border)">
+                  <label style="font-size:12px;font-weight:600;color:var(--fg-2);padding-top:12px">Credenciales</label>
+                  <sc-for list="{{ creds }}" as="c" hint-placeholder-count="2">
+                    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2)">
+                      <svg style="width:15px;height:15px;color:var(--ok);flex-shrink:0"><use href="#i-filecheck"></use></svg>
+                      <span style="flex:1;min-width:0;display:flex;flex-direction:column">
+                        <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.file }}</span>
+                        <span style="font-size:11.5px;color:var(--fg-3)">{{ c.meta }}</span>
+                      </span>
+                      <button style="font-size:12px;color:var(--fg-2);font-weight:550" style-hover="color:var(--brand)">Reemplazar</button>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;gap:8px;padding-top:4px">
+                  <button style="flex:1;height:38px;border-radius:9px;background:var(--brand);color:#fff;font-size:13.5px;font-weight:620" style-hover="background:var(--brand-2)">Guardar y verificar</button>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding-top:14px;border-top:1px solid var(--border)">
+                  <div style="display:flex;flex-direction:column;gap:2px">
+                    <span style="font-size:12.5px;font-weight:600;color:var(--dan)">Desvincular AFIP</span>
+                    <span style="font-size:11.5px;color:var(--fg-3)">Dejarás de poder emitir comprobantes fiscales.</span>
+                  </div>
+                  <button style="height:30px;padding:0 11px;border-radius:8px;border:1px solid var(--dan-line);background:var(--dan-soft);color:var(--dan);font-size:12.5px;font-weight:600;flex-shrink:0" style-hover="filter:brightness(.97)">Desvincular</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isStub }}">
+        <div style="max-width:1320px;min-width:1140px;margin:0 auto;padding:32px 36px 56px;animation:omRise .22s ease both">
+          <h1 style="margin:0;font-size:24px;font-weight:660;letter-spacing:-.022em">{{ crumbPage }}</h1>
+          <p style="margin:6px 0 0;font-size:13.5px;color:var(--fg-2);max-width:60ch">Este módulo existe en el sistema y sigue el mismo patrón de pantalla. Todavía no forma parte del lote rediseñado.</p>
+          <div style="margin-top:28px;padding:56px 32px;border:1px dashed var(--border-2);border-radius:14px;background:var(--surface);display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
+            <svg style="width:26px;height:26px;color:var(--fg-3)"><use href="{{ stubIcon }}"></use></svg>
+            <p style="margin:0;font-size:14px;font-weight:570">Mismo esqueleto: título · descripción · acciones · filtros · tabla · panel lateral</p>
+            <p style="margin:0;font-size:13px;color:var(--fg-2);max-width:52ch;text-wrap:pretty">Los seis módulos ya resueltos definen los componentes; aplicarlos acá es sustituir columnas y campos, no rediseñar.</p>
+            <button onClick="{{ goPanel }}" style="margin-top:4px;height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);font-size:13px;font-weight:550" style-hover="background:var(--surface-3)">Volver al panel</button>
+          </div>
+        </div>
+      </sc-if>
+
+    </main>
+  </div>
+
+  <sc-if value="{{ sheetOpen }}">
+    <div onClick="{{ closeSheet }}" style="position:fixed;inset:0;background:rgba(8,12,16,.42);z-index:60;animation:omFade .16s ease both"></div>
+    <aside style="position:fixed;top:0;right:0;bottom:0;width:520px;max-width:92vw;background:var(--surface);border-left:1px solid var(--border);box-shadow:var(--shadow-3);z-index:61;display:flex;flex-direction:column;animation:omSheet .22s cubic-bezier(.22,.8,.3,1) both">
+      <div style="display:flex;align-items:flex-start;gap:14px;padding:20px 22px 16px;border-bottom:1px solid var(--border);flex-shrink:0">
+        <div style="flex:1;min-width:0">
+          <p style="margin:0;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3)">{{ sheetKicker }}</p>
+          <h2 style="margin:5px 0 0;font-size:18px;font-weight:640;letter-spacing:-.018em">{{ sheetTitle }}</h2>
+          <p style="margin:5px 0 0;font-size:13px;color:var(--fg-2)">{{ sheetSub }}</p>
+        </div>
+        <button onClick="{{ closeSheet }}" title="Cerrar (Esc)" style="width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--fg-3);flex-shrink:0" style-hover="background:var(--surface-3);color:var(--fg)">
+          <svg style="width:16px;height:16px"><use href="#i-x"></use></svg>
+        </button>
+      </div>
+
+      <div style="flex:1;overflow-y:auto;min-height:0;padding:20px 22px 24px;display:flex;flex-direction:column;gap:22px">
+        <sc-for list="{{ sheetFacts }}" as="grp" hint-placeholder-count="2">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <h3 style="margin:0;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3)">{{ grp.title }}</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+              <sc-for list="{{ grp.rows }}" as="r" hint-placeholder-count="4">
+                <div style="background:var(--surface);padding:11px 13px;display:flex;flex-direction:column;gap:3px">
+                  <span style="font-size:11.5px;color:var(--fg-3)">{{ r.k }}</span>
+                  <span style="font-size:13.5px;font-weight:550;font-family:{{ r.font }};color:{{ r.fg }}">{{ r.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+
+        <sc-if value="{{ sheetHasLines }}">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <h3 style="margin:0;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3)">{{ sheetLinesTitle }}</h3>
+            <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) 64px 96px 100px;gap:0 10px;padding:9px 13px;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-3)">
+                <span>Detalle</span><span style="text-align:center">Cant.</span><span style="text-align:right">Unitario</span><span style="text-align:right">Subtotal</span>
+              </div>
+              <sc-for list="{{ sheetLines }}" as="l" hint-placeholder-count="3">
+                <div style="display:grid;grid-template-columns:minmax(0,1fr) 64px 96px 100px;gap:0 10px;padding:11px 13px;border-bottom:1px solid var(--border);align-items:center">
+                  <span style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.name }}</span>
+                  <span style="text-align:center;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--fg-2)">{{ l.qty }}</span>
+                  <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--fg-2)">{{ l.unit }}</span>
+                  <span style="text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:560">{{ l.sub }}</span>
+                </div>
+              </sc-for>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:13px;background:var(--surface-2)">
+                <span style="font-size:13px;font-weight:620">Total</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:640;letter-spacing:-.02em">{{ sheetTotal }}</span>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ sheetHasNote }}">
+          <div style="display:flex;gap:11px;padding:13px 14px;border-radius:10px;background:{{ sheetNoteBg }};border:1px solid {{ sheetNoteLine }}">
+            <svg style="width:15px;height:15px;flex-shrink:0;margin-top:1px;color:{{ sheetNoteFg }}"><use href="{{ sheetNoteIcon }}"></use></svg>
+            <p style="margin:0;font-size:12.5px;line-height:1.55;color:var(--fg-2);text-wrap:pretty">{{ sheetNote }}</p>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="border-top:1px solid var(--border);padding:14px 22px;flex-shrink:0;display:flex;align-items:center;gap:8px;background:var(--surface-2)">
+        <sc-if value="{{ sheetHasDanger }}">
+          <button style="height:36px;padding:0 13px;border-radius:8px;border:1px solid var(--dan-line);background:var(--dan-soft);color:var(--dan);font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px" style-hover="filter:brightness(.97)">
+            <svg style="width:14px;height:14px"><use href="{{ sheetDangerIcon }}"></use></svg>{{ sheetDanger }}
+          </button>
+        </sc-if>
+        <div style="flex:1"></div>
+        <button onClick="{{ closeSheet }}" style="height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:13px;font-weight:550" style-hover="background:var(--surface-3)">{{ sheetSecondary }}</button>
+        <button style="height:36px;padding:0 16px;border-radius:8px;background:var(--brand);color:#fff;font-size:13px;font-weight:620" style-hover="background:var(--brand-2)">{{ sheetPrimary }}</button>
+      </div>
+    </aside>
+  </sc-if>
+
+  <sc-if value="{{ paletteOpen }}">
+    <div onClick="{{ closePalette }}" style="position:fixed;inset:0;background:rgba(8,12,16,.42);z-index:70;animation:omFade .14s ease both"></div>
+    <div style="position:fixed;top:14vh;left:50%;transform:translateX(-50%);width:600px;max-width:92vw;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-3);z-index:71;overflow:hidden;animation:omPop .16s ease both">
+      <div style="display:flex;align-items:center;gap:11px;padding:14px 16px;border-bottom:1px solid var(--border)">
+        <svg style="width:17px;height:17px;color:var(--fg-3)"><use href="#i-search"></use></svg>
+        <input value="{{ paletteQ }}" onChange="{{ setPaletteQ }}" placeholder="Ir a un módulo, buscar un cliente, crear algo…" autoFocus="{{ true }}" style="flex:1;border:none;background:transparent;font-size:15px;outline:none" />
+        <kbd style="font-family:'JetBrains Mono',monospace;font-size:10.5px;padding:2px 6px;border-radius:5px;background:var(--surface-3);color:var(--fg-3);border:1px solid var(--border)">Esc</kbd>
+      </div>
+      <div style="max-height:52vh;overflow-y:auto;padding:8px">
+        <sc-for list="{{ paletteGroups }}" as="g" hint-placeholder-count="2">
+          <div style="padding:6px 8px 2px;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-3)">{{ g.label }}</div>
+          <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="5">
+            <button onClick="{{ it.go }}" style="display:flex;align-items:center;gap:11px;width:100%;padding:9px 10px;border-radius:9px;text-align:left;font-size:13.5px" style-hover="background:var(--surface-3)">
+              <svg style="width:16px;height:16px;color:var(--fg-3);flex-shrink:0"><use href="{{ it.icon }}"></use></svg>
+              <span style="flex:1">{{ it.label }}</span>
+              <span style="font-size:11.5px;color:var(--fg-3)">{{ it.hint }}</span>
+            </button>
+          </sc-for>
+        </sc-for>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ toastOn }}">
+    <div style="position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:80;display:flex;align-items:center;gap:11px;padding:12px 16px;border-radius:11px;background:var(--surface);border:1px solid var(--ok-line);box-shadow:var(--shadow-2);animation:omRise .2s ease both">
+      <svg style="width:17px;height:17px;color:var(--ok)"><use href="#i-okcircle"></use></svg>
+      <span style="font-size:13.5px;font-weight:550">{{ toastMsg }}</span>
+    </div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+const money = (n) => '$' + Math.round(n).toLocaleString('es-AR');
+
+const PRODUCTS = [
+  { id:'p1', name:'Silla ergonómica Vela', brand:'Nordika', sku:'NRD-1042', cat:'Mobiliario', cost:112400, s1:14, s2:36, min:6 },
+  { id:'p2', name:'Escritorio regulable 140×70', brand:'Nordika', sku:'NRD-2210', cat:'Mobiliario', cost:238900, s1:3, s2:11, min:4 },
+  { id:'p3', name:'Lámpara LED articulada', brand:'Lumina', sku:'LUM-0318', cat:'Iluminación', cost:34600, s1:0, s2:0, min:8 },
+  { id:'p4', name:'Monitor 27" QHD', brand:'Vertex', sku:'VTX-7745', cat:'Tecnología', cost:412000, s1:9, s2:22, min:5 },
+  { id:'p5', name:'Teclado inalámbrico compacto', brand:'Vertex', sku:'VTX-3301', cat:'Tecnología', cost:58700, s1:27, s2:64, min:12 },
+  { id:'p6', name:'Panel acústico 60×60 (pack ×4)', brand:'Basiq', sku:'BSQ-9004', cat:'Insumos', cost:47200, s1:5, s2:5, min:6 },
+  { id:'p7', name:'Cajonera móvil 3 gavetas', brand:'Nordika', sku:'NRD-1180', cat:'Mobiliario', cost:96500, s1:12, s2:18, min:5 },
+  { id:'p8', name:'Resma A4 80g (caja ×5)', brand:'Basiq', sku:'BSQ-0055', cat:'Insumos', cost:21800, s1:41, s2:130, min:20 },
+];
+
+const CATS = ['Todas','Mobiliario','Tecnología','Iluminación','Insumos'];
+
+const SALES = [
+  { id:'v1', time:'16:42', fiscal:true, type:'Factura B', number:'0005-00014882', cae:'CAE 75412339018264', customer:'Consumidor final', status:'Autorizada', total:184300, void:false },
+  { id:'v2', time:'16:08', fiscal:true, type:'Factura A', number:'0005-00014881', cae:'CAE 75412338907741', customer:'Talleres Vega SRL', status:'Autorizada', total:1246800, void:false },
+  { id:'v3', time:'15:31', fiscal:false, type:'Recibo X', number:'INT-004512', cae:'Sin comprobante fiscal', customer:'Consumidor final', status:'Registrada', total:62400, void:false },
+  { id:'v4', time:'14:55', fiscal:true, type:'Factura B', number:'0005-00014880', cae:'CAE 75412338811502', customer:'Dolores Arrieta', status:'Rechazada', total:97650, void:false },
+  { id:'v5', time:'13:20', fiscal:true, type:'Factura B', number:'0005-00014879', cae:'CAE 75412338604417', customer:'Consumidor final', status:'Autorizada', total:315900, void:false },
+  { id:'v6', time:'12:04', fiscal:false, type:'Remito', number:'INT-004511', cae:'Sin comprobante fiscal', customer:'Estudio Marlo', status:'Registrada', total:428000, void:false },
+  { id:'v7', time:'10:47', fiscal:true, type:'Factura B', number:'0005-00014878', cae:'CAE 75412338122093', customer:'Consumidor final', status:'Anulada', total:73200, void:true },
+];
+
+const ORDERS = [
+  { id:'OC-241', supplier:'Distribuidora Norte SA', date:'24/07/2026', items:12, status:'Pendiente', pct:0, total:2418900, receivable:true },
+  { id:'OC-240', supplier:'Maderas del Sur', date:'22/07/2026', items:6, status:'Recibida parcial', pct:55, total:1187400, receivable:true },
+  { id:'OC-239', supplier:'Vertex Importaciones', date:'19/07/2026', items:21, status:'Recibida', pct:100, total:5602300, receivable:false },
+  { id:'OC-238', supplier:'Basiq Insumos', date:'15/07/2026', items:9, status:'Recibida', pct:100, total:398700, receivable:false },
+  { id:'OC-237', supplier:'Lumina Iluminación', date:'11/07/2026', items:4, status:'Anulada', pct:0, total:214500, receivable:false },
+  { id:'OC-236', supplier:'Distribuidora Norte SA', date:'08/07/2026', items:17, status:'Recibida', pct:100, total:3129800, receivable:false },
+];
+
+const ROUTES = {
+  panel:    { group:'Inicio',       page:'Panel de control',   icon:'#i-panel' },
+  pos:      { group:'Operación',    page:'Punto de venta',     icon:'#i-cart' },
+  ventas:   { group:'Operación',    page:'Historial de ventas',icon:'#i-receipt' },
+  clientes: { group:'Operación',    page:'Clientes',           icon:'#i-users' },
+  produccion:{group:'Operación',    page:'Producción',         icon:'#i-factory' },
+  inventario:{group:'Catálogo y stock', page:'Inventario',     icon:'#i-package' },
+  recetas:  { group:'Catálogo y stock', page:'Fórmulas y recetas', icon:'#i-zap' },
+  proveedores:{group:'Catálogo y stock', page:'Proveedores',   icon:'#i-truck' },
+  compras:  { group:'Catálogo y stock', page:'Órdenes de compra', icon:'#i-clipboard' },
+  caja:     { group:'Finanzas',     page:'Flujo de caja',      icon:'#i-dollar' },
+  gastos:   { group:'Finanzas',     page:'Gastos fijos',       icon:'#i-wallet' },
+  impuestos:{ group:'Finanzas',     page:'Impuestos',          icon:'#i-filecheck' },
+  reportes: { group:'Finanzas',     page:'Reportes',           icon:'#i-report' },
+  equipo:   { group:'Administración', page:'Equipo',           icon:'#i-users' },
+  config:   { group:'Administración', page:'Configuración',    icon:'#i-gear' },
+};
+
+class Component extends DCLogic {
+  state = {
+    route: 'panel',
+    theme: 'light',
+    navCollapsed: false,
+    sheet: null,
+    palette: false,
+    paletteQ: '',
+    posQ: '',
+    posCat: 'Todas',
+    posStock: false,
+    cart: [{ id:'p4', qty:1, method:'ef' }, { id:'p5', qty:2, method:'tc3' }],
+    invBranch: 'all',
+    poTab: 'Todas',
+    cfgTab: 'Facturación AFIP',
+    toast: null,
+  };
+
+  componentDidMount() {
+    this.applyTheme();
+    this._key = (e) => {
+      const k = e.key.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && k === 'k') { e.preventDefault(); this.setState(s => ({ palette: !s.palette, paletteQ: '' })); }
+      else if (k === 'escape') this.setState({ palette: false, sheet: null });
+    };
+    window.addEventListener('keydown', this._key);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this._key); clearTimeout(this._t); }
+  componentDidUpdate() { this.applyTheme(); }
+  applyTheme() {
+    try { document.documentElement.setAttribute('data-theme', this.state.theme); } catch (e) {}
+  }
+
+  go = (route) => this.setState({ route, palette: false, sheet: null });
+  flash = (msg) => { clearTimeout(this._t); this.setState({ toast: msg }); this._t = setTimeout(() => this.setState({ toast: null }), 2600); };
+
+  prices(p) {
+    const cash = p.cost * 1.62;
+    return { cash, card: cash * 1.18, alliance: cash * 1.09 };
+  }
+
+  navItem(key, active, badge) {
+    const r = ROUTES[key];
+    return {
+      key, label: r.page, icon: r.icon, badge: badge || '',
+      go: () => this.go(key),
+      bg: active ? 'var(--brand-soft)' : 'transparent',
+      fg: active ? 'var(--brand-2)' : 'var(--fg-2)',
+      iconFg: active ? 'var(--brand-2)' : 'var(--fg-3)',
+      weight: active ? '600' : '500',
+      ring: active ? 'inset 0 0 0 1px var(--brand-line)' : 'none',
+      badgeBg: active ? 'rgba(0,180,182,.16)' : 'var(--surface-3)',
+      badgeFg: active ? 'var(--brand-2)' : 'var(--fg-3)',
+    };
+  }
+
+  chip(label, active, onPick) {
+    return {
+      label, pick: onPick,
+      bg: active ? 'var(--brand-soft)' : 'var(--surface)',
+      fg: active ? 'var(--brand-2)' : 'var(--fg-2)',
+      line: active ? 'var(--brand-line)' : 'var(--border)',
+      weight: active ? '600' : '500',
+    };
+  }
+
+  seg(label, active, onPick, count) {
+    return {
+      label, pick: onPick, count: count == null ? '' : String(count),
+      bg: active ? 'var(--surface)' : 'transparent',
+      fg: active ? 'var(--fg)' : 'var(--fg-2)',
+      weight: active ? '600' : '500',
+      shadow: active ? 'var(--shadow-1)' : 'none',
+    };
+  }
+
+  saleStatus(s) {
+    if (s.status === 'Anulada') return { bg:'var(--surface-3)', fg:'var(--fg-3)', line:'var(--border)' };
+    if (s.status === 'Rechazada') return { bg:'var(--dan-soft)', fg:'var(--dan)', line:'var(--dan-line)' };
+    if (s.status === 'Registrada') return { bg:'var(--surface-3)', fg:'var(--fg-2)', line:'var(--border)' };
+    return { bg:'var(--ok-soft)', fg:'var(--ok)', line:'var(--ok-line)' };
+  }
+
+  orderColor(st) {
+    if (st === 'Recibida') return 'var(--ok)';
+    if (st === 'Recibida parcial') return 'var(--warn)';
+    if (st === 'Anulada') return 'var(--fg-3)';
+    return 'var(--info)';
+  }
+
+  stockChip(q, min) {
+    if (q === 0) return { bg:'var(--dan-soft)', fg:'var(--dan)', line:'var(--dan-line)' };
+    if (q <= min) return { bg:'var(--warn-soft)', fg:'var(--warn)', line:'var(--warn-line)' };
+    return { bg:'var(--surface-2)', fg:'var(--fg-2)', line:'var(--border)' };
+  }
+
+  openSale = (s) => this.setState({ sheet: { kind:'sale', id:s.id } });
+  openProduct = (p) => this.setState({ sheet: { kind:'product', id:p.id } });
+  openOrder = (o) => this.setState({ sheet: { kind:'order', id:o.id } });
+
+  buildSheet() {
+    const sh = this.state.sheet;
+    if (!sh) return { sheetOpen:false };
+    if (sh.kind === 'sale') {
+      const s = SALES.find(x => x.id === sh.id);
+      const lines = [
+        { name:'Monitor 27" QHD', qty:1, unit:667440, sub:667440 },
+        { name:'Teclado inalámbrico compacto', qty:2, unit:95094, sub:190188 },
+        { name:'Resma A4 80g (caja ×5)', qty:3, unit:35316, sub:105948 },
+      ];
+      const rejected = s.status === 'Rechazada';
+      return {
+        sheetOpen:true, sheetKicker:'Comprobante', sheetTitle:s.number, sheetSub:s.type + ' · hoy ' + s.time + ' · Sucursal Centro',
+        sheetFacts:[
+          { title:'Datos del comprobante', rows:[
+            { k:'Cliente', v:s.customer, font:"'Inter',sans-serif", fg:'var(--fg)' },
+            { k:'CUIT / DNI', v:'30-71234567-4', font:"'JetBrains Mono',monospace", fg:'var(--fg)' },
+            { k:'Condición IVA', v:'Consumidor final', font:"'Inter',sans-serif", fg:'var(--fg)' },
+            { k:'Medio de pago', v:'Tarjeta 3 cuotas', font:"'Inter',sans-serif", fg:'var(--fg)' },
+            { k:'CAE', v:s.cae.replace('CAE ',''), font:"'JetBrains Mono',monospace", fg:'var(--fg)' },
+            { k:'Estado', v:s.status, font:"'Inter',sans-serif", fg:this.saleStatus(s).fg },
+          ]},
+        ],
+        sheetHasLines:true, sheetLinesTitle:'Ítems', sheetLines:lines.map(l => ({ ...l, unit:money(l.unit), sub:money(l.sub) })),
+        sheetTotal:money(s.total),
+        sheetHasNote:rejected, sheetNote:'AFIP rechazó el comprobante: el CUIT informado no corresponde a un responsable inscripto. La venta quedó registrada y el stock ya se descontó — podés corregir el dato del cliente y reintentar la facturación sin volver a cargar el ticket.',
+        sheetNoteBg:'var(--dan-soft)', sheetNoteLine:'var(--dan-line)', sheetNoteFg:'var(--dan)', sheetNoteIcon:'#i-alert',
+        sheetHasDanger:!s.void, sheetDanger:'Anular venta', sheetDangerIcon:'#i-trash',
+        sheetSecondary:'Imprimir', sheetPrimary:rejected ? 'Reintentar facturación' : 'Verificar en AFIP',
+      };
+    }
+    if (sh.kind === 'product') {
+      const p = PRODUCTS.find(x => x.id === sh.id);
+      const pr = this.prices(p);
+      return {
+        sheetOpen:true, sheetKicker:'Producto', sheetTitle:p.name, sheetSub:p.brand + ' · ' + p.sku + ' · ' + p.cat,
+        sheetFacts:[
+          { title:'Precios', rows:[
+            { k:'Costo', v:money(p.cost), font:"'JetBrains Mono',monospace", fg:'var(--fg)' },
+            { k:'Margen', v:'62 %', font:"'JetBrains Mono',monospace", fg:'var(--ok)' },
+            { k:'Efectivo', v:money(pr.cash), font:"'JetBrains Mono',monospace", fg:'var(--fg)' },
+            { k:'Tarjeta', v:money(pr.card), font:"'JetBrains Mono',monospace", fg:'var(--fg)' },
+          ]},
+          { title:'Stock', rows:[
+            { k:'Sucursal Centro', v:String(p.s1), font:"'JetBrains Mono',monospace", fg:p.s1 === 0 ? 'var(--dan)' : p.s1 <= p.min ? 'var(--warn)' : 'var(--fg)' },
+            { k:'Depósito', v:String(p.s2), font:"'JetBrains Mono',monospace", fg:p.s2 === 0 ? 'var(--dan)' : 'var(--fg)' },
+            { k:'Mínimo configurado', v:String(p.min), font:"'JetBrains Mono',monospace", fg:'var(--fg-2)' },
+            { k:'Últimos 30 días', v:'−24 unidades', font:"'JetBrains Mono',monospace", fg:'var(--fg-2)' },
+          ]},
+        ],
+        sheetHasLines:false, sheetLines:[], sheetLinesTitle:'', sheetTotal:'',
+        sheetHasNote:p.s1 <= p.min,
+        sheetNote:'El stock en Sucursal Centro está en el mínimo o por debajo. Hay ' + p.s2 + ' unidades en Depósito: una transferencia cubre la reposición sin generar una orden de compra.',
+        sheetNoteBg:'var(--warn-soft)', sheetNoteLine:'var(--warn-line)', sheetNoteFg:'var(--warn)', sheetNoteIcon:'#i-alert',
+        sheetHasDanger:false, sheetDanger:'', sheetDangerIcon:'#i-trash',
+        sheetSecondary:'Transferir stock', sheetPrimary:'Guardar cambios',
+      };
+    }
+    const o = ORDERS.find(x => x.id === sh.id);
+    const lines = [
+      { name:'Silla ergonómica Vela', qty:'8 / 12', unit:112400, sub:899200 },
+      { name:'Cajonera móvil 3 gavetas', qty:'0 / 6', unit:96500, sub:579000 },
+      { name:'Panel acústico 60×60 (pack ×4)', qty:'4 / 4', unit:47200, sub:188800 },
+    ];
+    return {
+      sheetOpen:true, sheetKicker:'Orden de compra', sheetTitle:o.id + ' · ' + o.supplier, sheetSub:'Emitida el ' + o.date + ' · ' + o.items + ' ítems',
+      sheetFacts:[
+        { title:'Seguimiento', rows:[
+          { k:'Estado', v:o.status, font:"'Inter',sans-serif", fg:this.orderColor(o.status) },
+          { k:'Recibido', v:o.pct + ' %', font:"'JetBrains Mono',monospace", fg:'var(--fg)' },
+          { k:'Entrega estimada', v:'02/08/2026', font:"'JetBrains Mono',monospace", fg:'var(--fg)' },
+          { k:'Condición de pago', v:'30 días', font:"'Inter',sans-serif", fg:'var(--fg)' },
+        ]},
+      ],
+      sheetHasLines:true, sheetLinesTitle:'Ítems · recibido / pedido',
+      sheetLines:lines.map(l => ({ name:l.name, qty:l.qty, unit:money(l.unit), sub:money(l.sub) })),
+      sheetTotal:money(o.total),
+      sheetHasNote:o.receivable,
+      sheetNote:'Cargá lo que llegó y confirmá: el stock del depósito se actualiza en el mismo paso y la orden pasa a “recibida parcial” hasta completarse. No hace falta abrir Inventario.',
+      sheetNoteBg:'var(--info-soft)', sheetNoteLine:'var(--info-line)', sheetNoteFg:'var(--info)', sheetNoteIcon:'#i-info',
+      sheetHasDanger:o.receivable, sheetDanger:'Anular orden', sheetDangerIcon:'#i-x',
+      sheetSecondary:'Descargar PDF', sheetPrimary:o.receivable ? 'Registrar recepción' : 'Duplicar orden',
+    };
+  }
+
+  renderVals() {
+    const st = this.state;
+    const r = ROUTES[st.route] || ROUTES.panel;
+    const open = !st.navCollapsed;
+
+    const pinned = ['pos','ventas','inventario'];
+    const navGroups = [
+      { label:'', showLabel:false, items:[this.navItem('panel', st.route === 'panel')] },
+      { label:'Fijados', showLabel:true, items:pinned.map(k => this.navItem(k, st.route === k)) },
+      { label:'Operación', showLabel:true, items:['pos','ventas','clientes','produccion'].filter(k => !pinned.includes(k)).map(k => this.navItem(k, st.route === k)) },
+      { label:'Catálogo y stock', showLabel:true, items:['inventario','recetas','proveedores','compras'].filter(k => !pinned.includes(k)).map(k => this.navItem(k, st.route === k, k === 'compras' ? '2' : '')) },
+      { label:'Finanzas', showLabel:true, items:['caja','gastos','impuestos','reportes'].map(k => this.navItem(k, st.route === k)) },
+      { label:'Administración', showLabel:true, items:['equipo','config'].map(k => this.navItem(k, st.route === k)) },
+    ];
+
+    const bars = (seed) => Array.from({ length:12 }, (_, i) => {
+      const h = 30 + ((Math.sin(i * 1.1 + seed) + 1) / 2) * 70;
+      return { h: h.toFixed(0) + '%', o: i === 11 ? '1' : '0.28' };
+    });
+
+    const kpis = [
+      { label:'Ventas · 30 días', value:'$18,4 M', delta:'12,4 %', deltaFg:'var(--ok)', deltaIcon:'#i-up', note:'412 operaciones · ticket $44.700', bars:bars(0) },
+      { label:'Margen bruto', value:'38,2 %', delta:'1,8 pts', deltaFg:'var(--ok)', deltaIcon:'#i-up', note:'objetivo del período: 36 %', bars:bars(2) },
+      { label:'Saldo de caja', value:'$6,1 M', delta:'4,1 %', deltaFg:'var(--dan)', deltaIcon:'#i-down', note:'incluye 3 cheques a depositar', bars:bars(4) },
+      { label:'Por cobrar', value:'$2,9 M', delta:'9,7 %', deltaFg:'var(--dan)', deltaIcon:'#i-up', note:'$840 K vencido hace +30 días', bars:bars(6) },
+    ];
+
+    const alerts = [
+      { icon:'#i-alert', bg:'var(--dan-soft)', fg:'var(--dan)', line:'var(--dan-line)', title:'1 comprobante rechazado por AFIP', meta:'Factura B 0005-00014880 · CUIT del cliente inválido', cta:'Reintentar', go:() => { this.go('ventas'); this.setState({ sheet:{ kind:'sale', id:'v4' } }); } },
+      { icon:'#i-package', bg:'var(--warn-soft)', fg:'var(--warn)', line:'var(--warn-line)', title:'7 productos por debajo del stock mínimo', meta:'2 sin unidades en ninguna sucursal', cta:'Ver inventario', go:() => this.go('inventario') },
+      { icon:'#i-truck', bg:'var(--info-soft)', fg:'var(--info)', line:'var(--info-line)', title:'2 órdenes de compra con entrega vencida', meta:'OC-241 y OC-240 · Distribuidora Norte, Maderas del Sur', cta:'Revisar', go:() => this.go('compras') },
+      { icon:'#i-dollar', bg:'var(--warn-soft)', fg:'var(--warn)', line:'var(--warn-line)', title:'$840.000 vencidos en cuentas corrientes', meta:'4 clientes con más de 30 días de atraso', cta:'Ver deudores', go:() => this.go('clientes') },
+    ];
+
+    const activity = [
+      { time:'16:42', dot:'var(--ok)', who:'Marina R.', what:'emitió la Factura B 0005-00014882', amount:money(184300) },
+      { time:'16:08', dot:'var(--ok)', who:'Julián P.', what:'emitió la Factura A a Talleres Vega SRL', amount:money(1246800) },
+      { time:'15:31', dot:'var(--fg-3)', who:'Marina R.', what:'registró un Recibo X en Sucursal Centro', amount:money(62400) },
+      { time:'14:55', dot:'var(--dan)', who:'AFIP', what:'rechazó la Factura B 0005-00014880', amount:money(97650) },
+      { time:'13:12', dot:'var(--info)', who:'Julián P.', what:'recibió 8 de 12 ítems de la OC-240', amount:money(899200) },
+      { time:'11:38', dot:'var(--fg-3)', who:'Sistema', what:'transfirió 12 unidades de Depósito a Centro', amount:'—' },
+    ];
+
+    const pendings = [
+      { icon:'#i-clipboard', label:'Órdenes por recibir', count:'2', fg:'var(--warn)', go:() => this.go('compras') },
+      { icon:'#i-receipt', label:'Comprobantes a reintentar', count:'1', fg:'var(--dan)', go:() => this.go('ventas') },
+      { icon:'#i-users', label:'Clientes con deuda vencida', count:'4', fg:'var(--warn)', go:() => this.go('clientes') },
+      { icon:'#i-filecheck', label:'Impuestos del mes por presentar', count:'3', fg:'var(--fg-2)', go:() => this.go('impuestos') },
+    ];
+
+    const quick = [
+      { icon:'#i-cart', label:'Nueva venta', go:() => this.go('pos') },
+      { icon:'#i-package', label:'Cargar producto', go:() => this.go('inventario') },
+      { icon:'#i-clipboard', label:'Nueva orden de compra', go:() => this.go('compras') },
+      { icon:'#i-report', label:'Cierre de caja del día', go:() => this.go('caja') },
+    ];
+
+    const q = st.posQ.trim().toLowerCase();
+    let list = PRODUCTS.filter(p => st.posCat === 'Todas' || p.cat === st.posCat);
+    if (st.posStock) list = list.filter(p => p.s1 > 0);
+    if (q) list = list.filter(p => (p.name + ' ' + p.brand + ' ' + p.sku + ' ' + p.cat).toLowerCase().includes(q));
+    list = list.slice().sort((a, b) => (b.s1 > 0) - (a.s1 > 0) || a.name.localeCompare(b.name));
+
+    const posList = list.map(p => {
+      const pr = this.prices(p);
+      const out = p.s1 === 0;
+      return {
+        name:p.name, brand:p.brand, sku:p.sku,
+        cash:money(pr.cash), card:money(pr.card), alliance:money(pr.alliance),
+        stockLabel: out ? 'Sin stock' : p.s1 + ' en Centro',
+        stockFg: out ? 'var(--dan)' : p.s1 <= p.min ? 'var(--warn)' : 'var(--fg-3)',
+        opacity: out ? '.55' : '1',
+        disabled: out,
+        addBg: out ? 'var(--surface-3)' : 'var(--brand)',
+        addFg: out ? 'var(--fg-3)' : '#fff',
+        addLine: out ? 'var(--border)' : 'var(--brand)',
+        add: () => { if (!out) this.setState(s => { const ex = s.cart.find(c => c.id === p.id); return { cart: ex ? s.cart.map(c => c.id === p.id ? { ...c, qty:c.qty + 1 } : c) : [...s.cart, { id:p.id, qty:1, method:'ef' }] }; }); },
+      };
+    });
+
+    const METHODS = [['ef','Efec'],['tc3','Tarj'],['al','Alia']];
+    const cartRows = st.cart.map(c => {
+      const p = PRODUCTS.find(x => x.id === c.id);
+      const pr = this.prices(p);
+      const unit = c.method === 'tc3' ? pr.card : c.method === 'al' ? pr.alliance : pr.cash;
+      return {
+        name:p.name, qty:c.qty, unit:money(unit), total:money(unit * c.qty),
+        inc:() => this.setState(s => ({ cart:s.cart.map(x => x.id === c.id ? { ...x, qty:x.qty + 1 } : x) })),
+        dec:() => this.setState(s => ({ cart:s.cart.flatMap(x => x.id === c.id ? (x.qty <= 1 ? [] : [{ ...x, qty:x.qty - 1 }]) : [x]) })),
+        remove:() => this.setState(s => ({ cart:s.cart.filter(x => x.id !== c.id) })),
+        methods:METHODS.map(([m, label]) => {
+          const on = c.method === m;
+          return { label, pick:() => this.setState(s => ({ cart:s.cart.map(x => x.id === c.id ? { ...x, method:m } : x) })),
+            bg:on ? 'var(--brand)' : 'var(--surface)', fg:on ? '#fff' : 'var(--fg-2)', line:on ? 'var(--brand)' : 'var(--border)' };
+        }),
+      };
+    });
+
+    const subtotal = st.cart.reduce((t, c) => {
+      const pr = this.prices(PRODUCTS.find(x => x.id === c.id));
+      const u = c.method === 'tc3' ? pr.card : c.method === 'al' ? pr.alliance : pr.cash;
+      return t + u * c.qty;
+    }, 0);
+
+    const sheet = this.buildSheet();
+
+    return {
+      navWidth: open ? '252px' : '64px',
+      navOpen: open,
+      navClosed: !open,
+      toggleNav: () => this.setState(s => ({ navCollapsed: !s.navCollapsed })),
+      navGroups,
+      themeIcon: st.theme === 'dark' ? '#i-sun' : '#i-moon',
+      toggleTheme: () => this.setState(s => {
+        const t = s.theme === 'dark' ? 'light' : 'dark';
+        try { document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+        return { theme: t };
+      }),
+      crumbGroup: r.group,
+      crumbPage: r.page,
+      stubIcon: r.icon,
+      goPanel: () => this.go('panel'),
+      goPos: () => this.go('pos'),
+      goVentas: () => this.go('ventas'),
+
+      isPanel: st.route === 'panel',
+      isPos: st.route === 'pos',
+      isVentas: st.route === 'ventas',
+      isInv: st.route === 'inventario',
+      isCompras: st.route === 'compras',
+      isAfip: st.route === 'config',
+      isStub: !['panel','pos','ventas','inventario','compras','config'].includes(st.route),
+
+      kpis, alerts, activity, pendings, quick,
+
+      posQ: st.posQ,
+      setPosQ: (e) => this.setState({ posQ: e.target.value }),
+      posCats: CATS.map(c => this.chip(c, st.posCat === c, () => this.setState({ posCat: c }))),
+      posStock: st.posStock,
+      toggleStock: () => this.setState(s => ({ posStock: !s.posStock })),
+      stockBg: st.posStock ? 'var(--brand-soft)' : 'var(--surface)',
+      stockFg: st.posStock ? 'var(--brand-2)' : 'var(--fg-2)',
+      stockLine: st.posStock ? 'var(--brand-line)' : 'var(--border)',
+      stockBox: st.posStock ? 'var(--brand)' : 'var(--border-2)',
+      stockFill: st.posStock ? 'var(--brand)' : 'transparent',
+      posList,
+      posEmpty: posList.length === 0,
+      cartRows,
+      cartEmpty: cartRows.length === 0,
+      cartCount: String(st.cart.reduce((t, c) => t + c.qty, 0)),
+      cartSubtotal: money(subtotal / 1.21),
+      cartTax: money(subtotal - subtotal / 1.21),
+      cartTotal: money(subtotal),
+      clearCart: () => this.setState({ cart: [] }),
+      confirmSale: () => { if (st.cart.length) { this.setState({ cart: [] }); this.flash('Venta registrada · CAE 75412339018264'); } },
+      isFiscal: true,
+      docTypes: [
+        this.chip('Factura B', true, () => {}),
+        this.chip('Factura A', false, () => {}),
+        this.chip('Recibo X', false, () => {}),
+      ].map(d => ({ ...d, weight: d.weight })),
+
+      sales: SALES.map(s => {
+        const stc = this.saleStatus(s);
+        return {
+          time:s.time, type:s.type, number:s.number, cae:s.cae, customer:s.customer, status:s.status,
+          total:money(s.total), opacity:s.void ? '.55' : '1',
+          typeIcon:s.fiscal ? '#i-shield' : '#i-receipt',
+          typeBg:s.fiscal ? 'var(--brand-soft)' : 'var(--surface-3)',
+          typeFg:s.fiscal ? 'var(--brand-2)' : 'var(--fg-2)',
+          typeLine:s.fiscal ? 'var(--brand-line)' : 'var(--border)',
+          stBg:stc.bg, stFg:stc.fg, stLine:stc.line,
+          open:() => this.openSale(s),
+        };
+      }),
+
+      invStats: [
+        { label:'Productos activos', value:'312', fg:'var(--fg)' },
+        { label:'Valor del stock', value:'$41,2 M', fg:'var(--fg)' },
+        { label:'Stock bajo', value:'7', fg:'var(--warn)' },
+        { label:'Sin stock', value:'2', fg:'var(--dan)' },
+      ],
+      invBranches: [
+        this.seg('Todas', st.invBranch === 'all', () => this.setState({ invBranch:'all' })),
+        this.seg('Centro', st.invBranch === 'c', () => this.setState({ invBranch:'c' })),
+        this.seg('Depósito', st.invBranch === 'd', () => this.setState({ invBranch:'d' })),
+      ],
+      invRows: PRODUCTS.map(p => {
+        const pr = this.prices(p);
+        const c1 = this.stockChip(p.s1, p.min), c2 = this.stockChip(p.s2, p.min);
+        return {
+          name:p.name, sku:p.sku, brand:p.brand, cat:p.cat,
+          cost:money(p.cost), price:money(pr.cash),
+          s1:String(p.s1), s1Bg:c1.bg, s1Fg:c1.fg, s1Line:c1.line,
+          s2:String(p.s2), s2Bg:c2.bg, s2Fg:c2.fg, s2Line:c2.line,
+          open:() => this.openProduct(p),
+        };
+      }),
+
+      poTabs: [
+        this.seg('Todas', st.poTab === 'Todas', () => this.setState({ poTab:'Todas' }), 6),
+        this.seg('Pendientes', st.poTab === 'Pendientes', () => this.setState({ poTab:'Pendientes' }), 1),
+        this.seg('Parciales', st.poTab === 'Parciales', () => this.setState({ poTab:'Parciales' }), 1),
+        this.seg('Recibidas', st.poTab === 'Recibidas', () => this.setState({ poTab:'Recibidas' }), 3),
+      ],
+      orders: ORDERS.filter(o => st.poTab === 'Todas'
+        || (st.poTab === 'Pendientes' && o.status === 'Pendiente')
+        || (st.poTab === 'Parciales' && o.status === 'Recibida parcial')
+        || (st.poTab === 'Recibidas' && o.status === 'Recibida')
+      ).map(o => ({
+        id:o.id, supplier:o.supplier, date:o.date, items:String(o.items), status:o.status,
+        pct:o.pct + '%', total:money(o.total), receivable:o.receivable,
+        opacity:o.status === 'Anulada' ? '.55' : '1',
+        stFg:this.orderColor(o.status),
+        open:() => this.openOrder(o),
+      })),
+
+      cfgTabs: ['Facturación AFIP','Empresa','Equipo','Suscripción'].map(t => {
+        const on = st.cfgTab === t;
+        return { label:t, pick:() => this.setState({ cfgTab:t }), weight:on ? '600' : '500',
+          fg:on ? 'var(--fg)' : 'var(--fg-2)', shadow:on ? 'inset 0 -2px 0 0 var(--brand)' : 'none' };
+      }),
+      steps: [
+        { n:'1', done:true, pending:false, title:'Generar llave privada y pedido de certificado', body:'Se crean el archivo .key (secreto, queda en el servidor) y el .csr que hay que presentar en AFIP.', action:'Regenerar', actionIcon:'#i-refresh', bg:'var(--ok)', fg:'#fff', line:'var(--ok)' },
+        { n:'2', done:true, pending:false, title:'Obtener el certificado .crt en AFIP', body:'Con clave fiscal, en “Administración de Certificados Digitales”, subís el .csr y descargás el .crt.', action:'Ir a AFIP', actionIcon:'#i-external', bg:'var(--ok)', fg:'#fff', line:'var(--ok)' },
+        { n:'3', done:true, pending:false, title:'Delegar el servicio de facturación electrónica', body:'En “Administrador de Relaciones”, vinculás el Web Service de Facturación Electrónica con el certificado.', action:'Ir a AFIP', actionIcon:'#i-external', bg:'var(--ok)', fg:'#fff', line:'var(--ok)' },
+        { n:'4', done:true, pending:false, title:'Cargar las credenciales y verificar', body:'Subís .key y .crt, completás CUIT y punto de venta, y el sistema pide un CAE de prueba antes de habilitar la emisión.', action:'Ver registro', actionIcon:'#i-cright', bg:'var(--ok)', fg:'#fff', line:'var(--ok)' },
+      ],
+      creds: [
+        { file:'adminapp_privada.key', meta:'Cargado el 14/03/2026 · cifrado en servidor' },
+        { file:'adminapp_certificado.crt', meta:'Vence el 14/03/2028 · 595 días restantes' },
+      ],
+
+      ...sheet,
+      closeSheet: () => this.setState({ sheet: null }),
+
+      paletteOpen: st.palette,
+      paletteQ: st.paletteQ,
+      setPaletteQ: (e) => this.setState({ paletteQ: e.target.value }),
+      openPalette: () => this.setState({ palette: true, paletteQ: '' }),
+      closePalette: () => this.setState({ palette: false }),
+      paletteGroups: (() => {
+        const pq = st.paletteQ.trim().toLowerCase();
+        const actions = [
+          { label:'Registrar una venta', icon:'#i-cart', hint:'POS', go:() => this.go('pos') },
+          { label:'Crear producto', icon:'#i-package', hint:'Inventario', go:() => this.go('inventario') },
+          { label:'Crear orden de compra', icon:'#i-clipboard', hint:'Compras', go:() => this.go('compras') },
+        ];
+        const nav = Object.keys(ROUTES).map(k => ({ label:ROUTES[k].page, icon:ROUTES[k].icon, hint:ROUTES[k].group, go:() => this.go(k) }));
+        const f = (arr) => pq ? arr.filter(i => i.label.toLowerCase().includes(pq)) : arr;
+        return [
+          { label:'Acciones', items:f(actions) },
+          { label:'Ir a', items:f(nav) },
+        ].filter(g => g.items.length);
+      })(),
+
+      toastOn: !!st.toast,
+      toastMsg: st.toast || '',
+    };
+  }
+}
+
+</script>
+</body>
+</html>
