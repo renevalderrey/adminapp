@@ -12,6 +12,8 @@ const {
   verificarTotal,
   metodoDePago,
   esPagoMixto,
+  normalizarNombreDeCliente,
+  LARGO_MAXIMO_NOMBRE,
 } = require('../utils/calculosVenta');
 
 describe('aCentavos', () => {
@@ -195,5 +197,45 @@ describe('esPagoMixto', () => {
   it('no marca como mixta una venta con un solo metodo', () => {
     expect(esPagoMixto([{ payment_method: 'ef' }, { payment_method: 'ef' }])).toBe(false);
     expect(esPagoMixto([])).toBe(false);
+  });
+});
+
+describe('normalizarNombreDeCliente', () => {
+  // Este campo pasa a llenarse con texto tipeado a mano en el mostrador, sin
+  // ficha de cliente. Antes solo llegaba desde una ficha, ya validada.
+  it('deja pasar un nombre normal', () => {
+    expect(normalizarNombreDeCliente('Vega, Marcela')).toBe('Vega, Marcela');
+  });
+
+  // El caso caro: la columna es VARCHAR(255). Sin el recorte, un nombre mas
+  // largo hace que Postgres rechace el INSERT y LA VENTA NO SE REGISTRE. Un
+  // error de tipeo no puede tumbar un cobro.
+  it('un nombre de 300 caracteres queda en 255 y no rompe el INSERT', () => {
+    const largo = 'a'.repeat(300);
+    const r = normalizarNombreDeCliente(largo);
+
+    expect(r).toHaveLength(255);
+    expect(r).toHaveLength(LARGO_MAXIMO_NOMBRE);
+  });
+
+  it('recorta los espacios de sobra que deja el mostrador', () => {
+    expect(normalizarNombreDeCliente('   Vega, Marcela   ')).toBe('Vega, Marcela');
+    expect(normalizarNombreDeCliente('\n Perez \t')).toBe('Perez');
+  });
+
+  // En la base, «no se anoto ningun nombre» es NULL: la pantalla lo muestra
+  // como «Consumidor final». Una cadena vacia se veria como un cliente sin
+  // nombre, que es otra cosa.
+  it('vacio, espacios y nulos dan null y no cadena vacia', () => {
+    expect(normalizarNombreDeCliente('')).toBeNull();
+    expect(normalizarNombreDeCliente('    ')).toBeNull();
+    expect(normalizarNombreDeCliente(null)).toBeNull();
+    expect(normalizarNombreDeCliente(undefined)).toBeNull();
+    expect(normalizarNombreDeCliente()).toBeNull();
+  });
+
+  it('un valor que no es texto no produce "undefined" ni "[object Object]"', () => {
+    expect(normalizarNombreDeCliente(0)).toBeNull();
+    expect(normalizarNombreDeCliente(false)).toBeNull();
   });
 });

@@ -119,6 +119,34 @@ function esPagoMixto(items = []) {
   return metodos.size > 1;
 }
 
+/** El maximo que entra en `sales.customer_name`, que es VARCHAR(255). */
+const LARGO_MAXIMO_NOMBRE = 255;
+
+/**
+ * Nombre del cliente tal como se guarda en la venta.
+ *
+ * Este campo pasa a llenarse tambien SIN ficha de cliente: es el nombre que el
+ * operador tipea a mano en un remito o en un recibo X, y es lo que se imprime
+ * y lo que se busca despues en el historial. Antes se guardaba solo junto con
+ * customer_id, y el POS terminaba metiendolo adentro de `notes`, donde no lo
+ * encuentra ninguna busqueda.
+ *
+ * Se recorta a 255 porque la columna es VARCHAR(255) y este texto ahora llega
+ * tipeado a mano: un nombre mas largo hace que Postgres rechace el INSERT y
+ * **la venta no se registre**. Un error de tipeo no puede tumbar un cobro.
+ *
+ * Vacio devuelve null y no cadena vacia: en la base, «no se anoto ningun
+ * nombre» es NULL, y la pantalla lo muestra como «Consumidor final».
+ *
+ * @returns {string|null}
+ */
+function normalizarNombreDeCliente(nombre) {
+  // `nombre || ''` y no una comparacion contra null: lo que llega del body
+  // puede ser cualquier cosa, y un 0 o un false convertidos con String() se
+  // guardarian como los textos "0" y "false" en la columna del nombre.
+  return String(nombre || '').trim().slice(0, LARGO_MAXIMO_NOMBRE) || null;
+}
+
 module.exports = {
   aCentavos,
   normalizarItem,
@@ -127,4 +155,6 @@ module.exports = {
   metodoDePago,
   esPagoMixto,
   tolerancia,
+  normalizarNombreDeCliente,
+  LARGO_MAXIMO_NOMBRE,
 };

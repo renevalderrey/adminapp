@@ -57,7 +57,7 @@ y en T924. Leerlo antes de empezar la fase 2, porque cambia el contrato.
 solo lugar donde se decide cuál de los cinco estados es una venta. Nada visible
 todavía.
 
-- [ ] **T901** Crear `apps/api/src/migrations/20260803-intentos-de-facturacion.js`:
+- [x] **T901** Crear `apps/api/src/migrations/20260803-intentos-de-facturacion.js`:
       `addColumn('sales', 'afip_ultimo_error', TEXT null)`,
       `addColumn('sales', 'afip_ultimo_intento', DATE null)` y
       `addIndex('sales', ['empresa_id','date'], { name: 'sales_empresa_date_idx' })`,
@@ -68,7 +68,7 @@ todavía.
       0; el `down` deja la tabla como estaba. Sin `addConstraint`, así que la
       trampa de `{ model, key }` no aplica.
 
-- [ ] **T902** Sumar a `apps/api/src/models/Sale.js` los dos campos
+- [x] **T902** Sumar a `apps/api/src/models/Sale.js` los dos campos
       (`afip_ultimo_error: TEXT`, `afip_ultimo_intento: DATE`, ambos
       `allowNull: true`) y el índice compuesto
       `{ name: 'sales_empresa_date_idx', fields: ['empresa_id','date'] }`. Los
@@ -79,7 +79,7 @@ todavía.
       tipo no coinciden, Sequelize consulta una columna que no existe y el
       listado tira en runtime, no en build).
 
-- [ ] **T903** Crear `apps/api/src/utils/estadoVenta.js` — función pura que
+- [x] **T903** Crear `apps/api/src/utils/estadoVenta.js` — función pura que
       recibe `{ status, afip_cae, afip_ultimo_error }` y devuelve
       `{ codigo, etiqueta }` con los cinco códigos
       (`autorizada | registrada | rechazada | anulada | anulada_con_cae`). Sin
@@ -102,7 +102,7 @@ cinco combinaciones con la precedencia probada. `npm run test:api` pasa.
 **Purpose**: el listado se puede filtrar, buscar y paginar contra la base de
 desarrollo con `curl`, sin tocar una línea de la pantalla.
 
-- [ ] **T904** Crear `apps/api/src/utils/filtroVentas.js` — función pura
+- [x] **T904** Crear `apps/api/src/utils/filtroVentas.js` — función pura
       `query → { where, order, limit, offset, rango }` con `desde`/`hasta`,
       `punto_de_venta_id` (incluido `todas`), `tipo` (`1|6|11|sin_cae`), `q`,
       `customer_id`, el alias de compatibilidad `date` y `location` solo si no
@@ -117,7 +117,7 @@ desarrollo con `curl`, sin tocar una línea de la pantalla.
       orden. Un test explícito verifica que **la función NO agrega `empresa_id`**
       — lo pone la ruta, y esa separación es la decisión 4.
 
-- [ ] **T905** Reescribir `GET /api/sales` en `apps/api/src/routes/sales.js`
+- [x] **T905** Reescribir `GET /api/sales` en `apps/api/src/routes/sales.js`
       usando `filtroVentas` + `scoped(where, req.empresaId)`, con `include` de
       `Customer` (`as: 'customer'`, `required: false`) y **sin** el `include` de
       `SaleItem` (decisión 5), `limit` 25 por defecto acotado a 100,
@@ -138,7 +138,7 @@ desarrollo con `curl`, sin tocar una línea de la pantalla.
       limpias sin sumar excepciones. El orden estable y el `DECIMAL` quedan como
       pasos manuales (ver el final).
 
-- [ ] **T906** Agregar `GET /api/sales/:id` en `sales.js` con
+- [x] **T906** Agregar `GET /api/sales/:id` en `sales.js` con
       `findScoped(Sale, req.params.id, req.empresaId, { include: [items, customer,
       puntoDeVenta] })`, devolviendo también `afip_ultimo_error`,
       `afip_ultimo_intento` y `estado`. 404 con «Venta no encontrada» cuando no
@@ -149,7 +149,7 @@ desarrollo con `curl`, sin tocar una línea de la pantalla.
       existe en otro cliente); `aislamientoEmpresas.test.js` sigue limpia porque
       no se usó `findByPk`.
 
-- [ ] **T907** Agregar `GET /api/sales/export` en `sales.js`, **declarado antes
+- [x] **T907** Agregar `GET /api/sales/export` en `sales.js`, **declarado antes
       que `GET /:id`**, con los mismos filtros del listado menos `page`/`limit`,
       `COUNT` previo con tope duro de 5.000 → `400 LIMITE_EXPORT_SUPERADO` con
       `{ total, limite: 5000 }` y ni una fila, y `attributes` acotados a lo que
@@ -172,7 +172,7 @@ resultado completo del export. La pantalla todavía es la vieja.
 cliente, y el nombre libre del cliente deja de perderse. Los tres cambian
 comportamiento sin depender de la pantalla.
 
-- [ ] **T908** Reescribir `POST /api/sales/:id/facturar` en `sales.js` con el
+- [x] **T908** Reescribir `POST /api/sales/:id/facturar` en `sales.js` con el
       patrón de `/void`: transacción, `findScoped` con `lock: t.LOCK.UPDATE` y
       **sin `include`** (con `include`, Sequelize arma un `LEFT OUTER JOIN … FOR
       UPDATE` que Postgres rechaza — el comentario de `sales.js:268-273` lo
@@ -190,7 +190,7 @@ comportamiento sin depender de la pantalla.
       sigue limpia. Que el lock haga su trabajo son dos pasos manuales (criterios
       6 y 8), anotados al final: probarlo con los dobles sería probar el doble.
 
-- [ ] **T909** Hacer que `POST /api/sales/:id/facturar` resuelva por sí mismo
+- [x] **T909** Hacer que `POST /api/sales/:id/facturar` resuelva por sí mismo
       `type`, `customerCuit`, `customerVatCondition` y `pv` cuando el body no los
       trae: tipo desde `settings.tax_condition` (`RI` → 6, `Monotributo` y
       `Exento` → 11), CUIT y condición de IVA desde la ficha del cliente de la
@@ -206,7 +206,7 @@ comportamiento sin depender de la pantalla.
       pantalla puede completar (ver `plan.md`, «Lo que la spec pide y no se puede
       construir»).
 
-- [ ] **T910** En `PUT /api/sales/:id/void` (`sales.js:262`), después de tomar la
+- [x] **T910** En `PUT /api/sales/:id/void` (`sales.js:262`), después de tomar la
       venta con lock y **antes** de tocar el stock, tirar `ErrorDeNegocio` si
       `sale.afip_cae` está presente, con el mensaje de
       `contracts/api-endpoints.md` (el comprobante sigue vigente ante ARCA y hace
@@ -217,7 +217,7 @@ comportamiento sin depender de la pantalla.
       (FR-058). El bloqueo tiene que estar acá y no solo en la pantalla: sin él,
       un `curl` sigue pudiendo anular (FR-057).
 
-- [ ] **T911** Persistir `customer_name` en `POST /api/sales` exista o no
+- [x] **T911** Persistir `customer_name` en `POST /api/sales` exista o no
       `customer_id` (`sales.js:164-170`), con el recorte y el `trim` que pide el
       riesgo 7. Extraer la normalización a
       `normalizarNombreDeCliente(customer_name)` en
@@ -233,7 +233,7 @@ comportamiento sin depender de la pantalla.
       quedaron intactos. Que un nombre libre sin ficha **no** genere cuenta
       corriente es paso manual (riesgo 8, anotado al final).
 
-- [ ] **T912** En `apps/web/src/pages/Billing.jsx`, mandar el nombre libre en
+- [x] **T912** En `apps/web/src/pages/Billing.jsx`, mandar el nombre libre en
       `customer_name` y dejar de meterlo dentro de `notes` (`Billing.jsx:215`):
       `notes` pasa a ser `''`, `'REMITO'` o `'RECIBO X'`, que es para lo que
       existe (FR-101).

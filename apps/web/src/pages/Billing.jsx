@@ -212,11 +212,20 @@ const Billing = () => {
         items: cart,
         total: totalAmount,
         location,
-        notes: isAfip ? '' : `${docType === 'remito' ? 'REMITO' : 'RECIBO X'} - Cliente: ${customerName || 'Consumidor Final'}`,
+        // `notes` es para observaciones, que es para lo que existe. Antes se le
+        // metía adentro el nombre del cliente —"REMITO - Cliente: Perez"—
+        // porque el backend solo guardaba customer_name cuando había ficha.
+        // Metido ahí, el nombre no lo encuentra ninguna búsqueda del historial
+        // y la columna Cliente no lo puede leer: la venta figuraba como
+        // «Consumidor final» aunque el operador hubiera escrito el nombre.
+        notes: isAfip ? '' : (docType === 'remito' ? 'REMITO' : 'RECIBO X'),
+        // Se manda siempre, haya ficha o no. El backend lo recorta y lo guarda.
+        customer_name: customerName || null,
       }
       if (customerId) {
+        // Solo la ficha habilita cuenta corriente: un nombre libre no puede
+        // generar una deuda sin deudor.
         salePayload.customer_id = customerId
-        salePayload.customer_name = customerName
       }
 
       const ventaRes = await api.post('/sales', salePayload)

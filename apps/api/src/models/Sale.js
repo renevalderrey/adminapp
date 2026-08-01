@@ -89,6 +89,32 @@ const Sale = sequelize.define('Sale', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
+  // Por que se guarda el error de AFIP y no solo se loguea.
+  //
+  // Una venta activa sin CAE puede ser dos cosas distintas: una venta interna
+  // que nadie quiso facturar, o una que ARCA rechazo. Las dos son
+  // status='active' con afip_cae=NULL, asi que sin este campo son
+  // indistinguibles y el operador que vuelve al dia siguiente no tiene forma
+  // de saber cual le falta reintentar. Antes el rechazo se logueaba y se
+  // devolvia en la respuesta HTTP: al cerrar la pestaña, se perdia.
+  //
+  // TEXT y no STRING(255) porque el mensaje viene de afipService con un
+  // JSON.stringify adentro: un rechazo con dos observaciones pasa los 255
+  // caracteres y lo que se corta es el final, que es donde esta el codigo del
+  // rechazo. Es el unico pedazo accionable.
+  //
+  // Un intento nuevo pisa al anterior: se guarda el ultimo, no la serie.
+  afip_ultimo_error: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  // Se escribe en todo intento, exitoso o fallido. En el exitoso el error
+  // vuelve a null: sin eso, el panel seguiria mostrando el rechazo de una
+  // venta que despues salio bien.
+  afip_ultimo_intento: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
   customer_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
@@ -119,6 +145,12 @@ const Sale = sequelize.define('Sale', {
     { fields: ['empresa_id'] },
     { fields: ['punto_de_venta_id'] },
     { fields: ['status'] },
+    // El historial siempre consulta `empresa_id = X AND date BETWEEN a AND b`.
+    // Con los indices sueltos de arriba Postgres elige uno y filtra el resto
+    // fila por fila; el compuesto ataca las dos condiciones a la vez. Los
+    // sueltos se dejan: sacarlos es una migracion destructiva sobre una tabla
+    // caliente y no molestan.
+    { name: 'sales_empresa_date_idx', fields: ['empresa_id', 'date'] },
   ],
 });
 

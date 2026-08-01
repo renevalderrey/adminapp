@@ -87,7 +87,11 @@ Listado paginado del historial. Es la consulta principal de la pantalla.
   "total_periodo": 1842300.5,
   "page": 1,
   "totalPages": 6,
-  "rango": { "desde": "2026-08-01", "hasta": "2026-08-01" }
+  "rango": { "desde": "2026-08-01", "hasta": "2026-08-01" },
+  "sucursales": [
+    { "id": 3, "name": "Ortiz", "is_active": true },
+    { "id": 5, "name": "Centro", "is_active": false }
+  ]
 }
 ```
 
@@ -97,6 +101,30 @@ Listado paginado del historial. Es la consulta principal de la pantalla.
 | `total_periodo` | Suma de `total` sobre **todo** el filtro, **anuladas incluidas**. Es un número, no un string: se hace `parseFloat` del `DECIMAL`. Ver decisión 6 del plan. |
 | `rango` | El rango efectivamente aplicado. La pantalla inicializa sus campos de fecha con esto en la primera carga (FR-081). |
 | `estado` | Derivado en el servidor. `codigo` alimenta el color; `etiqueta` es el texto del badge y la celda «Estado» del `.xlsx`. |
+| `sucursales` | Las sucursales **presentes en el resultado filtrado**, activas e inactivas, ordenadas por nombre. Ver abajo. |
+
+#### `sucursales` — extensión del contrato, agregada al implementar T905
+
+El único origen de sucursales que tiene el frontend es
+`empresaActiva.puntosDeVenta`, y la API lo filtra con `is_active: true` en los
+cuatro lugares donde lo arma (`empresas.js:195`, `:220`, `:371` y
+`GET /:empresaId/puntos-de-venta` en `:561`).
+
+Con la respuesta como estaba escrita, una venta de una sucursal dada de baja
+llega con un `punto_de_venta_id` que **la pantalla no puede nombrar**: el filtro
+mostraría un id crudo, o directamente perdería la opción, y las ventas de un
+local cerrado quedarían inalcanzables. FR-073 —«el filtro DEBE listar las
+sucursales activas más las que aparezcan en el resultado aunque estén dadas de
+baja, marcadas (inactiva)»— no se podía cumplir.
+
+Por eso el listado devuelve las sucursales que aparecen en el resultado. La
+pantalla las une con las activas que ya conoce y marca «(inactiva)» las que
+vienen con `is_active: false`. Se calcula sobre **todo** el filtro, no sobre la
+página: si no, la opción aparecería y desaparecería al paginar.
+
+Las ventas anteriores a multi-sucursal tienen `punto_de_venta_id` en `null` y no
+aportan ninguna entrada a esta lista; siguen apareciendo en el listado con
+«Todas las sucursales».
 
 **Cambios respecto de hoy que rompen a un consumidor:**
 
