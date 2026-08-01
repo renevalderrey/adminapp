@@ -145,10 +145,8 @@ const Settings = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-black tracking-tight">
-          Facturación <span className="text-primary">AFIP</span>
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1>Facturación AFIP</h1>
+        <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
           Vinculá los servicios oficiales de ARCA/AFIP para emitir comprobantes electrónicos.
         </p>
       </div>
@@ -173,7 +171,7 @@ const Settings = () => {
                     <p className="font-bold text-sm">Generar Llave y Pedido (.csr)</p>
                     <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                       Creá una identidad digital. Se generan dos archivos:
-                      <br />• <code className="text-orange-500">privada.key</code> — Tu llave secreta
+                      <br />• <code className="text-warn">privada.key</code> — Tu llave secreta
                       <br />• <code className="text-primary">pedido.csr</code> — El pedido para AFIP
                     </p>
                     {!generatedFiles ? (
@@ -182,7 +180,7 @@ const Settings = () => {
                       </Button>
                     ) : (
                       <div className="flex gap-2 mt-3">
-                        <Button size="sm" variant="outline" className="text-orange-500 border-orange-500/30"
+                        <Button size="sm" variant="outline" className="text-warn border-orange-500/30"
                           onClick={() => downloadFile(generatedFiles.key, 'admin_app_privada.key')}>
                           <Key className="h-3.5 w-3.5 mr-1" /> Descargar .key
                         </Button>
@@ -204,7 +202,7 @@ const Settings = () => {
                     <p className="font-bold text-sm">Obtener Certificado (.crt) en ARCA</p>
                     <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                       Entrá a AFIP con Clave Fiscal. Buscá <strong>"Administración de Certificados Digitales"</strong>.
-                      Subí el <code className="text-primary">.csr</code> y descargá el <code className="text-green-500">.crt</code>.
+                      Subí el <code className="text-primary">.csr</code> y descargá el <code className="text-ok">.crt</code>.
                     </p>
                     <a href="https://auth.afip.gob.ar" target="_blank" rel="noreferrer">
                       <Button size="sm" variant="outline" className="mt-3">
@@ -236,7 +234,7 @@ const Settings = () => {
                   <div className="flex-1">
                     <p className="font-bold text-sm">Cargar Credenciales en Admin App</p>
                     <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                      Cargá los archivos <code className="text-orange-500">.key</code> y <code className="text-green-500">.crt</code> en el formulario.
+                      Cargá los archivos <code className="text-warn">.key</code> y <code className="text-ok">.crt</code> en el formulario.
                       Luego presioná <strong>Guardar y Verificar</strong>.
                     </p>
                   </div>
@@ -247,10 +245,10 @@ const Settings = () => {
 
           <Card>
             <CardContent className="p-4 flex gap-3">
-              <Info className="h-4 w-4 text-orange-500 shrink-0 mt-0.5" />
+              <Info className="h-4 w-4 text-warn shrink-0 mt-0.5" />
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Tus llaves privadas se almacenan de forma segura en tu servidor.
-                Nunca compartas el archivo <code className="text-orange-500">.key</code> con nadie.
+                Nunca compartas el archivo <code className="text-warn">.key</code> con nadie.
               </p>
             </CardContent>
           </Card>
@@ -315,7 +313,7 @@ const Settings = () => {
                   <Card className="bg-muted/50">
                     <CardContent className="p-3 text-[11px] space-y-1">
                       <div className="flex items-center gap-1.5 font-bold">
-                        <ShieldCheck className="h-3.5 w-3.5 text-green-500" /> Certificado Activo
+                        <ShieldCheck className="h-3.5 w-3.5 text-ok" /> Certificado Activo
                       </div>
                       <p><strong>Emisor:</strong> {certInfo.issuer}
                         {certInfo.isProduction
@@ -335,7 +333,7 @@ const Settings = () => {
                 {saveStatus.msg && (
                   <Card className={saveStatus.type === 'ok' ? 'border-green-500/30 bg-green-500/5' : 'border-destructive/30 bg-destructive/5'}>
                     <CardContent className="p-3 text-xs font-medium">
-                      <span className={saveStatus.type === 'ok' ? 'text-green-500' : 'text-destructive'}>
+                      <span className={saveStatus.type === 'ok' ? 'text-ok' : 'text-destructive'}>
                         {saveStatus.msg}
                       </span>
                     </CardContent>
@@ -360,8 +358,8 @@ const Settings = () => {
                         </>
                       ) : (
                         <>
-                          <CheckCircle2 className="h-4 w-4 text-green-500" />
-                          <span className="text-xs text-green-500 font-medium">Conectado: API operativa</span>
+                          <CheckCircle2 className="h-4 w-4 text-ok" />
+                          <span className="text-xs text-ok font-medium">Conectado: API operativa</span>
                         </>
                       )}
                     </div>
@@ -384,7 +382,7 @@ const Settings = () => {
             <CardContent>
               {tiendanubeLinked ? (
                 <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-2 text-green-500 font-medium text-sm">
+                  <div className="flex items-center gap-2 text-ok font-medium text-sm">
                     <CheckCircle2 className="h-5 w-5" /> Cuenta de TiendaNube vinculada
                   </div>
                   <p className="text-xs text-muted-foreground">

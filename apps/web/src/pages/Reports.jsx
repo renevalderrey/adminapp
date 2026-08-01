@@ -29,6 +29,7 @@ import {
 import * as XLSX from 'xlsx';
 import { format } from 'date-fns';
 import { Label } from '@/components/ui/label';
+import PageHeader from '@/components/PageHeader'
 
 const TABS = [
   { id: 'sales', label: 'Ventas' },
@@ -114,9 +115,10 @@ const Reports = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Reportes</h1>
-      </div>
+      <PageHeader
+        titulo="Reportes"
+        descripcion="Ventas, rentabilidad e inventario del período. Todos se exportan a Excel."
+      />
 
       {/* Tabs */}
       <div className="flex gap-1 bg-muted p-1 rounded-lg w-fit">
@@ -180,9 +182,9 @@ const Reports = () => {
                 </Card>
                 <Card>
                   <CardContent className="p-3 text-center">
-                    <TrendingUp className="h-4 w-4 mx-auto mb-1 text-green-600" />
+                    <TrendingUp className="h-4 w-4 mx-auto mb-1 text-ok" />
                     <p className="text-[10px] font-bold uppercase text-muted-foreground">Ganancia Bruta</p>
-                    <p className="text-lg font-black font-mono text-green-600">{formatCurrency(salesData.summary.gross_profit)}</p>
+                    <p className="text-lg font-black font-mono text-ok">{formatCurrency(salesData.summary.gross_profit)}</p>
                   </CardContent>
                 </Card>
                 <Card>
@@ -231,10 +233,10 @@ const Reports = () => {
                           <TableCell className="text-right font-mono text-sm">{item.quantity}</TableCell>
                           <TableCell className="text-right font-mono text-sm">{formatCurrency(item.unit_price)}</TableCell>
                           <TableCell className="text-right font-mono text-sm">{formatCurrency(item.cost)}</TableCell>
-                          <TableCell className={`text-right font-mono text-sm font-medium ${item.margin >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                          <TableCell className={`text-right font-mono text-sm font-medium ${item.margin >= 0 ? 'text-ok' : 'text-destructive'}`}>
                             {formatCurrency(item.margin)}
                           </TableCell>
-                          <TableCell className={`text-right font-mono text-sm ${item.margin_pct >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                          <TableCell className={`text-right font-mono text-sm ${item.margin_pct >= 0 ? 'text-ok' : 'text-destructive'}`}>
                             {item.margin_pct}%
                           </TableCell>
                         </TableRow>
@@ -254,29 +256,29 @@ const Reports = () => {
                   <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
                     <div className="text-center p-4 bg-green-50 dark:bg-green-950/20 rounded-lg">
                       <p className="text-[10px] font-bold uppercase text-muted-foreground">Ingresos</p>
-                      <p className="text-2xl font-black font-mono text-green-600">{formatCurrency(profitData.total_revenue)}</p>
+                      <p className="num text-[26px] font-semibold text-ok">{formatCurrency(profitData.total_revenue)}</p>
                     </div>
                     <div className="text-center p-4 bg-red-50 dark:bg-red-950/20 rounded-lg">
                       <p className="text-[10px] font-bold uppercase text-muted-foreground">Costo de Ventas</p>
-                      <p className="text-2xl font-black font-mono text-destructive">{formatCurrency(profitData.total_cost_of_goods)}</p>
+                      <p className="num text-[26px] font-semibold text-destructive">{formatCurrency(profitData.total_cost_of_goods)}</p>
                     </div>
                     <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
                       <p className="text-[10px] font-bold uppercase text-muted-foreground">Ganancia Bruta</p>
-                      <p className="text-2xl font-black font-mono text-blue-600">{formatCurrency(profitData.gross_profit)}</p>
+                      <p className="num text-[26px] font-semibold text-info">{formatCurrency(profitData.gross_profit)}</p>
                     </div>
                     <div className="text-center p-4 bg-orange-50 dark:bg-orange-950/20 rounded-lg">
                       <p className="text-[10px] font-bold uppercase text-muted-foreground">Gastos Fijos</p>
-                      <p className="text-2xl font-black font-mono text-orange-600">{formatCurrency(profitData.fixed_expenses)}</p>
+                      <p className="num text-[26px] font-semibold text-warn">{formatCurrency(profitData.fixed_expenses)}</p>
                     </div>
                     <div className="text-center p-4 bg-purple-50 dark:bg-purple-950/20 rounded-lg">
                       <p className="text-[10px] font-bold uppercase text-muted-foreground">Ganancia Neta</p>
-                      <p className={`text-2xl font-black font-mono ${profitData.net_profit >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                      <p className={`num text-[26px] font-semibold ${profitData.net_profit >= 0 ? 'text-ok' : 'text-destructive'}`}>
                         {formatCurrency(profitData.net_profit)}
                       </p>
                     </div>
                     <div className="text-center p-4 bg-muted rounded-lg">
                       <p className="text-[10px] font-bold uppercase text-muted-foreground">Margen Neto</p>
-                      <p className={`text-2xl font-black font-mono ${profitData.net_margin_pct >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                      <p className={`num text-[26px] font-semibold ${profitData.net_margin_pct >= 0 ? 'text-ok' : 'text-destructive'}`}>
                         {profitData.net_margin_pct}%
                       </p>
                     </div>
@@ -304,7 +306,7 @@ const Reports = () => {
                     <Package className="h-8 w-8 text-primary" />
                     <div>
                       <p className="text-xs text-muted-foreground">Valor Total del Inventario</p>
-                      <p className="text-2xl font-black font-mono">{formatCurrency(inventoryData.total_value)}</p>
+                      <p className="num text-[26px] font-semibold">{formatCurrency(inventoryData.total_value)}</p>
                     </div>
                     <Badge variant="outline" className="ml-auto">{inventoryData.items.length} productos</Badge>
                   </div>

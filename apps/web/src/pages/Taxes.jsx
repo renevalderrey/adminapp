@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
+import PageHeader from '@/components/PageHeader'
 
 const Taxes = () => {
   const [calculation, setCalculation] = useState(null);
@@ -118,8 +119,10 @@ const Taxes = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Impuestos</h1>
+      <PageHeader
+        titulo="Impuestos"
+        descripcion="Monotributo y cargas del período: en qué categoría estás, cuánto llevás facturado y qué pagos registraste."
+      >
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setShowConfig(true)}>
             <Calculator className="h-4 w-4 mr-2" />
@@ -130,7 +133,7 @@ const Taxes = () => {
             Registrar Pago
           </Button>
         </div>
-      </div>
+      </PageHeader>
 
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>
@@ -163,11 +166,11 @@ const Taxes = () => {
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">Pagado en el año</span>
-                        <span className="font-mono text-green-600">{formatCurrency(calculation.paid_ytd)}</span>
+                        <span className="font-mono text-ok">{formatCurrency(calculation.paid_ytd)}</span>
                       </div>
                       <div className="flex justify-between text-sm font-bold">
                         <span>Saldo Restante</span>
-                        <span className={`font-mono ${calculation.remaining_ytd > 0 ? 'text-destructive' : 'text-green-600'}`}>
+                        <span className={`font-mono ${calculation.remaining_ytd > 0 ? 'text-destructive' : 'text-ok'}`}>
                           {formatCurrency(calculation.remaining_ytd)}
                         </span>
                       </div>

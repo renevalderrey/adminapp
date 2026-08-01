@@ -50,6 +50,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
 import useStore from '@/store/useStore';
+import PageHeader from '@/components/PageHeader'
 
 const Production = () => {
   const empresaActiva = useStore(s => s.empresaActiva);
@@ -281,13 +282,15 @@ const Production = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Producción</h1>
+      <PageHeader
+        titulo="Producción"
+        descripcion="Órdenes de elaborados. Al confirmar una orden se descuentan los insumos de la receta y se suma el producto terminado al stock."
+      >
         <Button onClick={openCreateModal}>
           <Plus className="h-4 w-4 mr-2" />
           Nueva Orden
         </Button>
-      </div>
+      </PageHeader>
 
       {errorMsg && (
         <div className="bg-destructive/10 text-destructive px-4 py-2 rounded-md text-sm flex items-center gap-2">

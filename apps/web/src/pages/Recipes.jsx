@@ -238,10 +238,8 @@ const Recipes = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-black tracking-tight">
-          Fórmulas y <span className="text-primary">Recetas</span>
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1>Fórmulas y Recetas</h1>
+        <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
           Diseñá recetas complejas combinando insumos y productos. El sistema actualizará el costo unitario de venta automáticamente.
         </p>
       </div>
@@ -522,7 +520,7 @@ const Recipes = () => {
 
                   <div className="bg-primary/5 border border-primary/20 p-3 rounded-lg flex flex-col justify-center items-end">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Costo Final Calculado por Unidad</span>
-                    <span className="text-2xl font-black font-mono mt-1 text-primary">
+                    <span className="num text-[26px] font-semibold mt-1 text-primary">
                       ${calculatedUnitCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                     </span>
                   </div>

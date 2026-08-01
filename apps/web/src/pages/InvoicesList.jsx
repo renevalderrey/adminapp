@@ -141,10 +141,8 @@ const InvoicesList = () => {
     <>
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-black tracking-tight">
-          Historial de <span className="text-primary">Ventas</span>
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1>Historial de Ventas</h1>
+        <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
           Consulta el historial de ventas y reimprime tickets.
         </p>
       </div>
@@ -220,7 +218,7 @@ const InvoicesList = () => {
                         </TableCell>
                         <TableCell>
                         {isAfip ? (
-                          <Badge variant="outline" className="text-green-500 border-green-500/30 gap-1">
+                          <Badge variant="outline" className="text-ok border-green-500/30 gap-1">
                             <ShieldCheck className="h-3 w-3" /> AFIP
                           </Badge>
                         ) : (
@@ -239,7 +237,7 @@ const InvoicesList = () => {
                           <p className="text-muted-foreground text-sm">{sale.notes || sale.id.split('-')[0]}</p>
                         )}
                       </TableCell>
-                      <TableCell className="font-black font-mono text-green-500">
+                      <TableCell className="font-black font-mono text-ok">
                         ${Number(sale.total).toLocaleString()}
                       </TableCell>
                       <TableCell>
@@ -250,7 +248,7 @@ const InvoicesList = () => {
                       <TableCell className="text-right">
                         <div className="flex gap-1.5 justify-end">
                           {isAfip && sale.status !== 'voided' && (
-                            <Button variant="ghost" size="sm" className="text-green-500 text-xs gap-1"
+                            <Button variant="ghost" size="sm" className="text-ok text-xs gap-1"
                               onClick={() => handleVerifyAfip(sale)}>
                               <CloudCog className="h-3.5 w-3.5" /> Verificar
                             </Button>

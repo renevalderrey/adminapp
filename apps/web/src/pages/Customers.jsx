@@ -51,6 +51,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import Pagination from '@/components/Pagination';
 import { format } from 'date-fns';
+import PageHeader from '@/components/PageHeader'
 
 const Customers = () => {
   const [customers, setCustomers] = useState([]);
@@ -201,8 +202,10 @@ const Customers = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Clientes</h1>
+      <PageHeader
+        titulo="Clientes"
+        descripcion="Cartera de clientes y cuenta corriente: qué te deben, desde cuándo y qué te compraron."
+      >
         <div className="flex gap-2">
           <Button variant="outline" onClick={openSummary}>
             <CreditCard className="h-4 w-4 mr-2" />
@@ -217,7 +220,7 @@ const Customers = () => {
             Nuevo Cliente
           </Button>
         </div>
-      </div>
+      </PageHeader>
 
       {error && (
         <div className="bg-destructive/10 text-destructive px-4 py-2 rounded-md text-sm">{error}
@@ -282,7 +285,7 @@ const Customers = () => {
                       <TableCell className="text-right font-mono text-xs">{formatCurrency(c.total_purchases)}</TableCell>
                       <TableCell className="text-right">{c.total_visits}</TableCell>
                       <TableCell className="text-right">
-                        <span className={`font-mono text-xs ${c.balance > 0 ? 'text-destructive font-semibold' : 'text-green-600'}`}>
+                        <span className={`font-mono text-xs ${c.balance > 0 ? 'text-destructive font-semibold' : 'text-ok'}`}>
                           {formatCurrency(c.balance)}
                         </span>
                       </TableCell>
@@ -384,7 +387,7 @@ const Customers = () => {
                 <div><span className="text-muted-foreground">Teléfono:</span> <p>{detailData.customer.phone || '-'}</p></div>
                 <div><span className="text-muted-foreground">Condición:</span> <p>{detailData.customer.tax_condition}</p></div>
                 <div><span className="text-muted-foreground">Saldo:</span>
-                  <p className={`font-bold ${detailData.balance > 0 ? 'text-destructive' : 'text-green-600'}`}>
+                  <p className={`font-bold ${detailData.balance > 0 ? 'text-destructive' : 'text-ok'}`}>
                     {formatCurrency(detailData.balance)}
                   </p>
                 </div>
@@ -432,7 +435,7 @@ const Customers = () => {
                       {detailData.recent_payments.map(p => (
                         <div key={p.id} className="flex justify-between text-xs p-1.5 bg-muted/50 rounded">
                           <span>{p.payment_date}</span>
-                          <span className="font-mono text-green-600">-{formatCurrency(p.amount)}</span>
+                          <span className="font-mono text-ok">-{formatCurrency(p.amount)}</span>
                         </div>
                       ))}
                     </div>
@@ -567,7 +570,7 @@ const Customers = () => {
               </div>
               <div className="border-t pt-4">
                 <p className="text-sm font-medium mb-2">Cuentas por Pagar (Proveedores)</p>
-                <p className="text-2xl font-bold text-orange-600">{formatCurrency(summary.total_payable)}</p>
+                <p className="text-2xl font-bold text-warn">{formatCurrency(summary.total_payable)}</p>
                 <div className="grid grid-cols-4 gap-2 mt-2">
                   {[
                     { key: '0_30', label: '0-30' }, { key: '31_60', label: '31-60' },
@@ -583,7 +586,7 @@ const Customers = () => {
               <div className="border-t pt-2 text-sm">
                 <div className="flex justify-between">
                   <span>Diferencia (Cobrar - Pagar)</span>
-                  <span className={`font-bold ${summary.total_receivable - summary.total_payable >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                  <span className={`font-bold ${summary.total_receivable - summary.total_payable >= 0 ? 'text-ok' : 'text-destructive'}`}>
                     {formatCurrency(summary.total_receivable - summary.total_payable)}
                   </span>
                 </div>

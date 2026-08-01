@@ -9,8 +9,8 @@ import { CalendarDays, CreditCard, Clock, AlertTriangle } from 'lucide-react'
 
 const STATUS_LABELS = {
   trialing: { label: 'Prueba gratuita', color: 'bg-blue-500/10 text-blue-500 border-blue-500/30' },
-  active: { label: 'Activo', color: 'bg-green-500/10 text-green-500 border-green-500/30' },
-  past_due: { label: 'Vencido', color: 'bg-orange-500/10 text-orange-500 border-orange-500/30' },
+  active: { label: 'Activo', color: 'bg-green-500/10 text-ok border-green-500/30' },
+  past_due: { label: 'Vencido', color: 'bg-orange-500/10 text-warn border-orange-500/30' },
   expired: { label: 'Expirado', color: 'bg-destructive/10 text-destructive border-destructive/30' },
   cancelled: { label: 'Cancelado', color: 'bg-muted text-muted-foreground' },
 }
@@ -46,10 +46,8 @@ const SubscriptionSettings = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-black tracking-tight">
-          Suscripción <span className="text-primary">y Plan</span>
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1>Suscripción y Plan</h1>
+        <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
           Estado de tu plan y período de prueba.
         </p>
       </div>
@@ -108,9 +106,9 @@ const SubscriptionSettings = () => {
 
               {trialDaysLeft !== null && trialDaysLeft <= 5 && suscripcion.status === 'trialing' && (
                 <div className="flex items-start gap-3 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg">
-                  <AlertTriangle className="h-5 w-5 text-orange-500 mt-0.5" />
+                  <AlertTriangle className="h-5 w-5 text-warn mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-orange-500">
+                    <p className="text-sm font-medium text-warn">
                       {trialDaysLeft === 0
                         ? 'Tu período de prueba terminó hoy'
                         : `Te quedan ${trialDaysLeft} días de prueba`}

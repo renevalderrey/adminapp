@@ -114,10 +114,8 @@ const Team = () => {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-black tracking-tight">
-            Equipo de <span className="text-primary">Trabajo</span>
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1>Equipo de Trabajo</h1>
+          <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
             Gestioná los usuarios que tienen acceso a {empresaActiva?.name}.
           </p>
         </div>
@@ -172,7 +170,7 @@ const Team = () => {
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="gap-1">
-                        <CheckCircle className="h-3 w-3 text-green-500" /> Activo
+                        <CheckCircle className="h-3 w-3 text-ok" /> Activo
                       </Badge>
                     </TableCell>
                   </TableRow>

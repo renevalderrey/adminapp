@@ -5,6 +5,7 @@ import api, { setAuthToken, setEmpresaContext, setOnUnauthorized, setOnSubscript
 import { usePermission } from '@/hooks/usePermission'
 import useStore from '@/store/useStore'
 import { AppSidebar } from '@/components/app-sidebar'
+import { AppTopbar } from '@/components/app-topbar'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { Toaster } from '@/components/Toaster'
 
@@ -81,6 +82,20 @@ function App() {
   // Se avisa una sola vez por sesion: repetir el mismo toast en cada request
   // fallido tapa la pantalla.
   const [suscripcionVencida, setSuscripcionVencida] = useState(null)
+
+  // Barra lateral contraída o no. Se recuerda entre sesiones: quien la contrae
+  // lo hace porque prefiere el espacio, y volver a expandirla en cada carga es
+  // pelearle al usuario.
+  const [sidebarAbierta, setSidebarAbierta] = useState(
+    () => localStorage.getItem('sidebarAbierta') !== 'false'
+  )
+
+  const alternarSidebar = () => {
+    setSidebarAbierta((abierta) => {
+      localStorage.setItem('sidebarAbierta', String(!abierta))
+      return !abierta
+    })
+  }
 
   useEffect(() => {
     setOnSubscriptionExpired((mensaje) => {
@@ -215,10 +230,16 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className="flex h-screen overflow-hidden">
-        <AppSidebar />
-        <main className="flex-1 overflow-y-auto">
-          <div className="container mx-auto p-6 lg:p-8 max-w-7xl">
+      <div className="flex h-screen w-full overflow-hidden bg-background">
+        <AppSidebar abierta={sidebarAbierta} onAlternar={alternarSidebar} />
+
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <AppTopbar sidebarAbierta={sidebarAbierta} onAlternarSidebar={alternarSidebar} />
+
+          {/* El contenido se centra a 1320px: sin tope, una tabla en un monitor
+              ancho deja el ojo viajando de un borde al otro. */}
+          <main className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-[1320px] px-5 py-7 lg:px-9 lg:py-8">
             <Routes>
               <Route path="/" element={<Navigate to="/pos" replace />} />
               <Route path="/pos" element={<Billing />} />
@@ -247,8 +268,9 @@ function App() {
               <Route path="/expenses" element={<Navigate to="/gastos" replace />} />
               <Route path="/settings" element={<Navigate to="/facturacion" replace />} />
             </Routes>
-          </div>
-        </main>
+            </div>
+          </main>
+        </div>
       </div>
       <Toaster />
     </ErrorBoundary>

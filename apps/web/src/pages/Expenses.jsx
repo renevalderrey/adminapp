@@ -85,10 +85,10 @@ const Expenses = () => {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-black tracking-tight">
+          <h1>
             Gastos
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
             {solapa === 'fijos'
               ? 'Costos operativos que se repiten todos los meses, agrupados por sucursal.'
               : 'Gastos que cambian mes a mes, atribuidos a una persona.'}
@@ -131,7 +131,7 @@ const Expenses = () => {
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                   Total {group.name}
                 </p>
-                <p className="text-2xl font-black font-mono mt-1 text-destructive">
+                <p className="num text-[26px] font-semibold mt-1 text-destructive">
                   ${total.toLocaleString()}
                 </p>
               </CardContent>

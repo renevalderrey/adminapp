@@ -46,6 +46,7 @@ import {
 import { enviarPedidoPorWhatsapp } from '@/utils/pedidoWhatsapp';
 import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
+import PageHeader from '@/components/PageHeader'
 
 const STATUS_LABELS = {
   pending: 'Pendiente',
@@ -194,9 +195,10 @@ const PurchaseOrders = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Órdenes de Compra</h1>
-      </div>
+      <PageHeader
+        titulo="Órdenes de compra"
+        descripcion="Lo que le pediste a cada proveedor y en qué estado está. Al recibir una orden se actualiza el stock con lo que llegó de verdad, no con lo que se pidió."
+      />
 
       {/* Filters */}
       <Card>
@@ -283,7 +285,7 @@ const PurchaseOrders = () => {
                     <TableCell>
                       <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                         {(o.status === 'pending' || o.status === 'partial') && (
-                          <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600"
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-ok"
                             onClick={() => { setSelectedOrder(o); setShowReceive(true); setReceiveForm({}); }}>
                             <Truck className="h-4 w-4" />
                           </Button>

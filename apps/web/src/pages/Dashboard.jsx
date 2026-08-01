@@ -97,10 +97,8 @@ const Dashboard = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-black tracking-tight">
-          Panel de <span className="text-primary">Control</span>
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1>Panel de Control</h1>
+        <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
           Indicadores clave del negocio en tiempo real.
         </p>
       </div>
@@ -118,7 +116,7 @@ const Dashboard = () => {
 
         <Card>
           <CardContent className="p-3 text-center">
-            <TrendingUp className="h-4 w-4 mx-auto mb-1 text-green-600" />
+            <TrendingUp className="h-4 w-4 mx-auto mb-1 text-ok" />
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Ticket Prom.</p>
             <p className="text-lg font-black font-mono mt-1">{formatCurrency(kpis?.sales_30d?.avg_ticket)}</p>
             <p className="text-[10px] text-muted-foreground">promedio 30d</p>
@@ -129,7 +127,7 @@ const Dashboard = () => {
           <CardContent className="p-3 text-center">
             <DollarSign className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Saldo Caja</p>
-            <p className={`text-lg font-black font-mono mt-1 ${kpis?.cashflow?.balance >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+            <p className={`text-lg font-black font-mono mt-1 ${kpis?.cashflow?.balance >= 0 ? 'text-ok' : 'text-destructive'}`}>
               {formatCurrency(kpis?.cashflow?.balance)}
             </p>
             <p className="text-[10px] text-muted-foreground">actual</p>
@@ -140,7 +138,7 @@ const Dashboard = () => {
           <CardContent className="p-3 text-center">
             <Wallet className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Proy. 30d</p>
-            <p className={`text-lg font-black font-mono mt-1 ${kpis?.cashflow?.projected_30d >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+            <p className={`text-lg font-black font-mono mt-1 ${kpis?.cashflow?.projected_30d >= 0 ? 'text-ok' : 'text-destructive'}`}>
               {formatCurrency(kpis?.cashflow?.projected_30d)}
             </p>
             <p className="text-[10px] text-muted-foreground">proyección</p>
@@ -163,7 +161,7 @@ const Dashboard = () => {
             <Package className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Productos</p>
             <p className="text-lg font-black font-mono mt-1">{kpis?.products?.active || 0}</p>
-            <p className="text-[10px] text-orange-500">
+            <p className="text-[10px] text-warn">
               {kpis?.products?.low_stock || 0} stock bajo
             </p>
           </CardContent>
@@ -240,7 +238,7 @@ const Dashboard = () => {
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-3">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Por Cobrar</p>
-                <p className="text-lg font-bold font-mono mt-1 text-green-600">{formatCurrency(kpis?.receivables?.total)}</p>
+                <p className="text-lg font-bold font-mono mt-1 text-ok">{formatCurrency(kpis?.receivables?.total)}</p>
               </div>
               <div className="bg-red-50 dark:bg-red-950/20 rounded-lg p-3">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Por Pagar</p>
@@ -335,7 +333,7 @@ const Dashboard = () => {
                 </div>
                 {bep.viable ? (
                   <>
-                    <p className="text-3xl font-black font-mono text-green-500">
+                    <p className="text-3xl font-black font-mono text-ok">
                       {bep.recargoSobreCosto}%{' '}
                       <span className="text-sm font-semibold text-muted-foreground ml-2">
                         de recargo sobre el costo
@@ -355,7 +353,7 @@ const Dashboard = () => {
                   </>
                 ) : (
                   <>
-                    <p className="text-3xl font-black font-mono text-orange-500">
+                    <p className="text-3xl font-black font-mono text-warn">
                       Sin solución
                     </p>
                     <p className="text-sm leading-relaxed text-foreground mt-2">
@@ -374,7 +372,7 @@ const Dashboard = () => {
         <Card>
           <CardHeader className="pb-4">
             <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-orange-500" />
+              <Zap className="h-4 w-4 text-warn" />
               <CardTitle className="text-sm">Estrategias de Precio</CardTitle>
             </div>
           </CardHeader>
@@ -389,9 +387,9 @@ const Dashboard = () => {
             */}
             {estrategias.map((e) => {
               const estilos = {
-                equilibrio: { borde: 'border-green-500/20 bg-green-500/5', texto: 'text-green-500', badge: 'text-green-500 border-green-500/30' },
+                equilibrio: { borde: 'border-green-500/20 bg-green-500/5', texto: 'text-ok', badge: 'text-ok border-green-500/30' },
                 recomendado: { borde: 'border-primary/20 bg-primary/5', texto: 'text-primary', badge: '' },
-                agresivo: { borde: 'border-orange-500/20 bg-orange-500/5', texto: 'text-orange-500', badge: 'text-orange-500 border-orange-500/30' },
+                agresivo: { borde: 'border-orange-500/20 bg-orange-500/5', texto: 'text-warn', badge: 'text-warn border-orange-500/30' },
               }[e.clave]
 
               return (
@@ -435,7 +433,7 @@ const Dashboard = () => {
         <Card className={alerts.lowStock?.length > 0 ? 'border-orange-500/30' : ''}>
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
             <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-orange-500" />
+              <AlertCircle className="h-5 w-5 text-warn" />
               <CardTitle className="text-sm font-bold">Alertas de Stock Mínimo</CardTitle>
             </div>
             {alerts.lowStock?.length > 0 && (
@@ -450,7 +448,7 @@ const Dashboard = () => {
                   <p className="text-[10px] text-muted-foreground capitalize">Sucursal: {item.location}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold font-mono text-orange-500">{item.quantity} u.</p>
+                  <p className="font-bold font-mono text-warn">{item.quantity} u.</p>
                   <p className="text-[9px] text-muted-foreground">Mínimo: {item.min_stock} u.</p>
                 </div>
               </div>

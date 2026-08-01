@@ -192,8 +192,8 @@ export default function Faltantes() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
-            <AlertTriangle className="h-6 w-6 text-orange-500" />
+          <h1 className="flex items-center gap-2">
+            <AlertTriangle className="h-6 w-6 text-warn" />
             Faltantes
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -227,14 +227,14 @@ export default function Faltantes() {
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Productos a pedir
             </p>
-            <p className="text-2xl font-black tabular-nums">{totalAPedir.items}</p>
+            <p className="num text-[26px] font-semibold">{totalAPedir.items}</p>
           </div>
           <Separator orientation="vertical" className="h-10" />
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Costo estimado
             </p>
-            <p className="text-2xl font-black font-mono tabular-nums">
+            <p className="num text-[26px] font-semibold tabular-nums">
               ${totalAPedir.importe.toLocaleString('es-AR')}
             </p>
           </div>
@@ -261,7 +261,7 @@ export default function Faltantes() {
         <Card>
           <CardContent className="py-12 text-center">
             <p className="font-semibold">No falta nada.</p>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
               Ningún producto está por debajo de su mínimo (ni del umbral de {umbral}).
             </p>
           </CardContent>

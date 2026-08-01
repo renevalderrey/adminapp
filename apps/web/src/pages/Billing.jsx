@@ -365,10 +365,8 @@ const Billing = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-black tracking-tight">
-          Punto de <span className="text-primary">Venta</span>
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1>Punto de Venta</h1>
+        <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
           Gestioná ventas rápidas con múltiples medios de pago.
         </p>
       </div>
@@ -445,9 +443,9 @@ const Billing = () => {
                       <p className="text-[11px] text-muted-foreground">{p.brand?.name || 'Sin marca'}</p>
                       <p className="text-[10px] text-muted-foreground">Stock: {available}</p>
                     </div>
-                    <p className="text-center font-bold font-mono text-sm text-green-500">${cashPrice.toLocaleString()}</p>
+                    <p className="text-center font-bold font-mono text-sm text-ok">${cashPrice.toLocaleString()}</p>
                     <p className="text-center font-bold font-mono text-sm text-blue-500">${cardPrice.toLocaleString()}</p>
-                    <p className="text-center font-bold font-mono text-sm text-orange-500">${alliancePrice.toLocaleString()}</p>
+                    <p className="text-center font-bold font-mono text-sm text-warn">${alliancePrice.toLocaleString()}</p>
                     <div className="flex justify-end">
                       <Button size="icon" className="h-8 w-8 bg-[#00B4B6] hover:bg-[#008B8E] text-white" onClick={() => addToCart(p)} disabled={outOfStock}>
                         <Plus className="h-4 w-4" />
@@ -522,11 +520,11 @@ const Billing = () => {
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold truncate leading-tight">{item.name}</p>
-                          <p className="text-lg font-black font-mono text-green-600 leading-tight">
+                          <p className="text-lg font-black font-mono text-ok leading-tight">
                             ${(item.price * item.qty).toLocaleString()}
                           </p>
                           {item.precio_manual && (
-                            <p className="text-[10px] font-bold text-orange-500 leading-tight">
+                            <p className="text-[10px] font-bold text-warn leading-tight">
                               precio a mano
                             </p>
                           )}
@@ -692,7 +690,7 @@ const Billing = () => {
 
               <div className="flex items-center justify-between bg-background rounded-lg px-3 py-2 border">
                 <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Total</span>
-                <span className="text-xl font-black font-mono text-green-600 tabular-nums">
+                <span className="text-xl font-black font-mono text-ok tabular-nums">
                   ${totalAmount.toLocaleString()}
                 </span>
               </div>
@@ -755,7 +753,7 @@ const Billing = () => {
               )}
 
               {lastInvoice && (
-                <Button variant="outline" className="w-full border-green-500/30 text-green-600 hover:text-green-600 hover:bg-green-50"
+                <Button variant="outline" className="w-full border-green-500/30 text-ok hover:text-ok hover:bg-green-50"
                   onClick={() => printInvoice(lastInvoice)}>
                   Imprimir Factura #{lastInvoice.voucherNumber}
                 </Button>

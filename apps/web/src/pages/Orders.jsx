@@ -233,10 +233,8 @@ const Orders = () => {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-black tracking-tight">
-            Cuentas <span className="text-primary">Proveedores</span>
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1>Cuentas Proveedores</h1>
+          <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
             Gestión de pedidos, saldos y pagos a proveedores.
           </p>
         </div>
@@ -266,7 +264,7 @@ const Orders = () => {
                     <p className="font-bold text-sm">{s.name}</p>
                     <p className="text-[11px] text-muted-foreground">{s.movements?.length || 0} movimientos</p>
                   </div>
-                  <span className={`font-black font-mono text-sm ${balance > 0 ? 'text-destructive' : 'text-green-500'}`}>
+                  <span className={`font-black font-mono text-sm ${balance > 0 ? 'text-destructive' : 'text-ok'}`}>
                     ${balance.toLocaleString()}
                   </span>
                 </div>
@@ -310,7 +308,7 @@ const Orders = () => {
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Saldo Pendiente</p>
-                      <p className={`text-2xl font-black font-mono ${calculateBalance(selectedSupplier) > 0 ? 'text-destructive' : 'text-green-500'}`}>
+                      <p className={`num text-[26px] font-semibold ${calculateBalance(selectedSupplier) > 0 ? 'text-destructive' : 'text-ok'}`}>
                         ${calculateBalance(selectedSupplier).toLocaleString()}
                       </p>
                     </div>
@@ -319,7 +317,7 @@ const Orders = () => {
                     <Button size="sm" onClick={() => setIsAddingOrder(true)}>
                       <Truck className="h-4 w-4 mr-1" /> Registrar Pedido
                     </Button>
-                    <Button variant="outline" size="sm" className="text-green-500 border-green-500/30 hover:text-green-500"
+                    <Button variant="outline" size="sm" className="text-ok border-green-500/30 hover:text-ok"
                       onClick={() => setIsAddingPayment(true)}>
                       <CreditCard className="h-4 w-4 mr-1" /> Registrar Pago
                     </Button>
@@ -387,7 +385,7 @@ const Orders = () => {
                               <div className="flex gap-2">
                                 {(order.status === 'pending' || order.status === 'partial') && (
                                   <>
-                                    <Button size="sm" variant="outline" className="text-green-600 border-green-600/30"
+                                    <Button size="sm" variant="outline" className="text-ok border-green-600/30"
                                       onClick={() => { setIsReceive(true); setReceiveItems({}) }}>
                                       <Truck className="h-3.5 w-3.5 mr-1" /> Recibir
                                     </Button>
@@ -430,7 +428,7 @@ const Orders = () => {
                         </TableCell>
                         <TableCell>
                           <Badge variant={m.type === 'deuda' ? 'destructive' : 'outline'}
-                            className={m.type !== 'deuda' ? 'text-green-500 border-green-500/30' : ''}>
+                            className={m.type !== 'deuda' ? 'text-ok border-green-500/30' : ''}>
                             {m.type === 'deuda' ? 'Pedido' : 'Pago'}
                           </Badge>
                         </TableCell>
@@ -440,7 +438,7 @@ const Orders = () => {
                         <TableCell className="text-right font-bold font-mono text-destructive">
                           {m.type === 'deuda' ? `+${parseFloat(m.amount).toLocaleString()}` : ''}
                         </TableCell>
-                        <TableCell className="text-right font-bold font-mono text-green-500">
+                        <TableCell className="text-right font-bold font-mono text-ok">
                           {m.type === 'pago' ? `-${parseFloat(m.amount).toLocaleString()}` : ''}
                         </TableCell>
                       </TableRow>
@@ -453,7 +451,7 @@ const Orders = () => {
             <div className="flex flex-col items-center justify-center py-24 text-center">
               <Users className="h-12 w-12 text-muted-foreground/20 mb-4" />
               <p className="font-semibold">Seleccioná un proveedor</p>
-              <p className="text-sm text-muted-foreground mt-1">Hacé clic en la lista para ver la cuenta corriente y pedidos.</p>
+              <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">Hacé clic en la lista para ver la cuenta corriente y pedidos.</p>
             </div>
           )}
         </div>

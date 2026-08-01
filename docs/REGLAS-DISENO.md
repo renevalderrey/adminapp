@@ -187,6 +187,29 @@ es otra y se nota al lado de un componente del sistema.
 
 ---
 
+## El shell
+
+`App.jsx` arma tres piezas y ninguna pantalla las toca:
+
+| Pieza | Archivo | Qué hace |
+|---|---|---|
+| Barra lateral | `components/app-sidebar.jsx` | 240px / 60px contraída. Grupos con etiqueta en mayúsculas, ítems de 34px, usuario abajo |
+| Encabezado | `components/app-topbar.jsx` | 60px. Miga de pan, selector de empresa y sucursal, tema |
+| Navegación | `components/navegacion.js` | La definición de grupos e ítems, **una sola** para la barra y la miga de pan |
+
+Dos decisiones que conviene no revertir sin pensarlo:
+
+- **El selector de empresa y sucursal está en el encabezado, no en la barra.**
+  Es contexto de trabajo —«sobre qué datos estoy operando»— y hay que verlo en
+  todas las pantallas. Adentro de la barra empujaba la navegación hacia abajo y
+  ocupaba lugar permanente para algo que se cambia dos veces por día.
+- **La navegación se define una sola vez.** Tener la barra y la miga de pan con
+  listas separadas garantizaba que tarde o temprano una pantalla se llamara de
+  dos formas distintas.
+
+**Una pantalla nueva no dibuja su propio marco.** Devuelve su contenido y el
+shell la envuelve: el `<main>` ya centra a 1320px y aplica el padding.
+
 ## Patrones
 
 ### Encabezado de pantalla

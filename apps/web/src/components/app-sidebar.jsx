@@ -1,332 +1,194 @@
-import { NavLink, useLocation } from "react-router-dom"
-import { cn } from "@/lib/utils"
-import { ThemeToggle } from "@/components/theme-toggle"
-import { Button, buttonVariants } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-} from "@/components/ui/sheet"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  ShoppingCart,
-  ClipboardList,
-  Package,
-  Truck,
-  Wallet,
-  BarChart3,
-  AlertTriangle,
-  Scale,
-  FileCheck,
-  FileSpreadsheet,
-  LogOut,
-  Menu,
-  Zap,
-  Factory,
-  Users,
-  DollarSign,
-  Building2,
-  Store,
-  UserCog,
-  CreditCard,
-} from "lucide-react"
-import { useAuth0 } from "@auth0/auth0-react"
-import useStore from "@/store/useStore"
-import { usePermission } from "@/hooks/usePermission"
+import { NavLink, useLocation } from 'react-router-dom'
+import { useAuth0 } from '@auth0/auth0-react'
+import { cn } from '@/lib/utils'
+import useStore from '@/store/useStore'
+import { usePermission } from '@/hooks/usePermission'
+import { gruposVisibles } from '@/components/navegacion'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { PanelLeft, LogOut, Menu } from 'lucide-react'
 
-const navSections = [
-  {
-    label: "Operaciones",
-    permission: null,
-    items: [
-      { to: "/pos", icon: ShoppingCart, label: "Punto de Venta", permission: "ventas.crear" },
-      { to: "/ventas", icon: ClipboardList, label: "Historial de Ventas", permission: "ventas.ver" },
-      { to: "/clientes", icon: Users, label: "Clientes", permission: "clientes.ver" },
-      { to: "/produccion", icon: Factory, label: "Producción", permission: "produccion.ver" },
-    ],
-  },
-  {
-    label: "Gestión",
-    permission: null,
-    items: [
-      { to: "/inventario", icon: Package, label: "Inventario", permission: "stock.ver" },
-      { to: "/recetas", icon: Zap, label: "Fórmulas / Recetas", permission: "recetas.ver" },
-      { to: "/proveedores", icon: Truck, label: "Proveedores", permission: "proveedores.ver" },
-      { to: "/faltantes", icon: AlertTriangle, label: "Faltantes", permission: "stock.ver" },
-      { to: "/comparador", icon: Scale, label: "Comparar proveedores", permission: "proveedores.ver" },
-      { to: "/ordenes-compra", icon: Package, label: "Órdenes de Compra", permission: "ordenes_compra.ver" },
-      { to: "/gastos", icon: Wallet, label: "Gastos Fijos", permission: "gastos.ver" },
-      { to: "/reportes", icon: FileSpreadsheet, label: "Reportes", permission: "reportes.ver" },
-      { to: "/caja", icon: DollarSign, label: "Flujo de Caja", permission: "caja.ver" },
-      { to: "/impuestos", icon: FileCheck, label: "Impuestos", permission: "config.ver" },
-    ],
-  },
-  {
-    label: "Equipo",
-    permission: null,
-    items: [
-      { to: "/team", icon: UserCog, label: "Equipo", permission: "equipo.ver" },
-    ],
-  },
-  {
-    label: "Configuración",
-    permission: null,
-    items: [
-      { to: "/panel", icon: BarChart3, label: "Panel de Control", permission: "dashboard.ver" },
-      { to: "/facturacion", icon: FileCheck, label: "Facturación AFIP", permission: "config.ver" },
-      { to: "/suscripcion", icon: CreditCard, label: "Suscripción", permission: "config.ver" },
-    ],
-  },
-]
+// ════════════════════════════════════════════
+//  Barra lateral
+//
+//  Sigue la maqueta del rediseño: 240px abierta, 60px contraída, ítems de 34px
+//  agrupados bajo etiquetas en mayúsculas.
+//
+//  El selector de empresa y sucursal se movió al encabezado. Estaba acá
+//  adentro, arriba del menú, empujando la navegación hacia abajo — y es un
+//  control que se usa dos veces por día, no cada vez que se cambia de
+//  pantalla.
+//
+//  Las reglas de estilo están en docs/REGLAS-DISENO.md.
+// ════════════════════════════════════════════
 
-function NavItem({ to, icon: Icon, label }) {
+function ItemDeNavegacion({ to, icon: Icono, label, abierta, activa }) {
+  const contenido = (
+    <NavLink
+      to={to}
+      className={cn(
+        'flex h-[34px] w-full items-center gap-2.5 rounded-lg px-2 text-[13.5px] transition-colors',
+        abierta ? 'justify-start' : 'justify-center',
+        activa
+          ? 'bg-brand-soft font-semibold text-brand-dark'
+          : 'font-medium text-fg-2 hover:bg-surface-3 hover:text-foreground'
+      )}
+    >
+      <Icono
+        className={cn('h-[16.5px] w-[16.5px] shrink-0', activa ? 'text-brand-dark' : 'text-fg-3')}
+        strokeWidth={1.7}
+      />
+      {abierta && <span className="truncate">{label}</span>}
+    </NavLink>
+  )
+
+  // Contraída, el nombre solo existe en el tooltip: sin él la barra es una
+  // columna de íconos que hay que adivinar.
+  if (abierta) return contenido
+
   return (
     <Tooltip delayDuration={0}>
-      <TooltipTrigger>
-        <NavLink
-          to={to}
-          className={({ isActive }) =>
-            cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all",
-              "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-              isActive && "bg-accent text-accent-foreground font-semibold"
-            )
-          }
-        >
-          <Icon className="h-4 w-4 shrink-0" />
-          <span>{label}</span>
-        </NavLink>
-      </TooltipTrigger>
-      <TooltipContent side="right" className="lg:hidden">
-        {label}
-      </TooltipContent>
+      <TooltipTrigger asChild>{contenido}</TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
     </Tooltip>
   )
 }
 
-function SidebarContent() {
+function Contenido({ abierta = true, onAlternar }) {
   const { user, logout } = useAuth0()
-  const usuario = useStore(s => s.usuario)
-  const empresaActiva = useStore(s => s.empresaActiva)
-  const empresas = useStore(s => s.empresas)
-  const setEmpresaActiva = useStore(s => s.setEmpresaActiva)
-  const puntoDeVentaActivo = useStore(s => s.puntoDeVentaActivo)
-  const setPuntoDeVentaActivo = useStore(s => s.setPuntoDeVentaActivo)
+  const { pathname } = useLocation()
+  const usuario = useStore((s) => s.usuario)
+  const empresaActiva = useStore((s) => s.empresaActiva)
   const { can } = usePermission()
 
-  const displayName = user?.name || usuario?.nombre || "Usuario"
-  const displayEmail = user?.email || usuario?.email || ""
-  const displayPicture = user?.picture
-  const displayInitial = (user?.name?.charAt(0) || usuario?.nombre?.charAt(0) || "U").toUpperCase()
+  // El ítem activo se calcula acá y no con el render-prop de NavLink: la barra
+  // marca por prefijo, para que una sub-ruta como /inventario/123 siga
+  // resaltando Inventario.
+  const estaActivo = (to) => pathname === to || pathname.startsWith(`${to}/`)
+
+  const ajustes = empresaActiva?.settings || {}
+  const esDueño = user?.sub === ajustes.owner_auth0_sub
+
+  const grupos = gruposVisibles(can, {
+    modulosHabilitados: ajustes.enabled_modules,
+    esDueño,
+  })
+
+  const nombre = user?.name || usuario?.nombre || 'Usuario'
+  const inicial = (nombre.charAt(0) || 'U').toUpperCase()
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-5 shrink-0">
-        <img src={empresaActiva?.logo || "/logo_sin_fondo.png"} alt="Logo" className="h-9 w-9 rounded-lg object-cover" />
-        <div className="flex flex-col">
-          <span className="text-base font-bold tracking-tight">{empresaActiva?.name || "Admin App"}</span>
-          <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-            Gestión Comercial
-          </span>
-        </div>
-      </div>
+    <div className="flex h-full flex-col overflow-hidden bg-surface">
 
-      <Separator className="shrink-0" />
-
-      {/* Scrollable middle section */}
-      <div className="flex-1 overflow-y-auto min-h-0 px-3 py-3 space-y-2">
-        {empresas.length > 0 && (
+      {/* Marca */}
+      <div className="flex h-[60px] shrink-0 items-center gap-2.5 px-3.5">
+        <img
+          src={empresaActiva?.logo || '/logo_sin_fondo.png'}
+          alt=""
+          className="h-7 w-7 shrink-0 rounded-[7px] object-contain"
+        />
+        {abierta && (
           <>
-            <div>
-              <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider px-1">
-                Empresa
-              </span>
-              <div className="flex items-center gap-2 mt-0.5">
-                <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
-                {empresas.length > 1 ? (
-                  <Select
-                    value={empresaActiva?.id?.toString()}
-                    onValueChange={(v) => setEmpresaActiva(parseInt(v))}
-                  >
-                    <SelectTrigger className="h-8 w-full text-sm">
-                      <SelectValue placeholder="Seleccionar empresa" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {empresas.map(emp => (
-                        <SelectItem key={emp.id} value={emp.id.toString()}>
-                          {emp.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div className="h-8 w-full rounded-md border border-input bg-background px-3 flex items-center text-sm font-semibold">
-                    {empresaActiva?.name}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider px-1">
-                Sucursal
-              </span>
-              <div className="flex items-center gap-2 mt-0.5">
-                <Store className="h-4 w-4 text-muted-foreground shrink-0" />
-                {(empresaActiva?.puntosDeVenta?.length ?? 0) > 1 ? (
-                  <Select
-                    value={puntoDeVentaActivo?.id?.toString()}
-                    onValueChange={(v) => {
-                      const pv = empresaActiva.puntosDeVenta.find(p => p.id === parseInt(v))
-                      if (pv) setPuntoDeVentaActivo(pv)
-                    }}
-                  >
-                    <SelectTrigger className="h-8 w-full text-sm">
-                      <SelectValue placeholder="Sucursal" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {empresaActiva.puntosDeVenta.map(pv => (
-                        <SelectItem key={pv.id} value={pv.id.toString()}>
-                          {pv.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div className="h-8 w-full rounded-md border border-input bg-background px-3 flex items-center text-sm font-semibold">
-                    {puntoDeVentaActivo?.name || empresaActiva?.puntosDeVenta?.[0]?.name || '—'}
-                  </div>
-                )}
-              </div>
-            </div>
+            <span className="min-w-0 flex-1 truncate text-[14.5px] font-semibold tracking-[-0.01em]">
+              {empresaActiva?.name || 'AdminApp'}
+            </span>
+            {onAlternar && (
+              <button
+                onClick={onAlternar}
+                title="Contraer barra lateral"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-[7px] text-fg-3
+                           transition-colors hover:bg-surface-3 hover:text-fg-2"
+              >
+                <PanelLeft className="h-4 w-4" />
+              </button>
+            )}
           </>
         )}
-
-        <Separator />
-
-        <nav className="flex flex-col gap-6">
-          {navSections.map((section) => {
-            const empresaSettings = empresaActiva?.settings || {}
-            const enabledModules = empresaSettings.enabled_modules
-            const ownerAuth0Sub = empresaSettings.owner_auth0_sub
-            const isOwner = user?.sub === ownerAuth0Sub
-
-            const routeToModule = {
-              '/pos': 'pos',
-              '/ventas': 'ventas',
-              '/clientes': 'clientes',
-              '/produccion': 'produccion',
-              '/inventario': 'inventario',
-              '/recetas': 'recetas',
-              '/proveedores': 'proveedores',
-              '/ordenes-compra': 'ordenes-compra',
-              '/gastos': 'gastos',
-              '/reportes': 'reportes',
-              '/caja': 'caja',
-              '/impuestos': 'impuestos',
-              '/panel': 'panel',
-              '/facturacion': 'facturacion',
-              '/team': 'equipo',
-              '/suscripcion': 'suscripcion',
-            }
-
-            const visibleItems = section.items.filter(item => {
-              const hasPermission = !item.permission || can(item.permission)
-              if (!hasPermission) return false
-              if (isOwner) return true
-              if (enabledModules && Array.isArray(enabledModules)) {
-                const module = routeToModule[item.to]
-                return module ? enabledModules.includes(module) : true
-              }
-              return true
-            })
-            if (visibleItems.length === 0) return null;
-            return (
-              <div key={section.label}>
-                <h4 className="mb-2 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-                  {section.label}
-                </h4>
-                <div className="flex flex-col gap-0.5">
-                  {visibleItems.map((item) => (
-                    <NavItem key={item.to} {...item} />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </nav>
       </div>
 
-      <Separator className="shrink-0" />
-
-      {/* Footer */}
-      <div className="flex items-center justify-between px-4 py-3 shrink-0 min-h-[56px]">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm font-bold text-muted-foreground shrink-0 overflow-hidden">
-            {displayPicture ? (
-              <img src={displayPicture} alt={displayName} className="h-full w-full object-cover" />
-            ) : (
-              displayInitial
+      {/* Navegación */}
+      <nav className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto overflow-x-hidden px-3 pb-3">
+        {grupos.map((grupo) => (
+          <div key={grupo.label} className="flex flex-col gap-0.5">
+            {abierta && (
+              <div className="eyebrow px-2 pb-1.5">{grupo.label}</div>
             )}
+            {grupo.items.map((item) => (
+              <ItemDeNavegacion
+                key={item.to}
+                {...item}
+                abierta={abierta}
+                activa={estaActivo(item.to)}
+              />
+            ))}
           </div>
-          <div className="flex flex-col min-w-0">
-            <span className="text-sm text-foreground font-semibold truncate">
-              {displayName}
-            </span>
-            <span className="text-[11px] text-muted-foreground truncate">
-              {displayEmail}
-            </span>
-          </div>
+        ))}
+      </nav>
+
+      {/* Usuario */}
+      <div className="flex shrink-0 items-center gap-2.5 border-t border-border px-3 py-2.5">
+        <div className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full border
+                        border-brand-line bg-brand-soft text-[11.5px] font-semibold text-brand-dark">
+          {user?.picture
+            ? <img src={user.picture} alt="" className="h-full w-full object-cover" />
+            : inicial}
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <ThemeToggle />
-          <Tooltip delayDuration={0}>
-            <TooltipTrigger
-              className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-8 w-8 text-muted-foreground hover:text-destructive")}
-              onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
-            >
-              <LogOut className="h-4 w-4" />
-            </TooltipTrigger>
-            <TooltipContent side="top">Cerrar sesión</TooltipContent>
-          </Tooltip>
-        </div>
+
+        {abierta && (
+          <>
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-[12.5px] font-semibold">{nombre}</span>
+              <span className="truncate text-[11px] text-fg-3">
+                {usuario?.email || user?.email || ''}
+              </span>
+            </div>
+
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger
+                onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-[7px] text-fg-3
+                           transition-colors hover:bg-danger-soft hover:text-danger"
+              >
+                <LogOut className="h-[15px] w-[15px]" />
+              </TooltipTrigger>
+              <TooltipContent side="top">Cerrar sesión</TooltipContent>
+            </Tooltip>
+          </>
+        )}
       </div>
     </div>
   )
 }
 
-export function AppSidebar() {
+export function AppSidebar({ abierta, onAlternar }) {
   return (
-    <>
-      {/* Desktop sidebar */}
-      <aside className="hidden lg:flex w-[260px] shrink-0 border-r border-border bg-sidebar text-sidebar-foreground">
-        <SidebarContent />
-      </aside>
+    <aside
+      className={cn(
+        'hidden shrink-0 border-r border-border transition-[width] duration-200 lg:flex',
+        abierta ? 'w-[240px]' : 'w-[60px]'
+      )}
+    >
+      <Contenido abierta={abierta} onAlternar={onAlternar} />
+    </aside>
+  )
+}
 
-      {/* Mobile sidebar */}
-      <div className="lg:hidden fixed top-0 left-0 z-40 p-3">
-        <Sheet>
-          <SheetTrigger className={cn(buttonVariants({ variant: "outline", size: "icon" }), "h-9 w-9")}>
-            <Menu className="h-4 w-4" />
-          </SheetTrigger>
-          <SheetContent side="left" className="w-[260px] p-0">
-            <SidebarContent />
-          </SheetContent>
-        </Sheet>
-      </div>
-    </>
+/** Disparador y panel de la barra lateral en pantallas chicas. */
+export function SidebarMovil() {
+  const { pathname } = useLocation()
+
+  return (
+    <Sheet key={pathname}>
+      <SheetTrigger
+        className="grid h-[30px] w-[30px] place-items-center rounded-[7px] text-fg-2
+                   transition-colors hover:bg-surface-3 lg:hidden"
+        aria-label="Abrir menú"
+      >
+        <Menu className="h-4 w-4" />
+      </SheetTrigger>
+      <SheetContent side="left" className="w-[240px] p-0">
+        <Contenido abierta />
+      </SheetContent>
+    </Sheet>
   )
 }

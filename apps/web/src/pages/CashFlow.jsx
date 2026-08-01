@@ -46,6 +46,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { format } from 'date-fns';
+import PageHeader from '@/components/PageHeader'
 
 const CashFlow = () => {
   const { confirm, ConfirmDialog } = useConfirmDialog();
@@ -112,13 +113,15 @@ const CashFlow = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Flujo de Caja</h1>
+      <PageHeader
+        titulo="Flujo de caja"
+        descripcion="Entradas y salidas de dinero, con el saldo al día. Las ventas y los pagos a proveedores entran solos; acá se cargan los movimientos que no vienen de otra pantalla."
+      >
         <Button onClick={() => setShowModal(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Nuevo Movimiento
         </Button>
-      </div>
+      </PageHeader>
 
       {error && (
         <div className="bg-destructive/10 text-destructive px-4 py-2 rounded-md text-sm">{error}
@@ -135,16 +138,16 @@ const CashFlow = () => {
               <CardContent className="p-4 text-center">
                 <Wallet className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
                 <p className="text-xs text-muted-foreground">Saldo Actual</p>
-                <p className={`text-xl font-bold font-mono ${balance?.balance >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                <p className={`text-xl font-bold font-mono ${balance?.balance >= 0 ? 'text-ok' : 'text-destructive'}`}>
                   {formatCurrency(balance?.balance)}
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
-                <TrendingUp className="h-5 w-5 mx-auto mb-1 text-green-600" />
+                <TrendingUp className="h-5 w-5 mx-auto mb-1 text-ok" />
                 <p className="text-xs text-muted-foreground">Ingresos 30d</p>
-                <p className="text-lg font-bold font-mono text-green-600">{formatCurrency(balance?.total_inflows_30d)}</p>
+                <p className="text-lg font-bold font-mono text-ok">{formatCurrency(balance?.total_inflows_30d)}</p>
               </CardContent>
             </Card>
             <Card>
@@ -158,7 +161,7 @@ const CashFlow = () => {
               <CardContent className="p-4 text-center">
                 <DollarSign className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
                 <p className="text-xs text-muted-foreground">Proyección 30d</p>
-                <p className={`text-lg font-bold font-mono ${balance?.projected_30d >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                <p className={`text-lg font-bold font-mono ${balance?.projected_30d >= 0 ? 'text-ok' : 'text-destructive'}`}>
                   {formatCurrency(balance?.projected_30d)}
                 </p>
               </CardContent>
@@ -167,7 +170,7 @@ const CashFlow = () => {
               <CardContent className="p-4 text-center">
                 <DollarSign className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
                 <p className="text-xs text-muted-foreground">Proyección 60d</p>
-                <p className={`text-lg font-bold font-mono ${balance?.projected_60d >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                <p className={`text-lg font-bold font-mono ${balance?.projected_60d >= 0 ? 'text-ok' : 'text-destructive'}`}>
                   {formatCurrency(balance?.projected_60d)}
                 </p>
               </CardContent>
@@ -204,7 +207,7 @@ const CashFlow = () => {
                       <TableCell className="text-xs">{m.date || '-'}</TableCell>
                       <TableCell><Badge variant="outline" className="text-xs">{m.source}</Badge></TableCell>
                       <TableCell className="text-sm">{m.description}</TableCell>
-                      <TableCell className={`text-right font-mono text-sm font-medium ${m.type === 'inflow' ? 'text-green-600' : 'text-destructive'}`}>
+                      <TableCell className={`text-right font-mono text-sm font-medium ${m.type === 'inflow' ? 'text-ok' : 'text-destructive'}`}>
                         {m.type === 'inflow' ? '+' : '-'}{formatCurrency(m.amount)}
                       </TableCell>
                       <TableCell>
