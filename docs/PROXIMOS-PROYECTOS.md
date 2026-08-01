@@ -175,8 +175,9 @@ Junto con **5c** —los tests de integración de la API— es lo que convierte a
 `useStore.js:38` pide `/products?active=true` sin paginar, y la búsqueda y la
 paginación se hacen en memoria. **La API ya pagina y ya busca; nadie la usa.**
 
-Es el mismo defecto que tenía el historial de ventas, donde además hacía que
-buscar un CAE de la página 3 no devolviera nada.
+No es el mismo caso que el historial de ventas: **acá la búsqueda sí funciona**
+(`Inventory.jsx:118` filtra el catálogo completo, no solo la página). Lo único
+mal es la escala.
 
 Con los 55 productos de Comprafit no se nota. Con dos mil sí, y arrastra a todo
 lo que trabaja sobre esa lista: comparar sucursales y exportar operan sobre lo
