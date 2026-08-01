@@ -221,6 +221,28 @@ const InvoicesList = () => {
   const { confirm, ConfirmDialog } = useConfirmDialog()
   const { can } = usePermission()
 
+  /**
+   * La sucursal que decide la cabecera `X-Punto-De-Venta-Id`, o `null` cuando
+   * no decide nada.
+   *
+   * Existe para que cambiar la sucursal en el encabezado VUELVA A CONSULTAR.
+   * La sucursal del encabezado viaja como cabecera y no como parámetro, así
+   * que `consulta` no cambia y el listado se quedaba mostrando la sucursal
+   * anterior — mientras el `<select>` de la pantalla ya mostraba la nueva y
+   * «Exportar» ya mandaba la cabecera nueva. La tabla, el total de arriba y el
+   * `.xlsx` podían estar hablando de sucursales distintas, y ninguna de las
+   * tres decía cuál.
+   *
+   * Vale `null` en cuanto el usuario elige una sucursal explícita en el filtro
+   * de la pantalla —«Todas» incluido—: ahí manda el filtro (FR-072), el
+   * parámetro viaja en la query y la cabecera ya no cambia el resultado.
+   * Volver a consultar por un cambio que la API va a ignorar sería un pedido
+   * al pedo.
+   */
+  const sucursalDeLaCabecera = consulta.punto_de_venta_id === undefined
+    ? (puntoDeVentaActivo?.id ?? null)
+    : null
+
   const fetchSales = useCallback(async () => {
     setLoading(true)
     try {
@@ -262,7 +284,12 @@ const InvoicesList = () => {
     } finally {
       setLoading(false)
     }
-  }, [consulta])
+    // `sucursalDeLaCabecera` no se usa en el cuerpo a propósito: la manda el
+    // interceptor de axios como cabecera. Está acá para que un cambio de
+    // sucursal en el encabezado rearme `fetchSales` y vuelva a consultar; sin
+    // esta dependencia, la tabla y el total se quedan en la sucursal anterior.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consulta, sucursalDeLaCabecera])
 
   useEffect(() => { fetchSales() }, [fetchSales])
 

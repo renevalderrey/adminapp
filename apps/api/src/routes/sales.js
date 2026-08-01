@@ -12,6 +12,8 @@ const afipService = require('../services/afipService');
 const { fallo, ErrorDeNegocio } = require('../utils/errores');
 const { estadoVenta } = require('../utils/estadoVenta');
 const { filtroVentas } = require('../utils/filtroVentas');
+const { filaDeExport, totalDelPeriodo } = require('../utils/exportVentas');
+const { condicionIvaDeAfip } = require('../utils/condicionIvaAfip');
 
 /**
  * El «hoy» del negocio, para completar el rango cuando no viene.
@@ -109,9 +111,10 @@ router.get('/', checkPermission('ventas.ver'), async (req, res) => {
       offset: filtro.offset,
     });
 
-    // DECIMAL vuelve como string desde el driver de Postgres. Sin parseFloat,
-    // el total del periodo llega como texto y la pantalla lo concatena en vez
-    // de sumarlo, sin que nada falle.
+    // La suma va con el MISMO `where` que el listado. Sin el, el encabezado
+    // muestra el total de todas las ventas de la empresa mientras la tabla
+    // muestra las del filtro: dos numeros que se leen juntos y no hablan de lo
+    // mismo (FR-079).
     //
     // Incluye las anuladas a proposito: el archivo exportado las lleva, y la
     // suma de su columna Total tiene que coincidir con este numero. La
@@ -134,7 +137,7 @@ router.get('/', checkPermission('ventas.ver'), async (req, res) => {
       ok: true,
       data,
       total: count,
-      total_periodo: parseFloat(suma) || 0,
+      total_periodo: totalDelPeriodo(suma),
       page: filtro.page,
       totalPages: Math.max(1, Math.ceil(count / filtro.limit)),
       // El rango efectivamente aplicado: la pantalla inicializa sus campos de
@@ -184,65 +187,10 @@ router.get('/summary', checkPermission('ventas.ver'), async (req, res) => {
 /** Mas de esto no se baja en un solo archivo. */
 const LIMITE_EXPORT = 5000;
 
-/**
- * Etiquetas de medio de pago. Son las del sistema anterior, que es lo que el
- * usuario leyó durante años en sus planillas: cambiarlas ahora hace que dos
- * exportaciones del mismo dato no se puedan comparar.
- */
-const ETIQUETAS_DE_PAGO = {
-  ef: 'Efectivo',
-  tr: 'Transferencia',
-  qr: 'QR',
-  td: 'T. Débito',
-  tc1: 'Créd. 1 pago',
-  tc3v: 'Visa 3c',
-  tc3m: 'Master 3c',
-  tc3n: 'Naranja 3c',
-  al: 'Alianza',
-  tc: 'T. Crédito',
-};
-
-const ETIQUETAS_DE_TIPO = { 1: 'Factura A', 6: 'Factura B', 11: 'Factura C' };
-
-/**
- * El identificador del comprobante fiscal: «0005-00014882».
- *
- * Los tres campos juntos —punto de venta, tipo y numero— son lo que identifica
- * un comprobante ante ARCA; el numero suelto no identifica nada, porque la
- * numeracion es correlativa POR punto de venta. Una venta sin comprobante
- * fiscal no tiene numero: va el id de la operacion, que es lo unico que se
- * puede dictar por telefono para encontrarla.
- */
-function numeroDeComprobanteFormateado(venta) {
-  if (!venta.afip_cae || !venta.afip_nro) return venta.id;
-
-  const pv = String(venta.afip_pv || 0).padStart(4, '0');
-  const nro = String(venta.afip_nro).padStart(8, '0');
-  return `${pv}-${nro}`;
-}
-
-/** Una fila del archivo: las diez columnas, en orden. */
-function filaDeExport(venta) {
-  return {
-    fecha: venta.date,
-    hora: venta.time,
-    tipo: ETIQUETAS_DE_TIPO[venta.afip_type] || 'Sin comprobante fiscal',
-    comprobante: numeroDeComprobanteFormateado(venta),
-    // Como string: el navegador lo escribe como celda de texto para que Excel
-    // no convierta 14 digitos a notacion cientifica y pierda los ultimos.
-    cae: venta.afip_cae || '',
-    cliente: (venta.customer && venta.customer.name) || venta.customer_name || 'Consumidor final',
-    sucursal: (venta.puntoDeVenta && venta.puntoDeVenta.name) || '—',
-    // La misma etiqueta que el badge de la fila: si se derivaran por separado,
-    // el archivo terminaria diciendo algo distinto de la pantalla.
-    estado: estadoVenta(venta).etiqueta,
-    medio_de_pago: ETIQUETAS_DE_PAGO[venta.payment_method] || venta.payment_method || '—',
-    // NUMERO, no string. El DECIMAL vuelve como texto del driver, y una
-    // columna de texto no suma en la planilla: el archivo abre, se ve bien, y
-    // el total no da.
-    total: Number(venta.total) || 0,
-  };
-}
+// Lo que decide QUE dice cada celda del archivo vive en utils/exportVentas.js.
+// Estaba aca adentro, y adentro de un handler no lo alcanza ningun test: la
+// verificacion pudo revertir la etiqueta de estado, el CAE a numero y el total
+// a texto sin que fallara una sola prueba.
 
 // ⚠ ORDEN DE DECLARACIÓN ⚠
 //
@@ -659,20 +607,27 @@ async function resolverComprobante(sale, body, empresaId, transaction) {
   // sea RI cae en C.
   const tipo = parseInt(body.type, 10) || (ajuste('tax_condition') === 'RI' ? 6 : 11);
 
+  // ── La ficha del cliente ──
+  //
+  // Se lee UNA vez y alimenta DOS campos del comprobante: el CUIT y la
+  // condición de IVA del receptor. Antes se pedía solo `tax_id`, y solo cuando
+  // faltaba el CUIT en el body: `tax_condition` no se leía nunca, así que la
+  // condición fiscal del comprador no podía salir de su ficha ni aunque la
+  // ficha la tuviera cargada.
+  const cliente = sale.customer_id
+    ? await Customer.findOne({
+      where: scoped({ id: sale.customer_id }, empresaId),
+      attributes: ['id', 'tax_id', 'tax_condition'],
+      transaction,
+    })
+    : null;
+
   // El CUIT sale de la ficha del cliente de la venta. Sin ficha, el
   // comprobante va a consumidor final: afipService manda DocTipo 99 cuando no
   // recibe CUIT.
   let cuit = body.customerCuit;
 
   if (cuit === undefined || cuit === null || cuit === '') {
-    const cliente = sale.customer_id
-      ? await Customer.findOne({
-        where: scoped({ id: sale.customer_id }, empresaId),
-        attributes: ['id', 'tax_id'],
-        transaction,
-      })
-      : null;
-
     // Se sacan los separadores: la ficha guarda el CUIT como lo tipeó el
     // usuario ("20-12345678-9") y afipService decide DocTipo por el largo del
     // string. Con guiones, un CUIT de 11 dígitos mide 13 y el DocNro sale con
@@ -681,9 +636,25 @@ async function resolverComprobante(sale, body, empresaId, transaction) {
     cuit = guardado || null;
   }
 
-  // Condición de IVA del receptor: 1 para Factura A, 5 para B y C. Es lo que
-  // ya manda el POS.
+  // ── Condición de IVA del receptor (FR-043, AC 3.4) ──
+  //
+  // Sale de la ficha del cliente. Antes se derivaba del TIPO de comprobante
+  // —1 para Factura A, 5 para el resto—, y eso es un error fiscal, no un
+  // detalle: una venta a un Responsable Inscripto se declaraba ante ARCA como
+  // Consumidor Final, con el CUIT del RI adjunto. El comprobante sale, ARCA lo
+  // autoriza, y queda declarado con una condición que no es la del comprador.
+  // Deshacerlo exige una nota de crédito, que el sistema todavía no emite.
+  //
+  // El orden es body → ficha → tipo de comprobante:
+  //   - El body manda, porque es lo que sigue mandando el POS y lo que permite
+  //     corregir a mano una ficha que esté mal.
+  //   - La ficha, cuando la venta tiene cliente y la condición se reconoce.
+  //   - La regla vieja por tipo queda como respaldo, para las ventas sin ficha
+  //     y para una condición que el mapeo no conoce. `condicionIvaDeAfip`
+  //     devuelve null ante lo desconocido justamente para poder caer acá en vez
+  //     de inventar un 5.
   const condicionIva = parseInt(body.customerVatCondition, 10)
+    || condicionIvaDeAfip(cliente && cliente.tax_condition)
     || ([1, 2, 3].includes(tipo) ? 1 : 5);
 
   // El punto de venta sale de la venta si ya tenía uno; si no, del configurado

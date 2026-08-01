@@ -24,6 +24,17 @@ function desde(marca) {
   return FUENTE.slice(i);
 }
 
+/** El texto entre dos marcas del archivo. */
+function entre(inicio, fin) {
+  const i = FUENTE.indexOf(inicio);
+  const j = FUENTE.indexOf(fin, i);
+
+  expect(i).toBeGreaterThanOrEqual(0);
+  expect(j).toBeGreaterThan(i);
+
+  return FUENTE.slice(i, j);
+}
+
 /** Los paths en el orden en que Express los va a evaluar. */
 function rutasDeclaradas() {
   return router.stack
@@ -189,5 +200,114 @@ describe('El error de AFIP se persiste fuera de la transacción', () => {
 
     expect(revertir).toBeGreaterThanOrEqual(0);
     expect(registrar).toBeGreaterThan(revertir);
+  });
+});
+
+// ════════════════════════════════════════════
+//  Lo que el handler decide y ninguna funcion pura puede fijar
+//
+//  Estos tres son los que la verificacion pudo revertir sin que fallara nada:
+//  el orden del export, la suma del periodo sin su filtro, y la condicion de
+//  IVA que no salia del cliente. No son calculos —son decisiones de la
+//  consulta— asi que no hay funcion pura donde probarlos: van como guardia
+//  estatica, igual que el lock y el orden de declaracion de las rutas.
+// ════════════════════════════════════════════
+
+/** Las lineas `order:` de un bloque, tal como estan escritas. */
+function ordenesDe(bloque) {
+  return (bloque.match(/order:[^\n]*/g) || []).map((linea) => linea.trim());
+}
+
+describe('El archivo exportado se puede comparar fila por fila contra la pantalla', () => {
+  const listado = () => entre("router.get('/', checkPermission", "router.get('/summary'");
+  const exportar = () => entre("router.get('/export'", "router.get('/:id'");
+
+  // Con dos criterios de orden distintos, el archivo y la pantalla listan las
+  // mismas ventas en distinto orden: comparar una fila contra la otra deja de
+  // ser posible justo cuando alguien necesita hacerlo.
+  it('el listado ordena por el filtro, no por un criterio escrito a mano', () => {
+    expect(ordenesDe(listado())).toEqual(['order: filtro.order,']);
+  });
+
+  it('el export ordena EXACTAMENTE igual que el listado', () => {
+    expect(ordenesDe(exportar())).toEqual(['order: filtro.order,']);
+  });
+
+  // El orden lo decide filtroVentas y esta testeado ahi: `date DESC, time
+  // DESC, id DESC`. Lo que se fija aca es que los dos handlers lo usen.
+  it('el filtro es el mismo objeto en los dos: se arma una sola vez por handler', () => {
+    expect(listado()).toMatch(/const filtro = filtroVentas\(req\.query/);
+    expect(exportar()).toMatch(/const filtro = filtroVentas\(req\.query/);
+  });
+
+  // La fila del archivo se arma en utils/exportVentas.js, donde la alcanzan
+  // los tests. Volver a escribirla adentro del handler la saca de cobertura.
+  it('las filas las arma filaDeExport, no el handler', () => {
+    expect(exportar()).toMatch(/filaDeExport\(venta\.toJSON\(\)\)/);
+  });
+});
+
+describe('El total del periodo corresponde al resultado filtrado (FR-079)', () => {
+  const listado = () => entre("router.get('/', checkPermission", "router.get('/summary'");
+
+  // Sin el `where`, el encabezado muestra el total de TODAS las ventas
+  // historicas de la empresa mientras la tabla muestra las del filtro. Los dos
+  // numeros se leen juntos y ninguno dice de que esta hablando.
+  it('la suma va con el mismo where que el listado', () => {
+    expect(listado()).toMatch(/Sale\.sum\('total',\s*\{\s*where\b/);
+  });
+
+  it('el where de la suma es el mismo objeto, ya acotado por empresa', () => {
+    const bloque = listado();
+    const scoped = bloque.indexOf('const where = scoped(filtro.where, req.empresaId)');
+    const suma = bloque.indexOf("Sale.sum('total'");
+
+    expect(scoped).toBeGreaterThanOrEqual(0);
+    expect(suma).toBeGreaterThan(scoped);
+  });
+
+  // parseFloat vive en utils/exportVentas.js con su test: el DECIMAL vuelve
+  // como string y la pantalla lo concatena en vez de sumarlo.
+  it('el total se convierte a numero con totalDelPeriodo', () => {
+    expect(listado()).toMatch(/total_periodo: totalDelPeriodo\(suma\)/);
+  });
+});
+
+describe('La condicion de IVA del receptor sale de la ficha del cliente (FR-043)', () => {
+  const resolver = () => entre('async function resolverComprobante', 'Guarda el rechazo de AFIP');
+
+  // La ficha se consultaba pidiendo solo ['id', 'tax_id']: `tax_condition` no
+  // se leia nunca, asi que la condicion no podia salir de ahi ni aunque
+  // estuviera cargada.
+  it('la ficha se consulta pidiendo tax_condition', () => {
+    expect(resolver()).toMatch(/attributes:\s*\['id',\s*'tax_id',\s*'tax_condition'\]/);
+  });
+
+  // Derivarla del TIPO de comprobante declara a un Responsable Inscripto como
+  // Consumidor Final, con el CUIT del RI adjunto. El comprobante sale, ARCA lo
+  // autoriza, y queda mal declarado: deshacerlo exige una nota de credito.
+  it('la condicion se traduce desde la ficha con condicionIvaDeAfip', () => {
+    expect(resolver()).toMatch(/condicionIvaDeAfip\(cliente && cliente\.tax_condition\)/);
+  });
+
+  // El orden es body -> ficha -> tipo de comprobante. La regla vieja queda
+  // como respaldo para las ventas sin ficha, no como primera opcion.
+  it('la regla por tipo de comprobante queda DESPUES de la ficha', () => {
+    const bloque = resolver();
+
+    expect(bloque.indexOf('condicionIvaDeAfip('))
+      .toBeLessThan(bloque.indexOf('[1, 2, 3].includes(tipo) ? 1 : 5'));
+  });
+
+  it('el body sigue mandando sobre las dos', () => {
+    const bloque = resolver();
+
+    expect(bloque.indexOf('parseInt(body.customerVatCondition, 10)'))
+      .toBeLessThan(bloque.indexOf('condicionIvaDeAfip('));
+  });
+
+  // Toda lectura por un id que sale de un registro del cliente lleva empresa.
+  it('la ficha se lee acotada por empresa', () => {
+    expect(resolver()).toMatch(/scoped\(\{ id: sale\.customer_id \}, empresaId\)/);
   });
 });

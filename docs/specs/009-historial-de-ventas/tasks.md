@@ -3,9 +3,10 @@
 **Input**: documentos de diseño en `docs/specs/009-historial-de-ventas/`
 (`spec.md`, `plan.md`, `data-model.md`, `contracts/api-endpoints.md`)
 
-Treinta y una tareas en nueve fases. El orden sale de «Orden de construcción» del
-plan y no es arbitrario: nada de la pantalla se puede escribir antes de que la
-API tenga contra qué contestar.
+Treinta y una tareas en nueve fases, más cinco de la fase 10 —los cuatro
+incumplimientos que encontró `sdd-verify`, agregadas después de la verificación—.
+El orden sale de «Orden de construcción» del plan y no es arbitrario: nada de la
+pantalla se puede escribir antes de que la API tenga contra qué contestar.
 
 `[P]` marca las que se pueden hacer en paralelo porque tocan archivos distintos.
 
@@ -570,6 +571,82 @@ nuevas; y la documentación dice lo que cambió.
 
 ---
 
+## Phase 10: Los cuatro incumplimientos que encontró `sdd-verify`
+
+**Purpose**: cerrar lo que la verificación encontró. Tres son código y uno es la
+spec diciendo algo que el sistema no puede hacer. El hallazgo transversal es el
+tercero: diez mutaciones que revertían requisitos concretos y **las 684 pruebas
+seguían pasando**.
+
+- [x] **T932** Corregir el error fiscal de la condición de IVA del receptor
+      (hallazgo 2). `resolverComprobante` (`sales.js`) consultaba la ficha del
+      cliente pidiendo solo `['id', 'tax_id']` y derivaba la condición del TIPO
+      de comprobante: una venta a un Responsable Inscripto se declaraba ante ARCA
+      como **Consumidor Final con el CUIT del RI adjunto**. Ahora la ficha se lee
+      con `tax_condition` y la condición sale de ahí. Orden: `body` → ficha →
+      regla vieja por tipo, que queda como respaldo para las ventas sin ficha.
+      El mapeo texto → código de ARCA se extrajo a
+      `apps/api/src/utils/condicionIvaAfip.js` como función pura, y devuelve
+      `null` ante un valor desconocido para poder caer al respaldo en vez de
+      inventar un 5.
+      **Tests**: `tests/condicionIvaAfip.test.js` (cada valor, las tres formas de
+      escribirlo, y lo desconocido) y las cuatro guardias de
+      `tests/rutasDeVentas.test.js` que fijan que la ruta lea `tax_condition`,
+      use el mapeo, deje la regla vieja después y lea la ficha acotada por
+      empresa.
+      **Verificación**: leer `tax_condition` de nuevo sin ella, o traducir `ri`
+      como consumidor final, o devolver 5 ante lo desconocido, hace fallar tests.
+
+- [x] **T933** Corregir el supuesto 7 de `spec.md`, que decía que la condición de
+      IVA es «1 para Factura A y 5 para B y C» y contradecía a FR-043 y al
+      AC 3.4. Mandan los criterios de aceptación: el supuesto ahora describe el
+      mapeo desde la ficha y deja la regla por tipo como respaldo declarado.
+
+- [x] **T934** Corregir FR-044 y el AC 3.5 de `spec.md` (hallazgo 1). Pedían que
+      el punto de venta de AFIP saliera del `punto_de_venta_id` de la venta, y
+      esa columna con el número de ARCA **no existe** en `puntos_de_venta`.
+      Ahora dicen la cadena que el sistema sí puede hacer —`body.pv` →
+      `sale.afip_pv` → `settings.afip_pv`— con la consecuencia vigente escrita
+      (dos locales comparten numeración correlativa) y la remisión al proyecto
+      **5b · Punto de venta de AFIP por sucursal**.
+      **No se agregó la columna**: sería una columna que ninguna pantalla puede
+      completar.
+
+- [x] **T935** Corregir la desincronización de la sucursal en
+      `pages/InvoicesList.jsx` (hallazgo 4). `fetchSales` dependía solo de
+      `consulta`, y la sucursal del encabezado viaja como cabecera
+      `X-Punto-De-Venta-Id`: cambiarla actualizaba el `<select>` de la pantalla y
+      el `.xlsx`, pero no la tabla ni el total de arriba. Se agregó
+      `sucursalDeLaCabecera` como dependencia, con valor `null` en cuanto el
+      usuario elige una sucursal explícita en el filtro de la pantalla — ahí
+      manda el filtro (FR-072) y la cabecera ya no cambia el resultado.
+      **Test**: `apps/web/src/tests/historialDeVentas.test.js`, guardia estática
+      sobre el archivo.
+
+- [x] **T936** Sacar del handler del export las funciones puras que ningún test
+      alcanzaba (hallazgo 3). `filaDeExport`, `numeroDeComprobanteFormateado`,
+      las dos tablas de etiquetas y el `parseFloat` del total del período pasaron
+      a `apps/api/src/utils/exportVentas.js`.
+      **Tests**: `tests/exportVentas.test.js` (el total como número, el CAE como
+      texto de 14 dígitos, la etiqueta de estado contra los cinco casos, el tipo,
+      el número de comprobante, las diez columnas en orden) más las guardias de
+      `tests/rutasDeVentas.test.js` para lo que no es una función pura: que el
+      export ordene con `filtro.order` igual que el listado, y que la suma del
+      período vaya con el mismo `where`.
+      **Verificación**: las **diez** mutaciones de la API se aplicaron una por
+      una y cada una hace fallar al menos un test.
+
+**Checkpoint**: 613 pruebas en la API y 156 en la web, todas pasando;
+`npm run build` pasa; las guardias de aislamiento y observabilidad siguen limpias
+sin excepciones nuevas.
+
+**Lo que queda abierto**: las cinco mutaciones del **frontend** que encontró
+`sdd-verify` siguen sin cobertura. Necesitan tests de render y `apps/web` no
+tiene infraestructura para eso —ni jsdom ni testing-library—. Montarla es un
+proyecto aparte y no se inventó acá.
+
+---
+
 ## Lo que NO se verifica acá: los pasos manuales de `sdd-verify`
 
 **Esto no son tareas.** Son las verificaciones que solo se pueden hacer contra
@@ -613,8 +690,9 @@ justamente para no disfrazarlas de test. El plan las relevó una por una.
 | 7 · Filtros y búsqueda | T923–T926 (4) | Los tres defectos del relevamiento cerrados |
 | 8 · Export | T927–T928 (2) | El listado filtrado en `.xlsx` |
 | 9 · Guardias y documentación | T929–T931 (3) | El patrón no se repite mal; el operador se entera |
+| 10 · Los cuatro incumplimientos de `sdd-verify` | T932–T936 (5) | La condición de IVA sale del cliente; la spec dice lo que el sistema puede hacer; la pantalla no se desincroniza; y revertir la API hace fallar tests |
 
-**Total: 31 tareas.**
+**Total: 36 tareas.**
 
 **La primera es T901**: la migración de `afip_ultimo_error` y `afip_ultimo_intento`
 con el índice `(empresa_id, date)`. Sin esas dos columnas no existe la diferencia

@@ -260,9 +260,13 @@ tocar el stock.
 4. **Given** una venta con cliente asociado, **When** reintento, **Then** el CUIT
    y la condición de IVA salen de ese cliente; sin cliente asociado, sale como
    consumidor final (DocTipo 99, condición 5).
-5. **Given** una venta con `punto_de_venta_id`, **When** reintento, **Then** el
-   punto de venta de AFIP sale de ahí; si la venta no lo tiene, de
-   `settings.afip_pv`.
+5. **Given** una venta que ya se facturó alguna vez y tiene `afip_pv`, **When**
+   reintento, **Then** el punto de venta de AFIP sale de ahí; si la venta no lo
+   tiene, de `settings.afip_pv`; y si el body manda `pv`, manda el body. Sin
+   ninguno de los tres, la API responde «Falta el punto de venta de AFIP» sin
+   llamar a ARCA. **No sale de la sucursal de la venta**: `puntos_de_venta` no
+   tiene el número de punto de venta de ARCA — eso es el proyecto 5b, ver
+   FR-044.
 6. **Given** el reintento en curso, **When** miro el botón, **Then** está
    deshabilitado y muestra que está trabajando; un segundo clic no dispara un
    segundo pedido.
@@ -551,8 +555,30 @@ estoy viendo».
 - **FR-043**: El CUIT y la condición de IVA DEBEN salir del cliente asociado a la
   venta. Sin cliente asociado, DEBE emitirse a consumidor final (DocTipo 99,
   condición 5).
-- **FR-044**: El punto de venta de AFIP DEBE salir del `punto_de_venta_id` de la
-  venta. Si la venta no lo tiene, de `settings.afip_pv`.
+- **FR-044**: El punto de venta de AFIP DEBE resolverse en el servidor, en este
+  orden: `body.pv` → `sale.afip_pv` (el punto de venta con el que la venta ya se
+  facturó alguna vez) → `settings.afip_pv`. Si ninguno de los tres da un entero,
+  la API DEBE responder «Falta el punto de venta de AFIP» y NO DEBE llamar a
+  ARCA.
+
+  > **No sale de la sucursal, y no puede salir**: `puntos_de_venta` no tiene
+  > ninguna columna con el número de punto de venta de ARCA — tiene `id`, `name`,
+  > `code`, `address` e `is_active`—. El número vive en un único `Setting` por
+  > empresa, y el POS ya factura todas las sucursales con ese mismo valor
+  > (`Billing.jsx:243`). La versión anterior de este requisito pedía que saliera
+  > del `punto_de_venta_id` de la venta: describía una capacidad que el sistema
+  > no tiene, y un criterio de aceptación que no se puede cumplir no es un
+  > criterio.
+  >
+  > **Consecuencia vigente**: una empresa con dos locales que factura desde los
+  > dos comparte numeración correlativa de ARCA entre ambos. Es el comportamiento
+  > actual; esta funcionalidad no lo empeora ni lo arregla.
+  >
+  > Tenerlo por sucursal es el proyecto **5b · Punto de venta de AFIP por
+  > sucursal** (`docs/PROXIMOS-PROYECTOS.md`): necesita una columna en
+  > `puntos_de_venta`, el campo en la pantalla de sucursales y una migración que
+  > decida qué pasa con los comprobantes ya emitidos. El análisis completo está
+  > en `plan.md`, «Lo que la spec pide y no se puede construir como está».
 - **FR-045**: Mientras el pedido está en vuelo el botón DEBE estar deshabilitado
   y mostrarlo. Un segundo clic NO DEBE disparar un segundo pedido.
 - **FR-046**: `POST /api/sales/:id/facturar` DEBE tomar la venta **con lock**,
@@ -773,9 +799,28 @@ Supuestos vigentes. Si alguno resulta falso, cambia el resultado.
    por defecto (Factura C), que es lo que ya hace el POS: cualquier condición que
    no sea `RI` cae en `afip_c` (`Billing.jsx:70`). Las tres condiciones válidas
    son `Monotributo`, `RI` y `Exento` (`afip.js:27`).
-7. Los códigos de AFIP son los que ya usa el POS: Factura A = 1, Factura B = 6,
-   Factura C = 11 (`Billing.jsx:234`). La condición de IVA del receptor es 1 para
-   Factura A y 5 para B y C (`Billing.jsx:79-80`).
+7. Los códigos de tipo de comprobante son los que ya usa el POS: Factura A = 1,
+   Factura B = 6, Factura C = 11 (`Billing.jsx:234`).
+
+   La **condición de IVA del receptor** sale de la ficha del cliente, con el
+   mapeo `Customer.tax_condition` → código de ARCA: `ri` /
+   `responsable_inscripto` → 1, `exento` → 4, `consumidor_final` → 5,
+   `monotributo` → 6. El mapeo es una función pura
+   (`apps/api/src/utils/condicionIvaAfip.js`) y devuelve `null` ante un valor que
+   no reconoce.
+
+   La regla vieja —1 para Factura A y 5 para B y C (`Billing.jsx:79-80`)— queda
+   **solo como respaldo**: para las ventas sin ficha de cliente y para una
+   condición que el mapeo no reconoce. El body sigue mandando sobre las dos.
+
+   > Este supuesto decía antes que la condición era 1 para A y 5 para B y C, y
+   > punto. Contradecía a FR-043 y al AC 3.4, que piden que salga del cliente, y
+   > el código estaba escrito según el supuesto. Mandan FR-043 y el AC 3.4: son
+   > los criterios de aceptación. Derivarla del tipo de comprobante es un error
+   > fiscal, no un atajo — una venta a un Responsable Inscripto se declaraba ante
+   > ARCA como Consumidor Final con el CUIT del RI adjunto, el comprobante salía,
+   > ARCA lo autorizaba, y quedaba mal declarado. Corregirlo después exige una
+   > nota de crédito, que el sistema todavía no emite.
 8. **El «nombre libre» del cliente es `Sale.customer_name`.** Hoy ese campo se
    persiste **solo si la venta tiene `customer_id`** (`sales.js:164-170`), y el
    POS guarda el nombre de un cliente sin ficha dentro de `notes`
