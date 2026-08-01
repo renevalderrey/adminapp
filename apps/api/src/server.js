@@ -354,6 +354,7 @@ app.use('/api/empresas', ...authSinEmpresa, require('./routes/empresas'));
 app.use('/api/import', ...authEmpresa, require('./routes/import'));
 app.use('/api/precios', ...authEmpresa, require('./routes/precios'));
 app.use('/api/gastos-variables', ...authEmpresa, require('./routes/gastosVariables'));
+app.use('/api/comparador', ...authEmpresa, require('./routes/comparador'));
 
 // ── Auth routes (invitaciones públicas + protegidas) ──
 app.get('/api/auth/invite/:token', require('./routes/auth'));

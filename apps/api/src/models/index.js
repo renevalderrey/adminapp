@@ -38,6 +38,7 @@ const StockMovement = require('./StockMovement');
 const TiendanubeMapping = require('./TiendanubeMapping');
 const ActualizacionPrecio = require('./ActualizacionPrecio');
 const GastoVariable = require('./GastoVariable');
+const ListaProveedor = require('./ListaProveedor');
 
 // ── Relaciones ──
 
@@ -187,4 +188,5 @@ module.exports = {
   TiendanubeMapping,
   ActualizacionPrecio,
   GastoVariable,
+  ListaProveedor,
 };

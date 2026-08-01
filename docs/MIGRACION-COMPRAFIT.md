@@ -6,24 +6,19 @@ comparación función por función contra AdminApp.
 
 ---
 
-> **Actualización del 1 de agosto de 2026.** De las seis funciones que
-> faltaban, **cinco están hechas**. Queda solo el comparador de proveedores.
-> El detalle está en [«Lo que se cerró»](#lo-que-se-cerró); el resto del
-> documento describe el relevamiento original y sigue siendo válido como mapa
-> del sistema viejo.
+> **Actualización del 1 de agosto de 2026.** Las seis funciones que faltaban
+> **están las seis hechas**, incluido el comparador de proveedores. El detalle
+> está en [«Lo que se cerró»](#lo-que-se-cerró); el resto del documento
+> describe el relevamiento original y sigue siendo válido como mapa del sistema
+> viejo.
 
 ## Respuesta corta
 
-**Sí, con una sola pérdida: el comparador de proveedores.** AdminApp hace más
-cosas que el sistema viejo en todo lo que es contabilidad, fiscalidad y
-control, y ahora también cubre los flujos diarios que le faltaban — pedido por
-WhatsApp, faltantes, actualización masiva de precios con deshacer, vuelto y
-gastos variables.
+**Sí, sin pérdida.** AdminApp cubre todo lo que hacía el sistema viejo y suma
+factura electrónica ante ARCA, clientes con cuenta corriente, recetas,
+producción, caja, impuestos, reportes y multi-empresa.
 
-Migrar hoy significa que el cliente gana factura electrónica, clientes con
-cuenta corriente, recetas, producción, caja e impuestos, y pierde la pantalla
-que compara listas de varios proveedores para ver quién tiene cada producto más
-barato.
+No queda ninguna función del sistema anterior sin equivalente.
 
 La recomendación está al final.
 
@@ -189,15 +184,38 @@ Dos decisiones que conviene conocer, porque el sistema viejo hacía otra cosa:
   productos elaborados que lo usan se recostean solos. Comprafit no tenía
   recetas, así que este caso no existía.
 
-### Lo único que sigue faltando
+### Comparador de proveedores
 
-| Qué | Por qué importa | Tamaño |
-|---|---|---|
-| **Comparador de proveedores** | Es cómo se decide a quién comprarle: subir las listas de varios proveedores, emparejar productos por nombre y ver quién tiene cada uno más barato | grande |
+La sexta y última, en `/comparador`. Se cargan las listas de precios de cada
+proveedor —pegadas del mail o subidas como Excel— y la pantalla arma la tabla:
+un producto por fila, una columna por proveedor, el precio más bajo resaltado y
+la diferencia contra el más caro.
 
-Es la función más elaborada del sistema viejo —normaliza nombres, calcula
-similitud entre descripciones y arma la tabla comparativa— y es trabajo nuevo,
-no migración.
+Como no hay código común entre proveedores, el emparejamiento es por nombre:
+similitud de Jaccard sobre las palabras, con umbral 0,45. Es la misma medida
+que usaba el sistema anterior, mantenida a propósito porque ya estaba calibrada
+contra los nombres reales de este rubro.
+
+Tres diferencias con la versión vieja, las tres por errores que producía:
+
+- **Se elige el mejor candidato de cada proveedor, no el primero.** Con dos
+  productos parecidos del mismo proveedor («Whey 1kg» y «Whey 1kg promo»),
+  tomar el primero emparejaba el que estuviera antes en la lista.
+- **Un SKU igual gana sobre el nombre.** Un SKU compartido es una afirmación
+  del proveedor; el nombre es una heurística.
+- **Los precios se parsean con las reglas argentinas.** `1.234,50` son mil
+  doscientos treinta y cuatro con cincuenta. Leerlo al revés convierte $1.234
+  en $1,234 y hace que un proveedor parezca mil veces más barato sin que nada
+  falle.
+
+Las listas se guardan en la base y no en el navegador —donde las tenía el
+sistema viejo—: sobreviven a un cambio de computadora y las ve todo el equipo.
+Una lista se puede archivar sin borrarla, para que la del mes pasado no ensucie
+la comparación de hoy.
+
+Las filas cuyo emparejamiento no es seguro se marcan **«coincidencia parcial ·
+revisar»**: es preferible que alguien mire antes de decidir una compra a que la
+pantalla afirme algo que no puede saber.
 
 ---
 
@@ -229,19 +247,16 @@ Tres advertencias:
 
 ## Recomendación
 
-**Ya se le puede proponer como reemplazo, diciendo la única cosa que falta.**
+**Ya se le puede proponer como reemplazo completo.**
 
-El día a día está cubierto: vender, cobrar, facturar ante ARCA, ver qué falta,
-pedirlo por WhatsApp, actualizar precios cuando llega una lista nueva y cargar
-los gastos del mes. Eso es la semana completa de Comprafit.
+La semana entera de Comprafit está cubierta: vender, cobrar, facturar ante
+ARCA, ver qué falta, pedirlo por WhatsApp, comparar proveedores, actualizar
+precios cuando llega una lista nueva y cargar los gastos del mes.
 
-Lo que hay que decirle de frente: **el comparador de proveedores todavía no
-está.** Para eso puede seguir usando el sistema viejo unas semanas —los datos
-no se pisan, son sistemas separados— o mandarnos las listas y comparamos a
-mano mientras se construye.
-
-Decirlo antes es la diferencia entre una limitación conocida y una promesa
-incumplida. Lo segundo se descubre el primer lunes y no se recupera.
+Lo honesto que sí conviene decirle: **el emparejamiento del comparador es una
+heurística sobre los nombres**, igual que en el sistema viejo. Acierta en la
+gran mayoría, y las filas dudosas están marcadas — pero no es magia, y antes de
+una compra grande conviene mirarlas.
 
 ### Antes de migrarlo
 

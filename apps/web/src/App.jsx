@@ -28,6 +28,7 @@ import Onboarding from '@/pages/Onboarding'
 import Team from '@/pages/Team'
 import SubscriptionSettings from '@/pages/SubscriptionSettings'
 import Faltantes from '@/pages/Faltantes'
+import Comparador from '@/pages/Comparador'
 
 function RouteGuard({ children, requiredModule }) {
   const usuario = useStore(s => s.usuario)
@@ -231,6 +232,7 @@ function App() {
               <Route path="/proveedores" element={<Orders />} />
               <Route path="/ordenes-compra" element={<RouteGuard requiredModule="ordenes-compra"><PurchaseOrders /></RouteGuard>} />
               <Route path="/faltantes" element={<Faltantes />} />
+              <Route path="/comparador" element={<Comparador />} />
               <Route path="/reportes" element={<RouteGuard requiredModule="reportes"><Reports /></RouteGuard>} />
               <Route path="/gastos" element={<Expenses />} />
               <Route path="/panel" element={<Dashboard />} />

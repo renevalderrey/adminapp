@@ -1,122 +1,297 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
+/* ════════════════════════════════════════════
+   Sistema de diseño · AdminApp
+   Origen: maqueta "AdminApp Rediseño" (Claude Design)
+
+   Los valores de acá NO se eligen por página. Son los tokens de la maqueta,
+   copiados tal cual, y todo lo demás se construye con ellos. Si una pantalla
+   necesita un color que no está en esta lista, la discusión es si falta un
+   token — no si conviene un hex suelto.
+
+   Las reglas de uso están en docs/REGLAS-DISENO.md.
+   ════════════════════════════════════════════ */
+
 @theme inline {
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-  --radius: 0.625rem;
+
+  /* 12px de radio en tarjetas, 8-9px en controles. El valor base es el de
+     los controles; las tarjetas usan rounded-xl. */
+  --radius: 0.5rem;
+
+  /* ── Marca ── */
   --color-brand: #00B4B6;
   --color-brand-dark: #008B8E;
+  --color-brand-soft: #E4F6F6;
+  --color-brand-line: #9FE0E0;
   --color-brand-deep: #0B3055;
-  --color-background: oklch(1 0 0);
-  --color-foreground: oklch(0.145 0 0);
-  --color-card: oklch(1 0 0);
-  --color-card-foreground: oklch(0.145 0 0);
-  --color-popover: oklch(1 0 0);
-  --color-popover-foreground: oklch(0.145 0 0);
-  --color-primary: oklch(0.205 0 0);
-  --color-primary-foreground: oklch(0.985 0 0);
-  --color-secondary: oklch(0.97 0 0);
-  --color-secondary-foreground: oklch(0.205 0 0);
-  --color-muted: oklch(0.97 0 0);
-  --color-muted-foreground: oklch(0.556 0 0);
-  --color-accent: oklch(0.97 0 0);
-  --color-accent-foreground: oklch(0.205 0 0);
-  --color-destructive: oklch(0.577 0.245 27.325);
-  --color-destructive-foreground: oklch(0.985 0 0);
-  --color-border: oklch(0.922 0 0);
-  --color-input: oklch(0.922 0 0);
-  --color-ring: oklch(0.708 0 0);
-  --color-chart-1: oklch(0.646 0.222 41.116);
-  --color-chart-2: oklch(0.6 0.118 184.704);
-  --color-chart-3: oklch(0.398 0.07 227.392);
-  --color-chart-4: oklch(0.828 0.189 84.429);
-  --color-chart-5: oklch(0.769 0.188 70.08);
-  --color-sidebar: oklch(0.985 0 0);
-  --color-sidebar-foreground: oklch(0.145 0 0);
-  --color-sidebar-primary: oklch(0.205 0 0);
-  --color-sidebar-primary-foreground: oklch(0.985 0 0);
-  --color-sidebar-accent: oklch(0.97 0 0);
-  --color-sidebar-accent-foreground: oklch(0.205 0 0);
-  --color-sidebar-border: oklch(0.922 0 0);
-  --color-sidebar-ring: oklch(0.708 0 0);
+
+  /* ── Superficies ──
+     Tres niveles, no dos: fondo de la app, superficie de tarjeta, y un
+     tercero para encabezados de tabla y estados hover. Sin el tercero, todo
+     hover termina siendo un gris inventado en el momento. */
+  --color-background: #F6F7F8;
+  --color-foreground: #101418;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #FAFBFB;
+  --color-surface-3: #F1F3F4;
+
+  --color-card: #FFFFFF;
+  --color-card-foreground: #101418;
+  --color-popover: #FFFFFF;
+  --color-popover-foreground: #101418;
+
+  /* ── Texto ──
+     fg para el contenido, fg-2 para descripciones y datos secundarios,
+     fg-3 para etiquetas de columna e iconos apagados. */
+  --color-fg-2: #5A646E;
+  --color-fg-3: #8B959E;
+
+  --color-muted: #F1F3F4;
+  --color-muted-foreground: #5A646E;
+  --color-accent: #F1F3F4;
+  --color-accent-foreground: #101418;
+
+  --color-primary: #00B4B6;
+  --color-primary-foreground: #FFFFFF;
+  --color-secondary: #F1F3F4;
+  --color-secondary-foreground: #101418;
+
+  /* ── Bordes ──
+     border para separadores y contornos en reposo; border-2 para el hover de
+     un control que se puede tocar. */
+  --color-border: #E5E8EA;
+  --color-border-2: #D5DADE;
+  --color-input: #E5E8EA;
+  --color-ring: #00B4B6;
+
+  /* ── Estados ──
+     Cada uno con tres tonos: texto, fondo suave y línea. Un badge usa los
+     tres; un ícono con fondo, también. Nunca un color de estado suelto. */
+  --color-ok: #0F7B45;
+  --color-ok-soft: #E6F4EC;
+  --color-ok-line: #A7D9BE;
+
+  --color-warn: #9A5B08;
+  --color-warn-soft: #FBF0DE;
+  --color-warn-line: #EBC48A;
+
+  --color-danger: #C42B2B;
+  --color-danger-soft: #FBEAEA;
+  --color-danger-line: #EFB4B4;
+
+  --color-destructive: #C42B2B;
+  --color-destructive-foreground: #FFFFFF;
+
+  --color-info: #1F5FA8;
+  --color-info-soft: #E8F0FA;
+  --color-info-line: #A9C6E8;
+
+  /* ── Barra lateral ── */
+  --color-sidebar: #FFFFFF;
+  --color-sidebar-foreground: #101418;
+  --color-sidebar-primary: #00B4B6;
+  --color-sidebar-primary-foreground: #FFFFFF;
+  --color-sidebar-accent: #F1F3F4;
+  --color-sidebar-accent-foreground: #101418;
+  --color-sidebar-border: #E5E8EA;
+  --color-sidebar-ring: #00B4B6;
+
+  /* ── Gráficos ── */
+  --color-chart-1: #00B4B6;
+  --color-chart-2: #1F5FA8;
+  --color-chart-3: #0F7B45;
+  --color-chart-4: #9A5B08;
+  --color-chart-5: #C42B2B;
 }
 
+/* Modo oscuro: mismos roles, distintos valores. Ninguna pantalla debería
+   necesitar una regla `dark:` propia — si la necesita, es que usó un color
+   fuera del sistema. */
 .dark {
-  --color-background: oklch(0.145 0 0);
-  --color-foreground: oklch(0.985 0 0);
-  --color-card: oklch(0.205 0 0);
-  --color-card-foreground: oklch(0.985 0 0);
-  --color-popover: oklch(0.205 0 0);
-  --color-popover-foreground: oklch(0.985 0 0);
-  --color-primary: oklch(0.922 0 0);
-  --color-primary-foreground: oklch(0.205 0 0);
-  --color-secondary: oklch(0.269 0 0);
-  --color-secondary-foreground: oklch(0.985 0 0);
-  --color-muted: oklch(0.269 0 0);
-  --color-muted-foreground: oklch(0.708 0 0);
-  --color-accent: oklch(0.269 0 0);
-  --color-accent-foreground: oklch(0.985 0 0);
-  --color-destructive: oklch(0.704 0.191 22.216);
-  --color-destructive-foreground: oklch(0.985 0 0);
-  --color-border: oklch(1 0 0 / 10%);
-  --color-input: oklch(1 0 0 / 15%);
-  --color-ring: oklch(0.556 0 0);
-  --color-chart-1: oklch(0.488 0.243 264.376);
-  --color-chart-2: oklch(0.696 0.17 162.48);
-  --color-chart-3: oklch(0.769 0.188 70.08);
-  --color-chart-4: oklch(0.627 0.265 303.9);
-  --color-chart-5: oklch(0.645 0.246 16.439);
-  --color-sidebar: oklch(0.205 0 0);
-  --color-sidebar-foreground: oklch(0.985 0 0);
-  --color-sidebar-primary: oklch(0.488 0.243 264.376);
-  --color-sidebar-primary-foreground: oklch(0.985 0 0);
-  --color-sidebar-accent: oklch(0.269 0 0);
-  --color-sidebar-accent-foreground: oklch(0.985 0 0);
-  --color-sidebar-border: oklch(1 0 0 / 10%);
-  --color-sidebar-ring: oklch(0.556 0 0);
+  --color-background: #0A0C0D;
+  --color-foreground: #EDF0F2;
+  --color-surface: #131719;
+  --color-surface-2: #171B1E;
+  --color-surface-3: #1E2326;
+
+  --color-card: #131719;
+  --color-card-foreground: #EDF0F2;
+  --color-popover: #131719;
+  --color-popover-foreground: #EDF0F2;
+
+  --color-fg-2: #98A3AC;
+  --color-fg-3: #6C777F;
+
+  --color-muted: #1E2326;
+  --color-muted-foreground: #98A3AC;
+  --color-accent: #1E2326;
+  --color-accent-foreground: #EDF0F2;
+
+  --color-brand: #00C2C4;
+  --color-brand-dark: #00B4B6;
+  --color-brand-soft: #0E2C2D;
+  --color-brand-line: #1C4E4F;
+
+  --color-primary: #00C2C4;
+  --color-primary-foreground: #06181A;
+  --color-secondary: #1E2326;
+  --color-secondary-foreground: #EDF0F2;
+
+  --color-border: #262C30;
+  --color-border-2: #333A3F;
+  --color-input: #262C30;
+  --color-ring: #00C2C4;
+
+  --color-ok: #4ADE80;
+  --color-ok-soft: #0F2A1B;
+  --color-ok-line: #1E5136;
+
+  --color-warn: #F0B45E;
+  --color-warn-soft: #2C2010;
+  --color-warn-line: #57411D;
+
+  --color-danger: #F27272;
+  --color-danger-soft: #2E1414;
+  --color-danger-line: #5A2626;
+
+  --color-destructive: #F27272;
+  --color-destructive-foreground: #1A0B0B;
+
+  --color-info: #7FB2F0;
+  --color-info-soft: #122033;
+  --color-info-line: #24405F;
+
+  --color-sidebar: #131719;
+  --color-sidebar-foreground: #EDF0F2;
+  --color-sidebar-primary: #00C2C4;
+  --color-sidebar-primary-foreground: #06181A;
+  --color-sidebar-accent: #1E2326;
+  --color-sidebar-accent-foreground: #EDF0F2;
+  --color-sidebar-border: #262C30;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.45;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Subtle scrollbar — brand colors */
-  ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+  /* ── Jerarquía tipográfica ──
+     La maqueta usa pesos intermedios (640-660) y tracking negativo en los
+     títulos. Es lo que la hace ver como una herramienta y no como una web:
+     un h1 en 700 con tracking normal se lee como un titular de marketing. */
+  h1 {
+    font-size: 24px;
+    font-weight: 660;
+    letter-spacing: -0.022em;
   }
+
+  h2 {
+    font-size: 14px;
+    font-weight: 640;
+    letter-spacing: -0.01em;
+  }
+
+  /* Todo número que el usuario vaya a comparar entre filas va en monoespaciada:
+     precios, cantidades, CUIT, CAE, horas. Alinea las columnas sin esfuerzo. */
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Etiqueta de columna o de sección. */
+  .eyebrow {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--color-fg-3);
+  }
+}
+
+@layer utilities {
+  /* Las tres sombras del sistema. Se usan por rol, no por gusto:
+     shadow-nivel-1 en tarjetas y controles elevados,
+     shadow-nivel-2 en menús y popovers,
+     shadow-nivel-3 solo en paneles laterales y modales. */
+  .shadow-nivel-1 { box-shadow: 0 1px 2px rgba(16, 24, 40, .06); }
+  .shadow-nivel-2 { box-shadow: 0 4px 16px rgba(16, 24, 40, .08); }
+  .shadow-nivel-3 { box-shadow: 0 24px 60px rgba(16, 24, 40, .16); }
+
+  .dark .shadow-nivel-1 { box-shadow: 0 1px 2px rgba(0, 0, 0, .4); }
+  .dark .shadow-nivel-2 { box-shadow: 0 4px 16px rgba(0, 0, 0, .45); }
+  .dark .shadow-nivel-3 { box-shadow: 0 24px 60px rgba(0, 0, 0, .6); }
+
+  /* Entrada de una vista. 220ms: se nota que algo llegó, no se espera. */
+  .anim-subida {
+    animation: adminapp-subida .22s ease both;
+  }
+
+  .anim-panel {
+    animation: adminapp-panel .22s cubic-bezier(.22, .8, .3, 1) both;
+  }
+}
+
+@keyframes adminapp-subida {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes adminapp-panel {
+  from { transform: translateX(28px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-subida,
+  .anim-panel {
+    animation: none;
+  }
+}
+
+@layer base {
+  /* La barra de scroll de la maqueta es más ancha que la anterior (11px vs 5px)
+     y usa borde transparente con background-clip: se ve fina en reposo pero
+     tiene área de agarre real. */
+  ::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+  }
+
   ::-webkit-scrollbar-track {
     background: transparent;
   }
+
   ::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, #00B4B6 20%, transparent);
+    background: color-mix(in srgb, var(--color-brand) 26%, transparent);
     border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
   }
+
   ::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, #00B4B6 40%, transparent);
+    background: color-mix(in srgb, var(--color-brand) 48%, transparent);
+    border: 3px solid transparent;
+    background-clip: content-box;
   }
-  .dark ::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, #00B4B6 30%, transparent);
-  }
-  .dark ::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, #00B4B6 50%, transparent);
-  }
+
   * {
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, #00B4B6 20%, transparent) transparent;
-  }
-  .dark * {
-    scrollbar-color: color-mix(in srgb, #00B4B6 30%, transparent) transparent;
+    scrollbar-color: color-mix(in srgb, var(--color-brand) 26%, transparent) transparent;
   }
 }
