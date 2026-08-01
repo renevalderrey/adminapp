@@ -168,6 +168,24 @@ Junto con **5c** —los tests de integración de la API— es lo que convierte a
 
 ---
 
+## 5e · La pantalla de Inventario se trae el catálogo entero
+
+**Apareció** escribiendo la spec de Inventario (1/8/2026).
+
+`useStore.js:38` pide `/products?active=true` sin paginar, y la búsqueda y la
+paginación se hacen en memoria. **La API ya pagina y ya busca; nadie la usa.**
+
+Es el mismo defecto que tenía el historial de ventas, donde además hacía que
+buscar un CAE de la página 3 no devolviera nada.
+
+Con los 55 productos de Comprafit no se nota. Con dos mil sí, y arrastra a todo
+lo que trabaja sobre esa lista: comparar sucursales y exportar operan sobre lo
+que haya en memoria, no sobre el catálogo.
+
+Quedó fuera del alcance del hito 4 por decisión de alcance, no porque no
+importe.
+---
+
 ## 6 · Cifrar la clave privada de AFIP en reposo
 
 Está en texto plano en la base. Es material fiscal del cliente. Quedó anotado

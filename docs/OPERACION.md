@@ -257,6 +257,40 @@ Para probarlo sin esperar al día siguiente: pestaña **Actions → Tareas diari
 → Run workflow**. Si los secretos faltan o no coinciden, el workflow falla con
 el motivo escrito.
 
+### Cuando `db:migrate` falla con «ya existe»
+
+Pasa **solo en desarrollo**, y la causa es `sequelize.sync({ alter: true })`:
+`server.js` lo corre al arrancar en desarrollo y arma el esquema a partir de
+los modelos, sin registrar nada en `SequelizeMeta`. La base queda adelantada
+y la cadena de migraciones, atrás.
+
+**Por qué importa aunque sea solo en desarrollo.** En producción `sync` está
+salteado, así que allá las migraciones son el único camino. Si la cadena nunca
+se ejercita localmente, **un error de migración recién se ve en producción** —
+que es el peor lugar para verlo.
+
+Cómo se repara, sin borrar nada:
+
+1. Comparar `SequelizeMeta` contra `src/migrations/`.
+2. Por cada migración no registrada, **verificar en el esquema si su efecto ya
+   está** (la tabla, la columna, la restricción). `sync` crea tablas y
+   columnas, pero **no** claves primarias compuestas, índices con condición ni
+   cambios de restricciones.
+3. Las que ya están: registrarlas con un `INSERT` en `SequelizeMeta`.
+4. Las que faltan de verdad: dejar que `db:migrate` las corra.
+5. Correr `db:migrate` una segunda vez y confirmar que dice «No migrations
+   were executed».
+
+> El 1/8/2026 se reparó así una base de desarrollo con 12 migraciones sin
+> registrar. Diez ya estaban aplicadas por `sync`; dos faltaban de verdad, y
+> una de ellas era la clave primaria compuesta de `settings` — la corrección
+> que impide que una empresa facture con el certificado de AFIP de otra. En esa
+> base, esa protección **no estaba**.
+
+**Recomendación**: sacar `sync({ alter: true })` del arranque en desarrollo y
+usar migraciones también ahí. Es lo que evita que la deriva vuelva, y hace que
+un error de migración se vea en la máquina de quien lo escribió.
+
 ---
 
 ## Deploy
