@@ -37,7 +37,7 @@ const PER_PAGE = 30
 const Billing = () => {
   const {
     products, cart, addToCart, removeFromCart,
-    updateCartQty, updateCartMethod, clearCart,
+    updateCartQty, updateCartMethod, updateCartPrice, clearCart,
     getCartTotal, calculatePrices, initialize,
   } = useStore()
   const brands = useStore(s => s.brands)
@@ -83,6 +83,35 @@ const Billing = () => {
 
   const [loading, setLoading] = useState(false)
   const totalAmount = getCartTotal()
+
+  // ── Vuelto ──
+  // Con cuánto paga el cliente. Se mantiene como texto y no como número para
+  // que el campo pueda quedar vacío: un 0 obligaría a borrarlo antes de tipear.
+  const [pagaCon, setPagaCon] = useState('')
+
+  const hayEfectivo = cart.some(i => i.method === 'ef')
+  const vuelto = Math.round((Number(pagaCon || 0) - totalAmount) * 100) / 100
+
+  /**
+   * Los tres billetes con los que más probablemente pague.
+   *
+   * Se redondea el total hacia arriba al siguiente múltiplo "de bolsillo". Con
+   * un total de $47.300 propone $50.000, $60.000 y $100.000, que es lo que
+   * alguien saca de la billetera. Proponer $47.400 no le sirve a nadie.
+   */
+  const sugerenciasDeVuelto = useMemo(() => {
+    if (totalAmount <= 0) return []
+
+    const escalones = [1000, 5000, 10000, 20000, 50000, 100000]
+    const montos = new Set()
+
+    for (const escalon of escalones) {
+      const redondeado = Math.ceil(totalAmount / escalon) * escalon
+      if (redondeado > totalAmount) montos.add(redondeado)
+    }
+
+    return [...montos].sort((a, b) => a - b).slice(0, 3)
+  }, [totalAmount])
 
   const getAvailableStock = (product) => {
     const entry = pvId
@@ -218,6 +247,7 @@ const Billing = () => {
           )
           await initialize()
           clearCart()
+          setPagaCon('')
           setCustomerDoc('')
           setCustomerName('')
           clearCustomer()
@@ -258,6 +288,7 @@ const Billing = () => {
         : 'Venta registrada con éxito')
 
       clearCart()
+      setPagaCon('')
       setCustomerDoc('')
       setCustomerName('')
       clearCustomer()
@@ -494,6 +525,11 @@ const Billing = () => {
                           <p className="text-lg font-black font-mono text-green-600 leading-tight">
                             ${(item.price * item.qty).toLocaleString()}
                           </p>
+                          {item.precio_manual && (
+                            <p className="text-[10px] font-bold text-orange-500 leading-tight">
+                              precio a mano
+                            </p>
+                          )}
                         </div>
                         <button
                           onClick={() => removeFromCart(item.id)}
@@ -523,6 +559,35 @@ const Billing = () => {
                             </Button>
                           ))}
                         </div>
+                      </div>
+
+                      {/* Precio unitario editable: en el mostrador se negocia. */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground shrink-0">
+                          Precio u.
+                        </label>
+                        <div className="relative flex-1">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.price}
+                            onChange={e => updateCartPrice(item.id, e.target.value)}
+                            className={`h-7 pl-5 text-xs font-mono tabular-nums ${item.precio_manual ? 'border-orange-400' : ''}`}
+                          />
+                        </div>
+                        {item.precio_manual && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-[10px] px-2 text-muted-foreground"
+                            onClick={() => updateCartPrice(item.id, '')}
+                            title="Volver al precio de lista"
+                          >
+                            Lista
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))
@@ -631,6 +696,63 @@ const Billing = () => {
                   ${totalAmount.toLocaleString()}
                 </span>
               </div>
+
+              {/* ── Vuelto ──
+                  Solo aparece si hay algo en efectivo. La cuenta se hace en la
+                  cabeza o en el celular veinte veces por día, y ahí es donde se
+                  entrega mal el cambio. */}
+              {hayEfectivo && cart.length > 0 && (
+                <div className="space-y-2 rounded-lg border bg-background px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground shrink-0">
+                      Paga con
+                    </label>
+                    <div className="relative flex-1">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputMode="decimal"
+                        placeholder="0"
+                        value={pagaCon}
+                        onChange={e => setPagaCon(e.target.value)}
+                        className="h-8 pl-5 text-sm font-mono tabular-nums"
+                      />
+                    </div>
+                    {pagaCon !== '' && (
+                      <Button size="sm" variant="ghost" className="h-8 px-2 text-[10px] text-muted-foreground"
+                        onClick={() => setPagaCon('')}>
+                        Limpiar
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Atajos para los billetes con los que más se paga. */}
+                  <div className="flex flex-wrap gap-1">
+                    {sugerenciasDeVuelto.map(monto => (
+                      <Button key={monto} size="sm" variant="outline"
+                        className="h-6 px-2 text-[10px] font-mono"
+                        onClick={() => setPagaCon(String(monto))}>
+                        ${monto.toLocaleString()}
+                      </Button>
+                    ))}
+                  </div>
+
+                  {pagaCon !== '' && (
+                    <div className="flex items-center justify-between border-t pt-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                        Vuelto
+                      </span>
+                      <span className={`text-lg font-black font-mono tabular-nums ${vuelto < 0 ? 'text-destructive' : 'text-foreground'}`}>
+                        {vuelto < 0
+                          ? `Faltan $${Math.abs(vuelto).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+                          : `$${vuelto.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {lastInvoice && (
                 <Button variant="outline" className="w-full border-green-500/30 text-green-600 hover:text-green-600 hover:bg-green-50"

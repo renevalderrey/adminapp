@@ -27,6 +27,7 @@ import Taxes from '@/pages/Taxes'
 import Onboarding from '@/pages/Onboarding'
 import Team from '@/pages/Team'
 import SubscriptionSettings from '@/pages/SubscriptionSettings'
+import Faltantes from '@/pages/Faltantes'
 
 function RouteGuard({ children, requiredModule }) {
   const usuario = useStore(s => s.usuario)
@@ -229,6 +230,7 @@ function App() {
               <Route path="/impuestos" element={<RouteGuard requiredModule="impuestos"><Taxes /></RouteGuard>} />
               <Route path="/proveedores" element={<Orders />} />
               <Route path="/ordenes-compra" element={<RouteGuard requiredModule="ordenes-compra"><PurchaseOrders /></RouteGuard>} />
+              <Route path="/faltantes" element={<Faltantes />} />
               <Route path="/reportes" element={<RouteGuard requiredModule="reportes"><Reports /></RouteGuard>} />
               <Route path="/gastos" element={<Expenses />} />
               <Route path="/panel" element={<Dashboard />} />

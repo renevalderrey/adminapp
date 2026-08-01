@@ -9,9 +9,15 @@ import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Plus, Trash2, Store } from 'lucide-react'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
+import GastosVariables from '@/components/GastosVariables'
 
 const Expenses = () => {
   const { initialize, empresaActiva } = useStore()
+
+  // Fijos y variables son cosas distintas: los fijos alimentan el punto de
+  // equilibrio, los variables no. Se muestran en la misma pantalla porque es
+  // donde el usuario los busca, pero nunca se suman entre sí.
+  const [solapa, setSolapa] = useState('fijos')
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(false)
   const [isAdding, setIsAdding] = useState(false)
@@ -80,16 +86,41 @@ const Expenses = () => {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-black tracking-tight">
-            Gastos <span className="text-primary">Fijos</span>
+            Gastos
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Costos operativos agrupados por sucursal.
+            {solapa === 'fijos'
+              ? 'Costos operativos que se repiten todos los meses, agrupados por sucursal.'
+              : 'Gastos que cambian mes a mes, atribuidos a una persona.'}
           </p>
         </div>
-        <Button size="sm" onClick={() => setIsAdding(true)}>
-          <Plus className="h-4 w-4 mr-1" /> Nuevo Gasto
-        </Button>
+        {solapa === 'fijos' && (
+          <Button size="sm" onClick={() => setIsAdding(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Nuevo Gasto
+          </Button>
+        )}
       </div>
+
+      <div className="flex gap-1 border-b">
+        {[['fijos', 'Fijos'], ['variables', 'Variables']].map(([valor, etiqueta]) => (
+          <button
+            key={valor}
+            onClick={() => setSolapa(valor)}
+            className={`px-4 py-2 text-sm font-bold border-b-2 -mb-px transition-colors ${
+              solapa === valor
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {etiqueta}
+          </button>
+        ))}
+      </div>
+
+      {solapa === 'variables' && <GastosVariables />}
+
+      {solapa === 'fijos' && (
+      <>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         {Object.entries(groups).filter(([_, g]) => g.name !== 'General').map(([key, group]) => {
@@ -144,6 +175,8 @@ const Expenses = () => {
           </Card>
         ))}
       </div>
+      </>
+      )}
 
       <Dialog open={isAdding} onOpenChange={setIsAdding}>
         <DialogContent className="sm:max-w-md">

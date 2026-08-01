@@ -41,7 +41,9 @@ import {
   CheckCircle2,
   Loader2,
   Search,
+  MessageCircle,
 } from 'lucide-react';
+import { enviarPedidoPorWhatsapp } from '@/utils/pedidoWhatsapp';
 import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
 
@@ -77,6 +79,42 @@ const PurchaseOrders = () => {
   });
 
   const [receiveForm, setReceiveForm] = useState({});
+
+  /**
+   * Manda la orden al proveedor por WhatsApp.
+   *
+   * El teléfono sale del proveedor cargado; si no lo tiene, WhatsApp abre sin
+   * destinatario y el usuario elige el contacto. Nunca se envía solo: se abre
+   * el chat con el texto escrito y lo manda una persona.
+   */
+  const enviarOrden = (order, conPrecios) => {
+    const items = (order.items || []).map(i => ({
+      nombre: i.product_name,
+      cantidad: i.quantity,
+      costo: i.unit_price,
+      marca: i.brand_name || null,
+    }));
+
+    if (items.length === 0) {
+      toast.error('La orden no tiene ítems.');
+      return;
+    }
+
+    const proveedor = suppliers.find(s => s.id === order.supplier_id);
+
+    const { conDestinatario } = enviarPedidoPorWhatsapp({
+      items,
+      telefono: proveedor?.phone,
+      proveedor: order.supplier_name,
+      conPrecios,
+      nota: order.notes || '',
+      titulo: `ORDEN DE COMPRA #${order.id}`,
+    });
+
+    if (!conDestinatario) {
+      toast.info('El proveedor no tiene teléfono cargado: elegí el contacto en WhatsApp.');
+    }
+  };
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -305,6 +343,18 @@ const PurchaseOrders = () => {
               <div className="flex justify-between items-center pt-2 border-t">
                 <span className="font-bold">Total</span>
                 <span className="font-bold font-mono text-lg">{formatCurrency(selectedOrder.total)}</span>
+              </div>
+
+              {/* Mandarle la orden al proveedor es el paso siguiente natural, y
+                  hasta ahora había que copiarla a mano al celular. */}
+              <div className="flex flex-wrap gap-2 pt-2 border-t">
+                <Button size="sm" variant="outline" onClick={() => enviarOrden(selectedOrder, false)}>
+                  <MessageCircle className="h-4 w-4 mr-1" /> Enviar por WhatsApp
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => enviarOrden(selectedOrder, true)}
+                  title="Incluye los precios acordados">
+                  <MessageCircle className="h-4 w-4 mr-1" /> Con precios
+                </Button>
               </div>
             </div>
           )}

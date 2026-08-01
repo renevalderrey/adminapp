@@ -29,13 +29,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  Package, Plus, Search, Edit2, ArrowRightLeft, FileSpreadsheet, Loader2,
+  Package, Plus, Search, Edit2, ArrowRightLeft, FileSpreadsheet, Loader2, Tags, X,
 } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Can } from '@/components/Can'
 import Pagination from '@/components/Pagination'
 import ImportWizard from '@/components/ImportWizard'
 import ProductForm from '@/components/ProductForm'
+import PreciosMasivos from '@/components/PreciosMasivos'
 
 const Inventory = () => {
   const { products, brands, initialize, loading, error } = useStore()
@@ -58,6 +59,12 @@ const Inventory = () => {
   const [showTransfers, setShowTransfers] = useState(false)
   const [page, setPage] = useState(1)
   const perPage = 25
+
+  // ── Selección para la actualización masiva de precios ──
+  // Se guardan ids y no productos: la lista se recarga después de aplicar, y
+  // una copia del producto quedaría desactualizada.
+  const [seleccionados, setSeleccionados] = useState(new Set())
+  const [preciosAbierto, setPreciosAbierto] = useState(false)
 
   const firstLocation = locations[0]?.value || ''
   const secondLocation = locations[1]?.value || locations[0]?.value || ''
@@ -123,6 +130,27 @@ const Inventory = () => {
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / perPage))
   const paginatedProducts = filteredProducts.slice((page - 1) * perPage, page * perPage)
+
+  const alternarSeleccion = (id) => {
+    setSeleccionados(prev => {
+      const siguiente = new Set(prev)
+      if (siguiente.has(id)) siguiente.delete(id)
+      else siguiente.add(id)
+      return siguiente
+    })
+  }
+
+  // Selecciona TODO lo que da la búsqueda, no solo la página que se ve. Que el
+  // "seleccionar todo" dependiera de en qué página estás sería una fuente
+  // silenciosa de actualizaciones incompletas.
+  const seleccionarFiltrados = () => {
+    setSeleccionados(new Set(filteredProducts.map(p => p.id)))
+  }
+
+  const limpiarSeleccion = () => setSeleccionados(new Set())
+
+  const todosLosFiltradosSeleccionados =
+    filteredProducts.length > 0 && filteredProducts.every(p => seleccionados.has(p.id))
 
   const getStockForLocation = (product, location) => {
     if (location === 'all') return product.stock?.reduce((sum, s) => sum + s.quantity, 0) || 0
@@ -252,9 +280,45 @@ const Inventory = () => {
 
       {/* Table */}
       <Card>
+        {/* Barra de selección: aparece solo cuando hay algo seleccionado. */}
+        {seleccionados.size > 0 && (
+          <div className="flex flex-wrap items-center gap-3 border-b bg-primary/5 px-4 py-2.5">
+            <span className="text-sm font-bold">
+              {seleccionados.size} seleccionado{seleccionados.size === 1 ? '' : 's'}
+            </span>
+
+            {!todosLosFiltradosSeleccionados && filteredProducts.length > seleccionados.size && (
+              <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={seleccionarFiltrados}>
+                Seleccionar los {filteredProducts.length} de la búsqueda
+              </Button>
+            )}
+
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={limpiarSeleccion}>
+              <X className="h-3.5 w-3.5 mr-1" /> Limpiar
+            </Button>
+
+            <div className="ml-auto">
+              <Can permission="products.editar">
+                <Button size="sm" onClick={() => setPreciosAbierto(true)}>
+                  <Tags className="h-4 w-4 mr-1" /> Actualizar precios
+                </Button>
+              </Can>
+            </div>
+          </div>
+        )}
+
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 align-middle"
+                  checked={todosLosFiltradosSeleccionados}
+                  onChange={() => todosLosFiltradosSeleccionados ? limpiarSeleccion() : seleccionarFiltrados()}
+                  title="Seleccionar todo lo que da la búsqueda"
+                />
+              </TableHead>
               <TableHead>PRODUCTO</TableHead>
               <TableHead>MARCA</TableHead>
               <TableHead className="text-right">COSTO</TableHead>
@@ -271,14 +335,14 @@ const Inventory = () => {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={4 + (activeLocation === 'all' ? locations.length : 1)} className="text-center py-12">
+                <TableCell colSpan={5 + (activeLocation === 'all' ? locations.length : 1)} className="text-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                   <p className="text-sm text-muted-foreground mt-2">Cargando productos...</p>
                 </TableCell>
               </TableRow>
             ) : paginatedProducts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4 + (activeLocation === 'all' ? locations.length : 1)} className="text-center py-12">
+                <TableCell colSpan={5 + (activeLocation === 'all' ? locations.length : 1)} className="text-center py-12">
                   <Package className="h-10 w-10 mx-auto text-muted-foreground/40" />
                   <p className="text-base font-semibold text-muted-foreground mt-3">No hay productos</p>
                   <p className="text-sm text-muted-foreground/60 mt-1">
@@ -290,7 +354,15 @@ const Inventory = () => {
               paginatedProducts.map(p => {
                 const totalStock = getStockForLocation(p, activeLocation)
                 return (
-                  <TableRow key={p.id}>
+                  <TableRow key={p.id} data-state={seleccionados.has(p.id) ? "selected" : undefined}>
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 align-middle"
+                        checked={seleccionados.has(p.id)}
+                        onChange={() => alternarSeleccion(p.id)}
+                      />
+                    </TableCell>
                     <TableCell className="font-semibold">{p.name}</TableCell>
                     <TableCell>
                       <Badge variant="secondary">{p.brand?.name || '–'}</Badge>
@@ -334,6 +406,18 @@ const Inventory = () => {
         </Table>
         {!loading && <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />}
       </Card>
+
+      <PreciosMasivos
+        open={preciosAbierto}
+        onOpenChange={setPreciosAbierto}
+        productIds={[...seleccionados]}
+        onAplicado={() => {
+          // Recargar y soltar la selección: los productos ya cambiaron, y dejar
+          // marcados los mismos invita a aplicar el ajuste dos veces.
+          initialize()
+          limpiarSeleccion()
+        }}
+      />
 
       {/* Sheet: New / Edit Product */}
       <ProductForm

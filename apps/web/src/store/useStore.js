@@ -159,8 +159,45 @@ const useStore = create((set, get) => ({
     set({
       cart: get().cart.map(i => {
         if (i.id !== productId) return i;
+
+        // Un precio puesto a mano sobrevive al cambio de medio de pago. Si no,
+        // acordar $18.000 con el cliente y después tocar "Tarjeta" le devolvía
+        // el precio de lista sin avisar.
+        if (i.precio_manual) return { ...i, method };
+
         const priceMap = { ef: i.base_cash, tr: i.base_cash, qr: i.base_cash, td: i.base_cash, tc3: i.base_card, al: i.base_alliance };
         return { ...i, method, price: priceMap[method] || i.base_cash };
+      })
+    });
+  },
+
+  /**
+   * Precio puesto a mano para una línea.
+   *
+   * Existe porque en el mostrador se negocia: se redondea para abajo, se hace
+   * un precio de amigo, se cobra distinto un producto con el envase golpeado.
+   * Sin esto había que cerrar la venta con el precio de lista y arreglarlo
+   * después, o no registrarla.
+   *
+   * El total lo recalcula el servidor a partir de las líneas, así que un
+   * precio manual entra por el mismo camino que cualquier otro.
+   *
+   * @param {number|string} precio Vacío o null vuelve al precio de lista.
+   */
+  updateCartPrice: (productId, precio) => {
+    set({
+      cart: get().cart.map(i => {
+        if (i.id !== productId) return i;
+
+        if (precio === '' || precio === null || precio === undefined) {
+          const priceMap = { ef: i.base_cash, tr: i.base_cash, qr: i.base_cash, td: i.base_cash, tc3: i.base_card, al: i.base_alliance };
+          return { ...i, price: priceMap[i.method] || i.base_cash, precio_manual: false };
+        }
+
+        const numero = Number(precio);
+        if (!Number.isFinite(numero) || numero < 0) return i;
+
+        return { ...i, price: Math.round(numero * 100) / 100, precio_manual: true };
       })
     });
   },

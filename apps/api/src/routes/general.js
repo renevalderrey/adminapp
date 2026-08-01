@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
-const { Stock, Brand, Product, FixedExpense, Setting, PuntoDeVenta } = require('../models');
+const { Stock, Brand, Product, FixedExpense, Setting, PuntoDeVenta, Supplier } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo } = require('../utils/errores');
@@ -393,6 +393,134 @@ router.get('/alerts', checkPermission('stock.ver'), async (req, res) => {
     });
   } catch (err) {
     fallo(req, res, err, 'Error al calcular las alertas de stock');
+  }
+});
+
+// GET /api/faltantes — Que hay que reponer, listo para armar el pedido
+//
+// El sistema anterior tenia esta pantalla y era la rutina semanal: mirar que
+// falta, poner cantidades, mandarlo por WhatsApp al proveedor. AdminApp tenia
+// la alerta de stock bajo en el panel, pero suelta: no traia el proveedor, ni
+// el costo, ni una cantidad sugerida, asi que armar el pedido seguia siendo a
+// mano.
+//
+// Se agrupa por proveedor porque es la unidad en la que se pide: a cada
+// proveedor se le manda un pedido.
+router.get('/faltantes', checkPermission('stock.ver'), async (req, res) => {
+  try {
+    const empresaId = req.empresaId;
+
+    // Para los productos que no tienen minimo cargado hace falta un umbral, o
+    // no aparecerian nunca. 3 unidades es el valor que usaba el sistema
+    // anterior.
+    const umbral = Number.isFinite(Number(req.query.umbral)) ? Number(req.query.umbral) : 3;
+
+    const where = { empresa_id: empresaId };
+
+    // Sin punto de venta se mira el stock de toda la empresa. Con uno, solo
+    // el de esa sucursal: lo que sobra en una no resuelve lo que falta en otra
+    // hasta que alguien lo transfiera.
+    if (req.query.punto_de_venta_id) {
+      where.punto_de_venta_id = parseInt(req.query.punto_de_venta_id, 10);
+    } else if (req.puntoDeVentaId) {
+      where.punto_de_venta_id = req.puntoDeVentaId;
+    }
+
+    const filas = await Stock.findAll({
+      where,
+      include: [{
+        model: Product,
+        as: 'product',
+        where: { is_active: true },
+        required: true,
+        include: [{ model: Brand, as: 'brand', attributes: ['id', 'name'] }],
+      }],
+    });
+
+    const porProveedor = new Map();
+    let totalEstimado = 0;
+
+    for (const fila of filas) {
+      const cantidad = Number(fila.quantity) || 0;
+      const minimo = Number(fila.min_stock) || 0;
+
+      // El minimo cargado manda; el umbral es solo para los que no tienen.
+      const limite = minimo > 0 ? minimo : umbral;
+      if (cantidad > limite) continue;
+
+      const producto = fila.product;
+
+      // Reponer hasta el minimo, y al menos una unidad: un producto en cero
+      // sin minimo cargado igual hay que pedirlo.
+      const sugerido = Math.max(Math.ceil(limite - cantidad), 1);
+      const costo = Number(producto.cost) || 0;
+
+      totalEstimado += costo * sugerido;
+
+      const claveProveedor = producto.supplier_id || 'sin_proveedor';
+
+      if (!porProveedor.has(claveProveedor)) {
+        porProveedor.set(claveProveedor, {
+          supplier_id: producto.supplier_id || null,
+          proveedor: null,
+          items: [],
+          total_estimado: 0,
+        });
+      }
+
+      const grupo = porProveedor.get(claveProveedor);
+
+      grupo.items.push({
+        product_id: producto.id,
+        nombre: producto.name,
+        sku: producto.sku,
+        marca: producto.brand ? producto.brand.name : null,
+        stock: cantidad,
+        min_stock: minimo,
+        sugerido,
+        costo,
+        punto_de_venta_id: fila.punto_de_venta_id,
+        location: fila.location,
+      });
+
+      grupo.total_estimado += costo * sugerido;
+    }
+
+    // Los nombres de proveedor se resuelven en una sola consulta y no uno por
+    // uno dentro del bucle.
+    const idsProveedor = [...porProveedor.keys()].filter((k) => k !== 'sin_proveedor');
+
+    if (idsProveedor.length) {
+      const proveedores = await Supplier.findAll({
+        where: { id: { [Op.in]: idsProveedor }, empresa_id: empresaId },
+        attributes: ['id', 'name', 'phone'],
+      });
+
+      for (const p of proveedores) {
+        const grupo = porProveedor.get(p.id);
+        if (grupo) grupo.proveedor = { id: p.id, nombre: p.name, telefono: p.phone };
+      }
+    }
+
+    const grupos = [...porProveedor.values()]
+      .map((g) => ({
+        ...g,
+        total_estimado: Math.round(g.total_estimado * 100) / 100,
+        items: g.items.sort((a, b) => a.stock - b.stock || a.nombre.localeCompare(b.nombre)),
+      }))
+      .sort((a, b) => b.items.length - a.items.length);
+
+    res.json({
+      ok: true,
+      data: {
+        umbral,
+        total_items: grupos.reduce((s, g) => s + g.items.length, 0),
+        total_estimado: Math.round(totalEstimado * 100) / 100,
+        proveedores: grupos,
+      },
+    });
+  } catch (err) {
+    fallo(req, res, err, 'Error al calcular los faltantes');
   }
 });
 

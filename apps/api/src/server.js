@@ -352,6 +352,8 @@ app.use('/api/cashflow', ...authEmpresa, require('./routes/cashflow'));
 app.use('/api/taxes', ...authEmpresa, require('./routes/taxes'));
 app.use('/api/empresas', ...authSinEmpresa, require('./routes/empresas'));
 app.use('/api/import', ...authEmpresa, require('./routes/import'));
+app.use('/api/precios', ...authEmpresa, require('./routes/precios'));
+app.use('/api/gastos-variables', ...authEmpresa, require('./routes/gastosVariables'));
 
 // ── Auth routes (invitaciones públicas + protegidas) ──
 app.get('/api/auth/invite/:token', require('./routes/auth'));

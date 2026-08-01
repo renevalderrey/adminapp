@@ -6,17 +6,24 @@ comparación función por función contra AdminApp.
 
 ---
 
+> **Actualización del 1 de agosto de 2026.** De las seis funciones que
+> faltaban, **cinco están hechas**. Queda solo el comparador de proveedores.
+> El detalle está en [«Lo que se cerró»](#lo-que-se-cerró); el resto del
+> documento describe el relevamiento original y sigue siendo válido como mapa
+> del sistema viejo.
+
 ## Respuesta corta
 
-**Sí, pero todavía no sin pérdida.** AdminApp hace más cosas que el sistema
-viejo en casi todo lo que es contabilidad, fiscalidad y control. Pero hay
-**seis funciones del día a día de Comprafit que no existen**, y tres de ellas
-son flujos que el cliente usa todas las semanas.
+**Sí, con una sola pérdida: el comparador de proveedores.** AdminApp hace más
+cosas que el sistema viejo en todo lo que es contabilidad, fiscalidad y
+control, y ahora también cubre los flujos diarios que le faltaban — pedido por
+WhatsApp, faltantes, actualización masiva de precios con deshacer, vuelto y
+gastos variables.
 
 Migrar hoy significa que el cliente gana factura electrónica, clientes con
-cuenta corriente, recetas, producción, caja e impuestos — y pierde el
-comparador de proveedores, el pedido por WhatsApp y la actualización masiva de
-precios con deshacer.
+cuenta corriente, recetas, producción, caja e impuestos, y pierde la pantalla
+que compara listas de varios proveedores para ver quién tiene cada producto más
+barato.
 
 La recomendación está al final.
 
@@ -159,21 +166,38 @@ Nada de esto existía en Comprafit:
 
 ---
 
-## Lo que falta para migrar sin pérdida
+## Lo que se cerró
 
-En orden de cuánto se usa, no de dificultad:
+**1 de agosto de 2026.** Cinco de las seis funciones que faltaban:
 
-| # | Qué | Por qué importa | Tamaño |
-|---|---|---|---|
-| 1 | **Exportar pedido por WhatsApp** | Es cómo Comprafit le pide a los proveedores. Sin esto hay que copiar a mano. | chico |
-| 2 | **Faltantes → pedido en un paso** | Rutina semanal de reposición. | chico |
-| 3 | **Actualización masiva de precios con deshacer** | Sin el deshacer, un error masivo no tiene vuelta atrás. | mediano |
-| 4 | **Comparador de proveedores** | Es cómo se decide a quién comprarle. | grande |
-| 5 | **Vuelto y precio manual en el carrito** | Fricción en cada venta en efectivo. | chico |
-| 6 | **Gastos variables por persona y mes** | Se usa todos los meses. | chico |
+| Qué | Dónde quedó | Notas |
+|---|---|---|
+| **Exportar pedido por WhatsApp** | Faltantes y detalle de la orden de compra | Con y sin precios. Agrupa por marca, que es como lo lee el proveedor. Abre el chat con el texto escrito; **manda una persona, no el sistema** |
+| **Faltantes → pedido** | Pantalla nueva `/faltantes` | Agrupa por proveedor, sugiere cantidades para llegar al mínimo, y de ahí sale a WhatsApp, a Excel o a una orden de compra |
+| **Precios masivos con deshacer** | Inventario → seleccionar → *Actualizar precios* | Tres modos: ajustar costo por %, fijar margen, fijar precio. Cada operación guarda la foto anterior |
+| **Vuelto y precio manual** | Punto de venta | El precio por línea se edita y sobrevive al cambio de medio de pago. El vuelto propone los billetes con los que se paga |
+| **Gastos variables** | Gastos → solapa *Variables* | Por persona y por mes. **No entran en el punto de equilibrio**: ese se calcula con los fijos |
 
-Los cinco primeros suman aproximadamente el trabajo de una a dos semanas; el
-comparador de proveedores es la mitad de eso él solo.
+Dos decisiones que conviene conocer, porque el sistema viejo hacía otra cosa:
+
+- **Solo se deshace la última actualización de precios.** Revertir una del medio
+  dejaría precios que nunca existieron: si después de la actualización A hubo
+  una B sobre los mismos productos, revertir A pisa lo que hizo B con valores
+  anteriores a las dos. El sistema anterior no tenía esta restricción, y por eso
+  su historial podía dejar precios imposibles de explicar.
+- **Ajustar el costo se propaga a las recetas.** Si el insumo sube 12 %, los
+  productos elaborados que lo usan se recostean solos. Comprafit no tenía
+  recetas, así que este caso no existía.
+
+### Lo único que sigue faltando
+
+| Qué | Por qué importa | Tamaño |
+|---|---|---|
+| **Comparador de proveedores** | Es cómo se decide a quién comprarle: subir las listas de varios proveedores, emparejar productos por nombre y ver quién tiene cada uno más barato | grande |
+
+Es la función más elaborada del sistema viejo —normaliza nombres, calcula
+similitud entre descripciones y arma la tabla comparativa— y es trabajo nuevo,
+no migración.
 
 ---
 
@@ -205,17 +229,26 @@ Tres advertencias:
 
 ## Recomendación
 
-**No presentarlo todavía como reemplazo total.** Dos caminos, en este orden:
+**Ya se le puede proponer como reemplazo, diciendo la única cosa que falta.**
 
-**1. Migrar la facturación primero (ya).** Es donde AdminApp gana sin discusión
-y donde el legacy directamente no llega: el cliente hoy no puede emitir una
-factura válida ante ARCA. Se puede empezar a facturar con AdminApp mientras
-sigue usando el sistema viejo para pedidos y comparación de proveedores.
+El día a día está cubierto: vender, cobrar, facturar ante ARCA, ver qué falta,
+pedirlo por WhatsApp, actualizar precios cuando llega una lista nueva y cargar
+los gastos del mes. Eso es la semana completa de Comprafit.
 
-**2. Migrar el resto cuando estén las seis funciones de la tabla.** Las cinco
-chicas primero — con eso el día a día ya no pierde nada — y el comparador de
-proveedores al final.
+Lo que hay que decirle de frente: **el comparador de proveedores todavía no
+está.** Para eso puede seguir usando el sistema viejo unas semanas —los datos
+no se pisan, son sistemas separados— o mandarnos las listas y comparamos a
+mano mientras se construye.
 
-Lo que **no** conviene es prometer un reemplazo completo hoy: el cliente lo va
-a descubrir el primer lunes que tenga que armar el pedido, y esa impresión no
-se recupera.
+Decirlo antes es la diferencia entre una limitación conocida y una promesa
+incumplida. Lo segundo se descubre el primer lunes y no se recupera.
+
+### Antes de migrarlo
+
+1. **Rotar el token del hosting viejo** ([ver
+   OPERACION.md](OPERACION.md#rotar-las-credenciales-del-hosting-legacy)) y
+   recién después correr la migración de datos, que se conecta con ese token.
+2. **Correr la migración en simulación primero** y revisar el resumen.
+3. **Cargar los stocks mínimos** de los productos que se reponen seguido: es lo
+   que hace útil la pantalla de faltantes. Sin mínimos cae al umbral general y
+   propone de más.
