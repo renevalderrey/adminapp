@@ -644,6 +644,32 @@ estoy viendo».
   `afip_pv` guardado —comprobantes anteriores a que existiera el campo— DEBE
   caerse a `settings.afip_pv`.
 
+#### El nombre del cliente sin ficha
+
+> Incorporado el 1/8/2026 por decisión del usuario. Estaba como supuesto 8
+> —«la columna Cliente va a decir Consumidor final aunque el operador haya
+> escrito el nombre»— y pasa a resolverse dentro de esta funcionalidad: una
+> columna nueva que sale mal desde el primer día es peor que no tenerla.
+
+- **FR-100**: `POST /api/sales` DEBE persistir `customer_name` **exista o no**
+  `customer_id`. Hoy solo lo guarda cuando hay ficha de cliente
+  (`sales.js:164-167`), con lo cual el nombre que escribe el operador en un
+  remito o en un recibo X se pierde.
+- **FR-101**: El punto de venta DEBE mandar el nombre libre en `customer_name` y
+  NO DEBE seguir metiéndolo dentro de `notes` (`Billing.jsx:215`). `notes` queda
+  para observaciones, que es para lo que existe.
+- **FR-102**: Guardar `customer_name` sin `customer_id` NO DEBE crear una ficha
+  de cliente ni habilitar cuenta corriente: son cosas distintas. Sin ficha no
+  hay a quién cobrarle después.
+- **FR-103**: La columna Cliente DEBE mostrar el nombre de la ficha si la venta
+  tiene `customer_id`; si no, `customer_name`; y solo si no hay ninguno de los
+  dos, «Consumidor final».
+- **FR-104**: La búsqueda DEBE encontrar las ventas por `customer_name`, no solo
+  por el nombre de las fichas.
+- **FR-105**: Las ventas **ya registradas** con el nombre dentro de `notes` NO se
+  migran. Van a seguir mostrando «Consumidor final». Reconstruirlo exigiría
+  parsear texto libre y adivinar, que es peor que no hacerlo.
+
 ### Key Entities
 
 | Entidad | Campos que importan acá |

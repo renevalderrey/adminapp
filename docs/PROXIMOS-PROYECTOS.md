@@ -90,6 +90,56 @@ Comprafit vende productos. Aplica si el producto se vende a otro rubro.
 
 ---
 
+## 5b · Punto de venta de AFIP por sucursal
+
+**Apareció** escribiendo el plan del historial de ventas (1/8/2026).
+
+Hoy el número de punto de venta de ARCA vive en **un solo `Setting` por
+empresa**, y el POS factura todas las sucursales con ese mismo número
+(`Billing.jsx:243`). `puntos_de_venta` tiene `id, name, code, address,
+is_active` y **ninguna columna con el número de PV fiscal**.
+
+Para una empresa de una sola sucursal no se nota. Para una con dos o más, ARCA
+lleva la numeración correlativa **por punto de venta**: facturar las dos
+sucursales con el mismo número es correcto solo si ARCA tiene declarado un
+único punto de venta. Si el cliente declara uno por sucursal —que es lo
+habitual cuando factura desde dos direcciones— el sistema no lo puede
+representar.
+
+**Qué implica**: una columna en `puntos_de_venta`, el campo en la pantalla de
+sucursales, y que la emisión lo tome de ahí con el `Setting` como respaldo para
+los que no lo tengan cargado.
+
+Comprafit tiene una sucursal. **Verificar si eso va a seguir así antes de
+construirlo.**
+
+---
+
+## 5c · Tests de integración contra una base real
+
+**Apareció** escribiendo el plan del historial de ventas (1/8/2026).
+
+No existe forma de probar una ruta contra Postgres. `src/tests/` cubre
+utilidades y guardias estáticas, y `server.test.js` llega hasta `/ping`,
+`/health` y CORS. Los dobles de `tests/helpers/modelosFalsos.js` lo dicen en su
+propio encabezado: *«un bug que solo aparece contra Postgres real —por ejemplo,
+DECIMAL devuelto como string— NO lo atrapan»*.
+
+Ese ejemplo dejó de ser hipotético: es exactamente el motivo por el que la
+columna Total del export no sumaría.
+
+Lo mismo pasa con el orden estable de la paginación, los locks, y el
+aislamiento entre empresas — que hoy se verifica con guardias que leen el
+código fuente, no ejecutándolo.
+
+**Qué implica**: un Postgres de test (el CI ya levanta uno), fixtures mínimas
+—dos empresas con datos— y `supertest` contra la app real. Es la pieza que
+convierte a `sdd-verify` de lector de código en verificador de verdad.
+
+**Es la deuda técnica con mejor relación entre lo que cuesta y lo que evita.**
+
+---
+
 ## 6 · Cifrar la clave privada de AFIP en reposo
 
 Está en texto plano en la base. Es material fiscal del cliente. Quedó anotado
