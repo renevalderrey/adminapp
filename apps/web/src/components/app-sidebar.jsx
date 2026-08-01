@@ -70,6 +70,7 @@ function Contenido({ abierta = true, onAlternar }) {
   const esDueño = user?.sub === ajustes.owner_auth0_sub
 
   const grupos = gruposVisibles(can, {
+    esSuperadmin: usuario?.es_superadmin === true,
     modulosHabilitados: ajustes.enabled_modules,
     esDueño,
   })

@@ -19,6 +19,7 @@ const { sequelize, Usuario } = require('./models');
 const { checkJwt, extractUser, loadEmpresaContext, requireEmpresa } = require('./middleware/auth');
 const checkSubscription = require('./middleware/checkSubscription');
 const requestId = require('./middleware/requestId');
+const requireSuperadmin = require('./middleware/requireSuperadmin');
 const subscriptionCron = require('./services/subscriptionCron');
 const logger = require('./utils/logger');
 
@@ -343,13 +344,18 @@ app.use('/api', ...authEmpresa, require('./routes/general'));
 // sin sesion (valida firma HMAC), y lo que llama la app va autenticado.
 app.use('/api/tiendanube', require('./routes/tiendanube').publico);
 app.use('/api/tiendanube', ...authEmpresa, require('./routes/tiendanube').privado);
-app.use('/api/production', ...authEmpresa, require('./routes/production'));
-app.use('/api/customers', ...authEmpresa, require('./routes/customers'));
+app.use('/api/production', ...authEmpresa, requireSuperadmin, require('./routes/production'));
+// ── Modulos todavia no liberados a los clientes ──
+// requireSuperadmin va DESPUES de la cadena de empresa: primero se resuelve
+// quien sos y sobre que empresa operas, y recien despues si este modulo
+// existe para vos. Responde 404 y no 403: un 403 confirma que el modulo esta
+// ahi y solo oculto.
+app.use('/api/customers', ...authEmpresa, requireSuperadmin, require('./routes/customers'));
 app.use('/api/stock', ...authEmpresa, require('./routes/stock'));
-app.use('/api/reports', ...authEmpresa, require('./routes/reports'));
+app.use('/api/reports', ...authEmpresa, requireSuperadmin, require('./routes/reports'));
 app.use('/api/dashboard', ...authEmpresa, require('./routes/dashboard'));
-app.use('/api/cashflow', ...authEmpresa, require('./routes/cashflow'));
-app.use('/api/taxes', ...authEmpresa, require('./routes/taxes'));
+app.use('/api/cashflow', ...authEmpresa, requireSuperadmin, require('./routes/cashflow'));
+app.use('/api/taxes', ...authEmpresa, requireSuperadmin, require('./routes/taxes'));
 app.use('/api/empresas', ...authSinEmpresa, require('./routes/empresas'));
 app.use('/api/import', ...authEmpresa, require('./routes/import'));
 app.use('/api/precios', ...authEmpresa, require('./routes/precios'));

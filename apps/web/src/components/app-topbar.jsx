@@ -6,7 +6,7 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { PanelLeft, ChevronRight, Building2, MapPin } from 'lucide-react'
+import { PanelLeft, ChevronRight, Building2, MapPin, ShieldAlert } from 'lucide-react'
 
 // ════════════════════════════════════════════
 //  Encabezado
@@ -62,9 +62,23 @@ export function AppTopbar({ sidebarAbierta, onAlternarSidebar }) {
 
       <div className="flex-1" />
 
+      {/* Estás en la empresa de un cliente, no en la tuya.
+          Sin esto es cuestión de tiempo hasta que alguien cargue una venta en
+          la empresa equivocada y no se entere hasta el cierre del día. */}
+      {empresaActiva?.ajena && (
+        <span className="hidden items-center gap-1.5 rounded-md border border-warn-line bg-warn-soft
+                         px-2 py-1 text-[11.5px] font-semibold text-warn lg:inline-flex"
+          title="Estás viendo la empresa de un cliente. Todo lo que hagas queda registrado con tu usuario.">
+          <ShieldAlert className="h-3.5 w-3.5" />
+          Empresa de cliente
+        </span>
+      )}
+
       {/* Contexto: empresa y sucursal */}
-      <div className="hidden items-center gap-2 rounded-lg border border-border bg-surface-2 px-2.5 py-1
-                      transition-colors hover:border-border-2 md:flex">
+      <div className={`hidden items-center gap-2 rounded-lg border bg-surface-2 px-2.5 py-1
+                      transition-colors hover:border-border-2 md:flex ${
+                        empresaActiva?.ajena ? 'border-warn-line' : 'border-border'
+                      }`}>
         <Building2 className="h-3.5 w-3.5 shrink-0 text-fg-3" />
 
         {empresas.length > 1 ? (

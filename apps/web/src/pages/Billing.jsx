@@ -49,6 +49,10 @@ const Billing = () => {
   const [customerSearch, setCustomerSearch] = useState('')
   const [customerResults, setCustomerResults] = useState([])
   const [showCustomerSearch, setShowCustomerSearch] = useState(false)
+
+  // Clientes es uno de los módulos que todavía no se liberan a los clientes
+  // finales. El POS tiene que funcionar igual sin él.
+  const hayModuloClientes = useStore(s => s.usuario?.es_superadmin) === true
   const [lastInvoice, setLastInvoice] = useState(null)
 
   const [categoryFilter, setCategoryFilter] = useState('')
@@ -649,34 +653,42 @@ const Billing = () => {
                 ) : (
                   <div className="space-y-1">
                     <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Cliente</label>
-                    <div className="relative">
-                      <Input
-                        placeholder="Buscar cliente..."
-                        value={customerSearch}
-                        onChange={e => handleCustomerSearch(e.target.value)}
-                        onFocus={() => customerResults.length > 0 && setShowCustomerSearch(true)}
-                        className="h-8 text-sm rounded-lg pr-8"
-                      />
-                      {customerId && (
-                        <button className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-destructive"
-                          onClick={clearCustomer}>×</button>
-                      )}
-                      {showCustomerSearch && customerResults.length > 0 && (
-                        <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-popover border rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                          {customerResults.map(c => (
-                            <button key={c.id}
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground flex justify-between"
-                              onClick={() => selectCustomer(c)}>
-                              <span>{c.name}</span>
-                              <span className="text-xs text-muted-foreground">{c.tax_id || ''}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+
+                    {/* El buscador solo existe si el módulo de clientes está
+                        liberado: sin él, /api/customers responde 404 y el
+                        campo quedaría tirando errores en cada tecla. El nombre
+                        libre alcanza para el comprobante. */}
+                    {hayModuloClientes && (
+                      <div className="relative">
+                        <Input
+                          placeholder="Buscar cliente..."
+                          value={customerSearch}
+                          onChange={e => handleCustomerSearch(e.target.value)}
+                          onFocus={() => customerResults.length > 0 && setShowCustomerSearch(true)}
+                          className="h-8 text-sm rounded-lg pr-8"
+                        />
+                        {customerId && (
+                          <button className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-destructive"
+                            onClick={clearCustomer}>×</button>
+                        )}
+                        {showCustomerSearch && customerResults.length > 0 && (
+                          <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-popover border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                            {customerResults.map(c => (
+                              <button key={c.id}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground flex justify-between"
+                                onClick={() => selectCustomer(c)}>
+                                <span>{c.name}</span>
+                                <span className="text-xs text-muted-foreground">{c.tax_id || ''}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {!customerId && (
                       <Input
-                        placeholder="O nombre libre..."
+                        placeholder={hayModuloClientes ? 'O nombre libre...' : 'Nombre del cliente'}
                         value={customerName}
                         onChange={e => setCustomerName(e.target.value)}
                         className="h-8 text-sm rounded-lg mt-1"

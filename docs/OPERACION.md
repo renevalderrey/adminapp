@@ -375,3 +375,78 @@ Para que nadie lo busque:
 - **Panel del dueño del SaaS.** Todo se hace con los scripts o contra la base.
 - **Cifrado de la clave privada de AFIP.** Está en texto plano en la base.
 - **Respaldo automático.** El script existe; correrlo periódicamente, no.
+
+---
+
+## Operadores de la plataforma (superadmin)
+
+Un superadmin puede entrar a la empresa de cualquier cliente y ve los módulos
+que todavía no se liberaron. Es el nivel de quien desarrolla y da soporte, no
+un rol dentro de una empresa.
+
+```
+npm --prefix apps/api run superadmin -- listar
+npm --prefix apps/api run superadmin -- activar <email>
+npm --prefix apps/api run superadmin -- quitar <email>
+```
+
+El usuario tiene que haber entrado al menos una vez para existir en la base.
+
+### Por qué es un script y no un botón
+
+Un endpoint que otorga superadmin es una escalada de privilegios esperando a
+que alguien encuentre el IDOR: quien lo llame se vuelve operador de **toda** la
+plataforma, no de una empresa. Un script que corre con las credenciales de la
+base no tiene esa superficie. Hay un test que falla si algún día aparece código
+que escriba `es_superadmin` desde una ruta.
+
+### Qué habilita y qué no
+
+**Habilita** elegir cualquier empresa desde el selector del encabezado, sin
+membresía, y ver los módulos no liberados.
+
+**No habilita** ver datos de dos empresas a la vez. Se opera sobre **una
+empresa por vez** —la seleccionada— y cada consulta sigue filtrando por
+`empresa_id` igual que para cualquier usuario. Lo único que se ensanchó es
+*qué* empresa se puede elegir.
+
+### Rastro
+
+Cada request de un superadmin sobre una empresa donde no es miembro se registra
+con `superadmin: true` y el `empresaId`. Con el `requestId` se reconstruye todo
+lo que tocó en esa sesión:
+
+```
+# En los logs de la plataforma
+superadmin:true empresaId:12
+```
+
+El encabezado además muestra un aviso **«Empresa de cliente»** en ámbar mientras
+estás en una empresa ajena. Sin eso es cuestión de tiempo hasta que alguien
+cargue una venta en la empresa equivocada.
+
+### Invisibilidad
+
+El superadmin no aparece en la pantalla de Equipo del cliente: esa pantalla
+lista membresías, y un superadmin no tiene ninguna en las empresas ajenas.
+
+### Módulos no liberados
+
+Clientes, recetas, producción, caja, impuestos y reportes existen solo para
+superadmin. El gate está en tres lugares y hacen falta los tres:
+
+| Dónde | Qué pasa sin él |
+|---|---|
+| Barra lateral | El ítem se ve y lleva a una pantalla que no carga |
+| `RouteGuard` | Entrar por URL a mano funciona |
+| **API (`requireSuperadmin`)** | **El menú es cosmética: los datos siguen accesibles** |
+
+La API responde **404**, no 403: un 403 le confirma a quien está probando rutas
+que el módulo existe y solo está oculto.
+
+Para liberar uno: sacarlo del grupo «Nuevas funcionalidades» en
+`components/navegacion.js`, quitarle `soloSuperadmin` a su ruta en `App.jsx`, y
+sacar `requireSuperadmin` de su montaje en `server.js`. El test
+`superadmin.test.js` va a fallar hasta que se lo saque también de la lista —
+eso es a propósito: liberar un módulo tiene que ser una decisión, no un
+descuido.

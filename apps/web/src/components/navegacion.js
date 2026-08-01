@@ -39,10 +39,7 @@ export const GRUPOS = [
   {
     label: 'Finanzas',
     items: [
-      { to: '/caja', icon: DollarSign, label: 'Flujo de caja', permission: 'caja.ver', modulo: 'caja' },
       { to: '/gastos', icon: Wallet, label: 'Gastos', permission: 'gastos.ver', modulo: 'gastos' },
-      { to: '/impuestos', icon: FileCheck, label: 'Impuestos', permission: 'config.ver', modulo: 'impuestos' },
-      { to: '/reportes', icon: FileSpreadsheet, label: 'Reportes', permission: 'reportes.ver', modulo: 'reportes' },
       { to: '/panel', icon: BarChart3, label: 'Panel de control', permission: 'dashboard.ver', modulo: 'panel' },
     ],
   },
@@ -54,7 +51,34 @@ export const GRUPOS = [
       { to: '/suscripcion', icon: CreditCard, label: 'Suscripción', permission: 'config.ver', modulo: 'suscripcion' },
     ],
   },
+
+  // ── Nuevas funcionalidades ──
+  //
+  // Terminadas y probadas, pero todavía no liberadas a los clientes: el
+  // sistema que vienen usando no las tenía y liberarlas es una decisión
+  // comercial, no técnica.
+  //
+  // Marcar el ítem acá NO alcanza para ocultarlo: el gate real está en la API
+  // (requireSuperadmin) y en RouteGuard. Esto solo evita dibujarlo.
+  {
+    label: 'Nuevas funcionalidades',
+    soloSuperadmin: true,
+    items: [
+      { to: '/clientes', icon: Users, label: 'Clientes', permission: 'clientes.ver', soloSuperadmin: true },
+      { to: '/recetas', icon: Zap, label: 'Fórmulas y recetas', permission: 'recetas.ver', soloSuperadmin: true },
+      { to: '/produccion', icon: Factory, label: 'Producción', permission: 'produccion.ver', soloSuperadmin: true },
+      { to: '/caja', icon: DollarSign, label: 'Flujo de caja', permission: 'caja.ver', soloSuperadmin: true },
+      { to: '/impuestos', icon: FileCheck, label: 'Impuestos', permission: 'config.ver', soloSuperadmin: true },
+      { to: '/reportes', icon: FileSpreadsheet, label: 'Reportes', permission: 'reportes.ver', soloSuperadmin: true },
+    ],
+  },
 ]
+
+/** Las rutas que solo existen para un operador de la plataforma. */
+export const RUTAS_SOLO_SUPERADMIN = GRUPOS
+  .flatMap((g) => g.items)
+  .filter((i) => i.soloSuperadmin)
+  .map((i) => i.to)
 
 /** Todos los ítems, aplanados. Para resolver la ruta actual. */
 export const ITEMS = GRUPOS.flatMap((g) => g.items.map((i) => ({ ...i, grupo: g.label })))
@@ -75,18 +99,27 @@ export function itemDeRuta(pathname) {
 }
 
 /**
- * Filtra la navegación por permisos y por módulos habilitados.
+ * Filtra la navegación.
+ *
+ * Tres gates, del más restrictivo al menos:
+ *
+ *   1. `soloSuperadmin` — existe para toda la plataforma o no existe.
+ *   2. `modulo`         — lo contrató esta empresa.
+ *   3. `permission`     — lo puede hacer este usuario en esta empresa.
  *
  * @param {(codigo: string) => boolean} can
  * @param {object} opciones
+ * @param {boolean} [opciones.esSuperadmin]
  * @param {string[]} [opciones.modulosHabilitados] Si no viene, no se gatea nada.
  * @param {boolean} [opciones.esDueño] El dueño ve todo, aunque el módulo esté apagado.
  */
-export function gruposVisibles(can, { modulosHabilitados, esDueño } = {}) {
+export function gruposVisibles(can, { esSuperadmin, modulosHabilitados, esDueño } = {}) {
   return GRUPOS
+    .filter((grupo) => !grupo.soloSuperadmin || esSuperadmin)
     .map((grupo) => ({
       ...grupo,
       items: grupo.items.filter((item) => {
+        if (item.soloSuperadmin && !esSuperadmin) return false
         if (item.permission && !can(item.permission)) return false
         if (esDueño) return true
         if (Array.isArray(modulosHabilitados) && item.modulo) {

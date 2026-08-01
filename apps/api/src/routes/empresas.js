@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
-const { Empresa, PuntoDeVenta, Usuario, UsuarioEmpresa, Suscripcion, Invitacion, Rol, RolPermiso, UsuarioPermiso, sequelize } = require('../models');
+const { Empresa, PuntoDeVenta, Usuario, UsuarioEmpresa, Suscripcion, Invitacion, Rol, RolPermiso, UsuarioPermiso, Permiso, sequelize } = require('../models');
 const { sendEmail, welcomeEmail, invitationEmail } = require('../services/email');
 const checkPermission = require('../middleware/checkPermission');
 const { requireEmpresa } = require('../middleware/auth');
@@ -200,6 +200,30 @@ router.get('/mi-contexto', async (req, res) => {
       ],
     });
 
+    // ── Empresas del operador de la plataforma ──
+    //
+    // A un superadmin se le suman TODAS las empresas, no solo aquellas donde
+    // tiene membresia: es lo que le permite entrar a dar soporte sin que
+    // alguien tenga que invitarlo primero.
+    //
+    // Se marcan con `ajena: true` para que el selector pueda distinguirlas de
+    // las propias. Ver una empresa de un cliente tiene que verse distinto de
+    // estar en la tuya, o es cuestion de tiempo hasta que alguien cargue una
+    // venta en la empresa equivocada.
+    const idsPropias = new Set(ueList.map((ue) => ue.empresa_id));
+    let ajenas = [];
+
+    if (usuario.es_superadmin) {
+      ajenas = await Empresa.findAll({
+        where: { is_active: true, id: { [Op.notIn]: [...idsPropias, 0] } },
+        include: [
+          { model: PuntoDeVenta, as: 'puntosDeVenta', where: { is_active: true }, required: false },
+          { model: Suscripcion, as: 'suscripcion' },
+        ],
+        order: [['name', 'ASC']],
+      });
+    }
+
     const empresas = ueList.map(ue => ({
       id: ue.empresa.id,
       name: ue.empresa.name,
@@ -226,14 +250,50 @@ router.get('/mi-contexto', async (req, res) => {
       } : null,
     }));
 
+    for (const e of ajenas) {
+      empresas.push({
+        id: e.id,
+        name: e.name,
+        cuit: e.cuit,
+        rubro: e.rubro,
+        logo: e.logo,
+        phone: e.phone,
+        address: e.address,
+        city: e.city,
+        state: e.state,
+        settings: e.settings,
+        onboarding_completed: e.onboarding_completed,
+        role: 'admin',
+        rol_id: null,
+        is_default: false,
+        // La marca que el frontend usa para avisar que estas en la empresa de
+        // otro.
+        ajena: true,
+        puntosDeVenta: (e.puntosDeVenta || []).map(pv => ({
+          id: pv.id, name: pv.name, code: pv.code, address: pv.address,
+        })),
+        suscripcion: e.suscripcion ? {
+          status: e.suscripcion.status,
+          plan: e.suscripcion.plan,
+          trial_ends_at: e.suscripcion.trial_ends_at,
+          trial_starts_at: e.suscripcion.trial_starts_at,
+        } : null,
+      });
+    }
+
     const active = empresas.find(e => e.id === req.empresaId) || empresas[0] || null;
 
     res.json({
       ok: true,
       data: {
-      usuario: { id: usuario.id, email: usuario.email, nombre: usuario.nombre },
-      permisos: req.usuarioPermisos || [],
-      empresaActiva: active,
+        usuario: {
+          id: usuario.id,
+          email: usuario.email,
+          nombre: usuario.nombre,
+          es_superadmin: usuario.es_superadmin === true,
+        },
+        permisos: req.usuarioPermisos || [],
+        empresaActiva: active,
         empresas,
       },
     });
@@ -252,29 +312,54 @@ router.put('/cambiar-empresa/:id', async (req, res) => {
       where: { usuario_id: usuario.id, empresa_id: empresaId, is_active: true },
     });
 
-    if (!ue) return res.status(403).json({ ok: false, error: 'No tienes acceso a esta empresa' });
+    // Un operador de la plataforma puede cambiarse a cualquier empresa sin ser
+    // miembro. Es el mismo ensanchamiento que hace loadEmpresaContext y por el
+    // mismo motivo: poder dar soporte sin que lo tengan que invitar.
+    const comoSuperadmin = !ue && usuario.es_superadmin === true;
+
+    if (!ue && !comoSuperadmin) {
+      return res.status(403).json({ ok: false, error: 'No tienes acceso a esta empresa' });
+    }
 
     req.empresaId = empresaId;
-    req.userRole = ue.role;
+    req.userRole = ue ? ue.role : 'admin';
 
     // Reload permissions for the new empresa context
     try {
       const permisos = new Set();
-      if (ue.rol_id) {
+
+      if (comoSuperadmin) {
+        // Sin membresia no hay rol del que heredar. Se cargan los permisos del
+        // catalogo para que el chequeo siga siendo el mismo para todos.
+        const todos = await Permiso.findAll({ attributes: ['codigo'] });
+        for (const p of todos) permisos.add(p.codigo);
+
+        logger.info(
+          { requestId: req.id, superadmin: true, usuario: req.userId, empresaId },
+          'Superadmin cambio a una empresa ajena'
+        );
+      }
+
+      if (ue?.rol_id) {
         const rp = await RolPermiso.findAll({
           where: { rol_id: ue.rol_id },
           attributes: ['permiso_codigo'],
         });
         for (const p of rp) permisos.add(p.permiso_codigo);
       }
-      const overrides = await UsuarioPermiso.findAll({
-        where: { usuario_empresa_id: ue.id },
-        attributes: ['permiso_codigo', 'granted'],
-      });
+
+      const overrides = ue
+        ? await UsuarioPermiso.findAll({
+            where: { usuario_empresa_id: ue.id },
+            attributes: ['permiso_codigo', 'granted'],
+          })
+        : [];
+
       for (const o of overrides) {
         if (o.granted) permisos.add(o.permiso_codigo);
         else permisos.delete(o.permiso_codigo);
       }
+
       req.usuarioPermisos = [...permisos];
     } catch (permErr) {
       logger.warn({ err: permErr, userId: req.userId }, 'Error reloading permissions on empresa switch');
@@ -302,8 +387,9 @@ router.put('/cambiar-empresa/:id', async (req, res) => {
         state: empresa.state,
         settings: empresa.settings,
         onboarding_completed: empresa.onboarding_completed,
-        role: ue.role,
-        rol_id: ue.rol_id,
+        role: ue ? ue.role : 'admin',
+        rol_id: ue ? ue.rol_id : null,
+        ajena: comoSuperadmin,
         permisos: req.usuarioPermisos || [],
         puntosDeVenta: empresa.puntosDeVenta.map(pv => ({
           id: pv.id, name: pv.name, code: pv.code, address: pv.address,

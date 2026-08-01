@@ -1,5 +1,5 @@
 const { auth } = require('express-oauth2-jwt-bearer');
-const { Usuario, UsuarioEmpresa, Empresa, PuntoDeVenta, Rol, RolPermiso, UsuarioPermiso } = require('../models');
+const { Usuario, UsuarioEmpresa, Empresa, PuntoDeVenta, Rol, RolPermiso, UsuarioPermiso, Permiso } = require('../models');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 require('dotenv').config();
@@ -106,6 +106,49 @@ const loadEmpresaContext = async (req, res, next) => {
         include: [{ model: Empresa, as: 'empresa' }],
       });
 
+      // ── Operador de la plataforma ──
+      //
+      // Quien desarrolla y da soporte tiene que poder entrar a la empresa de
+      // cualquier cliente sin ser miembro de ella. Es lo UNICO que se ensancha:
+      // que empresa se puede seleccionar.
+      //
+      // Lo que NO cambia: a partir de aca todo el sistema sigue trabajando con
+      // req.empresaId, una empresa por vez, y cada consulta sigue filtrando por
+      // ella. No hay ninguna consulta que cruce empresas.
+      //
+      // Se arma un contexto equivalente al de una membresia, sin fila en
+      // usuario_empresas: por eso el superadmin no aparece en la pantalla de
+      // Equipo del cliente.
+      if (!ue && usuario.es_superadmin) {
+        const empresa = await Empresa.findByPk(empresaHeader);
+
+        if (empresa) {
+          ue = {
+            empresa_id: empresa.id,
+            empresa,
+            role: 'admin',
+            rol_id: null,
+            id: null,
+          };
+
+          req.esSuperadminEnEmpresaAjena = true;
+
+          // Queda el rastro de que un operador entro a datos de un cliente.
+          // Con el requestId que ya existe se puede reconstruir todo lo que
+          // toco en esa sesion.
+          logger.info(
+            {
+              requestId: req.id,
+              superadmin: true,
+              usuario: req.userId,
+              empresaId: empresa.id,
+              ruta: req.originalUrl,
+            },
+            'Superadmin operando sobre una empresa ajena'
+          );
+        }
+      }
+
       if (!ue) {
         logger.warn(
           { userId: req.userId, empresaSolicitada: empresaHeader },
@@ -135,6 +178,20 @@ const loadEmpresaContext = async (req, res, next) => {
       try {
         const permisos = new Set();
 
+        // El contexto sintetico de un superadmin en una empresa ajena no tiene
+        // rol ni fila de membresia: sin esto se quedaria con cero permisos y
+        // checkPermission le cortaria todo, que es lo contrario de lo que
+        // significa ser operador de la plataforma.
+        //
+        // Se cargan los permisos REALES del catalogo en vez de saltear
+        // checkPermission: asi el chequeo sigue siendo uno solo para todos, y
+        // el frontend recibe la lista por el mismo camino que cualquier
+        // usuario.
+        if (req.esSuperadminEnEmpresaAjena) {
+          const todos = await Permiso.findAll({ attributes: ['codigo'] });
+          for (const p of todos) permisos.add(p.codigo);
+        }
+
         if (ue.rol_id) {
           const rp = await RolPermiso.findAll({
             where: { rol_id: ue.rol_id },
@@ -145,10 +202,14 @@ const loadEmpresaContext = async (req, res, next) => {
           }
         }
 
-        const overrides = await UsuarioPermiso.findAll({
-          where: { usuario_empresa_id: ue.id },
-          attributes: ['permiso_codigo', 'granted'],
-        });
+        // Sin membresia no hay overrides que buscar, y consultar con
+        // usuario_empresa_id null trae basura.
+        const overrides = ue.id
+          ? await UsuarioPermiso.findAll({
+              where: { usuario_empresa_id: ue.id },
+              attributes: ['permiso_codigo', 'granted'],
+            })
+          : [];
         for (const o of overrides) {
           if (o.granted) {
             permisos.add(o.permiso_codigo);

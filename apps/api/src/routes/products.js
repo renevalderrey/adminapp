@@ -11,6 +11,7 @@ const logger = require('../utils/logger');
 const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo } = require('../utils/errores');
+const requireSuperadmin = require('../middleware/requireSuperadmin');
 
 // GET /api/products — Listar productos (con marca y stock, paginado)
 router.get('/', checkPermission('products.ver'), async (req, res) => {
@@ -257,7 +258,7 @@ router.get('/:id/cost-history', checkPermission('products.ver'), async (req, res
 });
 
 // GET /api/products/:id/recipe — Obtener receta de un producto
-router.get('/:id/recipe', checkPermission('recetas.ver'), async (req, res) => {
+router.get('/:id/recipe', requireSuperadmin, checkPermission('recetas.ver'), async (req, res) => {
   try {
     // Misma fuga que en cost-history: la receta es la formula del producto —
     // que insumos lleva y en que proporcion— y se podia leer la de cualquier
@@ -282,7 +283,7 @@ router.get('/:id/recipe', checkPermission('recetas.ver'), async (req, res) => {
 });
 
 // POST /api/products/:id/recipe — Crear o actualizar receta de un producto
-router.post('/:id/recipe', checkPermission('recetas.crear'), async (req, res) => {
+router.post('/:id/recipe', requireSuperadmin, checkPermission('recetas.crear'), async (req, res) => {
   const productId = parseInt(req.params.id);
   const { loss_percentage, yield: recipeYield, items } = req.body;
 
@@ -377,7 +378,7 @@ router.post('/:id/recipe', checkPermission('recetas.crear'), async (req, res) =>
 });
 
 // DELETE /api/products/:id/recipe — Eliminar receta de un producto
-router.delete('/:id/recipe', checkPermission('recetas.eliminar'), async (req, res) => {
+router.delete('/:id/recipe', requireSuperadmin, checkPermission('recetas.eliminar'), async (req, res) => {
   try {
     // La peor de las tres: un DELETE sin scoping borraba la receta de otra
     // empresa cliente. Destructivo y silencioso — el dueño se entera cuando

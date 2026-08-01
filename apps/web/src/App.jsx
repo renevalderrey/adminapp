@@ -31,10 +31,21 @@ import SubscriptionSettings from '@/pages/SubscriptionSettings'
 import Faltantes from '@/pages/Faltantes'
 import Comparador from '@/pages/Comparador'
 
-function RouteGuard({ children, requiredModule }) {
+function RouteGuard({ children, requiredModule, soloSuperadmin }) {
   const usuario = useStore(s => s.usuario)
   const empresaActiva = useStore(s => s.empresaActiva)
   const { user } = useAuth0()
+
+  // El gate más restrictivo va primero: si el módulo todavía no se liberó, no
+  // existe para nadie salvo el operador de la plataforma — ni siquiera para el
+  // dueño de la empresa.
+  //
+  // Esto no reemplaza al gate de la API (requireSuperadmin). Es la mitad
+  // visible: evita que alguien llegue escribiendo la URL a mano y vea una
+  // pantalla rota llena de 404.
+  if (soloSuperadmin && usuario?.es_superadmin !== true) {
+    return <Navigate to="/pos" replace />
+  }
 
   const empresaSettings = empresaActiva?.settings || {}
   const enabledModules = empresaSettings.enabled_modules
@@ -245,16 +256,16 @@ function App() {
               <Route path="/pos" element={<Billing />} />
               <Route path="/ventas" element={<InvoicesList />} />
               <Route path="/inventario" element={<Inventory />} />
-              <Route path="/recetas" element={<RouteGuard requiredModule="recetas"><Recipes /></RouteGuard>} />
-              <Route path="/produccion" element={<RouteGuard requiredModule="produccion"><Production /></RouteGuard>} />
-              <Route path="/clientes" element={<RouteGuard requiredModule="clientes"><Customers /></RouteGuard>} />
-              <Route path="/caja" element={<RouteGuard requiredModule="caja"><CashFlow /></RouteGuard>} />
-              <Route path="/impuestos" element={<RouteGuard requiredModule="impuestos"><Taxes /></RouteGuard>} />
+              <Route path="/recetas" element={<RouteGuard soloSuperadmin requiredModule="recetas"><Recipes /></RouteGuard>} />
+              <Route path="/produccion" element={<RouteGuard soloSuperadmin requiredModule="produccion"><Production /></RouteGuard>} />
+              <Route path="/clientes" element={<RouteGuard soloSuperadmin requiredModule="clientes"><Customers /></RouteGuard>} />
+              <Route path="/caja" element={<RouteGuard soloSuperadmin requiredModule="caja"><CashFlow /></RouteGuard>} />
+              <Route path="/impuestos" element={<RouteGuard soloSuperadmin requiredModule="impuestos"><Taxes /></RouteGuard>} />
               <Route path="/proveedores" element={<Orders />} />
               <Route path="/ordenes-compra" element={<RouteGuard requiredModule="ordenes-compra"><PurchaseOrders /></RouteGuard>} />
               <Route path="/faltantes" element={<Faltantes />} />
               <Route path="/comparador" element={<Comparador />} />
-              <Route path="/reportes" element={<RouteGuard requiredModule="reportes"><Reports /></RouteGuard>} />
+              <Route path="/reportes" element={<RouteGuard soloSuperadmin requiredModule="reportes"><Reports /></RouteGuard>} />
               <Route path="/gastos" element={<Expenses />} />
               <Route path="/panel" element={<Dashboard />} />
               <Route path="/facturacion" element={<Settings />} />

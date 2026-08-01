@@ -18,7 +18,8 @@
     "test:coverage": "jest --coverage",
     "db:migrate:raw": "npx sequelize-cli db:migrate --config src/config/sequelize-cli.js --migrations-path src/migrations",
     "backup": "node scripts/backup.js",
-    "suscripcion": "node scripts/suscripcion.js"
+    "suscripcion": "node scripts/suscripcion.js",
+    "superadmin": "node scripts/superadmin.js"
   },
   "keywords": [],
   "author": "",
