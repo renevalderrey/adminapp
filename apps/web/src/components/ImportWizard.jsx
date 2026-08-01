@@ -679,7 +679,7 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
               <DialogClose asChild>
                 <Button variant="ghost">Cancelar</Button>
               </DialogClose>
-              <Button disabled={!file || parsing} onClick={() => file && handleFile(file)} className="bg-[#00B4B6] hover:bg-[#008B8E] text-white">
+              <Button disabled={!file || parsing} onClick={() => file && handleFile(file)} className="bg-brand hover:bg-brand-dark text-white">
                 {parsing ? 'Leyendo...' : file ? 'Continuar' : 'Seleccioná un archivo'}
                 <ArrowRight className="size-4 ml-1.5" />
               </Button>
@@ -695,7 +695,7 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
                 <DialogClose asChild>
                   <Button variant="outline">Cancelar</Button>
                 </DialogClose>
-                <Button onClick={handleImport} disabled={!requiredMapped || importing} className="bg-[#00B4B6] hover:bg-[#008B8E] text-white">
+                <Button onClick={handleImport} disabled={!requiredMapped || importing} className="bg-brand hover:bg-brand-dark text-white">
                   {importing ? (
                     <><Loader2 className="size-4 animate-spin mr-1.5" /> Importando...</>
                   ) : (
@@ -708,7 +708,7 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
 
           {step === 3 && (
             <div className="flex justify-end w-full">
-              <Button onClick={() => { onOpenChange(false); if (onSuccess && result?.created > 0) onSuccess(result) }} className="bg-[#00B4B6] hover:bg-[#008B8E] text-white">
+              <Button onClick={() => { onOpenChange(false); if (onSuccess && result?.created > 0) onSuccess(result) }} className="bg-brand hover:bg-brand-dark text-white">
                 Finalizar
               </Button>
             </div>

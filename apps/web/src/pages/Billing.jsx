@@ -419,7 +419,7 @@ const Billing = () => {
                 type="checkbox"
                 checked={inStockOnly}
                 onChange={e => setInStockOnly(e.target.checked)}
-                className="h-3.5 w-3.5 rounded border-input accent-[#00B4B6]"
+                className="h-3.5 w-3.5 rounded border-input accent-brand"
               />
               Solo stock
             </label>
@@ -451,7 +451,7 @@ const Billing = () => {
                     <p className="text-center font-bold font-mono text-sm text-blue-500">${cardPrice.toLocaleString()}</p>
                     <p className="text-center font-bold font-mono text-sm text-warn">${alliancePrice.toLocaleString()}</p>
                     <div className="flex justify-end">
-                      <Button size="icon" className="h-8 w-8 bg-[#00B4B6] hover:bg-[#008B8E] text-white" onClick={() => addToCart(p)} disabled={outOfStock}>
+                      <Button size="icon" className="h-8 w-8 bg-brand hover:bg-brand-dark text-white" onClick={() => addToCart(p)} disabled={outOfStock}>
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>
@@ -555,7 +555,7 @@ const Billing = () => {
                         <div className="flex gap-1">
                           {[['ef','Efe'],['tc3','Tarj'],['al','Alia']].map(([m, l]) => (
                             <Button key={m} size="sm" variant="outline"
-                              className={`h-7 text-[11px] px-2.5 font-semibold ${item.method === m ? 'bg-[#00B4B6] hover:bg-[#008B8E] text-white border-[#00B4B6] shadow-sm' : ''}`}
+                              className={`h-7 text-[11px] px-2.5 font-semibold ${item.method === m ? 'bg-brand hover:bg-brand-dark text-white border-brand shadow-sm' : ''}`}
                               onClick={() => updateCartMethod(item.id, m)}>
                               {l}
                             </Button>
@@ -774,7 +774,7 @@ const Billing = () => {
               <Button
                 onClick={handleRegisterSale}
                 disabled={cart.length === 0 || loading}
-                className="w-full h-11 font-semibold shadow-sm bg-[#00B4B6] hover:bg-[#008B8E] text-white"
+                className="w-full h-11 font-semibold shadow-sm bg-brand hover:bg-brand-dark text-white"
                 size="lg"
               >
                 {loading ? 'Procesando...' : 'Registrar Venta'}

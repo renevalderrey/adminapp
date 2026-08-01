@@ -210,7 +210,7 @@ const Inventory = () => {
               <FileSpreadsheet className="h-4 w-4 mr-1" /> Importar
             </Button>
           </Can>
-          <Button size="sm" onClick={openCreate} className="bg-[#00B4B6] hover:bg-[#008B8E] text-white">
+          <Button size="sm" onClick={openCreate} className="bg-brand hover:bg-brand-dark text-white">
             <Plus className="h-4 w-4 mr-1" /> Nuevo Producto
           </Button>
         </div>
