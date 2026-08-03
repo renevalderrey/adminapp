@@ -185,6 +185,44 @@ que haya en memoria, no sobre el catálogo.
 
 Quedó fuera del alcance del hito 4 por decisión de alcance, no porque no
 importe.
+
+---
+
+## 5f · Sacar `stock_migracion_sucursal`
+
+**Apareció** implementando la migración de identidad de sucursal (4/8/2026).
+Es el riesgo 5 del plan de `docs/specs/010-inventario/`.
+
+La migración 14 (`20260804-identidad-de-sucursal-en-stock.js`) crea la tabla
+`stock_migracion_sucursal` y guarda ahí **una fila por cada fila de `stock` que
+tocó**: las que solo cambiaron de sucursal —con su `punto_de_venta_id` y su
+`location` anteriores— y las que desaparecieron fusionadas, con el `JSONB`
+completo de la fila original, el `stock_id` que sobrevivió, la marca «revisar» y
+la nota. También quedan registrados los puntos de venta que la migración tuvo
+que crear.
+
+**Cuándo se saca**: en una migración posterior de una línea (`dropTable`),
+**cuando el inventario de Comprafit esté cargado y verificado** — o sea, cuando
+alguien haya contado físicamente los productos que el informe marcó «revisar» y
+el recuento cierre. No antes.
+
+**Qué se pierde al sacarla**: la única salida del riesgo 2, que es una fusión que
+**infló el inventario**. Dos filas de 100 unidades del mismo producto en la misma
+sucursal pueden ser dos pilas de verdad —y entonces sumarlas está bien— o una
+pila anotada dos veces —y entonces el inventario pasó a decir 200 donde hay
+100—. La marca «revisar» distingue el caso sospechoso pero no lo resuelve: eso
+lo resuelve contar. Mientras la tabla exista, la fila original está entera y se
+corrige con un ajuste de stock; sin la tabla, la única forma de saber cuánto
+había antes es un backup.
+
+El `down()` de la migración 14 también depende de ella: restaura desde ahí. Sin
+la tabla, la migración deja de ser reversible — que a esa altura es lo esperado,
+porque el `down` **pisa cualquier movimiento de stock posterior** y es para
+volver atrás minutos después de un deploy, no semanas.
+
+Una tabla de archivo sin condición de salida se queda para siempre. Ésta la
+tiene escrita: inventario contado y verificado.
+
 ---
 
 ## 6 · Cifrar la clave privada de AFIP en reposo

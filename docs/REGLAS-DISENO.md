@@ -259,8 +259,13 @@ La maqueta **no usa `<table>`**: usa grid, con las mismas
 columnas y que cada fila sea clickeable entera.
 
 **El marco lo pone `apps/web/src/components/TablaGrid.jsx`**, con cuatro
-piezas. `apps/web/src/pages/InvoicesList.jsx` es la primera pantalla que lo
-aplica y sirve de ejemplo completo.
+piezas. Hay **dos** pantallas que lo aplican, y conviene mirar la que se parezca
+a la que se está construyendo:
+
+| Ejemplo | Cuándo mirarlo |
+|---|---|
+| `pages/InvoicesList.jsx` | Columnas **fijas**: se saben al escribir el archivo |
+| `pages/Inventory.jsx` | Columnas que **dependen de los datos**: una por sucursal |
 
 ```jsx
 import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid'
@@ -309,7 +314,56 @@ componente tiene dieciocho props y nadie se anima a tocarlo.
 Lo demás sigue igual: importes alineados a la derecha y en mono; acciones al
 final; **cero hex y cero `dark:`**, que verifica
 `apps/web/src/tests/guardiasDeDiseno.test.js` — cuando una pantalla nueva
-aplique el patrón, se agrega a la lista de esa guardia.
+aplique el patrón, se agrega a la lista de esa guardia. Se agrega **antes** de
+reescribirla, no después: así cada hex y cada `dark:` falla en el momento en que
+se escribe, y no treinta juntos al final, cuando ya nadie sabe cuál vino de
+dónde y la salida barata es comentar la guardia.
+
+#### Lo que agregó Inventario, y que las otras cuatro van a necesitar
+
+**1. La columna de selección va al principio del string.** Cuando la pantalla
+tiene una acción masiva —«Actualizar precios» en Inventario—, la casilla es una
+columna más y mide `32px`:
+
+```js
+const COLUMNAS = (n) =>
+  `32px minmax(0,1.6fr) 116px 116px 104px 104px ${'92px '.repeat(n)}56px`
+```
+
+La casilla frena la propagación del clic (`onClick={(e) => e.stopPropagation()}`
+en su celda): seleccionar y abrir el panel son dos gestos distintos sobre la
+misma fila.
+
+**2. Las columnas variables se resuelven con una función, no con dos strings.**
+`COLUMNAS(n)` y `ANCHO_MINIMO(n)` reciben cuántas columnas variables hay. El
+ancho mínimo crece con ellas —`848 + 108 * n`, que son los 92px de la columna más
+los 16 de separación—, porque si no la tabla se comprime en vez de scrollear.
+
+**Hay un tope de tres columnas variables a la vez**, y con más, un selector de
+cuáles comparar. No es cosmético: con cinco columnas la tabla scrollea horizontal
+y comparar dos números que ya no se ven juntos es exactamente el problema que la
+comparación viene a resolver.
+
+**3. El badge de nivel.** Una cantidad que además dice si está bien, tres tonos
+juntos y nunca un color de estado suelto:
+
+```jsx
+const tonoDeStock = (cantidad, minimo) => {
+  if (cantidad <= 0) return 'border-danger-line bg-danger-soft text-danger'
+  if (minimo > 0 && cantidad <= minimo) return 'border-warn-line bg-warn-soft text-warn'
+  return 'border-border bg-surface-3 text-fg-2'
+}
+```
+
+**4. `Tooltip` para lo que no entra en la celda.** En 92px entra una cantidad y
+nada más. El mínimo y el valorizado van en el tooltip
+(`components/ui/tooltip.jsx`, el proveedor ya está montado en `main.jsx`) y **no
+apilados en la celda**: tres cifras por columna por fila vuelven la tabla
+ilegible justo cuando hay tres columnas, que es cuando importa. Lo que no entra
+en la celda y hace falta completo va al panel y al archivo exportado.
+
+Sin esto escrito, la tercera pantalla resuelve el ancho variable a mano y queda
+distinta — y **nada lo detectaría, porque no hay test visual**.
 
 ### Botones
 

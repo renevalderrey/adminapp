@@ -701,7 +701,7 @@ adelante es todo pantalla.
 funcionalidad 009 sin inventar nada, y **el stock de todas las sucursales se lee
 en una sola fila**.
 
-- [ ] **T1031** ⚠ **Riesgo 8, y por eso va primero.** Crear vacíos
+- [x] **T1031** ⚠ **Riesgo 8, y por eso va primero.** Crear vacíos
       `apps/web/src/components/PanelProducto.jsx`,
       `components/PanelTransferencia.jsx` y `components/HistorialDeCostos.jsx`
       (un componente que devuelve `null` y un comentario de qué va a ser), y
@@ -719,7 +719,7 @@ en una sola fila**.
       un `#fff` a mano a cualquiera de los cuatro y viendo el test fallar
       nombrando el archivo y la línea.
 
-- [ ] **T1032** [P] Crear `apps/web/src/utils/stockBajo.js` —la misma regla que
+- [x] **T1032** [P] Crear `apps/web/src/utils/stockBajo.js` —la misma regla que
       T1002, **con el umbral por parámetro y nunca hardcodeado**— y su test en
       `apps/web/src/utils/stockBajo.test.js`.
       **Verificación**: el test comprueba que la función **no contiene el número
@@ -732,7 +732,7 @@ en una sola fila**.
       eso Inventario va a mostrar más productos en stock bajo que el panel de
       control.
 
-- [ ] **T1033** Reescribir la tabla de `apps/web/src/pages/Inventory.jsx` sobre
+- [x] **T1033** Reescribir la tabla de `apps/web/src/pages/Inventory.jsx` sobre
       `TablaGrid`, `Encabezado`, `Fila` y `BotonDeFila`: `COLUMNAS(n)` y
       `ANCHO_MINIMO(n)` como constantes con el string de la decisión 2 del plan
       —**arrancando en `32px` por la columna de selección**, que la maqueta no
@@ -755,7 +755,7 @@ en una sola fila**.
       **la selección y el botón «Actualizar precios» siguen funcionando**: es una
       función liberada el 1/8 y no se pierde por seguir un dibujo que es anterior.
 
-- [ ] **T1034** En el mismo archivo, la barra de indicadores y la de filtros: los
+- [x] **T1034** En el mismo archivo, la barra de indicadores y la de filtros: los
       cuatro indicadores en mono —Productos activos, Valor del stock, Stock bajo
       en `warn`, Sin stock en `danger`—, **referidos al resultado filtrado y a la
       sucursal elegida**; búsqueda sobre el catálogo completo que ya está en
@@ -773,7 +773,7 @@ en una sola fila**.
       producto lo hace invisible **para siempre desde la interfaz**—; y con 1.000
       productos cargados, acotar responde en menos de 150 ms.
 
-- [ ] **T1035** La comparación de sucursales: **una columna de stock por
+- [x] **T1035** La comparación de sucursales: **una columna de stock por
       sucursal, siempre presentes, lado a lado**, resueltas por
       `punto_de_venta_id` y **no** por el texto `location`; cada celda un badge con
       la cantidad en mono y el color del nivel (`danger` en cero o negativo, `warn`
@@ -809,7 +809,7 @@ export.
 **Purpose**: se edita un producto mirando la lista, no tapándola — que es la
 mitad «diseño» del pedido y la casa de casi todo lo demás.
 
-- [ ] **T1036** Crear `apps/web/src/components/PanelProducto.jsx` sobre
+- [x] **T1036** Crear `apps/web/src/components/PanelProducto.jsx` sobre
       `Sheet` / `SheetContent`, con `w-[520px] max-w-[92vw] shadow-nivel-3
       anim-panel` (el ancho va en `style` por lo que explica
       `PanelVenta.jsx:114-120`), y engancharlo al clic de la fila. Kicker
@@ -833,7 +833,7 @@ mitad «diseño» del pedido y la casa de casi todo lo demás.
       cero y **deja cargarlas** en vez de aparecer vacío; y
       `prefers-reduced-motion` desactiva `anim-panel`.
 
-- [ ] **T1037** ⚠ **Riesgo 9.** Eliminar `apps/web/src/components/ProductForm.jsx`
+- [x] **T1037** ⚠ **Riesgo 9.** Eliminar `apps/web/src/components/ProductForm.jsx`
       (solo lo usa `Inventory.jsx:419`) y mover el **alta** de producto al panel.
       **Verificación**: la que importa es que el alta cambia de comportamiento y
       no solo de forma: hoy `ProductForm.jsx:194` **no crea ninguna fila de
@@ -844,7 +844,7 @@ mitad «diseño» del pedido y la casa de casi todo lo demás.
       lo que pide el escenario 10 de la historia 2, y es la clase de cosa que se
       descubre en producción si nadie la prueba al crear.
 
-- [ ] **T1038** Crear `apps/web/src/components/HistorialDeCostos.jsx` como sección
+- [x] **T1038** Crear `apps/web/src/components/HistorialDeCostos.jsx` como sección
       del panel (historia 6): una fila por cambio con fecha, costo anterior, costo
       nuevo, variación en %, motivo y **autor**, del más reciente al más viejo,
       importes en mono, suba y baja distinguidas por color **y por signo** con los
@@ -870,7 +870,7 @@ guardar la fila se actualiza sola.
 **Purpose**: mover diez productos de una sucursal a otra es **una** operación, no
 diez.
 
-- [ ] **T1039** Crear `apps/web/src/components/PanelTransferencia.jsx`: panel —no
+- [x] **T1039** Crear `apps/web/src/components/PanelTransferencia.jsx`: panel —no
       modal— con origen, destino y **una lista de productos con cantidad**; el
       stock **en el origen** al lado de cada nombre; una sola llamada a
       `POST /api/stock/transfer` con todos los ítems; el destino **sin** sucursales
@@ -887,7 +887,7 @@ diez.
       `stock.transferir` no se ve el botón **y la API lo rechaza igual** — la
       pantalla es la cortesía, no la barrera.
 
-- [ ] **T1040** El historial de transferencias con el patrón de tabla —fecha,
+- [x] **T1040** El historial de transferencias con el patrón de tabla —fecha,
       origen, destino e ítems— y no como tarjetas dentro de un modal, usando los
       nombres que devuelve T1027.
       **Verificación**: una transferencia **anterior** a esta funcionalidad, con
@@ -906,7 +906,7 @@ sola operación.
 **Purpose**: se pega la lista de precios que llegó por mail o por WhatsApp y se
 actualizan los costos sin armar un Excel antes.
 
-- [ ] **T1041** Extraer a una función pura el parser del texto pegado, con su
+- [x] **T1041** Extraer a una función pura el parser del texto pegado, con su
       test: separa filas por salto de línea y columnas por **tabulación, `;` o dos
       o más espacios seguidos**; detecta si la primera fila es un encabezado
       reconocible con los alias que ya usa `ImportWizard.jsx:53-76` o sintetiza
@@ -925,7 +925,7 @@ actualizan los costos sin armar un Excel antes.
       informa `fila: i + 2` contando desde el archivo que recibió, y sin la
       correspondencia «error en la línea 14» apunta a otra línea.
 
-- [ ] **T1042** ⚠ **Dependencia (d).** En
+- [x] **T1042** ⚠ **Dependencia (d).** En
       `apps/web/src/components/ImportWizard.jsx`, el paso 1 gana un **segundo
       origen**: pegar texto. La matriz resultante se serializa como un **CSV
       canónico** y se sube por `POST /api/import/products` tal como se sube un
@@ -958,7 +958,7 @@ historial con su autor.
 **Purpose**: el listado que se está viendo se baja en `.xlsx` o se imprime, **sin
 agregar ninguna dependencia al `package.json`**.
 
-- [ ] **T1043** [P] Crear `apps/web/src/utils/exportarInventario.js` con el molde
+- [x] **T1043** [P] Crear `apps/web/src/utils/exportarInventario.js` con el molde
       de `exportarVentas.js`: `COLUMNAS`, `celda()` con `t`/`z` forzados,
       `armarHoja` y `nombreDelArchivo` con fecha y sucursal. Columnas `Producto ·
       SKU · Marca · Categoría · Costo · Precio · <una por sucursal> · Stock total
@@ -973,7 +973,7 @@ agregar ninguna dependencia al `package.json`**.
       notación científica y deja la columna de importes sin sumar, y **el archivo
       abre, se ve bien y está mal**.
 
-- [ ] **T1044** [P] Crear `apps/web/src/utils/impresionInventario.js`: arma el
+- [x] **T1044** [P] Crear `apps/web/src/utils/impresionInventario.js`: arma el
       HTML del listado filtrado —encabezado con fecha, sucursal y cantidad de
       productos; totales al pie: productos, sin stock y stock bajo—, lo abre con
       `window.open` y llama a `print()`. Lleva `print-color-adjust: exact` y
@@ -989,7 +989,7 @@ agregar ninguna dependencia al `package.json`**.
       `utils/` y **fuera** de la lista de `guardiasDeDiseno.test.js`: imprime sobre
       papel blanco, donde los tokens de pantalla no existen.
 
-- [ ] **T1045** Enganchar el botón «Exportar» del encabezado de `Inventory.jsx`,
+- [x] **T1045** Enganchar el botón «Exportar» del encabezado de `Inventory.jsx`,
       con Excel e Imprimir adentro, sobre **el resultado filtrado completo** y no
       las 25 filas visibles. Los dos avisos van **antes** de armar nada: cero
       resultados → avisar y **no** descargar un archivo vacío; más de **5.000**
@@ -1014,7 +1014,7 @@ sus colores y sin filas cortadas. **La funcionalidad está completa.**
 **Purpose**: la próxima pantalla del rediseño encuentra escrito lo que ésta fijó,
 y la tabla que quedó de la migración tiene fecha de salida.
 
-- [ ] **T1046** [P] Actualizar `docs/REGLAS-DISENO.md`: Inventario como **segunda
+- [x] **T1046** [P] Actualizar `docs/REGLAS-DISENO.md`: Inventario como **segunda
       pantalla que aplica el patrón**, con lo que agregó y que las otras cuatro
       van a necesitar —la columna de selección al principio del string, la columna
       variable por sucursal (`COLUMNAS(n)`), el badge de nivel y el `Tooltip` para
@@ -1025,7 +1025,7 @@ y la tabla que quedó de la migración tiene fecha de salida.
       (`Inventory.jsx`). Sin esto, la tercera pantalla resuelve el ancho variable
       a mano y queda distinta, y **nada lo detectaría porque no hay test visual**.
 
-- [ ] **T1047** [P] Anotar en `docs/PROXIMOS-PROYECTOS.md` la salida de
+- [x] **T1047** [P] Anotar en `docs/PROXIMOS-PROYECTOS.md` la salida de
       `stock_migracion_sucursal` (riesgo 5 del plan): se saca en una migración
       posterior de una línea, **cuando el inventario de Comprafit esté cargado y
       verificado**, y hasta entonces es la única salida del riesgo 2 —una fusión

@@ -32,11 +32,27 @@ import { fileURLToPath } from 'node:url'
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
 const SRC = path.join(AQUI, '..')
 
-/** Los archivos que ya aplican el patrón. Se agregan a medida que se rediseñan. */
+/**
+ * Los archivos que ya aplican el patrón. Se agregan a medida que se rediseñan.
+ *
+ * Los cuatro de Inventario entran ANTES de que la pantalla esté reescrita, y es
+ * a propósito: así cada hex y cada `dark:` falla en el momento en que se
+ * escribe y no treinta juntos al final, cuando ya nadie sabe cuál vino de dónde
+ * y la salida barata es comentar la guardia.
+ *
+ * ⚠ La consecuencia es que `pages/Inventory.jsx` deja esta guardia EN ROJO
+ * hasta T1033: hoy dibuja la tabla con los `Table*` de shadcn. Es lo buscado, y
+ * queda dicho acá porque un test rojo sin explicación es un test que alguien
+ * comenta.
+ */
 const ARCHIVOS = [
   'pages/InvoicesList.jsx',
   'components/TablaGrid.jsx',
   'components/PanelVenta.jsx',
+  'pages/Inventory.jsx',
+  'components/PanelProducto.jsx',
+  'components/PanelTransferencia.jsx',
+  'components/HistorialDeCostos.jsx',
 ].map((nombre) => ({
   nombre,
   contenido: fs.readFileSync(path.join(SRC, nombre), 'utf8'),
@@ -84,10 +100,16 @@ describe('La tabla es un grid y no un <table>', () => {
 
 // Si esta lista queda vacía, la guardia pasa a ser un test que siempre pasa.
 describe('La guardia mira los archivos que dice mirar', () => {
-  it('los tres archivos existen y tienen contenido', () => {
-    expect(ARCHIVOS).toHaveLength(3)
+  it('los siete archivos existen y tienen contenido', () => {
+    expect(ARCHIVOS).toHaveLength(7)
     for (const archivo of ARCHIVOS) {
-      expect(archivo.contenido.length).toBeGreaterThan(100)
+      // 60 y no 100: tres de los siete se crearon vacíos a propósito —un
+      // componente que devuelve `null` y el comentario de qué va a ser— para
+      // que la guardia los acompañe desde el primer commit en vez de auditarlos
+      // al final. El umbral sigue existiendo para lo único que tiene que
+      // detectar: que alguien deje en la lista un archivo que se borró o que
+      // quedó en cero bytes, y que la guardia pase por no tener nada que mirar.
+      expect(archivo.contenido.length).toBeGreaterThan(60)
     }
   })
 })

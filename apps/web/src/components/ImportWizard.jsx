@@ -1,8 +1,12 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import * as XLSX from 'xlsx'
 import { importProducts, downloadTemplate } from '@/services/api'
 import useStore from '@/store/useStore'
+import {
+  parsearPegado, comoCsv, detectarColumnas, ALIAS_DE_COLUMNA,
+} from '@/utils/pegadoDeLista'
+import { aNumero } from '@/utils/importes'
 import {
   Dialog,
   DialogContent,
@@ -17,7 +21,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 import {
   Upload, Download, FileSpreadsheet, FileText, CheckCircle2, AlertCircle,
   AlertTriangle, ArrowLeft, ArrowRight, HelpCircle, X, Info,
-  Loader2,
+  Loader2, ClipboardPaste,
 } from 'lucide-react'
 
 const SYSTEM_FIELDS = [
@@ -50,30 +54,12 @@ const FIELD_GROUPS = [
   { key: 'stock', label: 'Stock y trazabilidad' },
 ]
 
-const COLUMN_ALIASES = {
-  name: ['nombre', 'producto', 'product', 'item', 'descripcion', 'descripción', 'nombre del producto', 'articulo', 'artículo'],
-  sku: ['codigo', 'código', 'code', 'referencia', 'ref', 'sku', 'internal code'],
-  barcode: ['codigo_barras', 'código_barras', 'codigo de barras', 'código de barras', 'barcode', 'ean', 'upc', 'barra'],
-  description: ['descripcion', 'descripción', 'description', 'detalle', 'notas'],
-  cost: ['costo', 'precio_costo', 'precio de costo', 'cost', 'precio compra', 'precio de compra', 'coste'],
-  category: ['categoria', 'categoría', 'category', 'tipo', 'rubro'],
-  brand_name: ['marca', 'brand', 'brand_name', 'marca nombre'],
-  supplier_name: ['proveedor', 'supplier', 'supplier_name', 'proveedor nombre', 'prov'],
-  margin_override: ['margen', 'margen_personalizado', 'margin', 'margin_override', '% margen', 'porcentaje'],
-  price_override: ['precio_venta', 'precio', 'price', 'price_override', 'precio venta', 'pvp'],
-  unit_type: ['unidad', 'unit_type', 'unit', 'tipo unidad', 'medida'],
-  unit_size: ['tamaño_envase', 'unit_size', 'tamaño', 'envase', 'tamaño envase', 'capacity'],
-  taxed: ['gravado', 'taxed', 'iva', 'impuesto', 'exento'],
-  is_active: ['activo', 'is_active', 'active', 'habilitado', 'estado'],
-  wholesale_margin: ['margen_mayorista', 'wholesale_margin', '% mayorista', 'margen mayorista'],
-  wholesale_price: ['precio_mayorista', 'wholesale_price', 'precio mayorista', 'mayorista'],
-  quantity: ['stock', 'cantidad', 'quantity', 'inventario', 'existencia', 'qty'],
-  location: ['sucursal', 'location', 'localidad', 'deposito', 'depósito', 'almacen', 'almacén'],
-  min_stock: ['stock_minimo', 'min_stock', 'stock mínimo', 'stock minimo'],
-  current_batch: ['lote', 'batch', 'current_batch', 'lote numero', 'nro lote'],
-  expiration_date: ['vencimiento', 'expiration_date', 'expiry', 'fecha vencimiento', 'vence', 'caducidad'],
-  purchase_date: ['fecha_compra', 'purchase_date', 'fecha compra', 'fecha de compra'],
-}
+/** Lo que se ve en el área de pegado antes de pegar nada: dos líneas separadas
+ *  por tabulaciones, que es lo que sale de copiar de Excel o de Sheets. */
+const PEGADO_DE_EJEMPLO = [
+  ['Whey Protein 1kg', '12500', '7'].join('\t'),
+  ['Creatina 300g', '8900', '3'].join('\t'),
+].join('\n')
 
 const STEPS = [
   { num: 1, label: 'Subir archivo' },
@@ -81,56 +67,10 @@ const STEPS = [
   { num: 3, label: 'Resultados' },
 ]
 
-function normalizeStr(str) {
-  return str.toLowerCase().trim()
-    .replace(/[áäàâã]/g, 'a').replace(/[éëèêẽ]/g, 'e')
-    .replace(/[íïìîĩ]/g, 'i').replace(/[óöòôõ]/g, 'o')
-    .replace(/[úüùûũ]/g, 'u').replace(/[ñ]/g, 'n')
-    .replace(/[^a-z0-9_\s]/g, '').replace(/\s+/g, ' ')
-    .trim()
-}
-
-function detectColumns(headers, aliases) {
-  const normalizedHeaders = headers.map((h, i) => ({
-    index: i,
-    original: h,
-    normalized: normalizeStr(String(h || '')),
-  }))
-
-  const result = {}
-
-  for (const [systemKey, aliasList] of Object.entries(aliases)) {
-    const allAliases = [systemKey, ...aliasList].map(normalizeStr)
-    let bestMatch = null
-
-    for (const nh of normalizedHeaders) {
-      const nhNorm = nh.normalized
-      if (!nhNorm) continue
-
-      if (allAliases.includes(nhNorm)) {
-        bestMatch = nh
-        break
-      }
-    }
-
-    if (!bestMatch) {
-      for (const nh of normalizedHeaders) {
-        const nhNorm = nh.normalized
-        if (!nhNorm) continue
-        for (const alias of allAliases) {
-          if (nhNorm.includes(alias) || alias.includes(nhNorm)) {
-            if (!bestMatch) bestMatch = nh
-            break
-          }
-        }
-      }
-    }
-
-    result[systemKey] = bestMatch ? bestMatch.index : -1
-  }
-
-  return result
-}
+// `normalizeStr`, `COLUMN_ALIASES` y `detectColumns` se mudaron a
+// `utils/pegadoDeLista.js`. El archivo y el texto pegado usan **la misma** tabla
+// de alias: dos tablas empiezan iguales y terminan distintas, y entonces la
+// misma planilla se mapea de una forma si se sube y de otra si se pega.
 
 async function parseFileToArrays(file) {
   const buffer = await file.arrayBuffer()
@@ -146,48 +86,91 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/**
+ * El estado inicial de todo lo que el asistente acumula.
+ *
+ * Está en un solo lugar porque se restablece desde tres —al cerrar, al apretar
+ * «quitar archivo» y al terminar—, y tres copias de una lista de quince
+ * `setX(...)` es como se olvida uno y pegar, cerrar sin confirmar y volver a
+ * abrir deja el intento anterior adentro.
+ */
+const VACIO = {
+  step: 1,
+  file: null,
+  fileData: { headers: [], rows: [], totalRows: 0 },
+  columnMap: {},
+  result: null,
+  parsing: false,
+  importing: false,
+  expandedErrors: false,
+  origen: 'archivo',
+  textoPegado: '',
+  matriz: [],
+  lineasOriginales: [],
+  avisoDelPegado: null,
+}
+
 export default function ImportWizard({ open, onOpenChange, onSuccess }) {
   const empresaActiva = useStore(s => s.empresaActiva)
-  const [step, setStep] = useState(1)
-  const [file, setFile] = useState(null)
-  const [fileData, setFileData] = useState({ headers: [], rows: [], totalRows: 0 })
-  const [columnMap, setColumnMap] = useState({})
-  const [importing, setImporting] = useState(false)
-  const [result, setResult] = useState(null)
-  const [parsing, setParsing] = useState(false)
+  const productos = useStore(s => s.products)
+  const [step, setStep] = useState(VACIO.step)
+  const [file, setFile] = useState(VACIO.file)
+  const [fileData, setFileData] = useState(VACIO.fileData)
+  const [columnMap, setColumnMap] = useState(VACIO.columnMap)
+  const [importing, setImporting] = useState(VACIO.importing)
+  const [result, setResult] = useState(VACIO.result)
+  const [parsing, setParsing] = useState(VACIO.parsing)
   const dropRef = useRef(null)
   const fileInputRef = useRef(null)
   const [dragOver, setDragOver] = useState(false)
-  const [expandedErrors, setExpandedErrors] = useState(false)
-  const [defaultLocation, setDefaultLocation] = useState(empresaActiva?.puntosDeVenta?.[0]?.code || 'principal')
-
-  useEffect(() => {
-    if (!open) {
-      setTimeout(() => {
-        setStep(1)
-        setFile(null)
-        setFileData({ headers: [], rows: [], totalRows: 0 })
-        setColumnMap({})
-        setImporting(false)
-        setResult(null)
-        setParsing(false)
-        setExpandedErrors(false)
-        setDefaultLocation(empresaActiva?.puntosDeVenta?.[0]?.code || 'principal')
-      }, 200)
-    }
-  }, [open, empresaActiva?.puntosDeVenta])
+  const [expandedErrors, setExpandedErrors] = useState(VACIO.expandedErrors)
+  /**
+   * La sucursal para las filas que no traen columna Sucursal.
+   *
+   * Arranca **vacía**, que el servidor interpreta como «el punto de venta por
+   * defecto de la empresa». Antes arrancaba en el string `'principal'`, y en una
+   * empresa sembrada por `seedPuntosDeVenta` —cuyos códigos son
+   * general/ortiz/mayo— ese texto no coincide con **nada**: desde que el
+   * servidor valida el parámetro (fase 3), el asistente fallaba con 400 antes de
+   * escribir una sola fila.
+   */
+  const [defaultLocation, setDefaultLocation] = useState('')
+  /** De dónde salen los datos: un archivo o texto pegado. */
+  const [origen, setOrigen] = useState(VACIO.origen)
+  const [textoPegado, setTextoPegado] = useState(VACIO.textoPegado)
+  /** La matriz COMPLETA del pegado (la vista previa muestra solo cinco filas). */
+  const [matriz, setMatriz] = useState(VACIO.matriz)
+  /** `lineasOriginales[i]` es la línea del texto pegado de la fila `i`. */
+  const [lineasOriginales, setLineasOriginales] = useState(VACIO.lineasOriginales)
+  const [avisoDelPegado, setAvisoDelPegado] = useState(VACIO.avisoDelPegado)
 
   const reset = useCallback(() => {
-    setStep(1)
-    setFile(null)
-    setFileData({ headers: [], rows: [], totalRows: 0 })
-    setColumnMap({})
-    setImporting(false)
-    setResult(null)
-    setParsing(false)
-    setExpandedErrors(false)
-    setDefaultLocation(empresaActiva?.puntosDeVenta?.[0]?.code || 'principal')
-  }, [empresaActiva?.puntosDeVenta])
+    setStep(VACIO.step)
+    setFile(VACIO.file)
+    setFileData(VACIO.fileData)
+    setColumnMap(VACIO.columnMap)
+    setImporting(VACIO.importing)
+    setResult(VACIO.result)
+    setParsing(VACIO.parsing)
+    setExpandedErrors(VACIO.expandedErrors)
+    setDefaultLocation('')
+    setOrigen(VACIO.origen)
+    setTextoPegado(VACIO.textoPegado)
+    setMatriz(VACIO.matriz)
+    setLineasOriginales(VACIO.lineasOriginales)
+    setAvisoDelPegado(VACIO.avisoDelPegado)
+  }, [])
+
+  // Al cerrar se limpia TODO, con el retardo de la animación para que no se vea
+  // el contenido desaparecer antes que el diálogo. Pegar una lista, cerrar sin
+  // confirmar y volver a abrir tiene que dejar el asistente en blanco: encontrar
+  // la lista anterior adentro invita a confirmarla creyendo que es la nueva.
+  useEffect(() => {
+    if (open) return
+
+    const limpieza = setTimeout(reset, 200)
+    return () => clearTimeout(limpieza)
+  }, [open, reset])
 
   const handleFile = useCallback(async (selectedFile) => {
     const validExts = ['.csv', '.xlsx', '.xls']
@@ -222,7 +205,7 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
 
       const previewRows = rows.slice(0, 5)
       setFileData({ headers, rows: previewRows, totalRows })
-      const detected = detectColumns(headers, COLUMN_ALIASES)
+      const detected = detectarColumnas(headers, ALIAS_DE_COLUMNA)
       setColumnMap(detected)
       setParsing(false)
       setStep(2)
@@ -274,8 +257,42 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
     setColumnMap(prev => ({ ...prev, [systemKey]: columnIndex }))
   }, [])
 
+  /**
+   * Lee el texto pegado y lo deja en la MISMA forma que un archivo.
+   *
+   * `headers` + `rows` + `totalRows` es exactamente lo que produce
+   * `handleFile`, así que los pasos 2 y 3 no se enteran de si el origen fue un
+   * archivo o un pegado. No hay un camino paralelo (FR-090).
+   */
+  const handlePegado = useCallback(() => {
+    const leido = parsearPegado(textoPegado)
+
+    if (!leido.ok) {
+      setAvisoDelPegado(leido.error)
+      toast.error(leido.error)
+      return
+    }
+
+    setAvisoDelPegado(null)
+    setMatriz(leido.filas)
+    setLineasOriginales(leido.lineas)
+    setFileData({
+      headers: leido.columnas,
+      rows: leido.filas.slice(0, 5),
+      totalRows: leido.filas.length,
+    })
+    setColumnMap(leido.mapeo)
+    setStep(2)
+  }, [textoPegado])
+
   const handleImport = useCallback(async () => {
-    if (!file) return
+    // Un segundo clic mientras el pedido está en vuelo dispararía una segunda
+    // importación: los mismos productos entrarían dos veces y el historial de
+    // costos registraría dos cambios idénticos.
+    if (importing) return
+    if (origen === 'archivo' && !file) return
+    if (origen === 'pegado' && matriz.length === 0) return
+
     setImporting(true)
 
     const mapping = {}
@@ -286,7 +303,14 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
     }
 
     try {
-      const res = await importProducts(file, mapping, defaultLocation)
+      // El pegado se serializa como CSV canónico y se sube **por el mismo
+      // endpoint** que un archivo. El servidor no cambia y no hay un segundo
+      // lector de listas que pueda discrepar del primero.
+      const aSubir = origen === 'pegado'
+        ? new File([comoCsv(fileData.headers, matriz)], 'lista-pegada.csv', { type: 'text/csv' })
+        : file
+
+      const res = await importProducts(aSubir, mapping, defaultLocation)
       setResult(res.data)
       setStep(3)
     } catch (err) {
@@ -294,19 +318,97 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
     } finally {
       setImporting(false)
     }
-  }, [file, columnMap, fileData.headers, defaultLocation])
+  }, [importing, origen, file, matriz, columnMap, fileData.headers, defaultLocation])
 
   const requiredMapped = SYSTEM_FIELDS
     .filter(f => f.required)
     .every(f => columnMap[f.key] >= 0)
 
-  const handleClose = () => {
-    if (result) {
-      onOpenChange(false)
-      if (onSuccess && result.created > 0) onSuccess(result)
-    } else {
-      onOpenChange(false)
+  const hayDatos = origen === 'pegado' ? fileData.totalRows > 0 : !!file
+
+  /**
+   * Cuántas filas crean un producto y cuántas actualizan uno que ya está.
+   *
+   * Por SKU si la columna está mapeada y la celda no está vacía; si no, por
+   * nombre. Es el mismo criterio que aplica el servidor, así que la vista previa
+   * dice lo que va a pasar y no una aproximación.
+   */
+  const previsualizacion = useMemo(() => {
+    const iSku = columnMap.sku ?? -1
+    const iNombre = columnMap.name ?? -1
+
+    if (iNombre < 0) return { crear: 0, actualizar: 0, porFila: [] }
+
+    const porSku = new Map()
+    const porNombre = new Map()
+
+    for (const p of productos) {
+      if (p.sku) porSku.set(String(p.sku).trim().toLowerCase(), p)
+      if (p.name) porNombre.set(String(p.name).trim().toLowerCase(), p)
     }
+
+    const filas = origen === 'pegado' ? matriz : fileData.rows
+    let crear = 0
+    let actualizar = 0
+
+    const porFila = filas.map((fila) => {
+      const sku = iSku >= 0 ? String(fila[iSku] ?? '').trim() : ''
+      const nombre = String(fila[iNombre] ?? '').trim()
+
+      const existe = sku
+        ? porSku.has(sku.toLowerCase())
+        : porNombre.has(nombre.toLowerCase())
+
+      if (existe) actualizar++
+      else crear++
+
+      return existe ? 'actualiza' : 'crea'
+    })
+
+    return { crear, actualizar, porFila }
+  }, [columnMap.sku, columnMap.name, productos, origen, matriz, fileData.rows])
+
+  /**
+   * El primer costo del archivo, crudo y ya interpretado.
+   *
+   * Se muestra en el paso 2 para que el usuario confirme mirando cómo se va a
+   * leer. Lo lee la copia del navegador de `aNumero`; la que guarda es la del
+   * servidor, y las dos aplican las mismas reglas.
+   */
+  const costoDeMuestra = useMemo(() => {
+    const i = columnMap.cost ?? -1
+    if (i < 0) return null
+
+    const filas = origen === 'pegado' ? matriz : fileData.rows
+    const crudo = filas.find((f) => String(f?.[i] ?? '').trim())?.[i]
+    const leido = aNumero(crudo)
+
+    return leido === null ? null : { crudo: String(crudo).trim(), leido }
+  }, [columnMap.cost, origen, matriz, fileData.rows])
+
+  /**
+   * A qué línea del texto pegado corresponde un error del servidor.
+   *
+   * El servidor informa `fila: i + 2`, contando desde el archivo que recibió: la
+   * 1 es el encabezado. Sin esta traducción, «error en la línea 14» apunta a
+   * otra línea en cuanto el usuario pegó una línea en blanco en el medio, y
+   * termina corrigiendo una fila que estaba bien.
+   */
+  const lineaDelError = (filaDelServidor) => {
+    if (origen !== 'pegado') return filaDelServidor
+
+    return lineasOriginales[filaDelServidor - 2] ?? filaDelServidor
+  }
+
+  /** Si la importación cambió algo que la pantalla tenga que volver a leer. */
+  const huboCambios = (r) => !!r && ((r.created || 0) > 0 || (r.updated || 0) > 0)
+
+  const handleClose = () => {
+    onOpenChange(false)
+    // Se avisa también cuando solo hubo ACTUALIZACIONES: una lista de precios no
+    // crea ningún producto y cambia doscientos costos, y sin esto la tabla
+    // seguiría mostrando los costos viejos.
+    if (huboCambios(result)) onSuccess?.(result)
   }
 
   const renderStepIndicator = () => (
@@ -341,8 +443,58 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
   const renderUploadStep = () => (
     <div className="space-y-5">
       <DialogDescription>
-        Subí un archivo CSV o Excel con los productos a importar. El sistema va a detectar automáticamente las columnas y te va a permitir ajustar la correspondencia.
+        Subí un archivo, o pegá directamente la lista que te llegó por mail o por
+        WhatsApp. Los dos caminos siguen igual desde el paso 2.
       </DialogDescription>
+
+      {/* Dos orígenes, un solo asistente. Pegar texto NO es otro flujo: produce
+          la misma matriz que leer un archivo y sale por el mismo endpoint. */}
+      <div className="flex gap-1 p-1 rounded-lg bg-muted w-fit">
+        <button
+          type="button"
+          onClick={() => setOrigen('archivo')}
+          className={`flex items-center gap-1.5 h-8 px-3 rounded-md text-xs font-medium transition-colors ${
+            origen === 'archivo' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Upload className="size-3.5" /> Subir archivo
+        </button>
+        <button
+          type="button"
+          onClick={() => setOrigen('pegado')}
+          className={`flex items-center gap-1.5 h-8 px-3 rounded-md text-xs font-medium transition-colors ${
+            origen === 'pegado' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <ClipboardPaste className="size-3.5" /> Pegar texto
+        </button>
+      </div>
+
+      {origen === 'pegado' ? (
+        <div className="space-y-3">
+          <textarea
+            value={textoPegado}
+            onChange={(e) => { setTextoPegado(e.target.value); setAvisoDelPegado(null) }}
+            rows={10}
+            placeholder={PEGADO_DE_EJEMPLO}
+            className="w-full rounded-xl border bg-background p-3 font-mono text-xs outline-none
+                       transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+          />
+
+          <p className="text-xs text-muted-foreground">
+            Las columnas se separan por tabulación, punto y coma, o dos o más
+            espacios seguidos. Si la primera línea es un encabezado, se detecta
+            sola. Máximo 2.000 filas por pegada.
+          </p>
+
+          {avisoDelPegado && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+              <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+              <span>{avisoDelPegado}</span>
+            </div>
+          )}
+        </div>
+      ) : (
 
       <div
         ref={dropRef}
@@ -407,6 +559,7 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
           </>
         )}
       </div>
+      )}
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Info className="size-3.5 shrink-0" />
@@ -433,7 +586,8 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-muted/50">
-              <th className="px-2 py-1.5 text-left text-muted-foreground font-medium w-8">#</th>
+              <th className="px-2 py-1.5 text-left text-muted-foreground font-medium w-8">Línea</th>
+              <th className="px-2 py-1.5 text-left text-muted-foreground font-medium">Qué hace</th>
               {headers.map((h, i) => (
                 <th key={i} className="px-2 py-1.5 text-left text-muted-foreground font-medium whitespace-nowrap">
                   {h}
@@ -444,7 +598,22 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
           <tbody>
             {rows.map((row, ri) => (
               <tr key={ri} className="border-t border-border/40">
-                <td className="px-2 py-1.5 text-muted-foreground">{ri + 2}</td>
+                {/* El número de línea es el que ve el usuario: la del texto que
+                    pegó, o la del archivo. */}
+                <td className="px-2 py-1.5 text-muted-foreground font-mono">
+                  {origen === 'pegado' ? (lineasOriginales[ri] ?? ri + 1) : ri + 2}
+                </td>
+                <td className="px-2 py-1.5">
+                  {previsualizacion.porFila[ri] === 'actualiza' ? (
+                    <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                      actualiza
+                    </span>
+                  ) : (
+                    <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-green-500/10 text-green-600 dark:text-green-400">
+                      crea
+                    </span>
+                  )}
+                </td>
                 {headers.map((_, ci) => (
                   <td key={ci} className="px-2 py-1.5 truncate max-w-[160px]" title={row[ci]}>
                     {String(row[ci] || '') || <span className="text-muted-foreground/40">—</span>}
@@ -464,8 +633,50 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
     return (
       <div className="space-y-5">
         <DialogDescription>
-          El sistema detectó {fileData.totalRows} filas en tu archivo. Revisá la correspondencia entre las columnas de tu archivo y los campos del sistema. Los campos obligatorios están marcados con <span className="text-destructive font-medium">*</span>.
+          {fileData.totalRows} filas {origen === 'pegado' ? 'pegadas' : 'en el archivo'}.
+          Revisá la correspondencia entre las columnas y los campos del sistema.
+          Los campos obligatorios están marcados con <span className="text-destructive font-medium">*</span>.
+          {origen === 'pegado' && !headers.some(h => !/^Columna \d+$/.test(h)) && (
+            <> No se detectó encabezado, así que las columnas se llaman «Columna 1»,
+            «Columna 2»… Mirá las filas de ejemplo de abajo para saber cuál es cuál.</>
+          )}
         </DialogDescription>
+
+        {/* Cuántas se crean y cuántas se actualizan, ANTES de confirmar. Sin
+            esto, una lista de precios que iba a actualizar doscientos productos
+            puede terminar creando doscientos duplicados por un SKU mal mapeado, y
+            recién se ve en el paso 3. */}
+        {columnMap.name >= 0 && (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border p-3 text-xs">
+            <span className="font-semibold">Si confirmás:</span>
+            <span className="text-green-600 dark:text-green-400 font-mono font-semibold">
+              {previsualizacion.crear} se crean
+            </span>
+            <span className="text-blue-600 dark:text-blue-400 font-mono font-semibold">
+              {previsualizacion.actualizar} se actualizan
+            </span>
+            {origen === 'archivo' && fileData.totalRows > fileData.rows.length && (
+              <span className="text-muted-foreground">
+                (sobre las {fileData.rows.length} filas de la vista previa)
+              </span>
+            )}
+
+            {/* Cómo se va a leer el primer costo, ANTES de confirmar.
+                «1.234,50» leído al revés son mil doscientos treinta y cuatro con
+                cincuenta convertidos en uno con veintitrés, y **no falla nada**:
+                el producto queda cargado y el margen que muestra el POS pasa a
+                ser mentira. Verlo escrito es la única forma de detectarlo a
+                tiempo. */}
+            {costoDeMuestra && (
+              <span className="basis-full text-muted-foreground">
+                El primer costo, «{costoDeMuestra.crudo}», se va a guardar como{' '}
+                <span className="font-mono font-semibold text-foreground">
+                  ${costoDeMuestra.leido.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>.
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Default location selector */}
         <div className="rounded-lg border p-3">
@@ -475,19 +686,21 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
           <p className="text-xs text-muted-foreground mb-2">
             El stock se asignará a esta sucursal a menos que el archivo tenga una columna "Sucursal" mapeada.
           </p>
-          {locations.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No hay sucursales disponibles</p>
-          ) : (
-            <select
-              value={defaultLocation}
-              onChange={(e) => setDefaultLocation(e.target.value)}
-              className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors w-full sm:w-64"
-            >
-              {locations.map(pv => (
-                <option key={pv.code} value={pv.code}>{pv.name}</option>
-              ))}
-            </select>
-          )}
+          <select
+            value={defaultLocation}
+            onChange={(e) => setDefaultLocation(e.target.value)}
+            className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors w-full sm:w-64"
+          >
+            {/* El vacío es una opción de verdad y es la que viene puesta: el
+                servidor resuelve el punto de venta por defecto de la empresa. El
+                `'principal'` que había acá no coincide con ningún código de una
+                empresa sembrada, y desde que el servidor valida el parámetro la
+                importación entera fallaba con 400. */}
+            <option value="">Sucursal por defecto de la empresa</option>
+            {locations.map(pv => (
+              <option key={pv.id ?? pv.code} value={pv.code || ''}>{pv.name}</option>
+            ))}
+          </select>
         </div>
 
         {renderPreviewTable()}
@@ -577,11 +790,12 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
   const renderResultStep = () => {
     if (!result) return null
     const hasErrors = result.errors && result.errors.length > 0
+    const algoEntro = huboCambios(result)
 
     return (
       <div className="space-y-5">
         <div className="flex flex-col items-center justify-center py-4 gap-3">
-          {result.created > 0 ? (
+          {algoEntro ? (
             <div className="size-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
               <CheckCircle2 className="size-8 text-green-600 dark:text-green-400" />
             </div>
@@ -592,17 +806,17 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
           )}
           <div className="text-center">
             <p className="text-base font-semibold">
-              {result.created > 0
+              {algoEntro
                 ? 'Importación completada'
                 : 'Importación finalizada con advertencias'}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Se procesaron {result.total} filas del archivo.
+              Se procesaron {result.total} filas.
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           <div className="rounded-lg border bg-green-50/50 dark:bg-green-950/10 p-3 text-center">
             <p className="text-2xl font-black text-green-600 dark:text-green-400 font-mono">{result.created}</p>
             <p className="text-xs text-muted-foreground mt-0.5">Creados</p>
@@ -611,6 +825,15 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
             <p className="text-2xl font-black text-blue-600 dark:text-blue-400 font-mono">{result.updated}</p>
             <p className="text-xs text-muted-foreground mt-0.5">Actualizados</p>
           </div>
+          {/* Los pisados: el mismo producto vino más de una vez en el archivo y
+              quedó **el último**. Sin decirlo, el stock que queda no es la suma ni
+              el máximo y nadie sabe por qué. */}
+          <div className="rounded-lg border bg-amber-50/50 dark:bg-amber-950/10 p-3 text-center">
+            <p className={`text-2xl font-black font-mono ${result.pisados ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground/40'}`}>
+              {result.pisados || 0}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">Pisados</p>
+          </div>
           <div className="rounded-lg border bg-red-50/50 dark:bg-red-950/10 p-3 text-center">
             <p className={`text-2xl font-black font-mono ${hasErrors ? 'text-destructive' : 'text-muted-foreground/40'}`}>
               {result.errors?.length || 0}
@@ -618,6 +841,17 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
             <p className="text-xs text-muted-foreground mt-0.5">Errores</p>
           </div>
         </div>
+
+        {result.pisados > 0 && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-50 dark:bg-amber-950/20 p-3 text-xs text-amber-800 dark:text-amber-200">
+            <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+            <span>
+              {result.pisados} {result.pisados === 1 ? 'fila venía' : 'filas venían'} repetida
+              {result.pisados === 1 ? '' : 's'} (mismo SKU, o mismo nombre si no hay SKU).
+              Quedó la última de cada una.
+            </span>
+          </div>
+        )}
 
         {hasErrors && (
           <div className="rounded-lg border border-destructive/20">
@@ -636,7 +870,10 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
               <div className="px-3 py-2 space-y-1 max-h-48 overflow-y-auto">
                 {result.errors.map((err, i) => (
                   <div key={i} className="flex items-start gap-2 text-xs p-1.5 rounded hover:bg-muted/30">
-                    <span className="shrink-0 font-mono text-muted-foreground w-10">#{err.fila}</span>
+                    {/* La línea que ve el usuario, no la fila de la matriz. */}
+                    <span className="shrink-0 font-mono text-muted-foreground w-16">
+                      {origen === 'pegado' ? 'línea ' : 'fila '}{lineaDelError(err.fila)}
+                    </span>
                     <span className="text-foreground/80">{err.error}</span>
                   </div>
                 ))}
@@ -648,9 +885,9 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
         <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
           <Info className="size-3.5 shrink-0 mt-0.5" />
           <span>
-            {result.created > 0
-              ? 'Los productos se crearon correctamente. Actualizá la página para ver los cambios.'
-              : 'No se crearon productos nuevos. Revisá los errores y corregí el archivo.'}
+            {algoEntro
+              ? 'Listo. Al cerrar, el listado se actualiza solo.'
+              : 'No entró ningún producto. Revisá los errores y corregí la lista.'}
           </span>
         </div>
       </div>
@@ -679,10 +916,21 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
               <DialogClose asChild>
                 <Button variant="ghost">Cancelar</Button>
               </DialogClose>
-              <Button disabled={!file || parsing} onClick={() => file && handleFile(file)} className="bg-brand hover:bg-brand-dark text-white">
-                {parsing ? 'Leyendo...' : file ? 'Continuar' : 'Seleccioná un archivo'}
-                <ArrowRight className="size-4 ml-1.5" />
-              </Button>
+              {origen === 'pegado' ? (
+                <Button
+                  disabled={!textoPegado.trim()}
+                  onClick={handlePegado}
+                  className="bg-brand hover:bg-brand-dark text-white"
+                >
+                  {textoPegado.trim() ? 'Continuar' : 'Pegá tu lista'}
+                  <ArrowRight className="size-4 ml-1.5" />
+                </Button>
+              ) : (
+                <Button disabled={!file || parsing} onClick={() => file && handleFile(file)} className="bg-brand hover:bg-brand-dark text-white">
+                  {parsing ? 'Leyendo...' : file ? 'Continuar' : 'Seleccioná un archivo'}
+                  <ArrowRight className="size-4 ml-1.5" />
+                </Button>
+              )}
             </div>
           )}
 
@@ -695,7 +943,10 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
                 <DialogClose asChild>
                   <Button variant="outline">Cancelar</Button>
                 </DialogClose>
-                <Button onClick={handleImport} disabled={!requiredMapped || importing} className="bg-brand hover:bg-brand-dark text-white">
+                {/* Deshabilitado mientras la importación está en vuelo: un
+                    segundo clic serían los mismos productos entrando dos veces y
+                    dos filas idénticas en el historial de costos. */}
+                <Button onClick={handleImport} disabled={!requiredMapped || importing || !hayDatos} className="bg-brand hover:bg-brand-dark text-white">
                   {importing ? (
                     <><Loader2 className="size-4 animate-spin mr-1.5" /> Importando...</>
                   ) : (
@@ -708,7 +959,7 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
 
           {step === 3 && (
             <div className="flex justify-end w-full">
-              <Button onClick={() => { onOpenChange(false); if (onSuccess && result?.created > 0) onSuccess(result) }} className="bg-brand hover:bg-brand-dark text-white">
+              <Button onClick={handleClose} className="bg-brand hover:bg-brand-dark text-white">
                 Finalizar
               </Button>
             </div>

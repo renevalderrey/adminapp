@@ -1,64 +1,220 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import useStore from '@/store/useStore'
-import { transferStock, getStockTransfers } from '@/services/api'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { getStockTransfers, getProducts } from '@/services/api'
+import { calcularPrecios } from '@/utils/precios'
+import { esStockBajo } from '@/utils/stockBajo'
+import { descargarInventario } from '@/utils/exportarInventario'
+import { imprimirInventario } from '@/utils/impresionInventario'
+import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import {
   Package, Plus, Search, Edit2, ArrowRightLeft, FileSpreadsheet, Loader2, Tags, X,
+  FilterX, AlertTriangle, Archive, SlidersHorizontal, Download, Printer,
 } from 'lucide-react'
-import { Label } from '@/components/ui/label'
 import { Can } from '@/components/Can'
+import { usePermission } from '@/hooks/usePermission'
 import Pagination from '@/components/Pagination'
 import ImportWizard from '@/components/ImportWizard'
-import ProductForm from '@/components/ProductForm'
+import PanelProducto from '@/components/PanelProducto'
+import PanelTransferencia from '@/components/PanelTransferencia'
 import PreciosMasivos from '@/components/PreciosMasivos'
 
-const Inventory = () => {
-  const { products, brands, initialize, loading, error } = useStore()
-  const empresaActiva = useStore(s => s.empresaActiva)
-  const puntoDeVentaActivo = useStore(s => s.puntoDeVentaActivo)
+// ════════════════════════════════════════════
+//  ADMINAPP · Inventario
+//
+//  La segunda pantalla que aplica el patrón de tabla que fijó Historial de
+//  ventas. El marco vive en `components/TablaGrid.jsx`; las columnas y las
+//  celdas se escriben acá.
+//
+//  Lo que esta pantalla agrega al patrón y las otras cuatro van a necesitar:
+//  una columna de selección al principio del string y un número de columnas que
+//  **depende de los datos** —una por sucursal—, así que `COLUMNAS` es una
+//  función y no una constante.
+//
+//  Reglas: docs/REGLAS-DISENO.md. Referencia viva: pages/Comparador.jsx.
+// ════════════════════════════════════════════
 
-  const locations = useMemo(() => {
-    const pvs = empresaActiva?.puntosDeVenta || []
-    return pvs.map(pv => ({ value: pv.code, label: pv.name }))
-  }, [empresaActiva?.puntosDeVenta])
+/**
+ * Las columnas, idénticas en el encabezado y en las filas.
+ *
+ * `n` es cuántas columnas de stock hay. La maqueta
+ * (`AdminApp-Rediseno.dc.html:599`) dibuja
+ * `minmax(0,1.6fr) 116px 116px 104px 104px` + una por sucursal + `56px`, y
+ * **no** dibuja la columna de selección: se dibujó antes de que se liberara la
+ * actualización masiva de precios, que es la que necesita seleccionar filas. Por
+ * eso el string arranca con `32px` y no con `minmax`.
+ *
+ * Que sea una función y no dos strings copiados no es cosmético: cuando el
+ * encabezado y las filas difieren, las etiquetas dejan de estar sobre sus datos
+ * y se lee una cantidad bajo «Costo».
+ */
+const COLUMNAS = (n) =>
+  `32px minmax(0,1.6fr) 116px 116px 104px 104px ${'92px '.repeat(n)}56px`
+
+/**
+ * Por debajo de esto la tabla scrollea DENTRO de su tarjeta.
+ *
+ * 848 son las columnas fijas más las separaciones y el padding; 108 por
+ * sucursal son los 92px de la columna más los 16 de separación que agrega. Da
+ * 956 / 1064 / 1172 para una, dos y tres sucursales.
+ *
+ * El `min-width:1140px` que la maqueta le pone al contenedor de la página NO se
+ * copia: haría scrollear el body entero y el usuario perdería de vista la barra
+ * lateral cada vez que mira la última columna.
+ */
+const ANCHO_MINIMO = (n) => 848 + 108 * n
+
+/** Las mismas 25 filas por página que Historial de ventas (FR-018). */
+const FILAS_POR_PAGINA = 25
+
+/** Botón principal del sistema: 34px, marca, sombra de nivel 1. */
+const BOTON_PRINCIPAL =
+  'inline-flex h-[34px] items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-semibold ' +
+  'text-white shadow-nivel-1 transition-colors hover:bg-brand-dark ' +
+  'disabled:pointer-events-none disabled:opacity-60'
+
+/** Botón secundario del sistema: 34px, borde, hover en surface-3. */
+const BOTON_SECUNDARIO =
+  'inline-flex h-[34px] items-center gap-1.5 rounded-lg border border-border bg-surface px-3 ' +
+  'text-[13px] font-medium transition-colors hover:bg-surface-3 ' +
+  'disabled:pointer-events-none disabled:opacity-60'
+
+/** Importes en formato argentino: 1.234,50. */
+const pesos = (n) => Number(n || 0).toLocaleString('es-AR', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+/** Cantidades: sin decimales forzados, pero con separador de miles. */
+const unidades = (n) => Number(n || 0).toLocaleString('es-AR')
+
+/** El valorizado del inventario entero: sin centavos, que en un total de siete
+ *  cifras son ruido y empujan la columna. */
+const pesosRedondos = (n) => Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })
+
+/**
+ * Un texto comparable: sin acentos, sin mayúsculas.
+ *
+ * «Colágeno» y «colageno» tienen que dar lo mismo. Sin esto, el usuario que
+ * escribe rápido —o el que copia del proveedor, que escribe sin tilde— no
+ * encuentra el producto y concluye que no está cargado.
+ */
+function comparable(texto) {
+  return String(texto ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+}
+
+/** El valor del filtro de categoría que significa «no filtres». */
+const TODAS_LAS_CATEGORIAS = 'todas'
+
+/** El valor del filtro de sucursal que significa «mostralas todas». */
+const TODAS_LAS_SUCURSALES = 'todas'
+
+/**
+ * Cuántas columnas de stock se dibujan a la vez.
+ *
+ * Con más, la tabla deja de entrar y el usuario scrollea horizontal para
+ * comparar dos números que ya no ve juntos — que es exactamente el problema que
+ * la comparación viene a resolver. Con más de tres sucursales, el usuario elige
+ * cuáles comparar (FR-063).
+ */
+const MAXIMO_COLUMNAS_DE_SUCURSAL = 3
+
+/**
+ * Más de esto no se baja en un solo archivo.
+ *
+ * Es el mismo tope que fijó Historial de ventas. ⚠ Queda anotado que **el techo
+ * real no es este**: la pantalla se sigue trayendo el catálogo entero en la
+ * carga inicial, así que lo que limita cuántos productos se pueden exportar es
+ * cuántos entraron ahí. Está en `docs/PROXIMOS-PROYECTOS.md` como
+ * «5e · La pantalla de Inventario se trae el catálogo entero» y está Fuera de
+ * alcance de esta funcionalidad.
+ */
+const LIMITE_EXPORT = 5000
+
+/** Las columnas del historial de transferencias. Mismo patrón que la tabla de
+ *  productos: el mismo string arriba y abajo. */
+const COLUMNAS_TRANSFERENCIAS = '150px minmax(0,1fr) minmax(0,1fr) minmax(0,1.5fr)'
+const ANCHO_MINIMO_TRANSFERENCIAS = 760
+
+/**
+ * El nombre de una sucursal de una transferencia.
+ *
+ * Primero el objeto que devuelve la API (`fromPuntoDeVenta` / `toPuntoDeVenta`),
+ * y si no está, el texto `from_location` / `to_location`. Las transferencias
+ * **anteriores** a esta funcionalidad tienen los dos ids en `null` —no se
+ * migran, está Fuera de alcance— y sin la caída al texto se verían como dos
+ * huecos: el caso hay que mostrarlo, no evitarlo.
+ */
+function nombreDeSucursalDeTransferencia(puntoDeVenta, textoViejo) {
+  return puntoDeVenta?.name || textoViejo || '—'
+}
+
+/** «Colágeno ×2 · Whey ×1». */
+function resumenDeItems(items) {
+  if (!Array.isArray(items) || items.length === 0) return 'Sin ítems'
+  return items.map((i) => `${i.product_name} ×${i.quantity}`).join(' · ')
+}
+
+const Inventory = () => {
+  const { products, brands, settings, initialize, loading, error } = useStore()
+  const actualizarProducto = useStore(s => s.actualizarProducto)
+  const quitarProducto = useStore(s => s.quitarProducto)
+  const puntoDeVentaActivo = useStore(s => s.puntoDeVentaActivo)
+  // Las sucursales salen de `GET /api/stock/sucursales` y NO de
+  // `empresaActiva.puntosDeVenta`: ese filtra por `is_active`, y una sucursal
+  // dada de baja con mercadería adentro desaparecería con la mercadería adentro
+  // (FR-066). Es justo el stock que hay que poder ver para sacarlo de ahí.
+  const sucursales = useStore(s => s.sucursales)
+  const cargarSucursales = useStore(s => s.cargarSucursales)
+  const { can } = usePermission()
+  const puedeTransferir = can('stock.transferir')
 
   const [searchQuery, setSearchQuery] = useState('')
-  const [isAdding, setIsAdding] = useState(false)
-  const [editingProduct, setEditingProduct] = useState(null)
-  const [isFormOpen, setIsFormOpen] = useState(false)
+  const [categoria, setCategoria] = useState(TODAS_LAS_CATEGORIAS)
+  const [soloStockBajo, setSoloStockBajo] = useState(false)
+  // ── Ver los productos desactivados ──
+  //
+  // `useStore.initialize()` pide `?active=true`, así que hasta acá desactivar un
+  // producto lo hacía invisible **para siempre desde la interfaz**: no había
+  // ningún filtro para lo otro y el producto quedaba sin forma de volver
+  // (defecto 5, FR-078). Se piden aparte y no se meten en el store: son otro
+  // conjunto, no una versión más grande del mismo, y mezclarlos haría que el
+  // POS y el resto de las pantallas ofrezcan productos dados de baja.
+  const [verDesactivados, setVerDesactivados] = useState(false)
+  // `null` y no `[]`: es lo que distingue «todavía no los pedí» de «los pedí y
+  // no hay ninguno». Con `[]` las dos situaciones se ven igual y la pantalla
+  // diría «no hay productos desactivados» mientras el pedido está en vuelo.
+  const [desactivados, setDesactivados] = useState(null)
+  // El panel es uno solo para las dos cosas: `productoAbierto` en `null` con el
+  // panel abierto es el alta. Tener dos componentes —uno para crear y otro para
+  // editar— es como el alta se quedó sin la sección de stock que la edición sí
+  // tenía, y nadie lo notó hasta que hubo que cargar el inventario entero.
+  const [panelAbierto, setPanelAbierto] = useState(false)
+  const [productoAbierto, setProductoAbierto] = useState(null)
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [isTransfer, setIsTransfer] = useState(false)
-  const [activeLocation, setActiveLocation] = useState('all')
+  /**
+   * La sucursal que eligió el usuario EN ESTA PANTALLA, o `undefined` si
+   * todavía no tocó el filtro.
+   *
+   * Mientras vale `undefined`, manda el selector del encabezado de la
+   * aplicación: es el contexto de trabajo y define el valor inicial. Apenas el
+   * usuario elige algo acá —«Todas» incluido— manda el filtro de la pantalla
+   * (FR-065). Sin esta distinción, elegir «Todas» con una sucursal activa en el
+   * encabezado no tendría efecto y el usuario no podría ver la comparación.
+   */
+  const [sucursalDelFiltro, setSucursalDelFiltro] = useState(undefined)
+  /** Qué sucursales se comparan cuando hay más de tres. Vacío = las tres
+   *  primeras, que es el valor por defecto de FR-063. */
+  const [columnasElegidas, setColumnasElegidas] = useState(new Set())
   const [transfers, setTransfers] = useState([])
   const [showTransfers, setShowTransfers] = useState(false)
+  const [cargandoTransferencias, setCargandoTransferencias] = useState(false)
   const [page, setPage] = useState(1)
-  const perPage = 25
 
   // ── Selección para la actualización masiva de precios ──
   // Se guardan ids y no productos: la lista se recarga después de aplicar, y
@@ -66,70 +222,321 @@ const Inventory = () => {
   const [seleccionados, setSeleccionados] = useState(new Set())
   const [preciosAbierto, setPreciosAbierto] = useState(false)
 
-  const firstLocation = locations[0]?.value || ''
-  const secondLocation = locations[1]?.value || locations[0]?.value || ''
-
-  const [transferForm, setTransferForm] = useState({
-    from_location: firstLocation,
-    to_location: secondLocation,
-    product_id: '',
-    quantity: '',
-  })
-
-  useEffect(() => {
-    setTransferForm(prev => ({
-      ...prev,
-      from_location: firstLocation,
-      to_location: secondLocation,
-    }))
-  }, [firstLocation, secondLocation])
+  /** Con qué se abre el panel de transferencia cuando sale de una fila. */
+  const [precargaDeTransferencia, setPrecargaDeTransferencia] = useState(null)
 
   useEffect(() => { initialize() }, [initialize])
 
-  useEffect(() => { setPage(1) }, [searchQuery, activeLocation])
+  useEffect(() => { cargarSucursales() }, [cargarSucursales])
 
-  const openCreate = () => {
-    setEditingProduct(null)
-    setIsFormOpen(true)
-  }
+  // Los desactivados se piden una sola vez, y solo si alguien los pide. El
+  // `catch` deja la lista vacía en vez de dejarla en `null`: si no, el efecto se
+  // volvería a disparar en cada render y reintentaría el pedido fallido para
+  // siempre.
+  useEffect(() => {
+    if (!verDesactivados || desactivados !== null) return
 
-  const openEdit = (product) => {
-    setEditingProduct(product)
-    setIsFormOpen(true)
-  }
-
-  const handleTransfer = async (e) => {
-    e.preventDefault()
-    if (!transferForm.product_id || !transferForm.quantity || parseFloat(transferForm.quantity) <= 0) return
-    try {
-      await transferStock({
-        from_location: transferForm.from_location,
-        to_location: transferForm.to_location,
-        items: [{ product_id: parseInt(transferForm.product_id), quantity: parseFloat(transferForm.quantity) }],
+    getProducts({ active: 'false' })
+      .then((res) => setDesactivados(res.data.data || []))
+      .catch((err) => {
+        toast.error('No se pudieron cargar los productos desactivados: ' + (err.response?.data?.error || err.message))
+        setDesactivados([])
       })
-      setIsTransfer(false)
-      setTransferForm({ from_location: firstLocation, to_location: secondLocation, product_id: '', quantity: '' })
-      initialize()
+  }, [verDesactivados, desactivados])
+
+  /** Abre el panel vacío, para dar de alta. */
+  const openCreate = () => {
+    setProductoAbierto(null)
+    setPanelAbierto(true)
+  }
+
+  /** Abre el panel del producto. Es lo que hace el clic en cualquier parte de
+   *  la fila que no sea un botón de acción ni la casilla de selección. */
+  const abrirPanel = (product) => {
+    setProductoAbierto(product)
+    setPanelAbierto(true)
+  }
+
+  const cerrarPanel = (abierto) => {
+    if (abierto) return
+    setPanelAbierto(false)
+    setProductoAbierto(null)
+  }
+
+  /**
+   * Reemplaza la fila con lo que devolvió el guardado.
+   *
+   * Sin recargar: `initialize()` dispara tres pedidos, pone `loading` global —la
+   * tabla entera parpadea— y devuelve la lista al principio, con lo cual el
+   * usuario pierde la página, la búsqueda, el orden y el scroll (FR-035). Con
+   * doscientos productos y una corrección por fila, es la diferencia entre
+   * trabajar y pelearse con la pantalla.
+   */
+  const alGuardarProducto = (actualizado) => {
+    if (verDesactivados) {
+      // En la vista de desactivados la lista es local, no la del store. Un
+      // producto reactivado sale de este conjunto, igual que uno desactivado
+      // sale del de activos.
+      setDesactivados((filas) => (filas || [])
+        .filter((p) => p.id !== actualizado.id || actualizado.is_active === false)
+        .map((p) => (p.id === actualizado.id ? { ...p, ...actualizado } : p)))
+      return
+    }
+
+    actualizarProducto(actualizado)
+  }
+
+  /**
+   * Un producto recién creado sí obliga a recargar.
+   *
+   * Es la excepción a FR-035 y es a propósito: un alta cambia **la composición**
+   * de la lista, no una fila —el catálogo viene ordenado por nombre desde el
+   * servidor, y el producto nuevo puede caer en cualquier página—. El store no
+   * tiene una acción para agregar (T1030 definió `actualizarProducto` y
+   * `quitarProducto`, que reemplazan y sacan), así que meterlo a mano dejaría la
+   * lista desordenada respecto de la del servidor. Es un pedido por alta, no uno
+   * por guardado.
+   */
+  const alCrearProducto = () => { initialize() }
+
+  const alDesactivarProducto = (id) => {
+    // La lista de activos se carga con `?active=true`: dejarlo mostraría una
+    // fila que ya no corresponde.
+    quitarProducto(id)
+    setSeleccionados((prev) => {
+      if (!prev.has(id)) return prev
+      const siguiente = new Set(prev)
+      siguiente.delete(id)
+      return siguiente
+    })
+  }
+
+  /** Trae el historial de transferencias. */
+  const pedirTransferencias = async () => {
+    setCargandoTransferencias(true)
+    try {
+      const res = await getStockTransfers({ limit: 20 })
+      setTransfers(res.data.data || [])
     } catch (err) {
-      toast.error(err.response?.data?.error || err.message)
+      toast.error('No se pudo cargar el historial de transferencias: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setCargandoTransferencias(false)
     }
   }
 
-  const filteredProducts = products.filter(p => {
-    if (!searchQuery.trim()) return true;
-    const tokens = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    return tokens.every(token => {
-      const inName = p.name.toLowerCase().includes(token);
-      const inBrand = p.brand?.name?.toLowerCase().includes(token);
-      const inCategory = (p.category || '').toLowerCase().includes(token);
-      const inSku = (p.sku || '').toLowerCase().includes(token);
-      const inCost = !isNaN(Number(token)) && parseFloat(p.cost) === parseFloat(token);
-      return inName || inBrand || inCategory || inSku || inCost;
-    });
-  })
+  const alternarHistorial = () => {
+    const abriendo = !showTransfers
+    setShowTransfers(abriendo)
+    if (abriendo) pedirTransferencias()
+  }
 
-  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / perPage))
-  const paginatedProducts = filteredProducts.slice((page - 1) * perPage, page * perPage)
+  /** Parchea campos de una fila, sea de la lista de activos o la de baja. */
+  const parchearProducto = (id, cambios) => {
+    if (verDesactivados) {
+      setDesactivados((filas) => (filas || []).map((p) => (p.id === id ? { ...p, ...cambios } : p)))
+      return
+    }
+
+    actualizarProducto({ id, ...cambios })
+  }
+
+  /**
+   * Aplica una transferencia ya confirmada a las columnas de la tabla.
+   *
+   * Sin recargar (FR-116): la operación ya ocurrió en el servidor y las dos
+   * cantidades que cambiaron se conocen exactamente. Recargar acá devolvería la
+   * lista al principio justo después de una operación que el usuario quiere
+   * ver reflejada en la fila que está mirando.
+   */
+  const aplicarTransferencia = ({ origen, destino, items }) => {
+    for (const item of items) {
+      const producto = catalogo.find((p) => String(p.id) === String(item.product_id))
+      if (!producto) continue
+
+      const filas = [...(producto.stock || [])]
+
+      const mover = (sucursalId, delta) => {
+        const i = filas.findIndex((s) => String(s.punto_de_venta_id) === String(sucursalId))
+
+        if (i >= 0) {
+          filas[i] = {
+            ...filas[i],
+            quantity: Number(filas[i].quantity) + delta,
+            available: Number(filas[i].available) + delta,
+          }
+          return
+        }
+
+        // La fila de destino puede no existir todavía: el servidor la creó en
+        // esta misma transferencia. Se agrega sin `id` —no lo conocemos— y la
+        // próxima carga trae la de verdad.
+        filas.push({
+          id: null,
+          punto_de_venta_id: sucursalId,
+          quantity: delta,
+          available: delta,
+          min_stock: 0,
+        })
+      }
+
+      mover(origen, -Number(item.quantity))
+      mover(destino, Number(item.quantity))
+
+      parchearProducto(producto.id, { stock: filas })
+    }
+
+    // Si el historial está abierto, la transferencia que se acaba de hacer tiene
+    // que aparecer: verlo sin la operación recién confirmada se lee como que no
+    // se guardó.
+    if (showTransfers) pedirTransferencias()
+  }
+
+  /**
+   * Abre la transferencia desde una fila, con todo precargado (FR-068).
+   *
+   * El origen es la sucursal donde MÁS hay y el destino la que menos: es lo que
+   * la fila está diciendo cuando se la mira —a una le falta lo que a la otra le
+   * sobra— y es la transferencia que el usuario iba a armar a mano.
+   */
+  const transferirDesdeLaFila = (producto) => {
+    const conCantidad = columnasDeStock.map((col) => ({
+      id: col.id,
+      cantidad: Number(filaDeStock(producto, col.id)?.quantity) || 0,
+    }))
+
+    const ordenadas = [...conCantidad].sort((a, b) => b.cantidad - a.cantidad)
+
+    setPrecargaDeTransferencia({
+      productoId: producto.id,
+      origen: ordenadas[0]?.id ?? null,
+      destino: ordenadas.length > 1 ? ordenadas[ordenadas.length - 1].id : null,
+    })
+    setIsTransfer(true)
+  }
+
+  const catalogo = useMemo(
+    () => (verDesactivados ? (desactivados || []) : products),
+    [verDesactivados, desactivados, products]
+  )
+
+  const cargandoDesactivados = verDesactivados && desactivados === null
+
+  /**
+   * La sucursal que está mostrando el filtro.
+   *
+   * Mientras el usuario no lo toque, sale del selector del encabezado. Apenas
+   * elige algo —«Todas» incluido— manda lo que eligió acá (FR-065).
+   */
+  const sucursalElegida = sucursalDelFiltro !== undefined
+    ? sucursalDelFiltro
+    : (puntoDeVentaActivo?.id ? String(puntoDeVentaActivo.id) : TODAS_LAS_SUCURSALES)
+
+  /**
+   * La fila de stock de un producto en una sucursal, o `undefined`.
+   *
+   * Por **`punto_de_venta_id`** y nunca por el texto `location` (FR-061): dos
+   * sucursales distintas pueden haber tenido el mismo texto, y una fila con un
+   * `location` que no corresponde a ninguna sucursal no aparecía en ninguna
+   * columna. Los ids se comparan como texto porque el de la sucursal viene del
+   * `<select>` como string y el de la fila como número.
+   */
+  const filaDeStock = (p, sucursalId) =>
+    (p.stock || []).find(s => String(s.punto_de_venta_id) === String(sucursalId))
+
+  /**
+   * Las filas de stock que entran en el alcance del filtro de sucursal.
+   *
+   * Todo lo que la pantalla cuenta —los cuatro indicadores y el conmutador de
+   * stock bajo— sale de acá, así que hay un solo lugar donde el alcance está
+   * definido. Con la lógica repetida en cada cálculo, el indicador y el filtro
+   * terminan contando conjuntos distintos y el usuario ve «7 en stock bajo» y
+   * cinco filas al filtrar.
+   */
+  const filasEnAlcance = (p) => {
+    const filas = p.stock || []
+    if (sucursalElegida === TODAS_LAS_SUCURSALES) return filas
+    const fila = filaDeStock(p, sucursalElegida)
+    return fila ? [fila] : []
+  }
+
+  /** Las categorías que EXISTEN en el catálogo. `Product.category` es texto
+   *  libre: una lista cerrada dejaría afuera lo que el cliente ya cargó. */
+  const categorias = useMemo(() => {
+    const vistas = new Set()
+    for (const p of catalogo) if (p.category) vistas.add(p.category)
+    return [...vistas].sort((a, b) => String(a).localeCompare(String(b), 'es'))
+  }, [catalogo])
+
+  const umbralStockBajo = Number(settings.umbral_stock_bajo)
+
+  const filteredProducts = useMemo(() => {
+    // Los tokens se normalizan UNA vez y no una por producto: con mil productos
+    // y cinco campos, normalizar adentro del bucle son cinco mil llamadas a
+    // `normalize()` por tecla.
+    const tokens = comparable(searchQuery).trim().split(/\s+/).filter(Boolean)
+
+    return catalogo.filter(p => {
+      if (categoria !== TODAS_LAS_CATEGORIAS && p.category !== categoria) return false
+
+      if (soloStockBajo) {
+        const filas = filasEnAlcance(p)
+        // Sin ninguna fila en el alcance el producto está en cero ahí, que es el
+        // caso más urgente: no tener fila y tener cero es lo mismo para reponer.
+        const bajo = filas.length === 0
+          ? esStockBajo({ quantity: 0, min_stock: 0 }, umbralStockBajo)
+          : filas.some(s => esStockBajo(s, umbralStockBajo))
+        if (!bajo) return false
+      }
+
+      if (tokens.length === 0) return true
+
+      // Todos los campos con `?? ''`: un producto sin marca, sin categoría o sin
+      // SKU no puede romper la búsqueda por los demás campos.
+      const texto = [p.name, p.brand?.name, p.category, p.sku, p.barcode]
+        .map(comparable)
+        .join(' ')
+      const costo = parseFloat(p.cost)
+
+      return tokens.every(token => texto.includes(token)
+        || (!isNaN(Number(token)) && costo === parseFloat(token)))
+    })
+    // `filasEnAlcance` depende de `sucursalElegida`, que está en las dependencias.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogo, searchQuery, categoria, soloStockBajo, sucursalElegida, umbralStockBajo])
+
+  /**
+   * Los cuatro indicadores, sobre el RESULTADO FILTRADO y la sucursal elegida.
+   *
+   * Que se refieran al filtro y no al catálogo entero es lo que los hace útiles:
+   * filtrando por una marca, «Valor del stock» contesta cuánto vale lo de esa
+   * marca. Referidos al catálogo entero serían cuatro números que no cambian
+   * nunca y que nadie mira.
+   */
+  const indicadores = useMemo(() => {
+    let valor = 0
+    let bajo = 0
+    let sin = 0
+
+    for (const p of filteredProducts) {
+      const filas = filasEnAlcance(p)
+      const cantidad = filas.reduce((suma, s) => suma + (Number(s.quantity) || 0), 0)
+
+      valor += cantidad * (parseFloat(p.cost) || 0)
+
+      if (cantidad <= 0) sin++
+
+      const enFalta = filas.length === 0
+        ? esStockBajo({ quantity: 0, min_stock: 0 }, umbralStockBajo)
+        : filas.some(s => esStockBajo(s, umbralStockBajo))
+      if (enFalta) bajo++
+    }
+
+    return { productos: filteredProducts.length, valor, bajo, sin }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredProducts, sucursalElegida, umbralStockBajo])
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / FILAS_POR_PAGINA))
+  const paginatedProducts = filteredProducts.slice((page - 1) * FILAS_POR_PAGINA, page * FILAS_POR_PAGINA)
 
   const alternarSeleccion = (id) => {
     setSeleccionados(prev => {
@@ -152,256 +559,719 @@ const Inventory = () => {
   const todosLosFiltradosSeleccionados =
     filteredProducts.length > 0 && filteredProducts.every(p => seleccionados.has(p.id))
 
-  const getStockForLocation = (product, location) => {
-    if (location === 'all') return product.stock?.reduce((sum, s) => sum + s.quantity, 0) || 0
-    return product.stock?.find(s => s.location === location)?.quantity || 0
+
+  /**
+   * Las sucursales que pueden ser columna.
+   *
+   * Las activas siempre; las dadas de baja **solo si tienen mercadería adentro**
+   * (FR-066). Una sucursal cerrada y vacía es ruido en la tabla; una cerrada con
+   * stock es un problema pendiente, y esconderla es esconder el problema.
+   */
+  const sucursalesComparables = useMemo(() => {
+    const conMercaderia = new Set()
+
+    for (const p of catalogo) {
+      for (const s of p.stock || []) {
+        if (Number(s.quantity) > 0) conMercaderia.add(String(s.punto_de_venta_id))
+      }
+    }
+
+    return sucursales.filter(s => s.is_active !== false || conMercaderia.has(String(s.id)))
+  }, [sucursales, catalogo])
+
+  /** Con el filtro en una sucursal, una sola columna; con «Todas», hasta tres. */
+  const columnasDeStock = useMemo(() => {
+    if (sucursalElegida !== TODAS_LAS_SUCURSALES) {
+      const elegida = sucursales.find(s => String(s.id) === String(sucursalElegida))
+      return elegida ? [elegida] : []
+    }
+
+    if (sucursalesComparables.length <= MAXIMO_COLUMNAS_DE_SUCURSAL) return sucursalesComparables
+
+    const marcadas = sucursalesComparables.filter(s => columnasElegidas.has(String(s.id)))
+
+    return (marcadas.length ? marcadas : sucursalesComparables).slice(0, MAXIMO_COLUMNAS_DE_SUCURSAL)
+  }, [sucursales, sucursalesComparables, sucursalElegida, columnasElegidas])
+
+  const columnas = COLUMNAS(columnasDeStock.length)
+  const anchoMinimo = ANCHO_MINIMO(columnasDeStock.length)
+
+  /**
+   * Las sucursales que van como columna EN EL ARCHIVO.
+   *
+   * No están limitadas a tres: el tope de la pantalla es de ancho, y una hoja de
+   * cálculo no tiene ese problema. Con «Todas» van todas, así que la suma de la
+   * columna Valorizado coincide con el indicador «Valor del stock».
+   */
+  const sucursalesParaExportar = sucursalElegida === TODAS_LAS_SUCURSALES
+    ? sucursalesComparables
+    : columnasDeStock
+
+  /** El nombre de la sucursal filtrada, para el nombre del archivo. */
+  const nombreDeLaSucursal = sucursalElegida === TODAS_LAS_SUCURSALES
+    ? null
+    : (sucursales.find(s => String(s.id) === String(sucursalElegida))?.name || null)
+
+  /**
+   * Lo que impide exportar, o `null`.
+   *
+   * Los dos avisos se dan ANTES de armar nada: descargar un archivo con solo los
+   * encabezados es peor que decir que no hay nada, y armar la hoja de seis mil
+   * productos para descartarla congela la pestaña para nada.
+   */
+  const problemaDeExportar = () => {
+    if (filteredProducts.length === 0) {
+      return 'No hay productos para exportar con estos filtros.'
+    }
+
+    if (filteredProducts.length > LIMITE_EXPORT) {
+      return `El filtro devuelve ${filteredProducts.length} productos y el máximo `
+        + `por archivo es ${LIMITE_EXPORT}. Acotá por categoría, por sucursal o `
+        + 'con la búsqueda.'
+    }
+
+    return null
   }
 
-  const lowStock = products.filter(p => {
-    const total = getStockForLocation(p, activeLocation)
-    const minStock = p.stock?.find(s => {
-      if (activeLocation === 'all') return true
-      return s.location === activeLocation
-    })?.min_stock || 0
-    return total > 0 && total <= minStock
-  }).length
+  const exportarExcel = () => {
+    const problema = problemaDeExportar()
 
-  const noStock = products.filter(p => {
-    return getStockForLocation(p, activeLocation) === 0
-  }).length
+    if (problema) {
+      toast.error(problema)
+      return
+    }
+
+    // El archivo lleva TODO el resultado del filtro y no las 25 filas visibles:
+    // exportar lo que se ve sería un archivo distinto según en qué página estaba
+    // el usuario.
+    descargarInventario(filteredProducts, {
+      sucursales: sucursalesParaExportar,
+      settings,
+      sucursalElegida: sucursalElegida === TODAS_LAS_SUCURSALES ? null : sucursalElegida,
+      nombreDeLaSucursal,
+    })
+  }
+
+  const imprimir = () => {
+    const problema = problemaDeExportar()
+
+    if (problema) {
+      toast.error(problema)
+      return
+    }
+
+    const ventana = imprimirInventario({
+      productos: filteredProducts,
+      sucursales: sucursalesParaExportar,
+      sucursalElegida: sucursalElegida === TODAS_LAS_SUCURSALES ? null : sucursalElegida,
+      nombreDeLaSucursal,
+      settings,
+      umbral: umbralStockBajo,
+    })
+
+    // Con el bloqueador de emergentes activo, `window.open` devuelve `null` y sin
+    // este aviso el usuario aprieta «Imprimir» y no pasa **nada**: ni la hoja, ni
+    // un error, ni una explicación (FR-135).
+    if (!ventana) {
+      toast.error(
+        'El navegador bloqueó la ventana de impresión. Permití las ventanas '
+        + 'emergentes para este sitio y volvé a intentar.'
+      )
+    }
+  }
+
+  /** Alterna una sucursal en la comparación, con el tope de tres. */
+  const alternarColumna = (id) => {
+    setColumnasElegidas(prev => {
+      const siguiente = new Set(prev.size ? prev : sucursalesComparables.slice(0, MAXIMO_COLUMNAS_DE_SUCURSAL).map(s => String(s.id)))
+      const clave = String(id)
+
+      if (siguiente.has(clave)) {
+        // No se puede dejar la tabla sin ninguna columna de stock: sería la
+        // pantalla de inventario sin el inventario.
+        if (siguiente.size > 1) siguiente.delete(clave)
+      } else if (siguiente.size < MAXIMO_COLUMNAS_DE_SUCURSAL) {
+        siguiente.add(clave)
+      }
+
+      return siguiente
+    })
+  }
+
+  /** Si hay algún filtro puesto. Decide cuál de los dos vacíos se muestra. */
+  const hayFiltros = searchQuery.trim() !== ''
+    || categoria !== TODAS_LAS_CATEGORIAS
+    || soloStockBajo
+    || verDesactivados
+
+  /**
+   * Todo cambio de filtro vuelve a la página 1.
+   *
+   * Va acá y no en un `useEffect` sobre los filtros: el efecto pinta una vez la
+   * página vieja con el resultado nuevo antes de corregirse, y sobre todo,
+   * estando en la página 5 y aplicando un filtro cuyo resultado tiene 2, la
+   * pantalla queda en una página que no existe y se ve vacía sin motivo.
+   */
+  const aplicarFiltro = (cambiar) => {
+    cambiar()
+    setPage(1)
+  }
+
+  const limpiarFiltros = () => aplicarFiltro(() => {
+    setSearchQuery('')
+    setCategoria(TODAS_LAS_CATEGORIAS)
+    setSoloStockBajo(false)
+    setVerDesactivados(false)
+  })
+
+  /**
+   * El badge de una celda de stock.
+   *
+   * `danger` en cero o negativo, `warn` por debajo del mínimo, neutro si está
+   * bien. Los tres tonos van juntos —texto, fondo y línea—: un color de estado
+   * suelto sobre el fondo de la tarjeta se lee como un error de estilo.
+   */
+  const tonoDeStock = (cantidad, minimo) => {
+    if (cantidad <= 0) return 'border-danger-line bg-danger-soft text-danger'
+    if (minimo > 0 && cantidad <= minimo) return 'border-warn-line bg-warn-soft text-warn'
+    return 'border-border bg-surface-3 text-fg-2'
+  }
 
   if (error) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1>Gestión de Inventario</h1>
-          </div>
+      <div className="anim-subida flex flex-col gap-6">
+        <div>
+          <h1>Inventario</h1>
         </div>
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
-          <p className="text-destructive font-semibold">Error al cargar los productos</p>
-          <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">{error}</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => initialize()}>
+        <div className="rounded-xl border border-danger-line bg-danger-soft p-6 text-center">
+          <p className="font-semibold text-danger">Error al cargar los productos</p>
+          <p className="mx-auto mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">{error}</p>
+          <button className={`${BOTON_SECUNDARIO} mt-3`} onClick={() => initialize()}>
             Reintentar
-          </Button>
+          </button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
+    <div className="anim-subida flex flex-col gap-6">
+      <div className="flex flex-wrap items-end justify-between gap-6">
         <div>
-          <h1>Gestión de Inventario</h1>
+          <h1>Inventario</h1>
           <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
-            Controlá el stock, costos y márgenes de ganancia.
+            Stock por sucursal, costos y márgenes. Hacé clic en un producto para
+            editarlo sin salir de la lista.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => { getStockTransfers().then(r => setTransfers(r.data.data || [])).catch(() => {}); setShowTransfers(true) }}>
-            <ArrowRightLeft className="h-4 w-4 mr-1" /> Transferencias
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setIsTransfer(true)}>
-            <ArrowRightLeft className="h-4 w-4 mr-1" /> Transferir Stock
-          </Button>
-          <Can codigo="products.crear">
-            <Button variant="outline" size="sm" onClick={() => setIsImportOpen(true)}>
-              <FileSpreadsheet className="h-4 w-4 mr-1" /> Importar
-            </Button>
+          <button
+            className={BOTON_SECUNDARIO}
+            onClick={alternarHistorial}
+          >
+            <ArrowRightLeft className="h-3.5 w-3.5 text-fg-3" /> Transferencias
+          </button>
+          {/* Sin `stock.transferir` el botón no se ve. La API lo rechaza
+              igual: la pantalla es la cortesía, no la barrera. */}
+          <Can codigo="stock.transferir">
+            <button className={BOTON_SECUNDARIO} onClick={() => { setPrecargaDeTransferencia(null); setIsTransfer(true) }}>
+              <ArrowRightLeft className="h-3.5 w-3.5 text-fg-3" /> Transferir
+            </button>
           </Can>
-          <Button size="sm" onClick={openCreate} className="bg-brand hover:bg-brand-dark text-white">
-            <Plus className="h-4 w-4 mr-1" /> Nuevo Producto
-          </Button>
+          <Can codigo="products.crear">
+            <button className={BOTON_SECUNDARIO} onClick={() => setIsImportOpen(true)}>
+              <FileSpreadsheet className="h-3.5 w-3.5 text-fg-3" /> Importar
+            </button>
+          </Can>
+
+          {/* Exportar, con Excel e Imprimir adentro. Van juntos porque son la
+              misma decisión —«llevarme este listado»— y separados serían dos
+              botones secundarios más compitiendo con el principal. */}
+          <Can codigo="products.ver">
+            <details className="relative">
+              <summary className={`${BOTON_SECUNDARIO} cursor-pointer list-none`}>
+                <Download className="h-3.5 w-3.5 text-fg-3" /> Exportar
+              </summary>
+
+              <div className="absolute right-0 z-20 mt-1.5 w-[210px] overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-nivel-2">
+                <button
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors hover:bg-surface-3"
+                  onClick={exportarExcel}
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-fg-3" />
+                  Excel (.xlsx)
+                </button>
+                <button
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors hover:bg-surface-3"
+                  onClick={imprimir}
+                >
+                  <Printer className="h-3.5 w-3.5 text-fg-3" />
+                  Imprimir
+                </button>
+              </div>
+            </details>
+          </Can>
+          <button className={BOTON_PRINCIPAL} onClick={openCreate}>
+            <Plus className="h-4 w-4" /> Nuevo producto
+          </button>
         </div>
       </div>
 
-      {/* Location Tabs */}
-      <div className="flex gap-1 bg-muted p-1 rounded-lg w-fit">
-        <button
-          onClick={() => setActiveLocation('all')}
-          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${activeLocation === 'all' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-        >Todas</button>
-        {locations.map(loc => (
+      {/* ── Indicadores y sucursal ──
+          Los cuatro números y el selector de sucursal van juntos porque los
+          cuatro se refieren a la sucursal elegida: separados, el usuario cambia
+          de sucursal y no relaciona el cambio de los números con lo que tocó. */}
+      <div className="flex flex-wrap items-center gap-6 rounded-xl border border-border bg-surface px-5 py-4 shadow-nivel-1">
+        <div className="flex min-w-[104px] flex-col gap-0.5">
+          <span className="text-[11.5px] font-medium text-fg-2">
+            {verDesactivados ? 'Productos desactivados' : 'Productos activos'}
+          </span>
+          <span className="num text-[21px] font-semibold">{unidades(indicadores.productos)}</span>
+        </div>
+
+        <div className="flex min-w-[104px] flex-col gap-0.5">
+          <span className="text-[11.5px] font-medium text-fg-2">Valor del stock</span>
+          <span className="num text-[21px] font-semibold">${pesosRedondos(indicadores.valor)}</span>
+        </div>
+
+        <div className="flex min-w-[104px] flex-col gap-0.5">
+          <span className="text-[11.5px] font-medium text-fg-2">Stock bajo</span>
+          <span className="num text-[21px] font-semibold text-warn">{unidades(indicadores.bajo)}</span>
+        </div>
+
+        <div className="flex min-w-[104px] flex-col gap-0.5">
+          <span className="text-[11.5px] font-medium text-fg-2">Sin stock</span>
+          <span className="num text-[21px] font-semibold text-danger">{unidades(indicadores.sin)}</span>
+        </div>
+
+        <div className="flex-1" />
+
+        {/* «Todas» primero y siempre: es la vista que compara, y es lo que esta
+            pantalla vino a poder hacer. Las inactivas se marcan pero se ofrecen:
+            hay que poder mirar lo que quedó adentro de un local cerrado. */}
+        <div className="flex flex-wrap gap-[3px] rounded-lg bg-surface-3 p-[3px]">
           <button
-            key={loc.value}
-            onClick={() => setActiveLocation(loc.value)}
-            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${activeLocation === loc.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-          >{loc.label}</button>
-        ))}
+            onClick={() => aplicarFiltro(() => setSucursalDelFiltro(TODAS_LAS_SUCURSALES))}
+            className={`h-7 rounded-md px-3 text-[12.5px] transition-colors ${sucursalElegida === TODAS_LAS_SUCURSALES ? 'bg-surface font-semibold text-foreground shadow-nivel-1' : 'font-medium text-fg-2 hover:text-foreground'}`}
+          >Todas</button>
+          {sucursales.map(s => (
+            <button
+              key={s.id}
+              onClick={() => aplicarFiltro(() => setSucursalDelFiltro(String(s.id)))}
+              title={s.is_active === false ? 'Sucursal dada de baja' : undefined}
+              className={`h-7 rounded-md px-3 text-[12.5px] transition-colors ${String(s.id) === String(sucursalElegida) ? 'bg-surface font-semibold text-foreground shadow-nivel-1' : 'font-medium text-fg-2 hover:text-foreground'}`}
+            >
+              {s.is_active === false ? `${s.name} (inactiva)` : s.name}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Productos Total</p>
-            <p className="num text-[26px] font-semibold mt-1">{filteredProducts.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Marcas</p>
-            <p className="num text-[26px] font-semibold mt-1">{brands.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Stock Bajo</p>
-            <p className="num text-[26px] font-semibold mt-1 text-warn">{lowStock}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sin Stock</p>
-            <p className="num text-[26px] font-semibold mt-1 text-destructive">{noStock}</p>
-          </CardContent>
-        </Card>
+      {/* ── Filtros ── */}
+      <div className="flex flex-wrap items-center gap-2.5">
+        <div className="relative min-w-[240px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-[15px] w-[15px] -translate-y-1/2 text-fg-3" />
+          <input
+            placeholder="Buscar por nombre, marca, SKU o categoría…"
+            value={searchQuery}
+            onChange={(e) => aplicarFiltro(() => setSearchQuery(e.target.value))}
+            className="h-9 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-[13.5px]
+                       transition-colors focus-visible:border-brand focus-visible:outline-none"
+          />
+        </div>
+
+        <label className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[13px]">
+          <Package className="h-3.5 w-3.5 text-fg-3" />
+          <select
+            aria-label="Categoría"
+            value={categoria}
+            onChange={(e) => aplicarFiltro(() => setCategoria(e.target.value))}
+            className="border-none bg-transparent text-[13px] outline-none"
+          >
+            <option value={TODAS_LAS_CATEGORIAS}>Todas las categorías</option>
+            {/* Las categorías salen del catálogo y no de una lista cerrada:
+                `Product.category` es texto libre. */}
+            {categorias.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+
+        <button
+          onClick={() => aplicarFiltro(() => setSoloStockBajo(v => !v))}
+          aria-pressed={soloStockBajo}
+          className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] transition-colors ${
+            soloStockBajo
+              ? 'border-warn-line bg-warn-soft font-medium text-warn'
+              : 'border-border bg-surface hover:bg-surface-3'
+          }`}
+        >
+          <AlertTriangle className="h-3.5 w-3.5" />
+          Stock bajo
+        </button>
+
+        {/* Los desactivados no aparecen por ningún otro camino: `initialize()`
+            pide `?active=true`. Sin este filtro, dar de baja un producto lo hace
+            invisible para siempre desde la interfaz (defecto 5). */}
+        <button
+          onClick={() => aplicarFiltro(() => setVerDesactivados(v => !v))}
+          aria-pressed={verDesactivados}
+          className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] transition-colors ${
+            verDesactivados
+              ? 'border-brand-line bg-brand-soft font-medium text-brand'
+              : 'border-border bg-surface hover:bg-surface-3'
+          }`}
+        >
+          {cargandoDesactivados
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            : <Archive className="h-3.5 w-3.5" />}
+          Desactivados
+        </button>
+
+        {hayFiltros && (
+          <button
+            onClick={limpiarFiltros}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[13px] text-fg-2 transition-colors hover:bg-surface-3"
+          >
+            <FilterX className="h-3.5 w-3.5" />
+            Limpiar
+          </button>
+        )}
+
+        <div className="flex-1" />
+
+        {/* ── Qué sucursales se comparan ──
+            Aparece solo con más de tres: con tres o menos están todas y un
+            selector que no puede cambiar nada es un botón que enseña a ignorar
+            los botones. Es un `<details>` y no un popover para no arrastrar otro
+            componente: el navegador ya resuelve abrir, cerrar y el teclado. */}
+        {sucursalElegida === TODAS_LAS_SUCURSALES
+          && sucursalesComparables.length > MAXIMO_COLUMNAS_DE_SUCURSAL && (
+          <details className="relative">
+            <summary className="inline-flex h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[13px] text-fg-2 transition-colors hover:bg-surface-3">
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              Columnas
+              <span className="num text-[11.5px] text-fg-3">
+                {columnasDeStock.length}/{MAXIMO_COLUMNAS_DE_SUCURSAL}
+              </span>
+            </summary>
+
+            <div className="absolute right-0 z-20 mt-1.5 w-[240px] rounded-xl border border-border bg-surface p-2 shadow-nivel-2">
+              <p className="px-2 py-1 text-[11.5px] text-fg-3">
+                Hasta {MAXIMO_COLUMNAS_DE_SUCURSAL} sucursales lado a lado.
+              </p>
+              {sucursalesComparables.map(s => {
+                const marcada = columnasDeStock.some(c => String(c.id) === String(s.id))
+
+                return (
+                  <label
+                    key={s.id}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] transition-colors hover:bg-surface-3"
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-brand"
+                      checked={marcada}
+                      disabled={!marcada && columnasDeStock.length >= MAXIMO_COLUMNAS_DE_SUCURSAL}
+                      onChange={() => alternarColumna(s.id)}
+                    />
+                    <span className="truncate">
+                      {s.is_active === false ? `${s.name} (inactiva)` : s.name}
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          </details>
+        )}
       </div>
 
-      {/* Toolbar */}
-      <Card>
-        <CardContent className="p-3 flex gap-3 items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar en el catálogo..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
+      {/* ── El historial de transferencias ──
+          En el patrón de tabla y en la página, no como tarjetas adentro de un
+          modal: un modal obliga a cerrarlo para mirar el stock del que habla, y
+          es justo la comparación que hay que hacer. */}
+      {showTransfers && (
+        <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-nivel-1">
+          <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-5 py-4">
+            <h2>Transferencias</h2>
+            <span className="num rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-fg-2">
+              {transfers.length}
+            </span>
+            <div className="flex-1" />
+            {cargandoTransferencias && <Loader2 className="h-4 w-4 animate-spin text-fg-3" />}
+            <button
+              className="text-[12.5px] font-medium text-fg-2 transition-colors hover:text-foreground"
+              onClick={() => setShowTransfers(false)}
+            >
+              Ocultar
+            </button>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Table */}
-      <Card>
+          {transfers.length === 0 && !cargandoTransferencias ? (
+            <div className="py-10 text-center">
+              <ArrowRightLeft className="mx-auto h-7 w-7 text-fg-3" />
+              <p className="mt-3 font-semibold">Todavía no se movió mercadería entre sucursales.</p>
+              <p className="mx-auto mt-1 max-w-[46ch] text-sm text-fg-2">
+                Cuando transfieras, cada operación queda acá con su fecha, su
+                origen, su destino y todo lo que llevó.
+              </p>
+            </div>
+          ) : (
+            <TablaGrid anchoMinimo={ANCHO_MINIMO_TRANSFERENCIAS}>
+              <Encabezado columnas={COLUMNAS_TRANSFERENCIAS}>
+                <span>Fecha</span>
+                <span>Origen</span>
+                <span>Destino</span>
+                <span>Productos</span>
+              </Encabezado>
+
+              {transfers.map(t => {
+                const items = Array.isArray(t.items) ? t.items : []
+                const resumen = resumenDeItems(items)
+
+                return (
+                  <Fila key={t.id} columnas={COLUMNAS_TRANSFERENCIAS} className="cursor-default">
+                    <span className="num text-[12.5px] text-fg-2">
+                      {new Date(t.createdAt).toLocaleString('es-AR')}
+                    </span>
+                    <span className="truncate text-[13px]">
+                      {nombreDeSucursalDeTransferencia(t.fromPuntoDeVenta, t.from_location)}
+                    </span>
+                    <span className="truncate text-[13px]">
+                      {nombreDeSucursalDeTransferencia(t.toPuntoDeVenta, t.to_location)}
+                    </span>
+                    <span className="min-w-0 truncate text-[12.5px] text-fg-2" title={resumen}>
+                      <span className="num">{items.length}</span>
+                      {items.length === 1 ? ' producto · ' : ' productos · '}
+                      {resumen}
+                    </span>
+                  </Fila>
+                )
+              })}
+            </TablaGrid>
+          )}
+        </section>
+      )}
+
+      {/* ── El listado ── */}
+      <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-nivel-1">
         {/* Barra de selección: aparece solo cuando hay algo seleccionado. */}
         {seleccionados.size > 0 && (
-          <div className="flex flex-wrap items-center gap-3 border-b bg-primary/5 px-4 py-2.5">
-            <span className="text-sm font-bold">
+          <div className="flex flex-wrap items-center gap-3 border-b border-border bg-brand-soft px-5 py-2.5">
+            <span className="text-[13px] font-semibold">
               {seleccionados.size} seleccionado{seleccionados.size === 1 ? '' : 's'}
             </span>
 
             {!todosLosFiltradosSeleccionados && filteredProducts.length > seleccionados.size && (
-              <Button variant="link" size="sm" className="h-auto p-0 text-xs" onClick={seleccionarFiltrados}>
+              <button className="text-[12.5px] font-medium text-brand hover:underline" onClick={seleccionarFiltrados}>
                 Seleccionar los {filteredProducts.length} de la búsqueda
-              </Button>
+              </button>
             )}
 
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={limpiarSeleccion}>
-              <X className="h-3.5 w-3.5 mr-1" /> Limpiar
-            </Button>
+            <button
+              className="inline-flex items-center gap-1 text-[12.5px] font-medium text-fg-2 hover:text-foreground"
+              onClick={limpiarSeleccion}
+            >
+              <X className="h-3.5 w-3.5" /> Limpiar
+            </button>
 
             <div className="ml-auto">
               <Can codigo="products.editar">
-                <Button size="sm" onClick={() => setPreciosAbierto(true)}>
-                  <Tags className="h-4 w-4 mr-1" /> Actualizar precios
-                </Button>
+                <button className={BOTON_PRINCIPAL} onClick={() => setPreciosAbierto(true)}>
+                  <Tags className="h-4 w-4" /> Actualizar precios
+                </button>
               </Can>
             </div>
           </div>
         )}
 
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 align-middle"
-                  checked={todosLosFiltradosSeleccionados}
-                  onChange={() => todosLosFiltradosSeleccionados ? limpiarSeleccion() : seleccionarFiltrados()}
-                  title="Seleccionar todo lo que da la búsqueda"
-                />
-              </TableHead>
-              <TableHead>PRODUCTO</TableHead>
-              <TableHead>MARCA</TableHead>
-              <TableHead className="text-right">COSTO</TableHead>
-              {activeLocation === 'all' ? (
-                locations.map(loc => (
-                  <TableHead key={loc.value} className="text-center text-[10px]">{loc.label}</TableHead>
-                ))
-              ) : (
-                <TableHead className="text-center">STOCK</TableHead>
-              )}
-              <TableHead className="w-16"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={5 + (activeLocation === 'all' ? locations.length : 1)} className="text-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground mt-2">Cargando productos...</p>
-                </TableCell>
-              </TableRow>
-            ) : paginatedProducts.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5 + (activeLocation === 'all' ? locations.length : 1)} className="text-center py-12">
-                  <Package className="h-10 w-10 mx-auto text-muted-foreground/40" />
-                  <p className="text-base font-semibold text-muted-foreground mt-3">No hay productos</p>
-                  <p className="text-sm text-muted-foreground/60 mt-1">
-                    {searchQuery ? 'No se encontraron productos con ese criterio de búsqueda.' : 'Agregá tu primer producto usando el botón "Nuevo Producto".'}
-                  </p>
-                </TableCell>
-              </TableRow>
-            ) : (
-              paginatedProducts.map(p => {
-                const totalStock = getStockForLocation(p, activeLocation)
+        {(loading || cargandoDesactivados) && catalogo.length === 0 ? (
+          <div className="py-12 text-center">
+            <Loader2 className="mx-auto h-6 w-6 animate-spin text-fg-3" />
+            <p className="mt-3 text-sm text-fg-2">Cargando productos…</p>
+          </div>
+        ) : filteredProducts.length === 0 ? (
+          // Los dos vacíos son distintos y dicen cosas distintas: «todavía no
+          // cargaste nada» se resuelve cargando, «ninguno coincide» se resuelve
+          // sacando un filtro.
+          hayFiltros ? (
+            <div className="py-12 text-center">
+              <FilterX className="mx-auto h-7 w-7 text-fg-3" />
+              <p className="mt-3 font-semibold">Ningún producto coincide con los filtros.</p>
+              <p className="mx-auto mt-1 max-w-[46ch] text-sm text-fg-2">
+                Probá con otro texto, otra categoría o todas las sucursales. La
+                búsqueda ignora los acentos: «colageno» encuentra «Colágeno».
+              </p>
+              <button onClick={limpiarFiltros} className={`${BOTON_SECUNDARIO} mt-4`}>
+                Limpiar filtros
+              </button>
+            </div>
+          ) : (
+            <div className="py-12 text-center">
+              <Package className="mx-auto h-7 w-7 text-fg-3" />
+              <p className="mt-3 font-semibold">No hay productos cargados.</p>
+              <p className="mx-auto mt-1 max-w-[46ch] text-sm text-fg-2">
+                Cargá el primero con «Nuevo producto», o subí tu lista con
+                «Importar».
+              </p>
+            </div>
+          )
+        ) : (
+          <>
+            <TablaGrid anchoMinimo={anchoMinimo}>
+              <Encabezado columnas={columnas}>
+                <span>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 align-middle accent-brand"
+                    checked={todosLosFiltradosSeleccionados}
+                    onChange={() => todosLosFiltradosSeleccionados ? limpiarSeleccion() : seleccionarFiltrados()}
+                    title="Seleccionar todo lo que da la búsqueda"
+                  />
+                </span>
+                <span>Producto</span>
+                <span>Marca</span>
+                <span>Categoría</span>
+                <span className="text-right">Costo</span>
+                <span className="text-right">Precio</span>
+                {columnasDeStock.map(col => (
+                  <span
+                    key={col.id}
+                    className="truncate text-center"
+                    title={col.is_active === false ? `${col.name} (sucursal dada de baja)` : col.name}
+                  >
+                    {col.is_active === false ? `${col.name} (inactiva)` : col.name}
+                  </span>
+                ))}
+                <span />
+              </Encabezado>
+
+              {paginatedProducts.map(p => {
+                const precios = calcularPrecios(p, settings)
+
                 return (
-                  <TableRow key={p.id} data-state={seleccionados.has(p.id) ? "selected" : undefined}>
-                    <TableCell>
+                  <Fila
+                    key={p.id}
+                    columnas={columnas}
+                    onClick={() => abrirPanel(p)}
+                    className={seleccionados.has(p.id) ? 'bg-brand-soft' : undefined}
+                  >
+                    {/* La selección no abre el panel: son dos gestos distintos
+                        sobre la misma fila. */}
+                    <span onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
-                        className="h-4 w-4 align-middle"
+                        className="h-4 w-4 align-middle accent-brand"
                         checked={seleccionados.has(p.id)}
                         onChange={() => alternarSeleccion(p.id)}
                       />
-                    </TableCell>
-                    <TableCell className="font-semibold">{p.name}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{p.brand?.name || '–'}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-mono font-bold">
-                      ${parseFloat(p.cost).toLocaleString()}
-                    </TableCell>
-                    {activeLocation === 'all' ? (
-                      locations.map(loc => {
-                        const entry = p.stock?.find(s => s.location === loc.value)
-                        const qty = entry?.quantity || 0
-                        const minStock = entry?.min_stock || 0
-                        let badgeVariant = 'outline'
-                        if (qty === 0) badgeVariant = 'destructive'
-                        else if (qty <= minStock) badgeVariant = 'warning'
-                        return (
-                          <TableCell key={loc.value} className="text-center">
-                            <Badge variant={badgeVariant} className="font-mono">
-                              {qty}
-                            </Badge>
-                          </TableCell>
-                        )
-                      })
+                    </span>
+
+                    <span className="flex min-w-0 flex-col gap-px">
+                      <span className="truncate text-[13.5px] font-medium" title={p.name}>{p.name}</span>
+                      <span className="num truncate text-[11.5px] text-fg-3">{p.sku || '—'}</span>
+                    </span>
+
+                    <span className="truncate text-[13px] text-fg-2" title={p.brand?.name || ''}>
+                      {p.brand?.name || '—'}
+                    </span>
+
+                    {p.category ? (
+                      <span className="w-fit truncate rounded-md bg-surface-3 px-2 py-[3px] text-xs text-fg-2">
+                        {p.category}
+                      </span>
                     ) : (
-                      <TableCell className="text-center">
-                        <Badge variant={totalStock === 0 ? 'destructive' : totalStock <= (p.stock?.find(s => s.location === activeLocation)?.min_stock || 0) ? 'warning' : 'outline'} className="font-mono">
-                          {totalStock}
-                        </Badge>
-                      </TableCell>
+                      <span className="text-[13px] text-fg-3">—</span>
                     )}
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(p)}>
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+
+                    <span className="num text-right text-[13px] text-fg-2">
+                      ${pesos(p.cost)}
+                    </span>
+
+                    {/* Un producto sin costo y sin precio manual NO muestra
+                        «$0»: cero es un precio, y quien lo lee así lo vende
+                        gratis. Se marca como lo que es —falta el costo— y el
+                        panel es donde se corrige. */}
+                    {precios.sinCosto ? (
+                      <span className="text-right text-[11.5px] font-medium text-warn" title="El producto no tiene costo cargado: no se puede calcular el precio">
+                        Sin costo
+                      </span>
+                    ) : (
+                      <span className="num text-right text-[13.5px] font-medium">
+                        ${pesos(precios.cashPrice)}
+                      </span>
+                    )}
+
+                    {columnasDeStock.map(col => {
+                      // Sin fila de stock la celda dice `0` y no queda vacía:
+                      // «hay cero» y «no sé» son cosas distintas, y para decidir
+                      // una transferencia hay que saber cuál de las dos es
+                      // (FR-067).
+                      const entry = filaDeStock(p, col.id)
+                      const cantidad = Number(entry?.quantity) || 0
+                      const minimo = Number(entry?.min_stock) || 0
+
+                      return (
+                        <span key={col.id} className="text-center">
+                          {/* El mínimo y el valorizado van en el tooltip y no
+                              apilados en la celda: en 92px entra una cantidad y
+                              nada más, y tres cifras por sucursal por fila
+                              vuelven la tabla ilegible justo cuando hay tres
+                              sucursales, que es cuando importa. */}
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <span
+                                  className={`num inline-block min-w-[38px] cursor-default rounded-md border px-2 py-[3px]
+                                              text-[12.5px] font-semibold ${tonoDeStock(cantidad, minimo)}`}
+                                />
+                              }
+                            >
+                              {unidades(cantidad)}
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <span className="flex flex-col gap-0.5">
+                                <span>{col.name}{col.is_active === false ? ' (inactiva)' : ''}</span>
+                                <span className="num">
+                                  Mínimo: {minimo > 0 ? unidades(minimo) : 'sin cargar'}
+                                </span>
+                                <span className="num">
+                                  Valorizado: ${pesosRedondos(cantidad * (parseFloat(p.cost) || 0))}
+                                </span>
+                              </span>
+                            </TooltipContent>
+                          </Tooltip>
+                        </span>
+                      )
+                    })}
+
+                    <span className="flex justify-end gap-0.5">
+                      {/* Transferir desde la fila: es donde se ve que a una
+                          sucursal le falta lo que a otra le sobra. El botón
+                          frena la propagación (lo hace `BotonDeFila`), así que
+                          no abre además el panel del producto. */}
+                      {puedeTransferir && columnasDeStock.length > 1 && (
+                        <BotonDeFila title="Transferir a otra sucursal" onClick={() => transferirDesdeLaFila(p)}>
+                          <ArrowRightLeft />
+                        </BotonDeFila>
+                      )}
+                      <BotonDeFila title="Editar" onClick={() => abrirPanel(p)}>
+                        <Edit2 />
+                      </BotonDeFila>
+                    </span>
+                  </Fila>
                 )
-              })
-            )}
-          </TableBody>
-        </Table>
-        {!loading && <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />}
-      </Card>
+              })}
+            </TablaGrid>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2 text-[12.5px] text-fg-2">
+              <span>
+                Mostrando <span className="num">{paginatedProducts.length}</span> de{' '}
+                <span className="num">{filteredProducts.length}</span> productos
+              </span>
+              <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+            </div>
+          </>
+        )}
+      </section>
 
       <PreciosMasivos
         open={preciosAbierto}
@@ -415,12 +1285,17 @@ const Inventory = () => {
         }}
       />
 
-      {/* Sheet: New / Edit Product */}
-      <ProductForm
-        open={isFormOpen}
-        onOpenChange={setIsFormOpen}
-        product={editingProduct}
-        onSuccess={() => initialize()}
+      {/* El panel del producto: se edita mirando la lista, no tapándola. */}
+      <PanelProducto
+        abierto={panelAbierto}
+        onOpenChange={cerrarPanel}
+        producto={productoAbierto}
+        sucursales={sucursales}
+        marcas={brands}
+        settings={settings}
+        onGuardado={alGuardarProducto}
+        onCreado={alCrearProducto}
+        onDesactivado={alDesactivarProducto}
       />
 
       {/* Wizard: Importar productos */}
@@ -430,87 +1305,20 @@ const Inventory = () => {
         onSuccess={() => initialize()}
       />
 
-      {/* Dialog: Transfer */}
-      <Dialog open={isTransfer} onOpenChange={setIsTransfer}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Transferir Stock</DialogTitle></DialogHeader>
-          <form onSubmit={handleTransfer} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Origen</Label>
-                <Select value={transferForm.from_location} onValueChange={v => setTransferForm({ ...transferForm, from_location: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {locations.map(l => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Destino</Label>
-                <Select value={transferForm.to_location} onValueChange={v => setTransferForm({ ...transferForm, to_location: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {locations.map(l => <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Producto</Label>
-              <Select value={transferForm.product_id} onValueChange={v => setTransferForm({ ...transferForm, product_id: v })}>
-                <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
-                <SelectContent>
-                  {products.map(p => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {p.name} (Stock: {getStockForLocation(p, transferForm.from_location)})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Cantidad</Label>
-              <Input type="number" min="1" step="1" required value={transferForm.quantity}
-                onChange={e => setTransferForm({ ...transferForm, quantity: e.target.value })} />
-            </div>
-            <DialogFooter>
-              <Button variant="outline" type="button" onClick={() => setIsTransfer(false)}>Cancelar</Button>
-              <Button type="submit">Transferir</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* Transferir: panel y no modal, y con VARIOS productos en una sola
+          operación. El formulario anterior movía uno por vez. */}
+      <PanelTransferencia
+        abierto={isTransfer}
+        onOpenChange={(abierto) => {
+          setIsTransfer(abierto)
+          if (!abierto) setPrecargaDeTransferencia(null)
+        }}
+        sucursales={sucursales}
+        productos={catalogo}
+        precarga={precargaDeTransferencia}
+        onTransferido={aplicarTransferencia}
+      />
 
-      {/* Dialog: Transfers History */}
-      <Dialog open={showTransfers} onOpenChange={setShowTransfers}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>Historial de Transferencias</DialogTitle></DialogHeader>
-          {transfers.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">Sin transferencias registradas</p>
-          ) : (
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              {transfers.map(t => (
-                <Card key={t.id}>
-                  <CardContent className="p-3 text-sm">
-                    <div className="flex justify-between items-center">
-                      <Badge variant="outline">{t.from_location} → {t.to_location}</Badge>
-                      <span className="text-xs text-muted-foreground">{new Date(t.createdAt).toLocaleString()}</span>
-                    </div>
-                    <div className="mt-2 space-y-1">
-                      {t.items?.map((item, i) => (
-                        <div key={i} className="flex justify-between text-xs">
-                          <span>{item.product_name}</span>
-                          <span className="font-mono font-medium">{item.quantity} u.</span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
