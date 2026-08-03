@@ -14,6 +14,37 @@ const { estadoVenta } = require('../utils/estadoVenta');
 const { filtroVentas } = require('../utils/filtroVentas');
 const { filaDeExport, totalDelPeriodo } = require('../utils/exportVentas');
 const { condicionIvaDeAfip } = require('../utils/condicionIvaAfip');
+const { resolverSucursal, sucursalPorDefecto } = require('../utils/sucursalDeStock');
+
+/**
+ * La sucursal a la que vuelve la mercadería de una venta anulada.
+ *
+ * Los tres escalones están explicados donde se usa. Va como función aparte
+ * porque el del medio —el `location` viejo, que puede ser cualquier texto— es
+ * el único que necesita tragarse su error: si `sale.location` dice «mostrador»
+ * y esa sucursal no existe, la anulación tiene que seguir, no fallar.
+ */
+async function sucursalDeAnulacion(sale, transaction) {
+  if (sale.punto_de_venta_id) {
+    const suya = await PuntoDeVenta.findOne({
+      where: { id: sale.punto_de_venta_id, empresa_id: sale.empresa_id },
+      transaction,
+    });
+
+    if (suya) return suya;
+  }
+
+  if (sale.location) {
+    const porCodigo = await PuntoDeVenta.findOne({
+      where: { empresa_id: sale.empresa_id, code: sale.location },
+      transaction,
+    });
+
+    if (porCodigo) return porCodigo;
+  }
+
+  return sucursalPorDefecto(sale.empresa_id, { transaction });
+}
 
 /**
  * El «hoy» del negocio, para completar el rango cuando no viene.
@@ -398,6 +429,22 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
       }));
       await SaleItem.bulkCreate(saleItems, { transaction: t });
 
+      // La sucursal se resuelve UNA vez para toda la venta: cabecera
+      // `X-Punto-De-Venta-Id` si vino, y si no el punto de venta por defecto
+      // de la empresa. **Es obligatoria, no opcional.**
+      //
+      // Antes esto era `punto_de_venta_id: req.puntoDeVentaId || null`. Con la
+      // columna ya en NOT NULL (migración 14), ese `null` no matchea **ninguna
+      // fila jamás**: una venta hecha sin la cabecera se registraría bien y no
+      // descontaría nada. No rompe nada visible —la venta se cobra, el
+      // comprobante sale— y se descubre en un recuento físico tres meses
+      // después. Es el riesgo 1 del plan.
+      const sucursal = await resolverSucursal({
+        empresaId: req.empresaId,
+        puntoDeVentaId: req.puntoDeVentaId,
+        transaction: t,
+      });
+
       for (const si of saleItems) {
         if (!si.product_id) continue;
 
@@ -405,7 +452,7 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
           where: {
             product_id: si.product_id,
             empresa_id: req.empresaId,
-            punto_de_venta_id: req.puntoDeVentaId || null,
+            punto_de_venta_id: sucursal.id,
           },
           transaction: t,
           lock: t.LOCK.UPDATE,
@@ -423,7 +470,7 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
             `No hay stock cargado para "${si.product_name}" en este punto de venta: no se descontó inventario.`
           );
           logger.warn(
-            { empresaId: req.empresaId, productId: si.product_id, puntoDeVentaId: req.puntoDeVentaId || null },
+            { empresaId: req.empresaId, productId: si.product_id, puntoDeVentaId: sucursal.id },
             'sales: venta sin fila de stock, no se descuenta'
           );
         }
@@ -443,7 +490,11 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
           await StockMovement.create({
             empresa_id: req.empresaId,
             product_id: si.product_id,
-            punto_de_venta_id: req.puntoDeVentaId || null,
+            // La sucursal resuelta y no la cabecera cruda: el movimiento tiene
+            // que decir de qué estantería salió la mercadería. Con la cabecera
+            // ausente quedaba en `null`, y un movimiento que no dice dónde
+            // pasó no sirve para reconstruir un descuadre.
+            punto_de_venta_id: sucursal.id,
             tipo: 'sale',
             referencia_id: sale.id,
             cantidad_anterior: oldQty,
@@ -524,6 +575,24 @@ router.put('/:id/void', checkPermission('ventas.anular'), async (req, res) => {
       transaction: t,
     });
 
+    // A qué sucursal vuelve la mercadería, en este orden:
+    //
+    //  1. `sale.punto_de_venta_id`, si la venta lo tiene;
+    //  2. `sale.location`, interpretado como código de sucursal;
+    //  3. el punto de venta por defecto de la empresa.
+    //
+    // El segundo y el tercer escalón **no son adorno**: `punto_de_venta_id`
+    // está en `null` en TODAS las ventas anteriores a esta funcionalidad, y
+    // esta funcionalidad no migra la tabla `sales` (está Fuera de alcance).
+    // Con la columna de `stock` ya en NOT NULL, buscar por `null` no encuentra
+    // ninguna fila: anular una venta vieja devolvería el dinero y **no** la
+    // mercadería, sin ningún error a la vista.
+    //
+    // `sale.location` puede ser un texto que no resuelve —lo escribía el
+    // cliente—, así que se prueba y se cae al por defecto en vez de fallar: la
+    // anulación no se puede rechazar por un dato viejo mal escrito.
+    const sucursal = await sucursalDeAnulacion(sale, t);
+
     for (const item of items) {
       if (!item.product_id) continue;
 
@@ -531,7 +600,7 @@ router.put('/:id/void', checkPermission('ventas.anular'), async (req, res) => {
         where: {
           product_id: item.product_id,
           empresa_id: sale.empresa_id,
-          punto_de_venta_id: sale.punto_de_venta_id,
+          punto_de_venta_id: sucursal.id,
         },
         transaction: t,
         lock: t.LOCK.UPDATE,
@@ -548,7 +617,9 @@ router.put('/:id/void', checkPermission('ventas.anular'), async (req, res) => {
         await StockMovement.create({
           empresa_id: sale.empresa_id,
           product_id: item.product_id,
-          punto_de_venta_id: sale.punto_de_venta_id,
+          // La sucursal a la que volvió la mercadería, que en una venta vieja
+          // no es la de la venta: la venta no tiene ninguna.
+          punto_de_venta_id: sucursal.id,
           tipo: 'sale_void',
           referencia_id: sale.id,
           cantidad_anterior: oldQty,

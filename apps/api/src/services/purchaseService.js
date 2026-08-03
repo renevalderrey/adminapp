@@ -8,6 +8,7 @@ const {
   sequelize,
 } = require('../models');
 const { assertEmpresaId } = require('../utils/tenantScope');
+const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
 
 class PurchaseService {
   async createOrder(supplierId, data, empresaId) {
@@ -89,16 +90,37 @@ class PurchaseService {
         match.quantity_received = alreadyReceived + actualReceive;
         totalReceived += actualReceive * (parseFloat(match.unit_price) || 0);
 
-        const stockLocation = location || 'general';
+        // La sucursal sale de la función compartida: cabecera, si no el por
+        // defecto de la empresa. La rama por `location` de antes creaba filas
+        // sin sucursal cuando la orden se recibía sin cabecera —que es lo
+        // normal, porque recibir mercadería no se hace desde el POS—, y esa
+        // mercadería no aparecía en la pantalla.
+        //
+        // El parámetro `location` se conserva en la firma por compatibilidad y
+        // **ya no ubica nada**: su valor por defecto era el literal `'general'`,
+        // que en una empresa cuyos códigos son otros no coincide con ninguna
+        // sucursal. Interpretarlo como código haría fallar la recepción entera
+        // por un valor por defecto que nadie eligió.
+        //
+        // `empresa_id` sigue en el where Y en el alta: sin él, la búsqueda
+        // podía encontrar —y sumarle stock a— la fila de otra empresa cliente,
+        // y el alta creaba filas que caían en la empresa 1 por el default de la
+        // columna.
+        const ubicacion = ubicacionDeStock(await resolverSucursal({
+          empresaId,
+          puntoDeVentaId,
+          transaction: t,
+        }));
 
-        // Faltaba empresa_id: la búsqueda podía encontrar —y sumarle stock a—
-        // la fila de otra empresa cliente, y el alta creaba filas que caían en
-        // la empresa 1 por el default de la columna.
-        const where = puntoDeVentaId
-          ? { product_id: received.product_id, empresa_id: empresaId, punto_de_venta_id: puntoDeVentaId }
-          : { product_id: received.product_id, empresa_id: empresaId, location: stockLocation };
-
-        const stock = await Stock.findOne({ where, transaction: t, lock: t.LOCK.UPDATE });
+        const stock = await Stock.findOne({
+          where: {
+            product_id: received.product_id,
+            empresa_id: empresaId,
+            punto_de_venta_id: ubicacion.punto_de_venta_id,
+          },
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
 
         if (stock) {
           await stock.update({
@@ -109,8 +131,7 @@ class PurchaseService {
           await Stock.create({
             product_id: received.product_id,
             empresa_id: empresaId,
-            location: stockLocation,
-            punto_de_venta_id: puntoDeVentaId || null,
+            ...ubicacion,
             quantity: actualReceive,
             available: actualReceive,
             min_stock: 0,

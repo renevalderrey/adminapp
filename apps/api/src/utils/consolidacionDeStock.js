@@ -146,6 +146,13 @@ function senalesDeDobleRegistro(filas) {
       // Cualquier otra combinacion —los dos nulos, el mismo lote, o uno con
       // lote y otro sin— no aporta ninguna evidencia, asi que cuenta como
       // senal.
+      //
+      // Que la fusion ahora **conserve** el lote de la unica fila que lo
+      // tiene no apaga esta senal, y es a proposito: la senal contesta "¿hay
+      // evidencia de que sean dos pilas?" —y un lote solo no separa nada—,
+      // mientras que la eleccion del lote contesta "¿cual queda?". Apagarla
+      // porque el lote ya no se pierde seria confundir las dos preguntas y
+      // sacar del recuento justo el caso mas dudoso.
       const dosLotesDistintos = a.current_batch && b.current_batch
         && a.current_batch !== b.current_batch;
       if (!dosLotesDistintos) sinLote = true;
@@ -190,10 +197,23 @@ function fusionar(filas) {
     min_stock: filas.reduce((acc, f) => Math.max(acc, numero(f.min_stock)), 0),
     expiration_date: masTemprana(filas.map((f) => f.expiration_date)),
     purchase_date: masTemprana(filas.map((f) => f.purchase_date)),
-    // Un lote es una identidad, no una magnitud: no hay forma de fusionar
-    // dos. Queda el de la fila con mas cantidad y los otros se anotan — un
-    // lote que se pierde en silencio es lo que rompe un retiro de producto.
-    current_batch: sobreviviente.current_batch || null,
+    // Un lote es identidad, no magnitud.
+    //
+    // Antes quedaba el lote de la fila que sobrevive, que es la de mayor
+    // cantidad. Eso hacia que un lote se perdiera **sin que hubiera ninguna
+    // razon**: si la fila de 100 unidades tenia el lote en null y la de 5
+    // tenia uno real, la fusion quedaba sin lote y el unico dato que habia
+    // desaparecia. Perder el lote rompe un retiro de producto —no queda con
+    // que saber que mercaderia hay que sacar de la gondola— y suplementos es
+    // un rubro donde eso pasa.
+    //
+    // La regla ahora es: gana el lote de la fila con mas cantidad **entre las
+    // que tienen lote**. Si solo una lo tiene, gana ese sin importar la
+    // cantidad; si hay dos distintos, gana el de la fila mayor y el otro va a
+    // descartados; si ninguna tiene, queda null. `ordenadas` ya viene por
+    // cantidad descendente y, a igualdad, por id ascendente, asi que el
+    // desempate sigue siendo determinístico.
+    current_batch: (ordenadas.find((f) => f.current_batch) || {}).current_batch || null,
   };
 
   const lotesDescartados = [...new Set(

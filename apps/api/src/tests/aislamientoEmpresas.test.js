@@ -96,6 +96,70 @@ describe('No debe filtrarse por empresa_id IS NULL', () => {
   );
 });
 
+describe('Ninguna fila de stock se escribe sin sucursal (FR-052)', () => {
+  // `stock.punto_de_venta_id` es la identidad de la sucursal y es NOT NULL
+  // desde la migracion 14. Una escritura que lo deje en null falla contra
+  // Postgres; una que lo omita crea una fila que la pantalla —que lee por
+  // `punto_de_venta_id`— no muestra nunca. Las dos son formas de que aparezca
+  // mercaderia que nadie ve.
+  //
+  // La guardia mira **los bloques de escritura de Stock** y no todo el codigo.
+  // `StockMovement.punto_de_venta_id` sigue siendo nullable a proposito y hay
+  // lugares que lo escriben asi legitimamente: una guardia que empieza con seis
+  // excepciones no se lee y termina desactivada.
+  //
+  // Escanea tambien `utils/`, que es donde vive ahora la resolucion de
+  // sucursal. Las guardias anteriores solo miran `routes/` y `services/`, y una
+  // escritura de stock que se mudara a un helper saldria del radar sin que nada
+  // avise.
+  const LINEAS_DEL_BLOQUE = 6;
+
+  /**
+   * Los nombres que en este archivo salen de `ubicacionDeStock(...)`.
+   *
+   * Esa funcion devuelve `{ punto_de_venta_id, location }` y **tira** si le
+   * llega un punto de venta sin id, asi que esparcirla es tan explicito como
+   * escribir la clave a mano. Cualquier OTRO spread no cuenta: seria un objeto
+   * armado en otro lado, que es justo lo que esta guardia tiene que ver.
+   */
+  function nombresDeUbicacion(contenido) {
+    return [...contenido.matchAll(/const\s+(\w+)\s*=\s*ubicacionDeStock\(/g)].map((m) => m[1]);
+  }
+
+  it.each([...leerArchivos('routes'), ...leerArchivos('services'), ...leerArchivos('utils')])(
+    '$nombre',
+    ({ contenido }) => {
+      const lineas = contenido.split('\n');
+      const problemas = [];
+      const ubicaciones = nombresDeUbicacion(contenido);
+
+      lineas.forEach((linea, i) => {
+        if (!/Stock\.(create|findOrCreate)\(/.test(linea)) return;
+        if (linea.trim().startsWith('//') || linea.trim().startsWith('*')) return;
+
+        const bloque = lineas.slice(i, i + LINEAS_DEL_BLOQUE + 1).join('\n');
+        const esparceLaUbicacion = ubicaciones.some(
+          (nombre) => new RegExp(`\\.\\.\\.${nombre}\\b`).test(bloque)
+        );
+
+        if (!/punto_de_venta_id/.test(bloque) && !esparceLaUbicacion) {
+          problemas.push(`L${i + 1}: escribe stock sin decir en que sucursal`);
+        }
+
+        if (/punto_de_venta_id:\s*null/.test(bloque)) {
+          problemas.push(`L${i + 1}: escribe punto_de_venta_id en null`);
+        }
+
+        if (/punto_de_venta_id:\s*[^,\n]*\|\|\s*null/.test(bloque)) {
+          problemas.push(`L${i + 1}: cae a null cuando no vino la sucursal`);
+        }
+      });
+
+      expect(problemas).toEqual([]);
+    }
+  );
+});
+
 describe('La configuracion de AFIP se lee siempre por empresa', () => {
   // La identidad fiscal (CUIT, certificado, clave) es de cada empresa cliente.
   // Una lectura de Setting sin empresa_id significa que una empresa puede

@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { Setting, Stock, TiendanubeMapping, StockMovement } = require('../models');
+const { resolverSucursal } = require('../utils/sucursalDeStock');
 
 class TiendaNubeService {
   constructor() {
@@ -110,6 +111,19 @@ class TiendaNubeService {
 
     const items = orderData.products || orderData.items || [];
 
+    // Un pedido de la tienda online **nunca** trae cabecera
+    // `X-Punto-De-Venta-Id`: no hay nadie sentado en una caja cuando entra.
+    // Antes eso significaba `punto_de_venta_id: puntoDeVentaId || null`, que
+    // con la columna en NOT NULL (migración 14) no matchea ninguna fila jamás:
+    // el pedido se marcaría como procesado y el inventario no bajaría.
+    //
+    // Es el tercero de los tres caminos que dejarían de descontar y el que
+    // menos se mira, justamente porque no hay nadie mirando.
+    const sucursal = await resolverSucursal({
+      empresaId,
+      puntoDeVentaId,
+    });
+
     for (const item of items) {
       const variantId = item.product_variant_id || item.variant_id;
       if (!variantId) continue;
@@ -123,7 +137,7 @@ class TiendaNubeService {
           where: {
             product_id: mapping.product_id,
             empresa_id: empresaId,
-            punto_de_venta_id: puntoDeVentaId || null,
+            punto_de_venta_id: sucursal.id,
           }
         });
 
@@ -140,7 +154,9 @@ class TiendaNubeService {
           await StockMovement.create({
             empresa_id: empresaId,
             product_id: mapping.product_id,
-            punto_de_venta_id: puntoDeVentaId || null,
+            // La sucursal de la que salió la mercadería, no la cabecera que
+            // nunca vino.
+            punto_de_venta_id: sucursal.id,
             tipo: 'tiendanube_sale',
             referencia_id: referencia,
             cantidad_anterior: oldQty,

@@ -282,7 +282,7 @@ Es la fase más grande y es a propósito. **No se despliega a medias** (punto 3 
 «Antes de empezar»): entre T1007 y T1010 hay una ventana en la que una venta sin
 cabecera de punto de venta se registra y no descuenta stock.
 
-- [ ] **T1007** Crear `apps/api/src/migrations/20260804-identidad-de-sucursal-en-stock.js`
+- [x] **T1007** Crear `apps/api/src/migrations/20260804-identidad-de-sucursal-en-stock.js`
       —la migración **14**— con los ocho pasos de `data-model.md`, **todo dentro de
       una sola transacción** y **sin usar los modelos de Sequelize**
       (`queryInterface.sequelize.query`, decisión 3): paso 0 la foto de control en
@@ -315,7 +315,7 @@ cabecera de punto de venta se registra y no descuenta stock.
       previa fallaría con el error de Postgres, que no dice qué revisar: **el
       mensaje es parte de la tarea, no un adorno.**
 
-- [ ] **T1008** Actualizar `apps/api/src/models/Stock.js`: `punto_de_venta_id`
+- [x] **T1008** Actualizar `apps/api/src/models/Stock.js`: `punto_de_venta_id`
       pasa a `allowNull: false`, y la lista de `indexes` pasa a decir lo que la
       base **realmente** tiene después de T1007 —único
       `(product_id, punto_de_venta_id)`, y **fuera** el que declaraba un índice
@@ -331,7 +331,7 @@ cabecera de punto de venta se registra y no descuenta stock.
       confundirlas es cómo se llega a un modelo que describe un esquema que nadie
       aplicó.
 
-- [ ] **T1009** ⚠ **Riesgo 1.** En `apps/api/src/routes/sales.js`, hacer que
+- [x] **T1009** ⚠ **Riesgo 1.** En `apps/api/src/routes/sales.js`, hacer que
       `POST /` (`:404-412`) y `PUT /:id/void` (`:530-538`) resuelvan la sucursal
       por `utils/sucursalDeStock.js` en vez de buscar la fila con
       `punto_de_venta_id: req.puntoDeVentaId || null`. En `POST /` la resolución
@@ -348,7 +348,7 @@ cabecera de punto de venta se registra y no descuenta stock.
       la única señal que da hoy este defecto. Sin esta tarea, la migración deja
       un sistema que factura bien y descuadra el inventario en silencio.
 
-- [ ] **T1010** ⚠ **Riesgo 1.** En `apps/api/src/services/tiendanubeService.js`
+- [x] **T1010** ⚠ **Riesgo 1.** En `apps/api/src/services/tiendanubeService.js`
       (`:122-128`), resolver la sucursal por defecto cuando el webhook no trae
       punto de venta —un pedido de la tienda **nunca** trae cabecera—, con la misma
       función.
@@ -358,7 +358,7 @@ cabecera de punto de venta se registra y no descuenta stock.
       tercero de los tres que dejarían de descontar, y es el que menos se mira
       porque nadie está sentado delante cuando entra un pedido.
 
-- [ ] **T1011** En `apps/api/src/routes/general.js`, las tres rutas de stock:
+- [x] **T1011** En `apps/api/src/routes/general.js`, las tres rutas de stock:
       `POST /stock` (`:103-153`) resuelve la sucursal (cuerpo → cabecera → por
       defecto), **valida `quantity < 0` y `available < 0` con exactamente los
       mismos dos mensajes que ya devuelve `PUT /stock/:id` en `:49` y `:52`**,
@@ -379,7 +379,7 @@ cabecera de punto de venta se registra y no descuenta stock.
       fila de sucursal (mover mercadería es `POST /stock/transfer`, que es
       transaccional y deja registro; hacerlo cambiando un campo no deja ninguno).
 
-- [ ] **T1012** En `apps/api/src/routes/stock.js`, `POST /transfer` (`:10-114`):
+- [x] **T1012** En `apps/api/src/routes/stock.js`, `POST /transfer` (`:10-114`):
       acepta `from_punto_de_venta_id` / `to_punto_de_venta_id` y sigue aceptando
       los `code` por compatibilidad, resolviéndolos a id **antes de tocar nada**;
       un `code` que no resuelve es un `400` y **no** una caída a `location` como
@@ -396,7 +396,7 @@ cabecera de punto de venta se registra y no descuenta stock.
       **ninguna** fila queda movida; sacar mercadería de una sucursal inactiva
       funciona y meterla no.
 
-- [ ] **T1013** En `apps/api/src/routes/import.js` (`:300-311`), la columna
+- [x] **T1013** En `apps/api/src/routes/import.js` (`:300-311`), la columna
       Sucursal se resuelve contra el `code` **de esa empresa**; si no resuelve, la
       fila se informa como error **con su número de línea y con los códigos
       válidos en el mensaje**, y las demás se importan igual; sin columna, va el
@@ -418,7 +418,7 @@ cabecera de punto de venta se registra y no descuenta stock.
       (dependencia **d**) se saca en T1029 y T1042; **este cambio solo no
       alcanza.**
 
-- [ ] **T1014** En `apps/api/src/routes/products.js`, `POST /bulk` (`:254-267`):
+- [x] **T1014** En `apps/api/src/routes/products.js`, `POST /bulk` (`:254-267`):
       la sucursal por `utils/sucursalDeStock.js`, **nunca `null`**, y `p.location`
       pasa a ignorarse.
       **Verificación**: se cae la rama `pvId ? {…punto_de_venta_id} :
@@ -427,13 +427,13 @@ cabecera de punto de venta se registra y no descuenta stock.
       con `location: 'general'` que la pantalla no lee. El historial de costos de
       esta misma ruta es T1022, no acá.
 
-- [ ] **T1015** En `apps/api/src/services/purchaseService.js` (`:97-118`), se cae
+- [x] **T1015** En `apps/api/src/services/purchaseService.js` (`:97-118`), se cae
       la rama por `location` y la sucursal se resuelve por la función compartida.
       **Verificación**: recibir una orden de compra sin cabecera de punto de venta
       escribe la fila en el por defecto; leyendo el diff, no queda ninguna rama
       condicional sobre `location`.
 
-- [ ] **T1016** ⚠ **Dependencia (a).** En
+- [x] **T1016** ⚠ **Dependencia (a).** En
       `apps/api/src/services/productionService.js`, los **cinco** puntos:
       `validateStockForProduction` (`:85-88`), las dos `findOrCreate` de la
       producción (`:170-180`, `:187-197`) y las dos de la anulación (`:281-285`,
@@ -454,7 +454,7 @@ cabecera de punto de venta se registra y no descuenta stock.
       «arregla» ajustando el número sin mirar, la guardia queda contando en vez de
       verificando.
 
-- [ ] **T1017** Agregar la guardia de FR-052 a
+- [x] **T1017** Agregar la guardia de FR-052 a
       `apps/api/src/tests/aislamientoEmpresas.test.js`, con la forma del bloque de
       AFIP que ya está ahí: por cada `Stock.create(` o `Stock.findOrCreate(` en
       `routes/` y `services/`, las 6 líneas siguientes tienen que mencionar
@@ -470,7 +470,7 @@ cabecera de punto de venta se registra y no descuenta stock.
       `general.js:85` lo escriben así legítimamente — una guardia que empieza con
       seis excepciones no se lee y termina desactivada.
 
-- [ ] **T1018** En `apps/api/src/seedPuntosDeVenta.js`: sacar
+- [x] **T1018** En `apps/api/src/seedPuntosDeVenta.js`: sacar
       `await mapLocationField(Stock, …)` (`:45`) con un comentario que diga que el
       mapeo de `Stock` lo resuelve la migración 14 y por qué el seeder ya no es su
       dueño; **dejar** los de `Sale`, `ProductionOrder` y `StockTransfer`, que

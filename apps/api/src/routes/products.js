@@ -12,6 +12,7 @@ const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo } = require('../utils/errores');
 const requireSuperadmin = require('../middleware/requireSuperadmin');
+const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
 
 // ── Qué se puede editar de un producto ──
 //
@@ -251,16 +252,34 @@ router.post('/bulk', checkPermission('products.crear'), async (req, res) => {
         created++;
       }
 
-      // Actualizar stock si se proporcionó
+      // Actualizar stock si se proporcionó.
+      //
+      // La sucursal sale de `utils/sucursalDeStock` y **nunca es null**. La
+      // rama de antes —`pvId ? {…punto_de_venta_id} : {…location}`— hacía que
+      // una carga masiva sin cabecera y sin `punto_de_venta_id` creara una fila
+      // con `location: 'general'` y sin sucursal: mercadería que la pantalla,
+      // que lee por `punto_de_venta_id`, no muestra nunca.
+      //
+      // `p.location` se ignora: era el texto que producía esas filas.
       if (p.quantity !== undefined) {
-        const location = p.location || 'general';
-        const pvId = req.puntoDeVentaId || p.punto_de_venta_id || null;
-        const where = pvId
-          ? { product_id: product.id, punto_de_venta_id: pvId, empresa_id: empresaId }
-          : { product_id: product.id, location, empresa_id: empresaId };
-        const defaults = { quantity: p.quantity, available: p.quantity, location, empresa_id: empresaId };
-        if (pvId) defaults.punto_de_venta_id = pvId;
-        const [stock] = await Stock.findOrCreate({ where, defaults });
+        const ubicacion = ubicacionDeStock(await resolverSucursal({
+          empresaId,
+          puntoDeVentaId: p.punto_de_venta_id || req.puntoDeVentaId,
+        }));
+
+        const [stock] = await Stock.findOrCreate({
+          where: {
+            product_id: product.id,
+            punto_de_venta_id: ubicacion.punto_de_venta_id,
+            empresa_id: empresaId,
+          },
+          defaults: {
+            quantity: p.quantity,
+            available: p.quantity,
+            ...ubicacion,
+            empresa_id: empresaId,
+          },
+        });
         if (!stock.isNewRecord) {
           await stock.update({ quantity: p.quantity, available: p.quantity });
         }

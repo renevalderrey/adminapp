@@ -239,7 +239,22 @@ menor `id`, para que el resultado sea determinístico.
 | `min_stock` | el máximo | — |
 | `expiration_date` | **el más próximo de los no nulos** | **sí** — FR-045 dice «el de la fila con más cantidad» |
 | `purchase_date` | **el más antiguo de los no nulos** | **sí**, por simetría |
-| `current_batch` | el de la fila con más cantidad | igual, pero los descartados van a `nota` |
+| `current_batch` | **el de la fila con más cantidad de las que tienen lote** | **sí** — los descartados van a `nota` |
+
+**Por qué el lote no lo decide la cantidad sola.** FR-045 dice «el de la fila con
+más cantidad». Si esa fila tiene el lote en `NULL` y la otra tiene uno real, el
+resultado queda **sin lote**: el único dato que había desaparece sin que hubiera
+ninguna razón para descartarlo. Un lote es identidad, no magnitud, y perderlo
+rompe un retiro de producto —no queda con qué saber qué mercadería hay que sacar
+de la góndola—; suplementos es un rubro donde eso pasa. La regla es: si **una
+sola** fila tiene lote, gana ese sin importar la cantidad; si **las dos** tienen
+lotes distintos, gana el de la fila mayor y el otro va a descartados; si ninguna
+tiene, queda `NULL`.
+
+Esto **no** apaga la señal «no hay dos lotes distintos que las separen»: la señal
+contesta «¿hay evidencia de que sean dos pilas?» —y un lote solo no separa nada—,
+mientras que la elección del lote contesta «¿cuál queda?». Son dos preguntas
+distintas y confundirlas sacaría del recuento justo el caso más dudoso.
 
 **Por qué el vencimiento cambia de criterio.** La spec elige el máximo para
 `min_stock` y lo justifica: «el criterio conservador: avisa antes de más, no de

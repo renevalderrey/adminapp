@@ -235,12 +235,40 @@ describe('los seis campos de la fila fusionada', () => {
     expect(fusion.resultado.purchase_date).toBe('2026-02-01');
   });
 
-  it('current_batch: el de la fila con mas cantidad', () => {
+  it('current_batch: con dos lotes distintos, el de la fila con mas cantidad', () => {
     // Un lote es una identidad, no una magnitud: no hay forma de fusionar dos.
     const fusion = unicaFusion(dosPilas({ quantity: 40, current_batch: 'L-GANA' },
       { quantity: 12, current_batch: 'L-PIERDE' }));
 
     expect(fusion.resultado.current_batch).toBe('L-GANA');
+  });
+
+  it('current_batch: si SOLO UNA fila tiene lote, gana ese aunque sea la de menos cantidad', () => {
+    // La regla vieja se quedaba con el lote de la fila que sobrevive, que es
+    // la de mayor cantidad. Con la fila de 40 sin lote y la de 12 con uno
+    // real, la fusion quedaba SIN lote: el unico dato que habia desaparecia
+    // sin que hubiera ninguna razon para descartarlo.
+    //
+    // Perder el lote rompe un retiro de producto —no queda con que saber que
+    // mercaderia hay que sacar de la gondola—, y suplementos es un rubro
+    // donde eso pasa. Un lote es identidad, no magnitud: no se decide por
+    // cantidad cuando no hay contra que compararlo.
+    const fusion = unicaFusion(dosPilas(
+      { quantity: 40, current_batch: null },
+      { quantity: 12, current_batch: 'L-UNICO' }
+    ));
+
+    expect(fusion.resultado.current_batch).toBe('L-UNICO');
+    // Y no se descarta nada: no habia un segundo lote que perder.
+    expect(fusion.lotes_descartados).toEqual([]);
+    expect(fusion.nota).not.toContain('Lotes descartados');
+  });
+
+  it('current_batch: sin ningun lote queda en null y no inventa uno', () => {
+    const fusion = unicaFusion(dosPilas({ current_batch: null }, { current_batch: null }));
+
+    expect(fusion.resultado.current_batch).toBeNull();
+    expect(fusion.lotes_descartados).toEqual([]);
   });
 
   it('los lotes descartados quedan escritos, no se pierden en silencio', () => {
@@ -335,6 +363,23 @@ describe('la marca «revisar»', () => {
     const fusion = unicaFusion(dosPilas({ current_batch: 'L-1' }, { current_batch: null }));
 
     expect(fusion.revisar).toBe(true);
+  });
+
+  it('2c) se marca igual cuando la que tiene lote es la de MENOS cantidad', () => {
+    // La senal y la eleccion del lote son dos cosas distintas y hay que
+    // dejarlas asi: la senal contesta "¿hay evidencia de que sean dos pilas?"
+    // y la respuesta sigue siendo no —un lote solo no separa nada—, mientras
+    // que la eleccion contesta "¿que lote queda?" y ahi el unico que hay gana.
+    // Si la senal se apagara porque el lote se conserva, se perderia el
+    // pedido de recuento justo en el caso que mas lo necesita.
+    const fusion = unicaFusion(dosPilas(
+      { quantity: 40, current_batch: null },
+      { quantity: 12, current_batch: 'L-1' }
+    ));
+
+    expect(fusion.revisar).toBe(true);
+    expect(fusion.senales).toContain('no hay dos lotes distintos que las separen');
+    expect(fusion.resultado.current_batch).toBe('L-1');
   });
 
   it('3) las dos se escribieron con menos de 24 horas de diferencia', () => {

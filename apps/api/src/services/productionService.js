@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { assertEmpresaId } = require('../utils/tenantScope');
+const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
 const {
   ProductionOrder,
   ProductionOrderItem,
@@ -75,6 +76,13 @@ class ProductionService {
 
     const warnings = [];
 
+    // La sucursal la decide `utils/sucursalDeStock` y no un ternario propio
+    // (FR-049, decisión 8). El ternario `puntoDeVentaId ? … : { location }`
+    // hacía que producir sin cabecera mirara una fila ubicada por texto —que
+    // después de la migración 14 no existe— y **la validación de stock pasara
+    // siempre**: se producía sin insumos y el faltante aparecía después.
+    const sucursal = await resolverSucursal({ empresaId, puntoDeVentaId });
+
     for (const item of recipeItems) {
       const qty = parseFloat(item.quantity) || 0;
       const requiredQty = qty * quantityProduced;
@@ -82,10 +90,13 @@ class ProductionService {
       // Con empresa_id explicito y no confiando en que product_id ya la
       // implica: esa invariante es cierta hoy y nadie la escribio en ningun
       // lado, que es como dejan de ser ciertas.
-      const where = puntoDeVentaId
-        ? { empresa_id: empresaId, product_id: item.ingredient_product_id, punto_de_venta_id: puntoDeVentaId }
-        : { empresa_id: empresaId, product_id: item.ingredient_product_id, location };
-      const stockRecord = await Stock.findOne({ where });
+      const stockRecord = await Stock.findOne({
+        where: {
+          empresa_id: empresaId,
+          product_id: item.ingredient_product_id,
+          punto_de_venta_id: sucursal.id,
+        },
+      });
 
       const available = stockRecord ? parseFloat(stockRecord.quantity) || 0 : 0;
 
@@ -129,6 +140,15 @@ class ProductionService {
 
     const warnings = await this.validateStockForProduction(items, quantity_produced, targetLocation, puntoDeVentaId, empresaId);
 
+    // La misma resolución que usa la validación de arriba: si las dos no
+    // coincidieran, se validaría el stock de una sucursal y se descontaría el
+    // de otra, que es peor que no validar.
+    //
+    // `ProductionOrder.location` sigue guardando `targetLocation` tal cual (esa
+    // tabla no se migra, está Fuera de alcance); lo que cambia es dónde se
+    // busca y se escribe el **stock**.
+    const ubicacion = ubicacionDeStock(await resolverSucursal({ empresaId, puntoDeVentaId }));
+
     const t = await sequelize.transaction();
 
     try {
@@ -167,15 +187,18 @@ class ProductionService {
         // stock creada aca cae en la empresa 1 por el valor por defecto de la
         // columna: la produccion de un cliente le crea inventario a otro, y a
         // quien produjo el stock le queda invisible.
-        const stockWhere = puntoDeVentaId
-          ? { empresa_id: empresaId, product_id: item.ingredient_product_id, punto_de_venta_id: puntoDeVentaId }
-          : { empresa_id: empresaId, product_id: item.ingredient_product_id, location: targetLocation };
-        const stockDefaults = puntoDeVentaId
-          ? { empresa_id: empresaId, quantity: 0, available: 0, punto_de_venta_id: puntoDeVentaId, location: targetLocation }
-          : { empresa_id: empresaId, quantity: 0, available: 0, location: targetLocation };
         const [stockRecord] = await Stock.findOrCreate({
-          where: stockWhere,
-          defaults: stockDefaults,
+          where: {
+            empresa_id: empresaId,
+            product_id: item.ingredient_product_id,
+            punto_de_venta_id: ubicacion.punto_de_venta_id,
+          },
+          defaults: {
+            empresa_id: empresaId,
+            quantity: 0,
+            available: 0,
+            ...ubicacion,
+          },
           transaction: t,
         });
 
@@ -184,15 +207,20 @@ class ProductionService {
         await stockRecord.update({ quantity: newQty, available: newQty }, { transaction: t });
       }
 
-      const finishedWhere = puntoDeVentaId
-        ? { empresa_id: empresaId, product_id, punto_de_venta_id: puntoDeVentaId }
-        : { empresa_id: empresaId, product_id, location: targetLocation };
-      const finishedDefaults = puntoDeVentaId
-        ? { empresa_id: empresaId, quantity: 0, available: 0, punto_de_venta_id: puntoDeVentaId, location: targetLocation, current_batch: batch_code, purchase_date: production_date }
-        : { empresa_id: empresaId, quantity: 0, available: 0, location: targetLocation, current_batch: batch_code, purchase_date: production_date };
       const [finishedStock] = await Stock.findOrCreate({
-        where: finishedWhere,
-        defaults: finishedDefaults,
+        where: {
+          empresa_id: empresaId,
+          product_id,
+          punto_de_venta_id: ubicacion.punto_de_venta_id,
+        },
+        defaults: {
+          empresa_id: empresaId,
+          quantity: 0,
+          available: 0,
+          ...ubicacion,
+          current_batch: batch_code,
+          purchase_date: production_date,
+        },
         transaction: t,
       });
 
@@ -269,18 +297,35 @@ class ProductionService {
     const t = await sequelize.transaction();
 
     try {
-      const loc = order.location || 'general';
-      const pvId = order.punto_de_venta_id || null;
+      // A dónde vuelven los insumos y de dónde sale el producto terminado.
+      //
+      // `order.punto_de_venta_id` está en `null` en todas las órdenes anteriores
+      // a esta funcionalidad —igual que en `sales`—, y la tabla no se migra.
+      // Con el ternario de antes, anular una orden vieja creaba una fila nueva
+      // ubicada por texto: los insumos «volvían» a un lugar que no existe y el
+      // producto terminado se descontaba de otro. La resolución compartida los
+      // manda a los dos al mismo lado.
+      const ubicacion = ubicacionDeStock(await resolverSucursal({
+        empresaId,
+        puntoDeVentaId: order.punto_de_venta_id,
+        transaction: t,
+      }));
 
       for (const item of items) {
         const qtyUsed = parseFloat(item.quantity_used) || 0;
 
-        const stockWhere = pvId
-          ? { empresa_id: empresaId, product_id: item.ingredient_product_id, punto_de_venta_id: pvId }
-          : { empresa_id: empresaId, product_id: item.ingredient_product_id, location: loc };
         const [stockRecord] = await Stock.findOrCreate({
-          where: stockWhere,
-          defaults: { empresa_id: empresaId, quantity: 0, available: 0, location: loc },
+          where: {
+            empresa_id: empresaId,
+            product_id: item.ingredient_product_id,
+            punto_de_venta_id: ubicacion.punto_de_venta_id,
+          },
+          defaults: {
+            empresa_id: empresaId,
+            quantity: 0,
+            available: 0,
+            ...ubicacion,
+          },
           transaction: t,
         });
 
@@ -291,12 +336,18 @@ class ProductionService {
         }, { transaction: t });
       }
 
-      const finishedWhere = pvId
-        ? { empresa_id: empresaId, product_id: order.product_id, punto_de_venta_id: pvId }
-        : { empresa_id: empresaId, product_id: order.product_id, location: loc };
       const [finishedStock] = await Stock.findOrCreate({
-        where: finishedWhere,
-        defaults: { empresa_id: empresaId, quantity: 0, available: 0, location: loc },
+        where: {
+          empresa_id: empresaId,
+          product_id: order.product_id,
+          punto_de_venta_id: ubicacion.punto_de_venta_id,
+        },
+        defaults: {
+          empresa_id: empresaId,
+          quantity: 0,
+          available: 0,
+          ...ubicacion,
+        },
         transaction: t,
       });
 

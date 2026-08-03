@@ -4,10 +4,11 @@ const multer = require('multer');
 const XLSX = require('xlsx');
 const path = require('path');
 const fs = require('fs');
-const { Product, Brand, Supplier, Stock, sequelize } = require('../models');
+const { Product, Brand, Supplier, Stock, PuntoDeVenta, sequelize } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
 const logger = require('../utils/logger');
 const { fallo } = require('../utils/errores');
+const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
 
 const upload = multer({
   dest: path.join(__dirname, '../../uploads'),
@@ -203,7 +204,39 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
     if (rows.length === 0) return res.status(400).json({ ok: false, error: 'El archivo está vacío' });
 
     const empresaId = req.empresaId;
-    const defaultLocation = req.body.defaultLocation || 'principal';
+
+    // `defaultLocation` se sigue aceptando, ahora interpretado como **código de
+    // sucursal**. Se resuelve acá, antes de escribir una sola fila: es un
+    // parámetro que aplica a todas, y descubrir en la fila 300 que no existe
+    // sería tarde. Si no viene, va el punto de venta por defecto de la empresa.
+    //
+    // El `'principal'` literal que había acá era la mitad de un defecto real:
+    // en una empresa sembrada por `seedPuntosDeVenta`, cuyos códigos son
+    // general/ortiz/mayo, ese texto **no coincide con nada**, y la importación
+    // escribía filas en una sucursal inexistente que la pantalla no muestra.
+    let sucursalPorDefectoDelArchivo;
+    try {
+      sucursalPorDefectoDelArchivo = await resolverSucursal({
+        empresaId,
+        code: req.body.defaultLocation,
+      });
+    } catch (err) {
+      return res.status(400).json({ ok: false, error: err.message });
+    }
+
+    // Las sucursales de la empresa se leen UNA vez: una planilla de 300 filas
+    // con columna Sucursal haría 300 consultas iguales.
+    const sucursales = await PuntoDeVenta.findAll({ where: { empresa_id: empresaId } });
+    const porCodigo = new Map(sucursales.filter((pv) => pv.code).map((pv) => [pv.code, pv]));
+    const codigosValidos = [...porCodigo.keys()].join(', ');
+
+    // Qué productos trae el archivo más de una vez. Se queda **el último**, que
+    // es lo que ya hacía —cada fila pisa a la anterior—, pero ahora se informa:
+    // sin esto, importar una lista con el mismo SKU dos veces deja un stock que
+    // no es la suma ni el máximo y nadie sabe por qué.
+    const vistos = new Set();
+    let pisados = 0;
+
     let created = 0, updated = 0, errors = [];
 
     for (const [i, raw] of rows.entries()) {
@@ -230,6 +263,29 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
           errors.push({ fila: i + 2, error: 'Falta el nombre del producto' });
           continue;
         }
+
+        // La sucursal se valida ANTES de crear o actualizar el producto: una
+        // fila con una sucursal que no existe no tiene por qué dejar el
+        // producto a medio importar. Se informa con su número de línea y **con
+        // los códigos válidos**, y las demás filas entran igual: después de
+        // FR-050 una planilla que «funcionaba» puede informar trescientos
+        // errores, y «sucursal inválida» a secas no dice qué poner.
+        if (data.location && !porCodigo.has(data.location)) {
+          errors.push({
+            fila: i + 2,
+            error: `La sucursal "${data.location}" no existe. `
+              + (codigosValidos
+                ? `Códigos válidos: ${codigosValidos}.`
+                : 'Ninguna sucursal de la empresa tiene código cargado.'),
+          });
+          continue;
+        }
+
+        // El mismo producto dos veces en el mismo archivo. Se queda el último
+        // —cada fila pisa a la anterior— y se cuenta para poder decirlo.
+        const clave = data.sku ? `sku:${data.sku}` : `nombre:${data.name}`;
+        if (vistos.has(clave)) pisados++;
+        vistos.add(clave);
 
         let brandId = null;
         if (data.brand_name) {
@@ -300,10 +356,33 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
         const qtyImportada = parseInt(data.quantity, 10);
         if (Number.isFinite(qtyImportada)) {
           const qty = qtyImportada;
-          const location = data.location || defaultLocation;
+
+          // La columna Sucursal se resuelve contra el `code` **de esta
+          // empresa**. Antes se escribía como texto en `location`: la
+          // importación escribía por `location`, la pantalla lee por
+          // `punto_de_venta_id`, y el usuario importaba 300 productos, veía
+          // los stocks viejos y no se enteraba de nada. Es el criterio de
+          // éxito 7.
+          const ubicacion = ubicacionDeStock(
+            data.location ? porCodigo.get(data.location) : sucursalPorDefectoDelArchivo
+          );
+
           const [stock] = await Stock.findOrCreate({
-            where: { product_id: product.id, location, empresa_id: empresaId },
-            defaults: { quantity: qty, available: qty, location, empresa_id: empresaId, min_stock: parseInt(data.min_stock) || 0, current_batch: data.current_batch || null, expiration_date: data.expiration_date || null, purchase_date: data.purchase_date || null },
+            where: {
+              product_id: product.id,
+              punto_de_venta_id: ubicacion.punto_de_venta_id,
+              empresa_id: empresaId,
+            },
+            defaults: {
+              quantity: qty,
+              available: qty,
+              ...ubicacion,
+              empresa_id: empresaId,
+              min_stock: parseInt(data.min_stock) || 0,
+              current_batch: data.current_batch || null,
+              expiration_date: data.expiration_date || null,
+              purchase_date: data.purchase_date || null,
+            },
           });
           if (!stock.isNewRecord) {
             await stock.update({ quantity: qty, available: qty });
@@ -322,6 +401,7 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
     res.json({
       ok: true,
       created, updated, errors: errors.length > 0 ? errors : undefined,
+      pisados,
       total: rows.length,
     });
   } catch (err) {

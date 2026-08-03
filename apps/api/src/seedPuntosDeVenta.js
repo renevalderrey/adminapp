@@ -1,4 +1,4 @@
-const { Empresa, PuntoDeVenta, Stock, Sale, ProductionOrder, StockTransfer } = require('./models');
+const { Empresa, PuntoDeVenta, Sale, ProductionOrder, StockTransfer } = require('./models');
 const { Op } = require('sequelize');
 const logger = require('./utils/logger');
 
@@ -42,7 +42,23 @@ async function seedPuntosDeVenta() {
 
     logger.info('PuntoDeVenta records ensured for all empresas');
 
-    await mapLocationField(Stock, 'location', 'punto_de_venta_id', 'stock');
+    // El mapeo de `Stock` **ya no está acá**, y es a propósito.
+    //
+    // Lo resuelve la migración 14, que además de mapear por `code` cae al punto
+    // de venta por defecto, consolida los duplicados y archiva lo que borra.
+    // El seeder no puede hacer nada de eso: solo mapeaba lo que coincidía
+    // exacto y dejaba el resto en `null`.
+    //
+    // Y no es que quede redundante: `Dockerfile:44` es
+    // `node scripts/migrar.js && node src/server.js`, así que la migración
+    // corre **antes** que el seeder en todos los arranques y no queda ninguna
+    // fila de stock sin sucursal que mapear. Dejarlo sería una consulta por
+    // boot cuyo único efecto es sugerirle a quien lea este archivo que el
+    // seeder sigue mandando sobre el stock.
+    //
+    // Los tres de abajo se quedan: `sales`, `production_orders` y
+    // `stock_transfers` **no** se migran (Fuera de alcance de la
+    // funcionalidad 010) y siguen dependiendo de este mapeo.
     await mapLocationField(Sale, 'location', 'punto_de_venta_id', 'sales');
     await mapLocationField(ProductionOrder, 'location', 'punto_de_venta_id', 'production_orders');
 
@@ -72,7 +88,19 @@ async function seedPuntosDeVenta() {
 
     logger.info('Location→PuntoDeVenta mapping complete');
   } catch (err) {
+    // Se loguea Y se relanza.
+    //
+    // Antes el catch se tragaba el error y el arranque seguía como si nada. El
+    // alcance de ese catch son las 70 líneas enteras: un error mapeando `Sale`
+    // dejaba sin mapear `ProductionOrder` y `StockTransfer`, y la API levantaba
+    // con la mitad del trabajo hecho y ningún síntoma. Un seeder que falla a
+    // medias y no avisa es peor que uno que no corre.
+    //
+    // El precio de esto es que un error acá tumba el arranque, que es lo
+    // buscado: es preferible un contenedor que no levanta —y se ve— a uno que
+    // levanta con datos a medio mapear.
     logger.error({ err }, 'Error in seedPuntosDeVenta');
+    throw err;
   }
 }
 

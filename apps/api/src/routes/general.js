@@ -5,10 +5,18 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
-const { Stock, Brand, Product, FixedExpense, Setting, PuntoDeVenta, Supplier } = require('../models');
+const { Stock, Brand, Product, FixedExpense, Setting, Supplier } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo } = require('../utils/errores');
+const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
+
+// Los dos mensajes de stock negativo viven acá porque los usan las DOS puertas
+// —`PUT /stock/:id` y `POST /stock`— y tienen que decir exactamente lo mismo.
+// Antes solo validaba el PUT: la misma pantalla, con el mismo campo, aceptaba
+// o rechazaba un -5 según si la fila ya existía. Es el defecto 4.
+const STOCK_NEGATIVO = 'El stock no puede ser negativo';
+const DISPONIBLE_NEGATIVO = 'El disponible no puede ser negativo';
 
 // ═══════ STOCK ═══════
 
@@ -46,10 +54,10 @@ router.put('/stock/:id', checkPermission('stock.editar'), async (req, res) => {
 
     const { quantity, available } = req.body;
     if (quantity !== undefined && quantity < 0) {
-      return res.status(400).json({ ok: false, error: 'El stock no puede ser negativo' });
+      return res.status(400).json({ ok: false, error: STOCK_NEGATIVO });
     }
     if (available !== undefined && available < 0) {
-      return res.status(400).json({ ok: false, error: 'El disponible no puede ser negativo' });
+      return res.status(400).json({ ok: false, error: DISPONIBLE_NEGATIVO });
     }
 
     const oldQty = stock.quantity;
@@ -62,7 +70,11 @@ router.put('/stock/:id', checkPermission('stock.editar'), async (req, res) => {
     if (quantity !== undefined) cambios.quantity = quantity;
     if (available !== undefined) cambios.available = available;
     if (req.body.min_stock !== undefined) cambios.min_stock = req.body.min_stock;
-    if (req.body.location !== undefined) cambios.location = req.body.location;
+    // `location` NO está en la lista blanca, y es a propósito: ahora es el
+    // espejo del punto de venta y lo escribe el servidor (FR-041). Antes,
+    // cambiarlo por acá movía la fila de sucursal sin dejar ningún registro
+    // —ni movimiento, ni transferencia, ni nada—. Mover mercadería es
+    // `POST /api/stock/transfer`, que es transaccional y deja constancia.
     if (req.body.current_batch !== undefined) cambios.current_batch = req.body.current_batch;
     if (req.body.expiration_date !== undefined) cambios.expiration_date = req.body.expiration_date;
     if (req.body.purchase_date !== undefined) cambios.purchase_date = req.body.purchase_date;
@@ -102,29 +114,43 @@ router.put('/stock/:id', checkPermission('stock.editar'), async (req, res) => {
 // POST /api/stock — Crear o actualizar stock de un producto en una sucursal
 router.post('/stock', checkPermission('stock.editar'), async (req, res) => {
   try {
-    const { product_id, quantity, available, min_stock, location, punto_de_venta_id } = req.body;
+    const { product_id, quantity, available, min_stock, punto_de_venta_id } = req.body;
     const empresaId = req.empresaId;
     if (!product_id) return res.status(400).json({ ok: false, error: 'product_id es requerido' });
 
-    let loc = location;
-    if (!loc && punto_de_venta_id) {
-      // El punto de venta viene del body: hay que confirmar que sea de esta
-      // empresa antes de usarlo para ubicar el stock.
-      const pv = await findScoped(PuntoDeVenta, punto_de_venta_id, empresaId);
-      if (!pv) {
-        return res.status(400).json({ ok: false, error: 'Punto de venta inválido' });
-      }
-      loc = pv.code || pv.name || 'general';
+    // Las dos validaciones van ANTES de tocar la base y valen para el alta y
+    // para la actualización por igual. Hasta acá solo validaba el `PUT`: cargar
+    // -5 sobre un producto que **ya** tenía stock en esa sucursal daba 400, y
+    // sobre uno que no lo tenía creaba una fila en -5 sin decir nada.
+    if (quantity !== undefined && quantity < 0) {
+      return res.status(400).json({ ok: false, error: STOCK_NEGATIVO });
+    }
+    if (available !== undefined && available < 0) {
+      return res.status(400).json({ ok: false, error: DISPONIBLE_NEGATIVO });
     }
 
+    // Cuerpo → cabecera → por defecto de la empresa, siempre por la misma
+    // función (FR-049). El `location` del cuerpo **se ignora**: era la forma de
+    // crear una fila con un texto que no corresponde a ninguna sucursal, que la
+    // pantalla —que lee por `punto_de_venta_id`— no muestra nunca. Así nacía
+    // «una pila anotada dos veces».
+    const sucursal = await resolverSucursal({
+      empresaId,
+      puntoDeVentaId: punto_de_venta_id || req.puntoDeVentaId,
+    });
+
+    const ubicacion = ubicacionDeStock(sucursal);
+
     const [stock, created] = await Stock.findOrCreate({
-      where: { product_id, punto_de_venta_id: punto_de_venta_id || null, empresa_id: empresaId },
+      where: { product_id, punto_de_venta_id: ubicacion.punto_de_venta_id, empresa_id: empresaId },
       defaults: {
         quantity: quantity ?? 0,
+        // `available` se manda siempre, aunque el cliente no lo mande: la
+        // columna es NOT NULL con default 0, y una fila creada con cantidad 10
+        // y disponible 0 es mercadería que existe y no se puede vender.
         available: available ?? quantity ?? 0,
         min_stock: min_stock ?? 0,
-        location: loc || 'general',
-        punto_de_venta_id: punto_de_venta_id || null,
+        ...ubicacion,
         empresa_id: empresaId,
       },
     });
@@ -155,20 +181,36 @@ router.post('/stock', checkPermission('stock.editar'), async (req, res) => {
 // POST /api/stock/bulk — Carga masiva de stock por sucursal
 router.post('/stock/bulk', checkPermission('stock.editar'), async (req, res) => {
   try {
-    const { items, location } = req.body;
+    const { items, punto_de_venta_id } = req.body;
     const empresaId = req.empresaId;
     if (!Array.isArray(items)) return res.status(400).json({ ok: false, error: 'Formato inválido' });
-    const loc = location || 'general';
-    const pvId = req.puntoDeVentaId || null;
+
+    // El `location` del cuerpo se sigue **aceptando y se ignora**, por
+    // compatibilidad con quien todavía lo mande. La rama que buscaba la fila
+    // por ese texto era la que escribía en una sucursal que no existe: la fila
+    // quedaba con `punto_de_venta_id` en null y la pantalla no la mostraba
+    // nunca.
+    const sucursal = await resolverSucursal({
+      empresaId,
+      puntoDeVentaId: punto_de_venta_id || req.puntoDeVentaId,
+    });
+
+    const ubicacion = ubicacionDeStock(sucursal);
 
     let updated = 0;
     for (const item of items) {
-      const where = pvId
-        ? { product_id: item.product_id, punto_de_venta_id: pvId, empresa_id: empresaId }
-        : { product_id: item.product_id, location: loc, empresa_id: empresaId };
       const [stock, created] = await Stock.findOrCreate({
-        where,
-        defaults: { quantity: item.quantity, available: item.quantity, location: loc, empresa_id: empresaId, punto_de_venta_id: pvId },
+        where: {
+          product_id: item.product_id,
+          punto_de_venta_id: ubicacion.punto_de_venta_id,
+          empresa_id: empresaId,
+        },
+        defaults: {
+          quantity: item.quantity,
+          available: item.quantity,
+          ...ubicacion,
+          empresa_id: empresaId,
+        },
       });
       if (!created) {
         await stock.update({ quantity: item.quantity, available: item.quantity });
