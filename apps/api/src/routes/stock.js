@@ -1,11 +1,50 @@
 const express = require('express');
 const router = express.Router();
-const { Stock, StockTransfer, Product, sequelize } = require('../models');
+const { Stock, StockTransfer, Product, PuntoDeVenta, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo, ErrorDeNegocio } = require('../utils/errores');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
+
+// GET /api/stock/sucursales — Las sucursales de la empresa, INCLUIDAS las inactivas
+//
+// Es lo que define cuántas columnas de stock tiene la tabla (FR-060, FR-063) y
+// qué ofrecen los selectores de la transferencia (FR-115).
+//
+// Existe porque los dos endpoints que hoy listan puntos de venta filtran por
+// `is_active` —`GET /api/empresas/mi-contexto` (`empresas.js:195`) y
+// `GET /api/empresas/:id/puntos-de-venta` (`empresas.js:561`)— y el segundo
+// además pide `sucursales.ver`, un permiso que esta pantalla no exige. Sin
+// esto, el stock de un local cerrado no llega al navegador por ningún camino.
+//
+// ⚠ **Esta ruta depende de que `routes/general.js` no declare un
+// `GET /stock/:algo`.** `server.js:342` monta `general.js` en `/api` **antes**
+// que `/api/stock` (`:354`), así que Express le da a `general.js` la primera
+// oportunidad de contestar `/api/stock/sucursales`. Hoy sale por acá solo
+// porque `general.js` declara `GET /stock` **exacto** (`:26`), que no matchea
+// la subruta. El día que alguien agregue un `GET /stock/:id` allá, se come
+// `/sucursales` y la tabla se queda sin columnas — sin que falle nada más.
+router.get('/sucursales', checkPermission('stock.ver'), async (req, res) => {
+  try {
+    const sucursales = await PuntoDeVenta.findAll({
+      // Sin `is_active` en el where, a propósito: cerrar un local no evapora su
+      // mercadería, y ese stock es justamente el que hay que poder transferir a
+      // otro lado (FR-066).
+      where: { empresa_id: req.empresaId },
+      attributes: ['id', 'name', 'code', 'is_active'],
+      // Activas primero y después por nombre. El orden lo hace la base y no el
+      // navegador porque es el mismo orden en el que se dibujan las columnas de
+      // la tabla: dos criterios distintos harían que la columna 3 de una pantalla
+      // no sea la columna 3 de la otra.
+      order: [['is_active', 'DESC'], ['name', 'ASC']],
+    });
+
+    res.json({ ok: true, data: sucursales });
+  } catch (err) {
+    fallo(req, res, err, 'Error al listar las sucursales');
+  }
+});
 
 // POST /api/stock/transfer — Transferir stock entre sucursales
 //
@@ -166,6 +205,30 @@ router.get('/transfers', checkPermission('stock.ver'), async (req, res) => {
 
     const { count, rows } = await StockTransfer.findAndCountAll({
       where: { empresa_id: req.empresaId },
+      // Los nombres de las sucursales vienen del servidor para que el historial
+      // los muestre sin cruzarlos en el navegador (FR-117).
+      //
+      // `required: false` en los dos: una transferencia **anterior** a esta
+      // funcionalidad puede tener los dos ids en `null` —no se migran, está
+      // Fuera de alcance—. Con un INNER JOIN, esas filas desaparecerían del
+      // historial: el usuario vería que se le borraron transferencias que sí
+      // ocurrieron. Ahí los objetos vienen en `null` y la pantalla cae a
+      // `from_location` / `to_location`, que es el caso que hay que devolver,
+      // no evitar.
+      include: [
+        {
+          model: PuntoDeVenta,
+          as: 'fromPuntoDeVenta',
+          attributes: ['id', 'name'],
+          required: false,
+        },
+        {
+          model: PuntoDeVenta,
+          as: 'toPuntoDeVenta',
+          attributes: ['id', 'name'],
+          required: false,
+        },
+      ],
       order: [['createdAt', 'DESC']],
       limit,
       offset,

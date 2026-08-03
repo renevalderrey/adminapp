@@ -1,4 +1,9 @@
-const { Product, Recipe, RecipeItem, ProductCostHistory } = require('../models');
+const { Product, Recipe, RecipeItem } = require('../models');
+const {
+  registrarCambioDeCosto,
+  esCambioSignificativo,
+  MOTIVOS,
+} = require('../utils/historialDeCostos');
 
 /**
  * Servicio para gestionar cálculos de costos e integridad de recetas
@@ -97,19 +102,29 @@ class CostService {
       newCost = await this.calculateProductCost(productId, transaction);
     }
 
-    // Si hay variación, actualizar y registrar historial
-    if (Math.abs(oldCost - newCost) >= 0.01) {
+    // Si hay variación, actualizar y registrar historial.
+    //
+    // La comparación va en centavos (`esCambioSignificativo`): la resta en
+    // punto flotante que había acá se comía cambios de un centavo según la
+    // magnitud del costo, y acá eso además impedía el `update`, o sea que la
+    // propagación en cascada —el propósito entero de esta función— se cortaba.
+    if (esCambioSignificativo(oldCost, newCost)) {
       await product.update({ cost: newCost }, { transaction });
 
-      // Registrar historial de costos
-      await ProductCostHistory.create({
-        product_id: productId,
-        old_cost: oldCost,
-        new_cost: newCost,
-        reason: recipe 
-          ? 'Recálculo automático por variación en ingredientes de receta' 
-          : 'Edición manual de costo base'
-      }, { transaction });
+      // El motivo distingue el recosteo en cascada de una edición manual, que
+      // es lo que un hook `afterUpdate` **no** podría hacer: esta función
+      // actualiza costos dentro de la misma transacción que abrió el usuario al
+      // tocar un insumo, y el hook los registraría todos como ediciones suyas.
+      //
+      // Sin autor a propósito: esto no lo hace una persona, lo dispara el
+      // sistema al propagar el cambio de un insumo.
+      await registrarCambioDeCosto({
+        producto: product,
+        costoAnterior: oldCost,
+        costoNuevo: newCost,
+        motivo: recipe ? MOTIVOS.RECOSTEO_DE_RECETA : MOTIVOS.EDICION_MANUAL,
+        transaction,
+      });
     }
 
     // Buscar productos que usan este producto como ingrediente

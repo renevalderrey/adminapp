@@ -8,9 +8,13 @@ const {
   Recipe,
   RecipeItem,
   Stock,
-  ProductCostHistory,
   sequelize,
 } = require('../models');
+const {
+  registrarCambioDeCosto,
+  esCambioSignificativo,
+  MOTIVOS,
+} = require('../utils/historialDeCostos');
 
 class ProductionService {
   async calculateOrderCosts(productId, quantityProduced) {
@@ -111,7 +115,11 @@ class ProductionService {
     return warnings;
   }
 
-  async createProductionOrder(data, empresaId, puntoDeVentaId = null) {
+  // `usuarioId` es cuarto y opcional a proposito: quien recibe una orden de
+  // produccion cambia el costo del producto elaborado, y hasta ahora esa fila
+  // del historial no decia quien. Por defecto null para no romper a los dos
+  // tests que llaman con tres argumentos.
+  async createProductionOrder(data, empresaId, puntoDeVentaId = null, usuarioId = null) {
     assertEmpresaId(empresaId);
 
     const { product_id, quantity_produced, batch_code, production_date, location, notes } = data;
@@ -234,15 +242,23 @@ class ProductionService {
 
       const product = await Product.findByPk(product_id, { transaction: t });
       const currentCost = parseFloat(product.cost) || 0;
-      if (Math.abs(currentCost - unitCost) >= 0.01) {
+
+      // La comparacion la hace ahora `registrarCambioDeCosto`, en centavos: la
+      // resta en punto flotante que habia aca daba 0.009999999999999787 para un
+      // cambio de $1.200,00 a $1.200,01, o sea que ese cambio no se registraba
+      // ni se escribia. El `update` del costo colgaba de la misma condicion, asi
+      // que el producto se quedaba con el costo viejo.
+      if (esCambioSignificativo(currentCost, unitCost)) {
         await product.update({ cost: unitCost }, { transaction: t });
 
-        await ProductCostHistory.create({
-          product_id,
-          old_cost: currentCost,
-          new_cost: unitCost,
-          reason: 'Actualización por orden de producción',
-        }, { transaction: t });
+        await registrarCambioDeCosto({
+          producto: product,
+          costoAnterior: currentCost,
+          costoNuevo: unitCost,
+          motivo: MOTIVOS.ORDEN_DE_PRODUCCION,
+          usuarioId,
+          transaction: t,
+        });
 
         let visited = new Set([product_id]);
         const costService = require('./costService');

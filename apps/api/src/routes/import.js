@@ -9,6 +9,8 @@ const checkPermission = require('../middleware/checkPermission');
 const logger = require('../utils/logger');
 const { fallo } = require('../utils/errores');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
+const { aNumero } = require('../utils/importes');
+const { registrarCambioDeCosto, MOTIVOS } = require('../utils/historialDeCostos');
 
 const upload = multer({
   dest: path.join(__dirname, '../../uploads'),
@@ -190,7 +192,19 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
 
     if (ext === '.csv') {
       const content = fs.readFileSync(filePath, 'utf-8');
-      const wb = XLSX.read(content, { type: 'string', raw: false });
+
+      // `raw: true` en el CSV, y no `false`. Es lo que hace que `aNumero` sirva
+      // para algo: con `raw: false`, el lector de xlsx **adivina el tipo de
+      // cada celda antes** de que la veamos, y adivina mal justo con el formato
+      // argentino — `"1.234,50"` le sale el número `1.2345`, o sea mil veces
+      // menos, y ahí ya no hay texto que interpretar. En un CSV toda celda es
+      // texto por definición: el número que infiere es una suposición sobre
+      // algo que nunca fue un número.
+      //
+      // No aplica a `.xlsx`: ahí las celdas numéricas SON números de verdad
+      // —`aNumero` las deja pasar tal cual— y las de texto llegan como texto
+      // con `raw` en cualquier valor. Por eso la rama de abajo no cambia.
+      const wb = XLSX.read(content, { type: 'string', raw: true });
       const ws = wb.Sheets[wb.SheetNames[0]];
       rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
     } else {
@@ -305,7 +319,20 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
           supplierId = supplier.id;
         }
 
-        const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
+        // `aNumero` y no `parseFloat` (FR-095). Un importe argentino se escribe
+        // 1.234,50: `parseFloat` corta en la coma y devuelve 1.234, o sea mil
+        // veces menos. No falla nada —el producto queda cargado— y el margen
+        // que muestra el POS pasa a ser mentira hasta que alguien lo compara
+        // contra la factura del proveedor.
+        //
+        // El `null` de `aNumero` se traduce a `undefined` a propósito: el
+        // código de abajo distingue «no vino» (`undefined`, no se toca el
+        // campo) de «vino un número». Dejando pasar el `null`, la comparación
+        // `cost !== undefined` daría verdadera y una celda de costo vacía
+        // pondría el costo en NULL — que es la misma pérdida que ponerlo en
+        // cero, y es exactamente lo que `import.js` ya había corregido
+        // (FR-099).
+        const toNum = (v) => { const n = aNumero(v); return n === null ? undefined : n; };
 
         // Sin `|| 0`: si la columna costo no viene o esta vacia, toNum
         // devuelve undefined y el campo NO se toca. Antes se forzaba a 0, con
@@ -343,7 +370,30 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
         if (isActive !== undefined) productData.is_active = isActive;
 
         if (product) {
+          // El costo de antes se lee ANTES del update: después la instancia ya
+          // tiene el valor nuevo y `old_cost` saldría igual a `new_cost`.
+          const costoAnterior = product.cost;
+
           await product.update(productData);
+
+          // La importación de listas **no registraba nada** (defecto 2), y es
+          // el camino que más costos mueve: una lista de 200 líneas dejaba
+          // cero filas de historial. Sin esto la pantalla de la historia 6
+          // queda inútil justo en el caso principal, y una pantalla vacía se
+          // lee como «nunca cambió nada», no como «esto no se registra».
+          //
+          // Va fuera de cualquier transacción porque este bucle no tiene
+          // ninguna: el servidor escribe fila por fila a propósito (es el
+          // motivo del tope de 2.000 líneas). La fila de historial se escribe
+          // junto al producto que ya quedó guardado.
+          await registrarCambioDeCosto({
+            producto: product,
+            costoAnterior,
+            costoNuevo: product.cost,
+            motivo: MOTIVOS.IMPORTACION,
+            usuarioId: req.usuario ? req.usuario.id : null,
+          });
+
           updated++;
         } else {
           product = await Product.create(productData);

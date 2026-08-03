@@ -4,7 +4,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { Product, Brand, Stock, Recipe, RecipeItem, ProductCostHistory, Supplier, sequelize } = require('../models');
+const { Product, Brand, Stock, Recipe, RecipeItem, ProductCostHistory, Supplier, Usuario, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const costService = require('../services/costService');
 const logger = require('../utils/logger');
@@ -13,6 +13,20 @@ const { findScoped } = require('../utils/tenantScope');
 const { fallo } = require('../utils/errores');
 const requireSuperadmin = require('../middleware/requireSuperadmin');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
+const { registrarCambioDeCosto, MOTIVOS } = require('../utils/historialDeCostos');
+
+/**
+ * El autor del cambio, o null.
+ *
+ * `req.usuario` lo pone `middleware/auth.js:89` y en el camino normal siempre
+ * está. En `BYPASS_AUTH` puede quedar en null si el usuario de desarrollo no
+ * existe todavía (`server.js:269`), y ahí un `req.usuario.id` a secas tira un
+ * TypeError que se traga el catch y devuelve 500: se perdería el cambio de
+ * costo entero por no poder firmarlo.
+ */
+function autorDe(req) {
+  return req.usuario ? req.usuario.id : null;
+}
 
 // ── Qué se puede editar de un producto ──
 //
@@ -169,15 +183,22 @@ router.put('/:id', checkPermission('products.editar'), async (req, res) => {
 
     const newCost = parseFloat(product.cost) || 0;
 
-    if (req.body.cost !== undefined && Math.abs(oldCost - newCost) >= 0.01) {
-      // Registrar en el historial de costos para este producto
-      await ProductCostHistory.create({
-        product_id: product.id,
-        old_cost: oldCost,
-        new_cost: newCost,
-        reason: 'Edición manual de costo base'
-      }, { transaction: t });
+    // El historial pasa por `utils/historialDeCostos`, que es el unico lugar
+    // que escribe en `product_cost_history`. Lo que agrega respecto del
+    // `create` suelto que habia acá: `empresa_id`, el autor, un motivo tipado
+    // —y la comparacion en centavos, que es la que hace que un cambio de
+    // $1.200,00 a $1.200,01 quede registrado; con la resta en punto flotante
+    // que estaba escrita acá, no quedaba—.
+    const registrada = req.body.cost === undefined ? null : await registrarCambioDeCosto({
+      producto: product,
+      costoAnterior: oldCost,
+      costoNuevo: newCost,
+      motivo: MOTIVOS.EDICION_MANUAL,
+      usuarioId: autorDe(req),
+      transaction: t,
+    });
 
+    if (registrada) {
       // Propagar el cambio a los productos que dependen de él
       const dependentItems = await RecipeItem.findAll({
         where: { ingredient_product_id: product.id },
@@ -236,8 +257,25 @@ router.post('/bulk', checkPermission('products.crear'), async (req, res) => {
       if (!product) product = await Product.findOne({ where: { name: p.name, empresa_id: empresaId } });
 
       if (product) {
-        // Actualizar costo
+        // El costo de antes se guarda ANTES del update: después de escribirlo
+        // la instancia ya tiene el valor nuevo y `old_cost` saldría igual a
+        // `new_cost`, o sea una fila de historial que dice que no pasó nada.
+        const costoAnterior = product.cost;
+
         await product.update({ cost: p.cost || product.cost, brand_id: brandId || product.brand_id });
+
+        // La carga masiva NO registraba nada (defecto 2). Es uno de los dos
+        // caminos que más costos mueven: sin esto, el panel de historial
+        // muestra el catálogo entero sin un solo cambio y el usuario concluye
+        // que nunca se tocaron los costos.
+        await registrarCambioDeCosto({
+          producto: product,
+          costoAnterior,
+          costoNuevo: product.cost,
+          motivo: MOTIVOS.CARGA_MASIVA,
+          usuarioId: autorDe(req),
+        });
+
         updated++;
       } else {
         // Crear nuevo producto
@@ -292,7 +330,12 @@ router.post('/bulk', checkPermission('products.crear'), async (req, res) => {
   }
 });
 
-// GET /api/products/:id/cost-history — Obtener historial de costos de un producto
+// GET /api/products/:id/cost-history — Historial de costos, paginado y con autor
+//
+// Diez filas por página es lo que entra en el panel sin scrollear (FR-107). El
+// historial de un producto con dos años de listas de proveedor son cientos de
+// filas, y traerlas todas para mostrar diez es lo que hace que el panel tarde
+// en abrir justamente en los productos que más se tocaron.
 router.get('/:id/cost-history', checkPermission('products.ver'), async (req, res) => {
   try {
     // El historial se filtraba SOLO por product_id: con el id de un producto de
@@ -302,11 +345,40 @@ router.get('/:id/cost-history', checkPermission('products.ver'), async (req, res
     const product = await findScoped(Product, req.params.id, req.empresaId, { attributes: ['id'] });
     if (!product) return res.status(404).json({ ok: false, error: 'Producto no encontrado' });
 
-    const history = await ProductCostHistory.findAll({
+    // El tope de 100 no es cosmético: sin él, `?limit=999999` vuelve a traer el
+    // historial entero y la paginación no protege de nada.
+    const limitPedido = parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(limitPedido) && limitPedido > 0
+      ? Math.min(limitPedido, 100)
+      : 10;
+
+    const offsetPedido = parseInt(req.query.offset, 10);
+    const offset = Number.isFinite(offsetPedido) && offsetPedido > 0 ? offsetPedido : 0;
+
+    const { count, rows } = await ProductCostHistory.findAndCountAll({
       where: { product_id: product.id },
-      order: [['change_date', 'DESC']],
+      include: [{
+        model: Usuario,
+        as: 'usuario',
+        attributes: ['id', 'nombre', 'email'],
+        // `required: false` (LEFT JOIN) y no true. Con `required: true`, **todo
+        // el historial anterior a esta funcionalidad desaparecería**: esas
+        // filas tienen `usuario_id` en null porque el dato no existía y no se
+        // puede inferir, y un INNER JOIN las descartaría a todas. El panel
+        // mostraría un producto con diez años de cambios y cero filas.
+        required: false,
+      }],
+      // El `id DESC` como SEGUNDO criterio no es un adorno: dos cambios de la
+      // misma actualización masiva comparten `change_date` al milisegundo, y
+      // sin un tercer criterio determinístico Postgres puede devolverlos en
+      // cualquier orden entre página y página — la 2 repite una fila que ya
+      // salió en la 1 y se saltea otra que nunca aparece.
+      order: [['change_date', 'DESC'], ['id', 'DESC']],
+      limit,
+      offset,
     });
-    res.json({ ok: true, data: history });
+
+    res.json({ ok: true, data: rows, total: count });
   } catch (err) {
     fallo(req, res, err, 'Error al obtener el historial de costos');
   }

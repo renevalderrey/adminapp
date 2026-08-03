@@ -173,6 +173,18 @@ export const getStock = (location) => api.get('/stock', { params: { location } }
 export const updateStock = (id, data) => api.put(`/stock/${id}`, data);
 export const bulkStock = (items, location) => api.post('/stock/bulk', { items, location });
 
+/**
+ * Las sucursales de la empresa, INCLUIDAS las inactivas.
+ *
+ * Es lo que define cuantas columnas de stock tiene la tabla y que ofrecen los
+ * selectores de la transferencia. Los otros dos endpoints que listan puntos de
+ * venta —`/empresas/mi-contexto` y `/empresas/:id/puntos-de-venta`— filtran por
+ * `is_active`, y el segundo ademas pide el permiso `sucursales.ver`. Cerrar un
+ * local no evapora su mercaderia: ese stock es justamente el que hay que poder
+ * transferir a otro lado.
+ */
+export const getSucursalesDeStock = () => api.get('/stock/sucursales');
+
 // ═══════ MARCAS ═══════
 
 export const getBrands = () => api.get('/brands');
@@ -216,7 +228,20 @@ export const getAlerts = () => api.get('/alerts');
 
 // ═══════ RECETAS E HISTORIAL DE COSTOS ═══════
 
-export const getProductCostHistory = (productId) => api.get(`/products/${productId}/cost-history`);
+/**
+ * El historial de costos de un producto, paginado.
+ *
+ * `params` acepta `limit` (por defecto 10 en el servidor, tope 100) y `offset`.
+ * El historial de un producto con dos anios de listas de proveedor son cientos
+ * de filas: traerlas todas para mostrar diez es lo que hace que el panel tarde
+ * en abrir justamente en los productos que mas se tocaron.
+ *
+ * La respuesta trae `total` ademas de `data`, y cada fila puede tener `usuario`
+ * en `null`: las anteriores a esta funcionalidad no tienen autor y eso es dato
+ * viejo, no un error.
+ */
+export const getProductCostHistory = (productId, params) =>
+  api.get(`/products/${productId}/cost-history`, { params });
 export const getProductRecipe = (productId) => api.get(`/products/${productId}/recipe`);
 export const createOrUpdateRecipe = (productId, data) => api.post(`/products/${productId}/recipe`, data);
 export const deleteRecipe = (productId) => api.delete(`/products/${productId}/recipe`);
@@ -270,7 +295,27 @@ export const getProfitReport = (from, to) => api.get('/reports/profit', { params
 
 // ═══════ TRANSFERENCIAS DE STOCK ═══════
 
+/**
+ * Mueve mercaderia entre sucursales.
+ *
+ * `data` manda **`from_punto_de_venta_id` / `to_punto_de_venta_id`**, que es lo
+ * que decide de que fila de stock sale y a cual entra. Los `from_location` /
+ * `to_location` se siguen aceptando por compatibilidad, pero son codigos: un
+ * codigo que no existe es un 400 con los codigos validos, no una caida a buscar
+ * por el texto `location`. Esa caida es la que movia mercaderia entre filas que
+ * la pantalla no muestra.
+ *
+ * Sacar de una sucursal inactiva se permite; mandar a una inactiva, no.
+ */
 export const transferStock = (data) => api.post('/stock/transfer', data);
+
+/**
+ * El historial de transferencias.
+ *
+ * Cada fila trae `fromPuntoDeVenta` y `toPuntoDeVenta` con `{ id, name }`. Las
+ * transferencias **anteriores** a esta funcionalidad los traen en `null` —no se
+ * migran—: ahi el nombre sale de `from_location` / `to_location`.
+ */
 export const getStockTransfers = (params) => api.get('/stock/transfers', { params });
 
 // ═══════ ONBOARDING ═══════
@@ -296,13 +341,35 @@ export const getSubscription = (empresaId) => api.get(`/empresas/${empresaId}/su
 export const downloadTemplate = (type = 'products') =>
   api.get(`/import/template/${type}`, { responseType: 'blob' });
 
-export const importProducts = (file, mapping = {}, defaultLocation = 'principal') => {
+/**
+ * Importa productos desde un CSV o Excel.
+ *
+ * `defaultLocation` es el **`code` de una sucursal** de la empresa, y es la que
+ * se usa para las filas del archivo que no traen columna Sucursal. Un valor que
+ * no resuelve **rechaza la importacion entera con 400 antes de escribir nada**:
+ * aplica a todas las filas, y descubrirlo en la fila 300 seria tarde.
+ *
+ * **No tiene valor por defecto a proposito.** Antes era el string `'principal'`,
+ * y en una empresa sembrada por `seedPuntosDeVenta` —cuyos codigos son
+ * general/ortiz/mayo— ese texto no coincide con **nada**: la importacion
+ * escribia filas en una sucursal inexistente que la pantalla no muestra. Es
+ * literalmente el caso con el que el plan explica como nace "una pila anotada
+ * dos veces".
+ *
+ * Mandarlo vacio es valido y significa "usa el punto de venta por defecto de la
+ * empresa", que lo resuelve el servidor.
+ *
+ * @param {File} file
+ * @param {object} [mapping] Correspondencia columna -> campo.
+ * @param {string} [defaultLocation] `code` de sucursal. Vacio = el por defecto.
+ */
+export const importProducts = (file, mapping = {}, defaultLocation = '') => {
   const formData = new FormData();
   formData.append('file', file);
   if (Object.keys(mapping).length > 0) {
     formData.append('mapping', JSON.stringify(mapping));
   }
-  formData.append('defaultLocation', defaultLocation);
+  formData.append('defaultLocation', defaultLocation || '');
   return api.post('/import/products', formData, { timeout: 120000 });
 };
 

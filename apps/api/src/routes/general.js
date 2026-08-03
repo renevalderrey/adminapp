@@ -10,6 +10,7 @@ const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo } = require('../utils/errores');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
+const { UMBRAL_POR_DEFECTO, limiteDeStockBajo, esStockBajo } = require('../utils/stockBajo');
 
 // Los dos mensajes de stock negativo viven acá porque los usan las DOS puertas
 // —`PUT /stock/:id` y `POST /stock`— y tienen que decir exactamente lo mismo.
@@ -342,6 +343,17 @@ router.get('/settings', checkPermission('config.ver'), async (req, res) => {
       obj[s.key] = s.value;
     });
 
+    // Campo DERIVADO y de solo lectura. Va DESPUES del bucle a proposito: asi
+    // una fila guardada con esa clave —por `PUT /settings/:key`, que acepta
+    // cualquiera— no lo puede pisar. Hacerlo configurable esta Fuera de
+    // alcance, y un valor que se puede escribir pero no tiene efecto es peor
+    // que uno que no se puede escribir.
+    //
+    // Existe para que la pantalla no repita el literal 3: FR-017 pide que
+    // Inventario y Faltantes digan el mismo numero, y dos constantes iguales en
+    // dos repositorios empiezan iguales y terminan distintas.
+    obj.umbral_stock_bajo = UMBRAL_POR_DEFECTO;
+
     res.json({ ok: true, data: obj });
   } catch (err) {
     fallo(req, res, err, 'Error al leer la configuración');
@@ -454,8 +466,13 @@ router.get('/faltantes', checkPermission('stock.ver'), async (req, res) => {
 
     // Para los productos que no tienen minimo cargado hace falta un umbral, o
     // no aparecerian nunca. 3 unidades es el valor que usaba el sistema
-    // anterior.
-    const umbral = Number.isFinite(Number(req.query.umbral)) ? Number(req.query.umbral) : 3;
+    // anterior, y ahora sale de `utils/stockBajo` en vez de estar escrito acá:
+    // era el mismo numero repetido en el servidor y en la pantalla, y dos
+    // constantes iguales en dos lugares empiezan iguales y terminan distintas
+    // (FR-017).
+    const umbral = Number.isFinite(Number(req.query.umbral))
+      ? Number(req.query.umbral)
+      : UMBRAL_POR_DEFECTO;
 
     const where = { empresa_id: empresaId };
 
@@ -486,9 +503,12 @@ router.get('/faltantes', checkPermission('stock.ver'), async (req, res) => {
       const cantidad = Number(fila.quantity) || 0;
       const minimo = Number(fila.min_stock) || 0;
 
-      // El minimo cargado manda; el umbral es solo para los que no tienen.
-      const limite = minimo > 0 ? minimo : umbral;
-      if (cantidad > limite) continue;
+      // La regla —el minimo cargado manda; el umbral es solo para los que no
+      // tienen— vive en `utils/stockBajo` y no acá. Es un refactor, no un
+      // cambio de regla: si el numero de productos que devuelve esta ruta se
+      // mueve, la funcion quedo distinta del literal que reemplaza.
+      const limite = limiteDeStockBajo(fila, umbral);
+      if (!esStockBajo(fila, umbral)) continue;
 
       const producto = fila.product;
 

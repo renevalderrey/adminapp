@@ -507,7 +507,7 @@ de la historia 6 sirva **en el caso principal**, que es la lista de precios.
 ⚠ Esta fase no depende de la 3 (dependencia **c**): la migración 15 es aditiva y
 puede aplicarse antes, después o sin la 14.
 
-- [ ] **T1019** Crear `apps/api/src/migrations/20260805-historial-de-costos-con-autor.js`
+- [x] **T1019** Crear `apps/api/src/migrations/20260805-historial-de-costos-con-autor.js`
       —la migración **15**, aditiva—: `addColumn('product_cost_history',
       'usuario_id', INTEGER null)`, `addColumn(… 'empresa_id', INTEGER null)`, el
       índice `(empresa_id, change_date)`, y el backfill de `empresa_id` desde
@@ -521,7 +521,7 @@ puede aplicarse antes, después o sin la 14.
       en todas las filas viejas; el `down` deja la tabla como estaba. Sin
       `addConstraint`, así que la trampa de `{ model, key }` no aplica.
 
-- [ ] **T1020** Actualizar `apps/api/src/models/ProductCostHistory.js` con los dos
+- [x] **T1020** Actualizar `apps/api/src/models/ProductCostHistory.js` con los dos
       campos (`usuario_id` y `empresa_id`, ambos `allowNull: true`) y el índice
       compuesto, **y registrar las dos asociaciones en
       `apps/api/src/models/index.js`**: `ProductCostHistory.belongsTo(Usuario, {
@@ -535,7 +535,7 @@ puede aplicarse antes, después o sin la 14.
       resuelve. **La asociación es la parte que se olvida siempre**: sin ella la
       columna existe, se escribe bien, y el endpoint no puede contestar «quién».
 
-- [ ] **T1021** Crear `apps/api/src/utils/historialDeCostos.js` con
+- [x] **T1021** Crear `apps/api/src/utils/historialDeCostos.js` con
       `registrarCambioDeCosto({ producto, costoAnterior, costoNuevo, motivo,
       usuarioId, transaction })`, que decide si el cambio es significativo
       (`>= 0.01`, el mismo umbral que ya usa `products.js:171`) y escribe con
@@ -550,7 +550,7 @@ puede aplicarse antes, después o sin la 14.
       que dos filas del mismo origen se lean distinto según cuándo se grabaron, y
       el usuario que abre el panel no tiene forma de saber que son lo mismo.
 
-- [ ] **T1022** En `apps/api/src/routes/products.js`, `PUT /:id` (`:171-178`) y
+- [x] **T1022** En `apps/api/src/routes/products.js`, `PUT /:id` (`:171-178`) y
       `POST /bulk` (`:237-252`) pasan por `registrarCambioDeCosto`, con
       `usuarioId: req.usuario.id` (`middleware/auth.js:89`) y los motivos
       `EDICION_MANUAL` y `CARGA_MASIVA`. `POST /bulk` **hoy no escribe nada**
@@ -565,7 +565,7 @@ puede aplicarse antes, después o sin la 14.
       que ningún documento menciona es exactamente cómo empezó el problema que la
       lista blanca vino a resolver.
 
-- [ ] **T1023** En `apps/api/src/routes/import.js`: registrar el historial con
+- [x] **T1023** En `apps/api/src/routes/import.js`: registrar el historial con
       motivo `IMPORTACION` y `usuario_id` en cada producto cuyo costo cambia
       (`:288-295`, que hoy no escribe nada), y cambiar el `toNum` de `:252` por
       `aNumero` de `utils/importes.js` (T1001).
@@ -579,7 +579,7 @@ puede aplicarse antes, después o sin la 14.
       cero— se conserva intacto (FR-099); el test de T1001 ya fija que `aNumero`
       devuelve `null` y no `0` para la celda vacía.
 
-- [ ] **T1024** En `apps/api/src/services/preciosService.js` (`:165` y `:291`),
+- [x] **T1024** En `apps/api/src/services/preciosService.js` (`:165` y `:291`),
       `productionService.js` (`:212`) y `costService.js` (`:105`), reemplazar el
       `ProductCostHistory.create` directo por `registrarCambioDeCosto`, con
       `empresa_id`, con el autor donde lo haya y con el motivo tipado
@@ -595,7 +595,7 @@ puede aplicarse antes, después o sin la 14.
       costos dentro de la misma transacción y un hook los registraría todos como
       ediciones del usuario que tocó el insumo.
 
-- [ ] **T1025** En `apps/api/src/routes/products.js`, `GET /:id/cost-history`
+- [x] **T1025** En `apps/api/src/routes/products.js`, `GET /:id/cost-history`
       (`:277`): paginar con `limit` (default 10, tope 100) y `offset`, devolver
       `total`, incluir `usuario` con `{ id, nombre, email }` y ordenar por
       `change_date DESC, id DESC`. Sigue resolviendo el producto con `findScoped`
@@ -622,7 +622,7 @@ paginadas con el nombre de quien las hizo.
 **Purpose**: todo lo que la tabla nueva va a pedir ya se puede pedir con `curl`.
 La API queda terminada y la pantalla tiene contra qué hablar.
 
-- [ ] **T1026** ⚠ **Dependencia (b).** Agregar `GET /sucursales` a
+- [x] **T1026** ⚠ **Dependencia (b).** Agregar `GET /sucursales` a
       `apps/api/src/routes/stock.js` con permiso `stock.ver`, devolviendo
       **todos** los puntos de venta de la empresa —activos e inactivos— como
       `{ id, name, code, is_active }`, activas primero y después por `name`.
@@ -639,7 +639,7 @@ La API queda terminada y la pantalla tiene contra qué hablar.
       alguien agregue un parámetro ahí, se come `/sucursales` y la tabla se queda
       sin columnas. **No hay router que montar**: `/api/stock` ya está.
 
-- [ ] **T1027** En el mismo archivo, `GET /transfers` (`:117`) agrega
+- [x] **T1027** En el mismo archivo, `GET /transfers` (`:117`) agrega
       `fromPuntoDeVenta` y `toPuntoDeVenta` con `{ id, name }`, sin cambiar
       `limit`, `offset` ni el scoping.
       **Verificación**: una transferencia **anterior** a esta funcionalidad puede
@@ -647,7 +647,7 @@ La API queda terminada y la pantalla tiene contra qué hablar.
       la pantalla cae a `from_location` / `to_location`. No se migran (Fuera de
       alcance), así que el caso hay que devolverlo, no evitarlo.
 
-- [ ] **T1028** En `apps/api/src/routes/general.js`: `GET /faltantes` (`:409`)
+- [x] **T1028** En `apps/api/src/routes/general.js`: `GET /faltantes` (`:409`)
       pasa a usar `utils/stockBajo.js` en vez del `3` literal de `:416`, y
       `GET /settings` (`:277`) suma `umbral_stock_bajo` como campo **derivado y de
       solo lectura** — escribirlo por `PUT /settings/:key` no tiene efecto.
@@ -662,7 +662,7 @@ La API queda terminada y la pantalla tiene contra qué hablar.
       **ninguna** pantalla del store. Es anterior a esta funcionalidad y no se
       resuelve acá.
 
-- [ ] **T1029** [P] ⚠ **Dependencia (d).** Actualizar
+- [x] **T1029** [P] ⚠ **Dependencia (d).** Actualizar
       `apps/web/src/services/api.js`: sumar
       `getSucursalesDeStock = () => api.get('/stock/sucursales')`; `transferStock`
       (`:273`) documenta que manda `from_punto_de_venta_id` /
@@ -678,7 +678,7 @@ La API queda terminada y la pantalla tiene contra qué hablar.
       que `defaultLocation` ahora es un **`code` de sucursal** y que un valor que
       no resuelve rechaza la importación entera con 400 antes de escribir nada.
 
-- [ ] **T1030** [P] En `apps/web/src/store/useStore.js`: `actualizarProducto(producto)`
+- [x] **T1030** [P] En `apps/web/src/store/useStore.js`: `actualizarProducto(producto)`
       y `quitarProducto(id)`, que reemplazan la fila en `products` **sin tocar
       `loading`**, y `sucursales`, cargado desde `getSucursalesDeStock`.
       **Verificación**: `initialize()` se sigue usando para importar y para el
@@ -1110,5 +1110,3 @@ documento: no se tocó ni una fila de ninguna tabla y no hay nada que revertir.
 **T1007 es el punto sin retorno**: es donde la migración crea puntos de venta,
 reasigna filas, fusiona duplicados y aplica `NOT NULL`. El informe de T1005 se
 mira **entre esas dos tareas**, y esa lectura es lo que autoriza a seguir.
-</content>
-</invoke>

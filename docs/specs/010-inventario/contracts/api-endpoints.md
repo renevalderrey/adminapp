@@ -263,10 +263,21 @@ armado a mano puede mandar `empresa_id` y **mover el producto a otra empresa
 cliente**. Pasan a aceptarse solo: `name`, `description`, `sku`, `barcode`,
 `cost`, `brand_id`, `supplier_id`, `margin_override`, `price_override`,
 `wholesale_margin`, `wholesale_price`, `category`, `unit_type`, `unit_size`,
-`taxed`, `image_url`, `is_active`.
+`taxed`, `image_url`, `is_active`, `tiendanube_variant_id`.
 
 `is_active` está en la lista **a propósito**: es por donde el panel reactiva un
 producto desactivado (FR-039, FR-078).
+
+`tiendanube_variant_id` estaba en la lista del código (`products.js`) y no en
+este contrato. Se documenta acá en vez de sacarlo porque sacarlo es un cambio de
+comportamiento que esta funcionalidad no pidió. Su motivo es flojo y conviene
+saberlo: **nada lee `products.tiendanube_variant_id`**. La correspondencia con
+TiendaNube vive en `tiendanube_mappings` —`controllers/tiendanube.js:157` la
+crea y `tiendanubeService.js:132` la consulta—, así que hoy esa columna es un
+campo editable que ningún camino usa. Candidato a salir de la lista blanca en
+una pasada posterior, con su propia verificación; un campo editable que ningún
+documento menciona es exactamente cómo empezó el problema que la lista blanca
+vino a resolver.
 
 **2. El historial de costos lleva autor.** Pasa por
 `registrarCambioDeCosto({ …, usuarioId: req.usuario.id })`. El umbral de `0.01`

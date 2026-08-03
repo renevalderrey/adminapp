@@ -28,7 +28,12 @@ router.get('/:id', checkPermission('produccion.ver'), async (req, res) => {
 
 router.post('/', checkPermission('produccion.crear'), async (req, res) => {
   try {
-    const result = await productionService.createProductionOrder(req.body, req.empresaId, req.puntoDeVentaId || null);
+    const result = await productionService.createProductionOrder(
+      req.body,
+      req.empresaId,
+      req.puntoDeVentaId || null,
+      req.usuario ? req.usuario.id : null,
+    );
     res.status(201).json({
       ok: true,
       data: result.order,

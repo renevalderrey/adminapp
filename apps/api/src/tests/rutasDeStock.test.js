@@ -135,6 +135,96 @@ describe('PUT /stock/:id no mueve mercadería de sucursal', () => {
 });
 
 // ════════════════════════════════════════════
+//  GET /api/stock/sucursales
+// ════════════════════════════════════════════
+
+describe('las sucursales que la tabla necesita para tener columnas', () => {
+  const SUCURSALES = entre(STOCK, "router.get('/sucursales'", "router.post('/transfer'");
+
+  it('devuelve TAMBIÉN las inactivas', () => {
+    // Es lo que hoy no llega al navegador por ningún camino: los dos endpoints
+    // que listan puntos de venta filtran por `is_active`. Cerrar un local no
+    // evapora su mercadería, y ese stock es justamente el que hay que poder
+    // transferir a otro lado (FR-066, FR-115).
+    expect(SUCURSALES).toMatch(/where: \{ empresa_id: req\.empresaId \}/);
+    expect(SUCURSALES).not.toMatch(/is_active: true/);
+  });
+
+  it('filtra por empresa_id y no lista las sucursales de otro cliente', () => {
+    expect(SUCURSALES).toMatch(/empresa_id: req\.empresaId/);
+  });
+
+  it('pide stock.ver y no crea un permiso nuevo', () => {
+    // La pantalla es para el cliente y los permisos vigentes alcanzan
+    // (supuesto 3). `sucursales.ver` —que pide el otro endpoint— es
+    // justamente el que esta pantalla NO exige.
+    expect(STOCK).toMatch(/router\.get\('\/sucursales', checkPermission\('stock\.ver'\)/);
+    expect(SUCURSALES).not.toMatch(/sucursales\.ver/);
+  });
+
+  it('ordena activas primero y después por nombre', () => {
+    // Es el orden en el que se dibujan las columnas de la tabla: si el
+    // navegador ordenara distinto, la columna 3 de una pantalla no sería la
+    // columna 3 de la otra.
+    expect(SUCURSALES).toMatch(/order: \[\['is_active', 'DESC'\], \['name', 'ASC'\]\]/);
+  });
+
+  it('devuelve exactamente los cuatro campos del contrato', () => {
+    expect(SUCURSALES).toMatch(/attributes: \['id', 'name', 'code', 'is_active'\]/);
+  });
+});
+
+describe('GET /api/stock/transfers trae los nombres de las sucursales', () => {
+  const TRANSFERS = STOCK.slice(STOCK.indexOf("router.get('/transfers'"));
+
+  it('incluye fromPuntoDeVenta y toPuntoDeVenta con { id, name }', () => {
+    expect(TRANSFERS).toMatch(/as: 'fromPuntoDeVenta'/);
+    expect(TRANSFERS).toMatch(/as: 'toPuntoDeVenta'/);
+    expect(TRANSFERS.match(/attributes: \['id', 'name'\]/g)).toHaveLength(2);
+  });
+
+  it('los dos includes son required: false', () => {
+    // Una transferencia anterior a esta funcionalidad puede tener los dos ids
+    // en `null`. Con un INNER JOIN esas filas desaparecerían del historial: el
+    // usuario vería que se le borraron transferencias que sí ocurrieron.
+    // Se cuentan las líneas de código y no las menciones: el comentario que
+    // explica la decisión también dice `required: false`.
+    expect(TRANSFERS.match(/\n\s+required: false,/g)).toHaveLength(2);
+    expect(TRANSFERS).not.toMatch(/\n\s+required: true,/);
+  });
+
+  it('no cambia limit, offset ni el scoping por empresa', () => {
+    expect(TRANSFERS).toMatch(/where: \{ empresa_id: req\.empresaId \}/);
+    expect(TRANSFERS).toMatch(/limit,/);
+    expect(TRANSFERS).toMatch(/offset,/);
+    expect(TRANSFERS).toMatch(/order: \[\['createdAt', 'DESC'\]\]/);
+  });
+});
+
+describe('general.js no se puede comer /api/stock/sucursales', () => {
+  // `server.js:342` monta `routes/general.js` en `/api` **antes** que
+  // `/api/stock` (`:354`), así que Express le da a `general.js` la primera
+  // oportunidad de contestar `/api/stock/sucursales`. Hoy sale por el router de
+  // stock solo porque `general.js` declara `GET /stock` **exacto**. No es un
+  // diseño, es una coincidencia: el día que alguien agregue un `GET /stock/:id`
+  // allá, se come `/sucursales` y la tabla se queda sin columnas — y nada más
+  // falla, así que nadie lo relaciona.
+  it('NO declara ninguna ruta GET /stock con parámetro', () => {
+    const conParametro = [...GENERAL.matchAll(/router\.get\('\/stock\/([^']*)'/g)]
+      .map((m) => m[1])
+      .filter((sub) => sub.includes(':'));
+
+    expect(conParametro).toEqual([]);
+  });
+
+  it('la única GET /stock de general.js sigue siendo la exacta', () => {
+    const rutas = [...GENERAL.matchAll(/router\.get\('(\/stock[^']*)'/g)].map((m) => m[1]);
+
+    expect(rutas).toEqual(['/stock']);
+  });
+});
+
+// ════════════════════════════════════════════
 //  POST /api/stock/transfer
 // ════════════════════════════════════════════
 

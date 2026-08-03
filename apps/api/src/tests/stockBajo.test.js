@@ -117,3 +117,83 @@ describe('limiteDeStockBajo · el numero que se muestra y con el que se repone',
     expect(limiteDeStockBajo({ min_stock: 0 }, 7)).toBe(7);
   });
 });
+
+// ════════════════════════════════════════════
+//  Que las rutas usen ESTA funcion y no su propia copia del 3
+// ════════════════════════════════════════════
+
+const fs = require('fs');
+const path = require('path');
+
+const GENERAL = fs.readFileSync(
+  path.join(__dirname, '..', 'routes', 'general.js'),
+  'utf8'
+);
+
+/** El texto de una ruta, desde su declaracion hasta la siguiente. */
+function ruta(fuente, inicio, fin) {
+  const i = fuente.indexOf(inicio);
+  const j = fuente.indexOf(fin, i);
+
+  expect(i).toBeGreaterThanOrEqual(0);
+  expect(j).toBeGreaterThan(i);
+
+  return fuente.slice(i, j);
+}
+
+describe('GET /api/faltantes usa la regla compartida', () => {
+  const FALTANTES = GENERAL.slice(GENERAL.indexOf("router.get('/faltantes'"));
+
+  it('el 3 literal ya no esta escrito adentro de la ruta', () => {
+    // Era el mismo numero repetido en el servidor y en la pantalla. Dos
+    // constantes iguales en dos repositorios empiezan iguales y terminan
+    // distintas, y ahi Inventario y Faltantes dejan de decir lo mismo (FR-017).
+    expect(FALTANTES).not.toMatch(/req\.query\.umbral\) : 3/);
+    expect(FALTANTES).toMatch(/: UMBRAL_POR_DEFECTO;/);
+  });
+
+  it('decide por esStockBajo y calcula el limite por limiteDeStockBajo', () => {
+    expect(FALTANTES).toMatch(/limiteDeStockBajo\(fila, umbral\)/);
+    expect(FALTANTES).toMatch(/!esStockBajo\(fila, umbral\)/);
+    expect(FALTANTES).not.toMatch(/const limite = minimo > 0 \? minimo : umbral/);
+  });
+
+  it('es un refactor: la comparacion sigue siendo la misma', () => {
+    // `esStockBajo` es `cantidad <= limite`, o sea el negado exacto del
+    // `cantidad > limite` que habia. Si el numero de productos que devuelve la
+    // ruta se moviera, la funcion quedo distinta del literal que reemplaza.
+    expect(esStockBajo({ quantity: 4, min_stock: 0 }, 3)).toBe(false);
+    expect(esStockBajo({ quantity: 3, min_stock: 0 }, 3)).toBe(true);
+    expect(esStockBajo({ quantity: 11, min_stock: 10 }, 3)).toBe(false);
+    expect(esStockBajo({ quantity: 10, min_stock: 10 }, 3)).toBe(true);
+  });
+
+  it('sigue aceptando el umbral por query, como antes', () => {
+    expect(FALTANTES).toMatch(/Number\(req\.query\.umbral\)/);
+  });
+});
+
+describe('GET /api/settings expone el umbral como campo derivado', () => {
+  const SETTINGS = ruta(GENERAL, "router.get('/settings'", "router.get('/settings/:key'");
+
+  it('devuelve umbral_stock_bajo', () => {
+    expect(SETTINGS).toMatch(/obj\.umbral_stock_bajo = UMBRAL_POR_DEFECTO;/);
+  });
+
+  it('es de SOLO LECTURA: una fila guardada con esa clave no lo pisa', () => {
+    // `PUT /settings/:key` acepta cualquier clave. Si el campo se asignara
+    // antes del bucle, alguien podria guardar `umbral_stock_bajo: 50` y la
+    // pantalla mostraria un umbral que /faltantes no usa: dos numeros
+    // distintos para la misma pregunta, que es exactamente lo que FR-017 vino
+    // a cerrar.
+    const bucle = SETTINGS.indexOf('settings.forEach');
+    const derivado = SETTINGS.indexOf('obj.umbral_stock_bajo');
+
+    expect(bucle).toBeGreaterThanOrEqual(0);
+    expect(derivado).toBeGreaterThan(bucle);
+  });
+
+  it('el valor es el mismo que usa /faltantes', () => {
+    expect(UMBRAL_POR_DEFECTO).toBe(3);
+  });
+});

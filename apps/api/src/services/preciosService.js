@@ -1,11 +1,16 @@
 const { Op } = require('sequelize');
 
 const {
-  sequelize, Product, ActualizacionPrecio, ProductCostHistory, RecipeItem, Recipe,
+  sequelize, Product, ActualizacionPrecio, RecipeItem, Recipe,
 } = require('../models');
 
 const costService = require('./costService');
 const { ErrorDeNegocio } = require('../utils/errores');
+const {
+  registrarCambioDeCosto,
+  motivoActualizacionMasiva,
+  motivoDeshacerMasiva,
+} = require('../utils/historialDeCostos');
 
 // ════════════════════════════════════════════
 //  Actualizacion de precios en masa, con deshacer
@@ -91,7 +96,7 @@ function calcularCambio(producto, modo, valor) {
  * se actualiza ninguno. Una actualizacion a medias es justamente lo que el
  * "deshacer" no podria reparar.
  */
-async function aplicarMasivo({ empresaId, productIds, modo, valor, descripcion, usuario }) {
+async function aplicarMasivo({ empresaId, productIds, modo, valor, descripcion, usuario, usuarioId }) {
   if (!Array.isArray(productIds) || productIds.length === 0) {
     throw new ErrorDeNegocio('Seleccioná al menos un producto.');
   }
@@ -162,14 +167,18 @@ async function aplicarMasivo({ empresaId, productIds, modo, valor, descripcion, 
     // recetas que lo usan como insumo. Si no se propagara, un producto
     // elaborado seguiria costeado con el precio viejo de su insumo.
     for (const { producto, antes } of productosConCostoNuevo) {
-      await ProductCostHistory.create({
-        product_id: producto.id,
-        old_cost: antes.cost || 0,
-        new_cost: Number(producto.cost),
-        reason: descripcion
-          ? `Actualizacion masiva: ${descripcion}`
-          : `Actualizacion masiva de costos (${numero > 0 ? '+' : ''}${numero}%)`,
-      }, { transaction: t });
+      // El motivo se arma con el prefijo tipado de `utils/historialDeCostos` y
+      // el texto que sale de ahi es **exactamente** el que esta guardado en la
+      // base, faltas de acento incluidas: reescribirlo haria que dos filas del
+      // mismo origen se lean distinto segun cuando se grabaron.
+      await registrarCambioDeCosto({
+        producto,
+        costoAnterior: antes.cost || 0,
+        costoNuevo: producto.cost,
+        motivo: motivoActualizacionMasiva({ descripcion, porcentaje: numero }),
+        usuarioId: usuarioId ?? null,
+        transaction: t,
+      });
 
       const dependientes = await RecipeItem.findAll({
         where: { ingredient_product_id: producto.id },
@@ -247,7 +256,7 @@ async function verDetalle(empresaId, id) {
  * valores anteriores a las dos. El sistema anterior no tenia esta restriccion
  * y por eso su historial podia dejar precios imposibles de explicar.
  */
-async function deshacer({ empresaId, id }) {
+async function deshacer({ empresaId, id, usuarioId }) {
   return sequelize.transaction(async (t) => {
     const actualizacion = await ActualizacionPrecio.findOne({
       where: { id, empresa_id: empresaId },
@@ -287,14 +296,16 @@ async function deshacer({ empresaId, id }) {
       await producto.update(cambio.antes, { transaction: t });
       const costoDespues = Number(producto.cost) || 0;
 
-      if (Math.abs(costoAntes - costoDespues) >= 0.01) {
-        await ProductCostHistory.create({
-          product_id: producto.id,
-          old_cost: costoAntes,
-          new_cost: costoDespues,
-          reason: `Deshacer actualizacion masiva #${actualizacion.id}`,
-        }, { transaction: t });
+      const registrada = await registrarCambioDeCosto({
+        producto,
+        costoAnterior: costoAntes,
+        costoNuevo: costoDespues,
+        motivo: motivoDeshacerMasiva(actualizacion.id),
+        usuarioId: usuarioId ?? null,
+        transaction: t,
+      });
 
+      if (registrada) {
         const dependientes = await RecipeItem.findAll({
           where: { ingredient_product_id: producto.id },
           include: [{ model: Recipe, as: 'recipe', attributes: ['product_id'] }],

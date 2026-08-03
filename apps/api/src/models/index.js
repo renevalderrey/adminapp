@@ -70,6 +70,19 @@ RecipeItem.belongsTo(Product, { foreignKey: 'ingredient_product_id', as: 'ingred
 Product.hasMany(ProductCostHistory, { foreignKey: 'product_id', as: 'costHistory', onDelete: 'CASCADE' });
 ProductCostHistory.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
 
+// ProductCostHistory ↔ quién y de qué empresa
+//
+// **Esta es la parte que se olvida siempre.** Sin la asociación, la columna
+// existe, se escribe bien y el endpoint igual no puede contestar «quién»: el
+// `include: [{ model: Usuario, as: 'usuario' }]` de
+// `GET /:id/cost-history` tira en runtime, no en build.
+//
+// No hay foreign key en la base a propósito (migración 15): el historial es un
+// registro de auditoría y tiene que sobrevivir a la baja del usuario que firmó
+// el cambio.
+ProductCostHistory.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
+ProductCostHistory.belongsTo(Empresa, { foreignKey: 'empresa_id', as: 'empresa' });
+
 // Customer ↔ CustomerPayment
 Customer.hasMany(CustomerPayment, { foreignKey: 'customer_id', as: 'payments', onDelete: 'CASCADE' });
 CustomerPayment.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });

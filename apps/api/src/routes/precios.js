@@ -26,6 +26,11 @@ router.post('/masivo', checkPermission('products.editar'), async (req, res) => {
       valor,
       descripcion,
       usuario: req.usuario?.nombre || req.userId || null,
+      // `usuario` es el NOMBRE, que es lo que muestra el historial de
+      // actualizaciones. `usuarioId` es la clave contra `usuarios`, que es lo
+      // unico con lo que el historial de costos puede contestar "quien" sin
+      // depender de que nadie se haya cambiado el nombre.
+      usuarioId: req.usuario?.id ?? null,
     });
 
     res.status(201).json({ ok: true, data: resultado });
@@ -73,6 +78,7 @@ router.post('/historial/:id/deshacer', checkPermission('products.editar'), async
     const resultado = await preciosService.deshacer({
       empresaId: req.empresaId,
       id: req.params.id,
+      usuarioId: req.usuario?.id ?? null,
     });
 
     res.json({ ok: true, data: resultado });
