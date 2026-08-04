@@ -61,6 +61,151 @@ jobs:
         run: npm run build
         working-directory: apps/web
 
+      # El bypass de sesión de las pruebas de navegador NO se puede compilar: el
+      # alias de `vite.config.js` exige `command === 'serve'`. Esto lo verifica
+      # sobre el producto terminado, que es lo que se le sirve al navegador de un
+      # cliente. Va acá y no en `npm test` porque en un clon recién bajado no hay
+      # `dist/` que mirar, y una guardia que se saltea sola no es una guardia.
+      - name: El bundle no tiene el bypass de sesión
+        run: npm run verificar:bundle
+        working-directory: apps/web
+
+  # ════════════════════════════════════════════
+  #  Pruebas de navegador
+  #
+  #  ── Por qué es un job propio y no un paso del job `web` ──
+  #
+  #  Playwright se baja un Chromium de 115 MB y necesita un Postgres y la API
+  #  levantada: son tres o cuatro minutos contra el minuto y medio del job de
+  #  tests. Metido adentro de `web`, cada push esperaría eso para saber si un
+  #  test unitario falló. Como job aparte corre EN PARALELO con los otros
+  #  cuatro, así que no alarga el camino crítico: el CI sigue tardando lo que
+  #  tarda el más lento.
+  #
+  #  ── Por qué corre en cada push y no a pedido ──
+  #
+  #  Porque lo que atrapa es exactamente lo que se cuela sin que nadie lo mire.
+  #  El contenedor de scroll de las diecisiete pantallas se movió en el hito 5 y
+  #  pasó un hito entero sin que nadie lo notara: `npm run build` no lo ve,
+  #  vitest tampoco —jsdom devuelve cero en todo lo que mida— y la revisión de
+  #  código no distingue `mx-auto max-w-[1320px] overflow-y-auto` de dos divs.
+  #  Una verificación que hay que acordarse de correr es una que no se corre, y
+  #  esa es la historia de los cinco pasos manuales que originaron esto.
+  # ════════════════════════════════════════════
+  navegador:
+    name: Web — pruebas de navegador
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: adminapp
+          POSTGRES_PASSWORD: adminapp
+          POSTGRES_DB: adminapp_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://adminapp:adminapp@localhost:5432/adminapp_e2e
+      DB_SSL: 'false'
+      ADMINAPP_API_DE_PRUEBAS: http://localhost:5099/api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+        working-directory: apps/api
+
+      - run: npm ci
+        working-directory: apps/web
+
+      # El Chromium se cachea por versión de Playwright: sin esto son 115 MB de
+      # descarga en cada corrida. La clave sale del package-lock, así que se
+      # invalida sola cuando Playwright sube de versión — que es cuando el
+      # navegador cacheado deja de servir.
+      - name: Versión de Playwright
+        id: pw
+        run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        working-directory: apps/web
+
+      - uses: actions/cache@v4
+        id: cache-navegadores
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Bajar Chromium
+        if: steps.cache-navegadores.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+
+      # Las dependencias del sistema no van en el cache: son paquetes de apt.
+      - name: Dependencias del sistema para Chromium
+        if: steps.cache-navegadores.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+        working-directory: apps/web
+
+      # ⚠ La base arranca VACÍA y el esquema lo crea el `sequelize.sync` del
+      # arranque en desarrollo, que además siembra permisos, la empresa 1, sus
+      # sucursales y el usuario `test-user-id`. NO se corren las migraciones
+      # acá: con el esquema ya migrado, ese mismo sync se cae porque
+      # `products.unit_type` es `STRING(20)` en la migración y `ENUM` en el
+      # modelo. El camino migrado lo verifica el job `contenedor`, que corre con
+      # `NODE_ENV=production` y por eso no sincroniza.
+      - name: Levantar la API con BYPASS_AUTH
+        run: |
+          NODE_ENV=development BYPASS_AUTH=true PORT=5099 \
+            ALLOWED_ORIGINS=http://localhost:5199 LOG_LEVEL=warn \
+            node src/server.js > /tmp/api-navegador.log 2>&1 &
+
+          for i in $(seq 1 45); do
+            if curl -sf http://localhost:5099/api/health > /dev/null; then
+              echo "La API respondió."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "La API no respondió en 90s."
+          cat /tmp/api-navegador.log
+          exit 1
+        working-directory: apps/api
+
+      # Seis de las diecisiete pantallas son de módulos no liberados y redirigen
+      # a /pos si quien mira no es superadmin. Sin esto, la prueba del marco
+      # estaría midiendo /pos seis veces sin que nada avise.
+      - name: El usuario de pruebas es operador de la plataforma
+        run: node scripts/superadmin.js activar dev@adminapp.app
+        working-directory: apps/api
+
+      - name: Pruebas de navegador
+        run: npx playwright test
+        working-directory: apps/web
+
+      - name: Reporte y trazas si algo falló
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-informe
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 7
+
+      - name: Log de la API si algo falló
+        if: failure()
+        run: cat /tmp/api-navegador.log || true
+
   landing:
     name: Landing — build
     runs-on: ubuntu-latest

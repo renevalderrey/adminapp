@@ -1,0 +1,257 @@
+import { test, expect } from '@playwright/test'
+
+// ════════════════════════════════════════════
+//  ADMINAPP · El marco de las diecisiete pantallas
+//
+//  Es el paso manual **5** de `docs/specs/011-punto-de-venta/tasks.md`, que
+//  pedía abrir tres pantallas a ojo, más la pregunta que quedó abierta cuando
+//  el hito 5 introdujo `MarcoDePantalla` (commit `10b5e60`): el contenedor de
+//  scroll cambió de lugar en las diecisiete y nadie lo había mirado.
+//
+//  ── Qué se rompió y cómo se ve ──
+//
+//  Antes scrolleaba `<main>` a ancho completo. Después pasó a scrollear el
+//  `<div>` de `mx-auto max-w-[1320px]`, y en un monitor de 1920px eso deja
+//  **180px de cada lado** en los que la rueda del mouse no scrollea nada: el
+//  puntero está sobre `<main>` pero fuera del contenedor que scrollea. Medido
+//  antes del arreglo: con el puntero en x=1880 el `scrollTop` quedaba en 0;
+//  con el puntero en el centro, en 500.
+//
+//  `npm run build` no ve esto, `npm run test:web` tampoco —jsdom devuelve cero
+//  en todo lo que mida—, y la guardia estática `tests/marcoDePantalla.test.js`
+//  solo puede afirmar que la ruta *aplica* el marco, no qué forma tiene. Es
+//  exactamente el caso para el que existe una prueba de navegador.
+//
+//  ── Por qué las diecisiete y no tres ──
+//
+//  Porque lo que hay que verificar es que no falte **ninguna**, y el error
+//  típico al mirar a ojo es dejar bien la primera. Diecisiete `goto` cuestan
+//  veinte segundos; la alternativa es no verificarlo nunca.
+// ════════════════════════════════════════════
+
+/**
+ * Las diecisiete rutas que van adentro de `MarcoDePantalla`.
+ *
+ * Escritas a mano y NO extraídas de `App.jsx`: una lista derivada del código
+ * que se está verificando pasa igual cuando el código se equivoca. Que falte
+ * una acá lo detecta `tests/marcoDePantalla.test.js`, que sí lee `App.jsx` y
+ * exige que toda ruta que no sea `/pos` esté envuelta.
+ */
+const CON_MARCO = [
+  '/ventas', '/inventario', '/recetas', '/produccion', '/clientes', '/caja',
+  '/impuestos', '/proveedores', '/ordenes-compra', '/faltantes', '/comparador',
+  '/reportes', '/gastos', '/panel', '/facturacion', '/team', '/suscripcion',
+]
+
+/** El tope del marco, tal cual `MarcoDePantalla.jsx`. */
+const ANCHO_DEL_MARCO = 1320
+
+/** Deja la pantalla montada y con sus pedidos al servidor terminados. */
+async function abrir(page, ruta) {
+  await page.goto(ruta)
+  await page.waitForLoadState('networkidle')
+  // El shell tiene que estar montado: `App.jsx` devuelve pantallas enteras
+  // —«Validando sesión…», «Redirigiendo…»— sin `<main>` cuando la sesión o el
+  // contexto fallan. Sin esta espera, lo que se mide abajo es el cero de un DOM
+  // que no es el de ninguna pantalla, y la prueba pasa sin haber mirado nada.
+  await expect(page.locator('main > *').first()).toBeVisible()
+}
+
+/** Las medidas del shell: `<main>` y su hijo, que es el contenedor de scroll. */
+function medirElMarco(page) {
+  return page.evaluate(() => {
+    const main = document.querySelector('main')
+    const contenedor = main.firstElementChild
+    const centrado = contenedor.firstElementChild
+    const doc = document.documentElement
+
+    const caja = (el) => {
+      const r = el.getBoundingClientRect()
+      return { izq: Math.round(r.left), der: Math.round(r.right), ancho: Math.round(r.width) }
+    }
+
+    return {
+      ruta: location.pathname,
+      documento: {
+        desbordeHorizontal: doc.scrollWidth - doc.clientWidth,
+        desbordeVertical: doc.scrollHeight - doc.clientHeight,
+      },
+      main: caja(main),
+      contenedor: {
+        ...caja(contenedor),
+        overflowY: getComputedStyle(contenedor).overflowY,
+        scrollea: contenedor.scrollHeight > contenedor.clientHeight,
+      },
+      centrado: caja(centrado),
+    }
+  })
+}
+
+test.describe('Ninguna de las diecisiete pantallas scrollea el cuerpo de la página', () => {
+  // Los dos anchos del paso 1: el mínimo de la maqueta y el monitor del
+  // mostrador. Una barra horizontal en el `<body>` significa que la barra
+  // lateral o la miga de pan se van de pantalla al scrollear, que es el defecto
+  // que esto protege.
+  //
+  // Los dos anchos van en UN solo caso: a 1920px ninguna de las diecisiete
+  // tiene contenido más ancho que la ventana, así que ese ancho por sí solo no
+  // se puede poner en rojo con ninguna reversión —es red de contención para
+  // cuando alguien agregue una tabla ancha—. El que muerde hoy es el de 1080px.
+  test('a 1080px y a 1920px, ninguna de las diecisiete scrollea el <body> a lo ancho', async ({ page }) => {
+    const conBarra = []
+
+    for (const ancho of [1080, 1920]) {
+      await page.setViewportSize({ width: ancho, height: 900 })
+
+      for (const ruta of CON_MARCO) {
+        await abrir(page, ruta)
+        const m = await medirElMarco(page)
+        if (m.documento.desbordeHorizontal > 0) {
+          conBarra.push(`${ruta} a ${ancho}px: sobran ${m.documento.desbordeHorizontal}px`)
+        }
+      }
+    }
+
+    expect(conBarra).toEqual([])
+  })
+})
+
+test.describe('El contenedor de scroll de las diecisiete llega hasta el borde de la ventana', () => {
+  test('ninguna deja franjas muertas donde la rueda del mouse no hace nada', async ({ page }) => {
+    const malas = []
+
+    for (const ruta of CON_MARCO) {
+      await abrir(page, ruta)
+      const m = await medirElMarco(page)
+
+      // ── Lo que se afirma ──
+      //
+      // (1) el que scrollea es el hijo directo de `<main>` y tiene `overflow-y`
+      //     propio —el `<main>` está en `overflow-hidden` desde el hito 5—;
+      // (2) su caja coincide con la de `<main>`: mismo borde izquierdo y mismo
+      //     borde derecho. Es la única forma de que la rueda funcione en
+      //     cualquier punto de la pantalla y de que la barra quede en el borde
+      //     de la ventana y no flotando en el medio;
+      // (3) el centrado a 1320px lo hace un div de ADENTRO, así que el tope
+      //     sigue existiendo y el contenido no se estira a 1680px.
+      if (m.contenedor.overflowY !== 'auto') {
+        malas.push(`${ruta}: el hijo de <main> tiene overflow-y ${m.contenedor.overflowY}`)
+        continue
+      }
+      if (m.contenedor.izq !== m.main.izq || m.contenedor.der !== m.main.der) {
+        malas.push(
+          `${ruta}: lo que scrollea va de ${m.contenedor.izq} a ${m.contenedor.der} `
+          + `y <main> de ${m.main.izq} a ${m.main.der} — quedan `
+          + `${m.contenedor.izq - m.main.izq}px muertos a la izquierda y `
+          + `${m.main.der - m.contenedor.der}px a la derecha`
+        )
+      }
+      if (m.centrado.ancho > ANCHO_DEL_MARCO) {
+        malas.push(`${ruta}: el contenido mide ${m.centrado.ancho}px y el tope es ${ANCHO_DEL_MARCO}px`)
+      }
+    }
+
+    expect(malas).toEqual([])
+  })
+
+  test('el contenido sigue centrado a 1320px, con el mismo padding de siempre', async ({ page }) => {
+    // El paso manual 5 pedía comprobar «el mismo tope de 1320px y el mismo
+    // padding que antes del cambio». El tope es geometría; el padding se mide
+    // acá y no se lee de una clase, porque `lg:px-9` cambia con el ancho de la
+    // ventana y lo que importa es el número que se ve.
+    await abrir(page, '/inventario')
+
+    const m = await page.evaluate(() => {
+      const centrado = document.querySelector('main').firstElementChild.firstElementChild
+      const r = centrado.getBoundingClientRect()
+      const estilo = getComputedStyle(centrado)
+      const main = document.querySelector('main').getBoundingClientRect()
+      return {
+        ancho: Math.round(r.width),
+        // Lo mismo de sobra a cada lado = está centrado. Se compara con <main>
+        // y no con la ventana: la barra lateral corre el origen.
+        sobraIzquierda: Math.round(r.left - main.left),
+        sobraDerecha: Math.round(main.right - r.right),
+        padding: [estilo.paddingLeft, estilo.paddingRight, estilo.paddingTop, estilo.paddingBottom],
+      }
+    })
+
+    expect(m.ancho).toBe(ANCHO_DEL_MARCO)
+    expect(m.sobraIzquierda).toBe(m.sobraDerecha)
+    // `lg:px-9 lg:py-8` a 1920px de ancho: 36px de costado y 32px arriba y abajo.
+    expect(m.padding).toEqual(['36px', '36px', '32px', '32px'])
+  })
+
+  test('la rueda sobre el borde derecho de la ventana scrollea la pantalla', async ({ page }) => {
+    // El caso concreto del defecto, ejercitado como lo ejercita una persona.
+    // Inventario porque con el catálogo sembrado siempre desborda; si algún día
+    // dejara de desbordar, el `expect` de abajo lo dice en vez de pasar en
+    // falso.
+    await abrir(page, '/inventario')
+
+    const desborde = await page.evaluate(() => {
+      const c = document.querySelector('main').firstElementChild
+      return c.scrollHeight - c.clientHeight
+    })
+    expect(desborde, 'Inventario tiene que desbordar para que este caso pruebe algo').toBeGreaterThan(200)
+
+    const alturaDeRueda = 400
+    const { width } = page.viewportSize()
+
+    // 40px adentro del borde derecho de la ventana: sobre `<main>`, y sobre la
+    // franja que quedaba muerta cuando el contenedor de scroll medía 1320px.
+    await page.mouse.move(width - 40, 500)
+    await page.mouse.wheel(0, alturaDeRueda)
+    await page.waitForTimeout(300)
+
+    const desplazado = await page.evaluate(
+      () => document.querySelector('main').firstElementChild.scrollTop
+    )
+
+    expect(
+      desplazado,
+      'La rueda sobre el borde derecho no movió nada: el contenedor de scroll no llega hasta ahí'
+    ).toBeGreaterThan(0)
+  })
+})
+
+test.describe('El punto de venta es la única pantalla fuera del marco, y lo sigue siendo', () => {
+  test('/pos NO tiene el contenedor de 1320px que tienen las otras diecisiete', async ({ page }) => {
+    // La contracara del caso de arriba: si alguien «arregla» el marco
+    // envolviendo también a `/pos`, el punto de venta pierde el ancho y el alto
+    // completos, que es todo lo que el hito 5 vino a resolver.
+    //
+    // ⚠ La medida se toma sobre las DOS COLUMNAS del POS y sus ancestros, y no
+    // sobre `main.firstElementChild`: el marco, ya arreglado, también ocupa el
+    // ancho completo de `<main>`, así que mirar el primer hijo no distingue una
+    // cosa de la otra. Se probó envolviendo `/pos` en `<MarcoDePantalla>` y la
+    // prueba seguía en verde.
+    await abrir(page, '/pos')
+    await expect(page.locator('main aside')).toBeVisible()
+
+    const m = await page.evaluate(() => {
+      const main = document.querySelector('main')
+      const dosColumnas = document.querySelector('main aside').parentElement
+
+      // Todo lo que hay entre las dos columnas del POS y `<main>`: si alguna de
+      // esas capas tiene tope de ancho, el POS está adentro de un marco.
+      const conTope = []
+      for (let el = dosColumnas; el && el !== main; el = el.parentElement) {
+        const tope = getComputedStyle(el).maxWidth
+        if (tope !== 'none') conTope.push(`${el.className.slice(0, 50)} → max-width ${tope}`)
+      }
+
+      return {
+        conTope,
+        ancho: Math.round(dosColumnas.getBoundingClientRect().width),
+        anchoDeMain: Math.round(main.getBoundingClientRect().width),
+        alto: Math.round(dosColumnas.getBoundingClientRect().height),
+        altoDeMain: Math.round(main.getBoundingClientRect().height),
+      }
+    })
+
+    expect(m.conTope, 'el punto de venta quedó adentro de un contenedor con tope de ancho').toEqual([])
+    expect(m.ancho).toBe(m.anchoDeMain)
+    expect(m.alto).toBe(m.altoDeMain)
+  })
+})

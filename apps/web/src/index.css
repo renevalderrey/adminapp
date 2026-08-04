@@ -13,6 +13,13 @@
 @source not "./tests/**";
 @source not "./**/*.test.js";
 @source not "./**/*.test.jsx";
+/* Y las pruebas de navegador, por lo mismo y con más motivo: nombran clases
+   exactas —`min-w-[1080px]`, `w-[400px]`, `overflow-y-auto`— porque lo que
+   verifican son medidas, y una utilidad arbitraria como `min-w-[1080px]`
+   mencionada en un archivo que nadie sirve genera su propia regla en el CSS de
+   producción. La carpeta está fuera de `src/`, así que los tres patrones de
+   arriba no la alcanzan. */
+@source not "../pruebas-de-navegador/**";
 
 @custom-variant dark (&:is(.dark *));
 

@@ -1,30 +1,19 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import { Auth0Provider } from '@auth0/auth0-react'
 import { ThemeProvider } from '@/components/theme-provider'
 import { TooltipProvider } from '@/components/ui/tooltip'
+// La sesión entra por acá y por ningún otro lado. El archivo se lee entero
+// —tiene treinta líneas— y explica por qué es un módulo aparte: es la única
+// costura que las pruebas de navegador reemplazan, y ese reemplazo lo declara
+// `vite.config.js` SOLO para `command === 'serve'`.
+import ProveedorDeSesion from '@/sesion/ProveedorDeSesion'
 import App from './App.jsx'
 import './index.css'
 
-const domain = import.meta.env.VITE_AUTH0_DOMAIN?.trim();
-const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID?.trim();
-// Audience es necesario para obtener un JWT válido.
-const audience = (import.meta.env.VITE_AUTH0_AUDIENCE || 'https://api.sistema-de-facturacion.com').trim();
-
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <Auth0Provider
-      domain={domain}
-      clientId={clientId}
-      cacheLocation="localstorage"
-      useRefreshTokens={true}
-      authorizationParams={{
-        redirect_uri: window.location.origin,
-        audience: audience,
-        scope: "openid profile email offline_access"
-      }}
-    >
+    <ProveedorDeSesion>
       <BrowserRouter>
         <ThemeProvider defaultTheme="dark" storageKey="system-ui-theme">
           <TooltipProvider>
@@ -32,6 +21,6 @@ createRoot(document.getElementById('root')).render(
           </TooltipProvider>
         </ThemeProvider>
       </BrowserRouter>
-    </Auth0Provider>
+    </ProveedorDeSesion>
   </StrictMode>
 )

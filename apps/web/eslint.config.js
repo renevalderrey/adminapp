@@ -26,4 +26,23 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+  // ── Lo que NO corre en el navegador ──
+  //
+  // La configuración de arriba declara `globals.browser` para todo, así que
+  // `process` y `__dirname` salían como `no-undef` en los archivos que corren
+  // en Node: las dos configuraciones, la carpeta de pruebas de navegador —que
+  // es Playwright, o sea Node manejando un Chromium desde afuera— y los scripts
+  // de verificación. Eran errores reales de la configuración de eslint, no del
+  // código: `vite.config.js` viene marcando `__dirname` desde antes.
+  {
+    files: [
+      'vite.config.js',
+      'playwright.config.js',
+      'pruebas-de-navegador/**/*.{js,jsx}',
+      'scripts/**/*.js',
+    ],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
 ])

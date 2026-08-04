@@ -196,6 +196,13 @@ describe('Los tests no engordan el CSS de producción', () => {
     './tests/**',
     './**/*.test.js',
     './**/*.test.jsx',
+    // Las pruebas de navegador viven FUERA de `src/`, así que ninguno de los
+    // tres patrones de arriba las alcanza y necesitan el suyo. Y lo necesitan
+    // más que los tests de render: verifican medidas, así que nombran
+    // utilidades arbitrarias —`min-w-[1080px]`, `w-[400px]`— que Tailwind
+    // genera de la nada apenas las ve escritas en cualquier archivo del
+    // proyecto.
+    '../pruebas-de-navegador/**',
   ])('index.css excluye %s del escaneo de Tailwind', (patron) => {
     expect(CSS).toContain(`@source not "${patron}"`)
   })

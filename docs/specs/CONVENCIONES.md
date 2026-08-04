@@ -152,7 +152,7 @@ matchers y la limpieza entre pruebas, en `apps/web/src/tests/preparacion.js`.
 Los ejemplos a copiar son `src/tests/renderDeInventario.test.jsx` y
 `src/tests/renderDePanelProducto.test.jsx`.
 
-### Cuándo va un test de render y cuándo una función pura
+### Los tres niveles: función pura, render, navegador
 
 La pregunta es **qué se está afirmando**:
 
@@ -162,12 +162,16 @@ La pregunta es **qué se está afirmando**:
 | El dibujo: que el badge esté en la celda de la sucursal que corresponde, que el encabezado y las filas compartan columnas, que el aviso caiga bajo su renglón | Test de render en `src/tests/*.test.jsx` |
 | Que apretar algo dispare lo que tiene que disparar —y **solo** eso— | Test de render |
 | Que un campo quede deshabilitado sin el permiso, con su explicación | Test de render |
+| **Geometría**: qué elemento scrollea, cuánto mide algo en píxeles, si un texto entra o se recorta, si el `<body>` desborda | **Prueba de navegador** en `apps/web/pruebas-de-navegador/*.navegador.js` |
 
 **Primero se intenta la función pura.** Un test de render que verifica una
 regla es diez veces más lento y se rompe cuando alguien mueve un `<div>`; la
 regla no cambió y el test igual se puso en rojo. Sacar la regla del componente
 a `utils/` —como hicieron `estadoVenta.js`, `exportarVentas.js` e
 `inventario.js`— es lo primero, y el test de render cubre lo que queda.
+
+**Y el navegador es el último recurso**, no el primero. Lo que va y lo que no va
+en ese nivel está en «Pruebas de navegador», más abajo.
 
 ### Cómo se escribe uno acá
 
@@ -197,15 +201,95 @@ a `utils/` —como hicieron `estadoVenta.js`, `exportarVentas.js` e
 
 - **No se afirma nada sobre posiciones ni tamaños.** jsdom no tiene motor de
   maquetado. Que un elemento esté «arriba» o «no se superponga» no se puede
-  contestar acá; para eso hace falta un navegador.
+  contestar acá; eso baja al tercer nivel, «Pruebas de navegador», más abajo.
 - **No se mencionan clases de Tailwind al pasar.** El CSS de producción crece:
   Tailwind v4 escanea las fuentes solo y no distingue un test de un componente.
-  `src/index.css` tiene tres `@source not` que sacan a los tests del escaneo —
-  se agregaron después de que la variable `container` de `@testing-library`
-  metiera 272 bytes de `.container` en el bundle.
+  `src/index.css` tiene cuatro `@source not` que sacan del escaneo a los tests y
+  a las pruebas de navegador — los tres primeros se agregaron después de que la
+  variable `container` de `@testing-library` metiera 272 bytes de `.container`
+  en el bundle.
 - **Un test de render que pasa con y sin el cambio no vale nada, igual que
   cualquier otro.** La forma de comprobarlo es la de siempre: revertir la
   corrección, correr el test, verificar que se pone en rojo, y restaurar.
+
+---
+
+## Pruebas de navegador
+
+Playwright sobre Chromium, en `apps/web/pruebas-de-navegador/`, con
+`npm --prefix apps/web run test:navegador`. Los archivos terminan en
+`.navegador.js` —y no en `.test.js`— para que vitest y Playwright no se
+levanten los archivos del otro.
+
+### Cuándo, y el criterio para no escribir una
+
+**Solo si la afirmación necesita un motor de maquetado.** jsdom no tiene uno:
+`scrollWidth`, `clientWidth` y `getBoundingClientRect` devuelven **cero
+siempre**, así que un test de render que los mire pasa con y sin el cambio. Eso
+—y nada más que eso— es lo que baja al navegador:
+
+- Qué elemento scrollea y cuál no.
+- Cuánto mide algo de verdad: los 400px del ticket, los 24px del total.
+- Si un texto entra en su celda o se recorta.
+- Si el `<body>` desborda a lo ancho o a lo alto.
+- Dónde queda una caja respecto de otra: si el nombre se mete en la columna de
+  precio, si las columnas de dos filas arrancan en el mismo píxel.
+
+**Lo que NO baja**, aunque se pueda escribir: cualquier cosa que ya cubra una
+función pura o un test de render. Los atajos del punto de venta son
+`utils/atajosDelPos.test.js`; los precios por medio de pago son
+`utils/mediosDePago.test.js`; que el botón de imprimir desaparezca con la
+primera línea del ticket siguiente es `tests/renderDelPuntoDeVenta.test.jsx`.
+Repetirlo en un navegador cuesta cincuenta veces más por caso, y una suite lenta
+es una suite que alguien termina salteando.
+
+Una prueba de navegador es cara —arranca un servidor, una base, un Chromium— y
+por eso el listón es alto: **si se puede afirmar sin navegador, no va acá.**
+
+### Lo que se afirma es la geometría, no la clase
+
+`class="w-[400px]"` es un string en un archivo y lo puede verificar una guardia
+estática. Lo que solo el navegador contesta es que el elemento **mida** 400px
+después de que el flex, el `shrink`, el `min-w` del padre y una regla de
+`index.css` hayan opinado. Las dos cosas se verifican, en el nivel que
+corresponde: la clase donde es barata, la medida donde es la única verdad.
+
+### El estado sale del sistema, no de un doble
+
+Un test de render llena el store a mano con `useStore.setState`. Acá no: la
+API descartable se levanta de verdad y el catálogo se siembra por HTTP
+(`pruebas-de-navegador/preparacion.js`). Si los datos vinieran de un doble, la
+prueba diría que el diseño funciona con datos que el sistema no produce.
+
+### Cómo se entra sin Auth0, y por qué eso no llega a producción
+
+`App.jsx` corta en `!isAuthenticated`. Las pruebas reemplazan
+`@/sesion/ProveedorDeSesion` por uno que devuelve una sesión falsa, mediante un
+alias que `vite.config.js` declara **solo cuando `command === 'serve'`**.
+
+⚠ **La diferencia con `BYPASS_AUTH` de la API es deliberada.** Allá el bypass
+existe en el código de producción y `checkPermission.js:5` responde 500 si
+alguien lo enciende con `NODE_ENV=production`: alcanza, porque ese código corre
+en un servidor propio. Acá no alcanzaría: un bundle se le sirve a cualquiera que
+pida la página, y un bypass compilado adentro es una puerta con el picaporte del
+lado de afuera. Por eso lo que se garantiza no es que esté apagado sino que **no
+esté**, y hay tres guardias que lo verifican
+(`src/tests/guardiaDeSesionDePrueba.test.js` y `npm run verificar:bundle`).
+
+### Las dos cosas que hay que acordarse
+
+1. **`src/index.css` tiene un `@source not` para esta carpeta.** Las pruebas de
+   medidas nombran utilidades arbitrarias —`min-w-[1080px]`, `w-[400px]`— y
+   Tailwind v4 escanea las fuentes solo, sin distinguir una prueba de un
+   componente. Sin esa línea, cada clase mencionada en una prueba entra al CSS
+   que baja el navegador del cliente: medido, +130 bytes con una sola. Hay una
+   guardia en `tests/guardiasDeDiseno.test.js` que la protege.
+2. **La mutación vale igual que en el resto del repositorio, y muerde más.**
+   Una prueba de geometría puede pasar por razones que no tienen nada que ver
+   con lo que dice verificar. Tres de las primeras once no se pusieron en rojo
+   con su mutación: una medía la barra lateral por un error de nombres, otra
+   verificaba un `shrink-0` que `min-w-[1080px]` ya hacía redundante, y la
+   tercera comparaba un contenedor que quedaba igual con y sin el defecto.
 
 ---
 

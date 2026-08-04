@@ -153,13 +153,33 @@ describe('El marco dibuja lo que le pasan', () => {
     expect(screen.getByText('El contenido de la pantalla')).toBeInTheDocument()
   })
 
-  it('el contenido queda adentro del contenedor centrado, y no al lado', () => {
+  it('el que scrollea NO es el contenedor de 1320px, que dejaba franjas muertas a los costados', () => {
+    // El marco son DOS capas y el orden importa. Cuando eran una sola —el
+    // `mx-auto max-w-[1320px] overflow-y-auto` con el que quedó el hito 5—, en
+    // un monitor de 1920px el contenedor de scroll iba de x=420 a x=1740
+    // mientras `<main>` iba de x=240 a x=1920: **180px de cada lado en los que
+    // la rueda del mouse no scrolleaba nada**, y la barra flotando en el medio
+    // de la pantalla en vez de en el borde de la ventana. Medido con la rueda
+    // en x=1880: `scrollTop` no se movía.
+    //
+    // Este caso fija la forma; la geometría la verifica
+    // `pruebas-de-navegador/marcoDeLasPantallas.navegador.js`, porque jsdom no
+    // tiene motor de maquetado y acá no se puede afirmar dónde queda nada.
     conContenido()
 
-    const contenedor = screen.getByText('El contenido de la pantalla').parentElement
+    const centrado = screen.getByText('El contenido de la pantalla').parentElement
+    const queScrollea = centrado.parentElement
 
-    expect(contenedor).toHaveClass('mx-auto')
-    expect(contenedor).toHaveClass('max-w-[1320px]')
-    expect(contenedor).toHaveClass('overflow-y-auto')
+    // El de adentro centra y pone el padding, y NO scrollea.
+    expect(centrado).toHaveClass('mx-auto')
+    expect(centrado).toHaveClass('max-w-[1320px]')
+    expect(centrado).not.toHaveClass('overflow-y-auto')
+
+    // El de afuera scrollea y no tiene tope de ancho: ocupa el ancho completo
+    // de `<main>`, que es lo que hace que la rueda funcione en cualquier punto
+    // de la pantalla.
+    expect(queScrollea).toHaveClass('overflow-y-auto')
+    expect(queScrollea).toHaveClass('h-full')
+    expect(queScrollea).not.toHaveClass('max-w-[1320px]')
   })
 })

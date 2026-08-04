@@ -30,7 +30,14 @@ nadie resuelva el conflicto borrando el `describe` del otro.
 |---|---|---|
 | Test unitario / de render | Las cinco funciones puras, los contratos de `services/api.js`, el store, y lo que se afirma del dibujo y del efecto | `apps/web/src/utils/*.test.js` · `apps/web/src/tests/*.test.js(x)` · `apps/api/src/tests/*.test.js` |
 | Guardia estática | Que no reaparezca un hex, un `dark:`, una clase de la paleta de Tailwind, un `<table>`, un `punto_de_venta_id \|\| null` en el `Sale.create`, ni una ruta sin `MarcoDePantalla` | `tests/guardiasDeDiseno.test.js` (web) · `tests/rutasDeVentas.test.js`, `tests/descuentoDeStock.test.js` (api) |
-| Paso manual reproducible | Todo lo que exige un motor de maquetado o un Postgres de verdad | Sección «Los pasos manuales de `sdd-verify`», al final |
+| **Prueba de navegador** | Lo que exige un motor de maquetado: qué scrollea, cuánto mide, si un texto se recorta, si el `<body>` desborda | `apps/web/pruebas-de-navegador/*.navegador.js` |
+| Paso manual reproducible | Lo que queda: un Postgres de verdad, un lector de código de barras, y lo que hay que **sentir** | Sección «Los pasos manuales de `sdd-verify`», al final |
+
+> ⚠ **Este cuadro cambió después de escrito.** Cuando se escribió, la tercera
+> fila no existía y los cinco pasos de maquetado eran manuales, con el motivo
+> anotado: jsdom no puede afirmar nada sobre posiciones ni tamaños. Sigue siendo
+> cierto de jsdom — lo que cambió es que ahora hay un navegador de verdad. El
+> detalle está al final, en «Los pasos manuales de `sdd-verify`».
 
 **Ninguna tarea de acá abajo pide un test de integración**, porque no existe la
 infraestructura para escribirlo (proyecto **5c** de `PROXIMOS-PROYECTOS.md`), y
@@ -1263,44 +1270,63 @@ buscar.
 test en este repositorio**, escritas como pasos reproducibles justamente para no
 disfrazarlas de test. Cada una dice **qué hacer** y **qué tiene que verse**.
 
-### Por qué jsdom no alcanza (pasos 1 a 5)
+> **Actualizado.** De los diez, **cinco dejaron de ser manuales** (los de
+> maquetado, 1 a 5) y **cuatro se corrieron** contra un Postgres de verdad
+> (6a, 6b y 6c). Quedan **cuatro que siguen necesitando una persona** —el 7 por
+> el bloqueador de emergentes, el 8 porque lo que mide es cómo se siente, el 9
+> por el hardware y el 10 porque no tiene umbral—, más lo que falta del 6b y el
+> 6d. Cada uno dice abajo por qué.
 
-`apps/web/src/tests/preparacion.js` lo dice en su propio comentario: **un test no
-puede afirmar nada sobre posiciones ni sobre tamaños**. `scrollWidth`,
-`clientWidth` y `getBoundingClientRect` devuelven **cero siempre**, así que un
-test que los mire **pasa con y sin el cambio**, que es la definición de test que
-no vale nada.
+### ✅ Los pasos 1 a 5 ya NO son manuales
 
-⚠ Lo que sí se puede afirmar, y desde T1134 se afirma, es **la clase declarada**:
-que el botón de agregar diga `h-8 w-8` (los 32px de FR-011) y que el POS diga
-`min-w-[1080px]` (FR-002) son dos strings en el archivo, no geometría. Eso
-atrapa la edición que cambia el número —que es como el ticket había quedado en
-380px— y **no** reemplaza a los pasos 1 y 2, que son los únicos que ven si el
-resultado se ve bien.
+Lo eran porque jsdom no tiene motor de maquetado: `scrollWidth`, `clientWidth` y
+`getBoundingClientRect` devuelven **cero siempre**, así que un test que los mire
+pasa con y sin el cambio. Eso sigue siendo cierto **de jsdom**, y por eso los
+cinco bajaron a un navegador de verdad:
+`apps/web/pruebas-de-navegador/`, con Playwright sobre Chromium.
 
-1. **El cuerpo de la página no scrollea** (escenario 1.3, FR-002). Abrir el POS
-   con la ventana a **1080px** y después a **1920px**, con veinte productos en el
-   catálogo. *Qué tiene que verse*: **ninguna barra de scroll horizontal en el
-   `<body>`** en ninguno de los dos anchos, y ninguna barra vertical de la página
-   —solo las dos internas—.
-2. **Las dos zonas scrollean por separado** (escenario 1.2, FR-003). Con **40
-   resultados** en el catálogo y **8 líneas** en el ticket, rodar la rueda sobre
-   el catálogo y después sobre el ticket. *Qué tiene que verse*: la barra de
-   búsqueda con sus filtros **sigue visible** mientras la lista corre, y el pie de
-   cobro con el total y el botón **sigue visible** mientras las líneas corren.
-   Ninguno de los dos se va de pantalla.
-3. **Un nombre largo no corre las columnas de precio.** Cargar un producto con un
-   nombre de **80 caracteres**. *Qué tiene que verse*: el nombre recorta con
-   elipsis y las tres columnas de precio quedan **exactamente** donde estaban en
-   las demás filas.
-4. **El total es el elemento de más peso del pie** (FR-021). Mirar el pie de
-   cobro. *Qué tiene que verse*: el total en `.num` a 24px domina el bloque; ni
-   el subtotal, ni el IVA, ni el botón le compiten.
-5. ⚠ **Las otras diecisiete pantallas siguen centradas** (riesgo 7, después de
-   T1116). Abrir **Ventas, Inventario y Panel** —tres, no una—. *Qué tiene que
-   verse*: contenido centrado con el mismo tope de 1320px y el mismo padding que
-   antes del cambio, y el scroll de la página funcionando como siempre. **`npm
-   run build` no ve esto**: un error acá no rompe el POS, rompe todo lo demás.
+```
+npm --prefix apps/web run test:navegador
+```
+
+Los requisitos —una base descartable y la API con `BYPASS_AUTH`— están escritos
+en el encabezado de `apps/web/playwright.config.js`, y `preparacion.js` de esa
+carpeta falla con el comando exacto si algo no está.
+
+⚠ La entrada sin Auth0 la resuelve un alias de Vite que **solo existe con
+`command === 'serve'`**: el bypass no se puede compilar, y hay tres guardias que
+lo verifican. El criterio y por qué no es el mismo que el `BYPASS_AUTH` de la API
+están en `docs/specs/CONVENCIONES.md`, sección «Pruebas de navegador».
+
+⚠ Lo que ya se afirmaba desde T1134 y sigue valiendo es **la clase declarada**:
+que el botón de agregar diga `h-8 w-8` y que el POS diga `min-w-[1080px]` son
+strings en el archivo, no geometría, y son baratos. Las pruebas de navegador no
+los reemplazan: verifican que el número **resultante** sea ese después de que el
+flex, el `shrink` y `index.css` hayan opinado.
+
+| Paso | Qué era | Dónde está ahora |
+|---|---|---|
+| **1** · El cuerpo de la página no scrollea (escenario 1.3, FR-002) | Abrir el POS a 1080px y a 1920px y mirar las barras | `maquetadoDelPuntoDeVenta.navegador.js` → «el `<body>` NO tiene barra horizontal ni vertical, ni a 1080px ni a 1920px», más «por debajo de 1080px el desborde queda ADENTRO del punto de venta y se puede scrollear» |
+| **2** · Las dos zonas scrollean por separado (escenario 1.2, FR-003) | 40 resultados y 8 líneas, rueda sobre cada zona | Los dos casos de «El catálogo y el ticket scrollean por separado»: la barra de búsqueda no se va con la lista, el pie de cobro no se va con las líneas, y scrollear una **no** mueve la otra ni la página |
+| **3** · Un nombre largo no corre las columnas de precio | Cargar un producto de 80 caracteres y mirar | «el nombre se recorta y las tres columnas de precio quedan donde estaban». Se corre a **1080px**: a 1920 la columna mide 769px y ochenta caracteres entran, así que ahí no hay nada que recortar |
+| **4** · El total es el elemento de más peso del pie (FR-021) | Mirar el pie de cobro | «el total es el número más grande del pie de cobro»: 24px medidos, en la monoespaciada, y mayor que **todo** lo demás del bloque —subtotal, IVA, vuelto y botón— |
+| **5** · Las otras diecisiete pantallas siguen centradas (riesgo 7) | Abrir tres pantallas y mirar | `marcoDeLasPantallas.navegador.js`, y son **las diecisiete**, no tres: ninguna scrollea el `<body>`, el contenedor de scroll de todas coincide con `<main>`, el contenido sigue centrado a 1320px con `36px` de padding, y `/pos` sigue siendo la única fuera del marco |
+
+⚠⚠ **El paso 5 encontró lo que nadie había mirado.** El contenedor de scroll se
+había mudado adentro del marco de 1320px: en un monitor de 1920px `<main>` iba de
+x=240 a x=1920 y lo que scrolleaba, de x=420 a x=1740. Eran **180px de cada lado
+donde la rueda del mouse no hacía nada** —medido: con el puntero en x=1880 el
+`scrollTop` no se movía; en el centro, 500—, en las diecisiete pantallas.
+`MarcoDePantalla` pasó a ser dos capas: la de afuera scrollea a ancho completo, la
+de adentro centra. Es la forma que tenía antes del hito 5, cuando scrolleaba el
+`<main>`.
+
+**Lo que sigue sin bajar a una prueba de navegador, y por qué**: los atajos
+(`utils/atajosDelPos.test.js`), los precios por medio de pago
+(`utils/mediosDePago.test.js`) y que el comprobante para imprimir desaparezca con
+la primera línea del ticket siguiente (`tests/renderDelPuntoDeVenta.test.jsx`).
+Ya están cubiertos más abajo y más barato; repetirlos arriba es la forma de que
+la suite lenta deje de correrse.
 
 ### Por qué hace falta Postgres de verdad (paso 6)
 
@@ -1315,12 +1341,13 @@ vive en el job de la imagen), y no hay fixtures ni `supertest`.
 **Cómo se corre, concretamente:**
 
 ```bash
-# 1. Una base de desarrollo, en apps/api/.env
-#    DATABASE_URL=postgres://usuario:clave@localhost:5432/adminapp_dev
-#    DB_SSL=false          ← sin esto el driver exige TLS y no conecta en local
-npm --prefix apps/api run db:migrate     # las 15 migraciones, sobre la base vacía
+# 1. Una base DESCARTABLE, en un contenedor propio y en un puerto propio, para
+#    no escribir en la base de desarrollo de nadie.
+docker run -d --name adminapp-e2e-pg \
+  -e POSTGRES_USER=adminapp -e POSTGRES_PASSWORD=adminapp \
+  -e POSTGRES_DB=adminapp_e2e -p 55432:5432 postgres:16-alpine
 
-# 2. La API levantada contra esa base, SIN Auth0.
+# 2. La API contra esa base, SIN Auth0 y en un puerto propio.
 #    `BYPASS_AUTH=true` (apps/api/src/server.js:264) inyecta req.userId,
 #    req.empresaId y req.userRole, y checkPermission.js:5 deja pasar sin mirar
 #    permisos. No hace falta token ni copiar nada de las devtools.
@@ -1328,23 +1355,45 @@ npm --prefix apps/api run db:migrate     # las 15 migraciones, sobre la base vac
 #    Es seguro fuera de produccion y solo fuera de produccion: con
 #    NODE_ENV=production, checkPermission responde 500 y loguea
 #    «BYPASS_AUTH esta activo en produccion». Nunca ponerlo en Railway.
-BYPASS_AUTH=true npm run dev:api
+#
+#    El arranque en desarrollo crea el esquema, siembra los permisos, la empresa
+#    1 con sus tres sucursales y el usuario `test-user-id`.
+cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55432/adminapp_e2e \
+  DB_SSL=false NODE_ENV=development BYPASS_AUTH=true PORT=5099 node src/server.js
 ```
 
-6. **Contra Postgres** (criterios de éxito 6, 7 y 11):
+⚠⚠ **La base tiene que estar VACÍA: NO se corren las migraciones antes.** Con el
+esquema migrado, el `sequelize.sync({ alter: true })` del arranque en desarrollo
+(`server.js:412`) se cae y el servidor no levanta:
+
+```
+default for column "unit_type" cannot be cast automatically to type enum_products_unit_type
+```
+
+Son columnas que la migración inicial declara `STRING(20)` y el modelo declara
+`ENUM` — `products.unit_type` (`20260531-initial-schema.js:99` contra
+`models/Product.js:66`) y `supplier_orders.status`, y probablemente más. No es un
+problema del camino de producción: el `Dockerfile` corre con
+`NODE_ENV=production`, que **no** sincroniza, y el job `contenedor` del CI lo
+verifica con las migraciones más `scripts/verificar-esquema.js` —los 37 modelos
+consultan bien—. Es el camino de **desarrollo** el que está roto, y queda
+anotado acá porque estas mismas instrucciones lo pedían.
+
+6. **Contra Postgres** (criterios de éxito 6, 7 y 11). ✅ **Corridos y
+   verdes** en la fecha de este cambio, con el procedimiento de arriba:
 
    **(6a) Idempotencia — T1102.** Armar el cuerpo de una venta con un `id`
    generado a mano (`sale_1754320000000_9f3a1c02`) y **mandarlo dos veces**:
 
    ```bash
-   curl -s -X POST localhost:3000/api/sales \
+   curl -s -X POST localhost:5099/api/sales \
      -H 'Content-Type: application/json' -H 'X-Punto-De-Venta-Id: 1' \
      -d @venta.json
    ```
 
    *Qué tiene que verse*: la **primera** responde `201`; la **segunda** responde
    `200` con `yaRegistrada: true`, `warnings: []` y `stock: []` — **no un 500**,
-   que es lo que pasa hoy. Y en la base:
+   que era lo de antes de T1102. Y en la base:
 
    ```sql
    SELECT count(*) FROM sales           WHERE id = 'sale_1754320000000_9f3a1c02';  -- 1
@@ -1353,6 +1402,9 @@ BYPASS_AUTH=true npm run dev:api
 
    Las dos tienen que dar **1**. Si la segunda da 2, el stock se descontó dos
    veces por una sola venta.
+
+   ✅ **Corrido**: `HTTP 201` y después `HTTP 200`; `sales=1`,
+   `stock_movements=1`, `punto_de_venta_id=1`.
 
    **(6b) La sucursal — T1103.** El mismo `curl` **sin** la cabecera
    `X-Punto-De-Venta-Id`, con un `id` nuevo. *Qué tiene que verse*:
@@ -1366,11 +1418,19 @@ BYPASS_AUTH=true npm run dev:api
    `stock.quantity` volvió a subir **en esa misma sucursal**. Repetir con una
    venta **sin líneas**: también tiene que quedar con sucursal (escenario 6.3).
 
+   ✅ **Corrido** el caso de la venta **sin cabecera y sin líneas**: `HTTP 201`
+   con `punto_de_venta_id: 1`, o sea no nulo (escenario 6.3). La anulación con
+   devolución a la misma sucursal **sigue sin correrse**.
+
    **(6c) El campo `stock` — T1104.** Una venta de **dos** productos: uno con
    fila de stock en la sucursal y otro **sin ninguna**. *Qué tiene que verse*:
    `stock` con **una** entrada —la del que sí tenía, con el `available` ya
    descontado— y `warnings` con **una** frase, la del que no. Los dos arreglos
    complementarios y ninguno para parsear.
+
+   ✅ **Corrido**: `stock` con una entrada
+   (`{ product_id: 1, punto_de_venta_id: 1, quantity: 247, available: 247 }`) y
+   `warnings` con una frase, la del producto sin fila.
 
    **(6d) Empresa sin sucursales.** Una empresa sin ningún `punto_de_venta`,
    registrando una venta **sin líneas**. *Qué tiene que verse*: `400` con el
@@ -1378,19 +1438,33 @@ BYPASS_AUTH=true npm run dev:api
    sucursal»— y **no** un `500`, y **no** un `201` con `punto_de_venta_id: null`,
    que es lo que pasa hoy (FR-072).
 
-### Lo demás
+### Lo que sigue necesitando una persona
+
+Los cuatro de acá abajo **no** bajaron a una prueba de navegador, y cada uno dice
+por qué. Ninguno es «todavía no lo hicimos»: los cuatro necesitan algo que un
+Chromium sin manos no tiene.
 
 7. **Imprimir sin bloquear la venta siguiente** (FR-050). Cobrar, imprimir el
    comprobante, y empezar a cargar el ticket siguiente. *Qué tiene que verse*: la
    opción de imprimir **sigue disponible** mientras el ticket nuevo está vacío, y
    **desaparece** cuando entra la primera línea. Con el bloqueador de emergentes
    activo, avisa qué hacer en vez de no pasar nada.
+   ⚠ **La mitad ya está cubierta y no se repite**: que el comprobante desaparezca
+   con la primera línea del ticket siguiente lo verifica
+   `tests/renderDelPuntoDeVenta.test.jsx` («desaparece con la PRIMERA línea del
+   ticket nuevo»). Lo que queda a mano es **el bloqueador de emergentes**: un
+   `window.open` doblado no es un bloqueador, es un doble del bloqueador, y lo
+   que hay que ver es qué hace el navegador de verdad con su bloqueador de verdad.
 8. **La venta completa sin mouse, de punta a punta.** Con la mano fuera del
    mouse: `/`, escribir tres letras, `Enter`, `Ctrl+Enter`. *Qué tiene que
    verse*: la venta se cobra y el cursor ya está en la búsqueda para la
    siguiente. Es el criterio de éxito 1 y el test automático lo cubre, pero
    hacerlo a mano una vez es lo que detecta que el circuito **se siente** roto
    aunque los pasos pasen.
+   ⚠ **No baja a prueba de navegador**: cada paso ya está en
+   `utils/atajosDelPos.test.js` y en `tests/renderDelPuntoDeVenta.test.jsx`, y lo
+   que este paso agrega —que se **sienta** bien— es lo único que ninguna
+   afirmación puede contestar.
 9. **El lector de código de barras de verdad**, si hay uno a mano. Escanear un
    producto que existe y uno que no. *Qué tiene que verse*: el primero entra al
    ticket y la consulta se vacía; el segundo **no** agrega nada, avisa, y la
@@ -1398,6 +1472,12 @@ BYPASS_AUTH=true npm run dev:api
    justamente no existe—. Es el riesgo 9: si el catálogo no tiene los `barcode`
    cargados, esto va a rechazar escaneos de productos que sí están, y el aviso
    tiene que apuntar al dato faltante y no al producto.
+   ⚠ **No baja a prueba de navegador**: la regla de resolución ya es
+   `utils/busquedaDelPos.test.js`, y lo que este paso prueba es **el hardware**.
+   Un escáner emite las teclas más rápido que cualquier persona y termina con un
+   `Enter`; `page.keyboard.type()` no reproduce ni la velocidad ni el modo en que
+   el dispositivo entrega el buffer. Una prueba que teclee el código a mano dice
+   que el código funciona, no que el escáner funciona.
 10. ⚠ **El catálogo entero en el navegador** (riesgo 10, declarado Fuera de
     alcance — proyecto **5e**). Abrir el POS de una empresa con **más de 2.000
     productos** y tipear en la búsqueda. *Qué tiene que verse*: cuánto tarda en
@@ -1408,6 +1488,10 @@ BYPASS_AUTH=true npm run dev:api
     dibujado por render **sube** respecto de hoy. *Si aparece*: el tope de
     resultados visibles ya está en el diseño (T1120) y se puede bajar sin tocar
     nada más.
+    ⚠ **No baja a prueba de navegador**: no hay número de corte. Una prueba
+    necesita un umbral para poder ponerse en rojo, y acá el resultado es una
+    medición que alguien tiene que interpretar. Cuando el proyecto 5e fije el
+    umbral, el lugar donde escribirlo es `pruebas-de-navegador/`.
 
 ---
 

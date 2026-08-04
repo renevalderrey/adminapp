@@ -69,3 +69,11 @@ Desktop.ini
 mapping_debug.txt
 test_*.csv
 tmp_*.js
+
+# ── Pruebas de navegador (Playwright) ──
+# Trazas, capturas y el informe HTML de una corrida. Se generan en cada `npm
+# --prefix apps/web run test:navegador` y solo sirven para mirar la corrida que
+# acaba de fallar; en el CI se suben como artefacto del job.
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/
