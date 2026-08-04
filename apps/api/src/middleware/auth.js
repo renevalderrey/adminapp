@@ -9,11 +9,41 @@ require('dotenv').config();
 // Se reporta a Sentry una sola vez por proceso: ver el catch de permisos.
 let yaSeReportoElFalloDePermisos = false;
 
-const checkJwt = auth({
-  audience: process.env.AUTH0_AUDIENCE,
-  issuerBaseURL: `https://${process.env.AUTH0_DOMAIN}/`,
-  tokenSigningAlg: 'RS256',
-});
+// `auth()` valida su configuracion al construirse, no al primer request: sin
+// AUTH0_AUDIENCE tira «An 'audience' is required to validate the 'aud' claim» y
+// mata el proceso apenas se importa este archivo.
+//
+// Eso es lo que se quiere en produccion —una API que arranca sin poder validar
+// tokens es peor que una que no arranca—, y por eso el constructor sigue siendo
+// ansioso. Pero rompia una promesa que hace `server.js:28`: ahi la validacion de
+// AUTH0_DOMAIN y AUTH0_AUDIENCE se saltea cuando BYPASS_AUTH esta activo, o sea
+// que el servidor declara que con bypass esas variables no hacen falta. Este
+// archivo las exigia igual, un nivel mas abajo y con un mensaje que no nombra
+// ni a Auth0 ni al bypass.
+//
+// La primera vez que mordio fue en `server.test.js`, que se arreglo poniendo
+// valores de mentira en `tests/setup.js`. La segunda fue el job de pruebas de
+// navegador, que levanta la API con BYPASS_AUTH y sin .env: noventa segundos de
+// espera y un ERR_ASSERTION. Dos sintomas del mismo hueco, arreglados por
+// separado en el borde en vez de en el medio.
+//
+// Con bypass, `server.js:264` ni siquiera usa `checkJwt`: la cadena es otra. No
+// construirlo no saltea ninguna verificacion, porque nadie lo iba a llamar.
+//
+// Y el reemplazo NIEGA en vez de dejar pasar, justamente porque nadie lo iba a
+// llamar: si algun dia alguien lo mete en una cadena que corre con bypass, un
+// `next()` autenticaria a cualquiera en silencio. Fallar ahi es ruidoso y no
+// cuesta nada, porque hoy ese camino no existe.
+const checkJwt = process.env.BYPASS_AUTH === 'true'
+  ? (req, res, next) => {
+      logger.error('checkJwt fue invocado con BYPASS_AUTH activo: la cadena de autenticacion esta mal armada.');
+      return res.status(500).json({ error: 'CONFIG_ERROR', message: 'Error de configuracion del servidor' });
+    }
+  : auth({
+      audience: process.env.AUTH0_AUDIENCE,
+      issuerBaseURL: `https://${process.env.AUTH0_DOMAIN}/`,
+      tokenSigningAlg: 'RS256',
+    });
 
 const extractUser = (req, res, next) => {
   if (req.auth && req.auth.payload) {

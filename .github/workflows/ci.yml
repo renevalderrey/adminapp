@@ -164,7 +164,13 @@ jobs:
       # `NODE_ENV=production` y por eso no sincroniza.
       - name: Levantar la API con BYPASS_AUTH
         run: |
+          # Los dos AUTH0_* van aunque BYPASS_AUTH este activo, y no porque
+          # hagan falta: `middleware/auth.js` ya no construye el verificador con
+          # bypass. Van como red — si alguien saca el bypass de este paso, el
+          # servidor arranca y la falla se ve en las pruebas, no en noventa
+          # segundos de espera y un ERR_ASSERTION que no nombra a Auth0.
           NODE_ENV=development BYPASS_AUTH=true PORT=5099 \
+            AUTH0_DOMAIN=ci.example.com AUTH0_AUDIENCE=https://ci.example.com/api \
             ALLOWED_ORIGINS=http://localhost:5199 LOG_LEVEL=warn \
             node src/server.js > /tmp/api-navegador.log 2>&1 &
 
