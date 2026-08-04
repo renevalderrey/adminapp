@@ -127,6 +127,35 @@ describe('La guardia mira los archivos que dice mirar', () => {
 //  que debería verse.
 // ════════════════════════════════════════════
 
+// ════════════════════════════════════════════
+//  Guardia contra el CSS de producción que crece por los tests
+//
+//  Tailwind v4 detecta sus fuentes solo y no distingue un test de un
+//  componente. Un test de render menciona clases —`text-warn`, `bg-warn-soft`—
+//  para verificar que el badge esté pintado, y cualquier palabra suelta que
+//  coincida con una utilidad entra al CSS que baja el navegador del cliente.
+//
+//  No es hipotético: la variable `container` que devuelve `render()` de
+//  `@testing-library` metió 272 bytes de `.container` en el bundle la primera
+//  vez que se armó el entorno de render.
+//
+//  Los `@source not` de `index.css` son lo que lo evita, y son tres líneas que
+//  cualquiera saca por parecer de más. Esta guardia existe para que sacarlas
+//  falle acá y no en el peso de la descarga, que nadie mira.
+// ════════════════════════════════════════════
+
+describe('Los tests no engordan el CSS de producción', () => {
+  const CSS = fs.readFileSync(path.join(SRC, 'index.css'), 'utf8')
+
+  it.each([
+    './tests/**',
+    './**/*.test.js',
+    './**/*.test.jsx',
+  ])('index.css excluye %s del escaneo de Tailwind', (patron) => {
+    expect(CSS).toContain(`@source not "${patron}"`)
+  })
+})
+
 describe('<Can> siempre recibe el permiso en `codigo`', () => {
   const CARPETAS = ['pages', 'components']
 
