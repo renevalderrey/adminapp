@@ -167,6 +167,31 @@ export const getSalesSummary = (from, to) => api.get('/sales/summary', { params:
 export const createSale = (data) => api.post('/sales', data);
 export const voidSale = (id) => api.put(`/sales/${id}/void`);
 
+/**
+ * El identificador de una venta, que lo genera el navegador.
+ *
+ * `Sale.id` es la clave primaria y es `STRING(40)`: lo arma el cliente y la base
+ * lo hace unico. De ahi salen las dos reglas de este formato.
+ *
+ * **La marca de tiempo va adelante** porque los ids se ordenan como texto: con
+ * ella primero, un `SELECT * FROM sales ORDER BY id` crudo sale en orden
+ * cronologico y se puede leer. Con el azar adelante, ese mismo listado queda
+ * desordenado, y en un incidente eso es lo unico que hay a mano.
+ *
+ * **Los 8 hexadecimales del final son la parte que faltaba.** Con
+ * `sale_${Date.now()}` a secas, dos cajas que cobran en el mismo milisegundo
+ * generan EL MISMO id. Hoy eso choca contra la clave primaria y produce un error
+ * visible; con `POST /api/sales` idempotente pasaria a ser una venta que
+ * desaparece en silencio —la segunda caja recibiria los datos de la venta de la
+ * primera, imprimiria un comprobante ajeno y no registraria nada—. Por eso la
+ * entropia va en el mismo cambio que la idempotencia y nunca despues.
+ *
+ * **No es `crypto.randomUUID()` a secas** porque son 36 caracteres y con el
+ * prefijo `sale_` no entra en los 40 de la columna. `slice(0, 8)` toma el primer
+ * bloque del UUID y deja el id en 27 caracteres.
+ */
+export const nuevoIdDeVenta = () => `sale_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+
 // ═══════ STOCK ═══════
 
 export const getStock = (location) => api.get('/stock', { params: { location } });

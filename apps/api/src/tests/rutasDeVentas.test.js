@@ -70,6 +70,66 @@ describe('Las rutas literales se declaran antes que GET /:id', () => {
 });
 
 // ════════════════════════════════════════════
+//  Guardias estáticas de la idempotencia de POST /api/sales
+//
+//  El `id` de la venta lo genera el navegador y es la clave primaria: ya es una
+//  clave de idempotencia. Antes, un reintento del mismo ticket —la red se cortó
+//  después de guardar pero antes de que llegara la respuesta— chocaba contra la
+//  restricción única y salía como un 500 «Error al registrar la venta». El
+//  operador leía que no se había registrado nada y volvía a cobrar: dos ventas y
+//  dos descuentos de stock por una sola operación.
+//
+//  Son guardias estáticas y no tests de comportamiento **porque los dobles de
+//  `tests/helpers/modelosFalsos.js` no entienden `lock` ni transacciones** —lo
+//  dice su propio encabezado—: un test de idempotencia escrito sobre ellos
+//  probaría el doble. El comportamiento se verifica contra Postgres, en el paso
+//  manual 6a de `docs/specs/011-punto-de-venta/tasks.md`.
+// ════════════════════════════════════════════
+
+describe('POST / no registra dos veces la misma venta', () => {
+  const antesDelCreate = () => entre("router.post('/', checkPermission", 'Sale.create(');
+
+  const catchDelAlta = () => {
+    const inicioDelHandler = FUENTE.indexOf("router.post('/', checkPermission");
+    const fin = FUENTE.indexOf("fallo(req, res, err, 'Error al registrar la venta')", inicioDelHandler);
+    const inicio = FUENTE.lastIndexOf('} catch (err) {', fin);
+
+    expect(inicio).toBeGreaterThan(inicioDelHandler);
+
+    return FUENTE.slice(inicio, fin);
+  };
+
+  it('POST / busca la venta por id ANTES de crearla, y con findScoped', () => {
+    // Con findByPk, un `id` que existe en OTRA empresa cliente devolvería esa
+    // venta y el POS imprimiría un comprobante ajeno. Los ids son de la empresa,
+    // no globales: acotado por empresa, ese mismo id se crea normalmente.
+    const bloque = antesDelCreate();
+
+    expect(bloque).toMatch(/findScoped\(Sale,\s*id,\s*req\.empresaId/);
+    expect(bloque).not.toMatch(/Sale\.findByPk\(/);
+  });
+
+  it('la respuesta del reintento NO vuelve a descontar stock ni repite los avisos', () => {
+    // `warnings: []` y `stock: []` van vacíos a propósito: la venta ya existe y
+    // su stock ya se descontó cuando se creó. Devolver los de aquella vez los
+    // mostraría dos veces.
+    expect(antesDelCreate()).toMatch(/yaRegistrada:\s*true/);
+    expect(antesDelCreate()).toMatch(/warnings:\s*\[\]/);
+    expect(antesDelCreate()).toMatch(/stock:\s*\[\]/);
+  });
+
+  it('el catch de POST / no responde 500 ante una clave primaria repetida', () => {
+    // El findScoped previo NO es atómico: dos requests en vuelo pasan los dos
+    // por el findOne y el que pierde choca contra la restricción de la base. La
+    // guardia real es la base; el findOne es el camino normal.
+    const bloque = catchDelAlta();
+
+    expect(bloque).toMatch(/SequelizeUniqueConstraintError/);
+    expect(bloque).toMatch(/yaRegistrada:\s*true/);
+  });
+});
+
+// ════════════════════════════════════════════
 //  Guardias estáticas del reintento de facturación
 //
 //  El lock y la carrera solo se pueden comprobar de verdad contra Postgres, y

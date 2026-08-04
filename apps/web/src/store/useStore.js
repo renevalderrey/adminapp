@@ -156,6 +156,19 @@ const useStore = create((set, get) => ({
           // el aislamiento entre empresas viene a evitar — y del lado del
           // navegador nada lo impide.
           sucursales: [],
+          // El ticket del punto de venta, por el mismo motivo y peor: no se
+          // muestra, se COBRA. Un superadmin que cambiaba de empresa con el
+          // ticket cargado se quedaba con los productos de la empresa A adentro
+          // del ticket de la empresa B; al cobrar, `SaleItem` guardaba esos
+          // `product_id`, la búsqueda de stock por `empresa_id: B` no encontraba
+          // ninguna fila, y la venta quedaba registrada con las líneas de otro
+          // cliente y sin descontar nada — con un aviso que se lee como un
+          // problema de stock (FR-062).
+          //
+          // Va en el MISMO `set` que `sucursales` y no después de
+          // `initialize()`: limpiarlo después deja una ventana en la que la
+          // pantalla dibuja las líneas de A con el contexto de B.
+          cart: [],
         });
         // Reinitialize data with new empresa context
         await get().initialize();

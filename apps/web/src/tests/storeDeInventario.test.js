@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // ════════════════════════════════════════════
 //  El store no puede devolver la tabla al estado inicial en cada guardado
@@ -13,6 +13,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 //  `actualizarProducto` y `quitarProducto` reemplazan UNA fila y no tocan
 //  `loading`. `initialize()` sigue siendo lo correcto cuando cambió medio
 //  catálogo: una importación o un masivo de precios.
+//
+//  ⚠ El archivo se llama `storeDeInventario` porque acá está el molde del store
+//  doblado —`api` mockeado, el estado rellenado a mano con `useStore.setState`—,
+//  pero desde la funcionalidad 011 cubre **también el carrito del punto de
+//  venta**: el bloque `setEmpresaActiva · el ticket no cruza de una empresa a
+//  otra`. Queda dicho acá porque si no, el próximo que busque ese test no lo
+//  encuentra.
 // ════════════════════════════════════════════
 
 const { respuestas, llamadas } = vi.hoisted(() => ({
@@ -171,5 +178,53 @@ describe('sucursales · de dónde salen las columnas de la tabla', () => {
     expect(useStore.getState().products).toHaveLength(1)
     expect(useStore.getState().loading).toBe(false)
     expect(useStore.getState().error).toBeNull()
+  })
+})
+
+// ════════════════════════════════════════════
+//  setEmpresaActiva · el ticket no cruza de una empresa a otra
+//
+//  `setEmpresaActiva` limpiaba `sucursales` a propósito —«mostrar las columnas
+//  de otro cliente en la tabla de este es justo lo que el aislamiento viene a
+//  evitar»— y no tocaba `cart`. El carrito es peor que las sucursales, porque no
+//  se muestra: se **cobra**. Un superadmin que cambiaba de empresa con el ticket
+//  cargado se quedaba con los productos de la empresa A adentro del ticket de la
+//  empresa B; al cobrar, `SaleItem` guardaba esos `product_id`, la búsqueda de
+//  stock por `empresa_id: B` no encontraba nada, y la venta quedaba registrada
+//  **con las líneas de otro cliente y sin descontar nada**, con un aviso que se
+//  lee como un problema de stock (FR-062).
+// ════════════════════════════════════════════
+
+describe('setEmpresaActiva · el ticket no cruza de una empresa a otra', () => {
+  const LINEA = (id) => ({ id, name: `Producto ${id}`, price: 1000, qty: 1, method: 'ef' })
+
+  const initializeOriginal = useStore.getState().initialize
+
+  afterEach(() => {
+    useStore.setState({ initialize: initializeOriginal, cart: [] })
+  })
+
+  it('NO deja el ticket de una empresa cargado al cambiar a otra', async () => {
+    useStore.setState({ cart: [LINEA(1), LINEA(2)], initialize: vi.fn() })
+
+    await useStore.getState().setEmpresaActiva(2)
+
+    expect(useStore.getState().cart).toEqual([])
+  })
+
+  it('limpia el carrito ANTES de pedir los datos de la empresa nueva', async () => {
+    // Limpiarlo después de `initialize()` deja una ventana —lo que tarden tres
+    // requests— en la que la pantalla dibuja las líneas de A con el contexto de
+    // B, y el botón de cobrar está habilitado durante toda esa ventana.
+    let carritoAlPedir = null
+
+    useStore.setState({
+      cart: [LINEA(1), LINEA(2)],
+      initialize: vi.fn(async () => { carritoAlPedir = useStore.getState().cart }),
+    })
+
+    await useStore.getState().setEmpresaActiva(2)
+
+    expect(carritoAlPedir).toEqual([])
   })
 })

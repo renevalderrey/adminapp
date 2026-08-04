@@ -351,6 +351,17 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
     // al que vio el operador y le cobro al cliente es peor que fallar.
     const advertencias = [];
 
+    // Las filas de stock que esta venta efectivamente descontó, para que el POS
+    // actualice el catálogo sin volver a pedirlo entero (FR-047).
+    //
+    // Es complementario de `advertencias` y ninguno de los dos hay que
+    // parsearlo: el producto que NO tenía fila de stock aparece en las
+    // advertencias y **no** acá. Sin este arreglo, el navegador tendría que
+    // restar `available - qty` por su cuenta —el cliente recalculando
+    // inventario— y se equivocaría justo en ese caso, que es el único que
+    // importa: ahí no se descontó nada.
+    const filasDeStock = [];
+
     const verificacion = verificarTotal(total, lineas);
 
     if (!verificacion.ok) {
@@ -379,6 +390,64 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
     });
     const zona = empresa && empresa.timezone;
 
+    // ── Idempotencia por id ──
+    //
+    // El `id` lo genera el navegador y es la clave primaria: ya es una clave de
+    // idempotencia, no hace falta una cabecera aparte. Antes, un reintento del
+    // mismo ticket —la red se cortó despues de guardar la venta pero antes de
+    // que llegara la respuesta— chocaba contra la restriccion unica y salia por
+    // fallo() como un 500 «Error al registrar la venta»: el operador leia que no
+    // se habia registrado nada y volvia a cobrar.
+    //
+    // Es el mismo molde que POST /:id/facturar usa para el CAE: un reintento
+    // sobre una venta ya facturada devuelve el CAE que tiene en vez de pedir
+    // otro y duplicar el comprobante.
+    //
+    // `warnings: []` y `stock: []` van vacios A PROPOSITO: la venta ya existe y
+    // su stock ya se descontó cuando se creó. Devolver los avisos de aquella vez
+    // los mostraria dos veces y el navegador escribiria de nuevo un stock viejo.
+    //
+    // El findScoped lleva req.empresaId, asi que un id que existe en OTRA
+    // empresa no se encuentra y la venta se crea normalmente. Es lo correcto:
+    // los ids son de la empresa, no globales.
+    //
+    // Va ANTES de resolver la sucursal a proposito: un reintento de una venta ya
+    // registrada tiene que responder lo mismo aunque la empresa se haya quedado
+    // sin sucursales entre medio.
+    const yaExistente = await findScoped(Sale, id, req.empresaId, { transaction: t });
+
+    if (yaExistente) {
+      await t.rollback();
+      return res.json({ ok: true, yaRegistrada: true, data: yaExistente, warnings: [], stock: [] });
+    }
+
+    // La sucursal se resuelve UNA vez para toda la venta: cabecera
+    // `X-Punto-De-Venta-Id` si vino, y si no el punto de venta por defecto de la
+    // empresa. **Es obligatoria, no opcional**, y `resolverSucursal` nunca
+    // devuelve null.
+    //
+    // Se resuelve ACA, antes del Sale.create, y no adentro del `if
+    // (lineas.length)` donde estaba. Antes la sucursal se decidia dos veces y de
+    // dos maneras distintas: el stock salia de `resolverSucursal(...)` y la
+    // venta se guardaba con `req.puntoDeVentaId || null`. Sin la cabecera, la
+    // mercaderia salia de una sucursal concreta y la venta quedaba diciendo que
+    // no fue de ninguna.
+    //
+    // Eso no se ve al cobrar: se ve al anular. `sucursalDeAnulacion` cae
+    // entonces al tercer escalon —el por defecto de la empresa—, que **no es
+    // estable**: alcanza con crear una sucursal `principal`, o con dar de baja
+    // la que era el default, para que la devolucion de stock de una venta vieja
+    // aterrice en OTRO local. No falla nada y se descubre en un recuento fisico.
+    //
+    // Como el bucle de stock usa esta misma variable, **por construccion** la
+    // venta queda asentada en la sucursal de la que salio la mercaderia. Y como
+    // esta afuera del `if`, una venta SIN lineas tambien queda atribuida.
+    const sucursal = await resolverSucursal({
+      empresaId: req.empresaId,
+      puntoDeVentaId: req.puntoDeVentaId,
+      transaction: t,
+    });
+
     const saleData = {
       id,
       date: date || fechaDelNegocio(zona),
@@ -393,7 +462,8 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
       payment_method: metodoDePago(lineas) || payment_method || 'ef',
       afip_cae, afip_nro, afip_vto, afip_type,
       empresa_id: req.empresaId,
-      punto_de_venta_id: req.puntoDeVentaId || null,
+      // La sucursal RESUELTA, no la cabecera cruda: ver el comentario de arriba.
+      punto_de_venta_id: sucursal.id,
       status: 'active',
     };
     // El nombre del cliente se guarda exista o no la ficha: es lo que se
@@ -428,22 +498,6 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
         ...normalizarItem(item),
       }));
       await SaleItem.bulkCreate(saleItems, { transaction: t });
-
-      // La sucursal se resuelve UNA vez para toda la venta: cabecera
-      // `X-Punto-De-Venta-Id` si vino, y si no el punto de venta por defecto
-      // de la empresa. **Es obligatoria, no opcional.**
-      //
-      // Antes esto era `punto_de_venta_id: req.puntoDeVentaId || null`. Con la
-      // columna ya en NOT NULL (migración 14), ese `null` no matchea **ninguna
-      // fila jamás**: una venta hecha sin la cabecera se registraría bien y no
-      // descontaría nada. No rompe nada visible —la venta se cobra, el
-      // comprobante sale— y se descubre en un recuento físico tres meses
-      // después. Es el riesgo 1 del plan.
-      const sucursal = await resolverSucursal({
-        empresaId: req.empresaId,
-        puntoDeVentaId: req.puntoDeVentaId,
-        transaction: t,
-      });
 
       for (const si of saleItems) {
         if (!si.product_id) continue;
@@ -503,17 +557,55 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
             disponible_nuevo: stock.available,
             usuario_id: req.userId,
           }, { transaction: t });
+
+          // La fila se lee DESPUES del update y DENTRO de la transaccion. Leerla
+          // despues del commit devolveria valores que otra caja ya pudo cambiar,
+          // y el catalogo quedaria mostrando el stock de la venta de otro.
+          //
+          // `punto_de_venta_id` va en cada fila aunque sea siempre el mismo: es
+          // lo que le permite a la pantalla reemplazar ESA fila de
+          // `producto.stock[]` y no la de otra sucursal.
+          filasDeStock.push({
+            product_id: si.product_id,
+            punto_de_venta_id: sucursal.id,
+            quantity: stock.quantity,
+            available: stock.available,
+          });
         }
       }
     }
 
     await t.commit();
-    res.status(201).json({ ok: true, data: sale, warnings: advertencias });
+    res.status(201).json({ ok: true, data: sale, warnings: advertencias, stock: filasDeStock });
   } catch (err) {
     await t.rollback();
     if (err.message.startsWith('Stock insuficiente')) {
       return res.status(400).json({ ok: false, error: err.message });
     }
+
+    // La otra mitad de la idempotencia, y la que de verdad sostiene la garantia.
+    // El findScoped de arriba NO es atomico: dos requests en vuelo al mismo
+    // tiempo pasan los dos por el findOne y el que pierde choca contra la clave
+    // primaria. La guardia real es la restriccion de la base; el findOne es el
+    // camino normal, el que evita abrir el insert cuando ya se sabe la respuesta.
+    //
+    // Se relee la venta en vez de confiar en el nombre del constraint: si el
+    // choque fue por otra cosa, no se encuentra nada y el error sale por fallo()
+    // como cualquier otro. Cuando el que perdio la carrera llega hasta aca, el
+    // que gano ya commiteo —Postgres lo hizo esperar en el indice—, asi que la
+    // fila esta.
+    if (err.name === 'SequelizeUniqueConstraintError') {
+      const registrada = await findScoped(Sale, req.body.id, req.empresaId);
+
+      if (registrada) {
+        logger.info(
+          { empresaId: req.empresaId, saleId: req.body.id },
+          'sales: dos requests con el mismo id, se devuelve la venta ya registrada'
+        );
+        return res.json({ ok: true, yaRegistrada: true, data: registrada, warnings: [], stock: [] });
+      }
+    }
+
     // Registrar una venta es la operacion mas critica del sistema: si falla y
     // no queda rastro, no hay forma de reconstruir que paso en la caja.
     fallo(req, res, err, 'Error al registrar la venta');

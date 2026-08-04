@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import useStore from '@/store/useStore'
 import Fuse from 'fuse.js'
-import api, { getCustomers } from '@/services/api'
+import api, { getCustomers, nuevoIdDeVenta } from '@/services/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -87,6 +87,31 @@ const Billing = () => {
 
   const [loading, setLoading] = useState(false)
   const totalAmount = getCartTotal()
+
+  // ── El identificador de la venta: uno por ticket, no uno por disparo ──
+  //
+  // Antes se armaba adentro del handler con `sale_${Date.now()}`, y eso rompía
+  // dos cosas distintas:
+  //
+  //  · Un reintento del MISMO ticket —la red se cortó después de que la venta se
+  //    guardó pero antes de que llegara la respuesta— salía con un id nuevo y
+  //    registraba una SEGUNDA venta, con su segundo descuento de stock. Con el
+  //    id fijo por ticket, el servidor reconoce el reintento (FR-043).
+  //  · Dos cajas cobrando en el mismo milisegundo producían el mismo id. Eso lo
+  //    resuelve `nuevoIdDeVenta()`, que le agrega 8 hexadecimales.
+  //
+  // Va en un `useRef` y no en estado porque no se dibuja en ningún lado: no
+  // tiene por qué provocar un render.
+  const idDelTicket = useRef(nuevoIdDeVenta())
+
+  // Se renueva cuando el ticket queda vacío, que es el único momento en el que
+  // empieza otro ticket: después de cobrar, al vaciarlo a mano, o al cambiar de
+  // empresa. Renovarlo en cada disparo del cobro es justamente el defecto que
+  // esto arregla; no renovarlo nunca haría que el ticket siguiente saliera con
+  // el id del anterior y el servidor lo descartara como un reintento.
+  useEffect(() => {
+    if (cart.length === 0) idDelTicket.current = nuevoIdDeVenta()
+  }, [cart.length])
 
   // ── Vuelto ──
   // Con cuánto paga el cliente. Se mantiene como texto y no como número para
@@ -207,7 +232,9 @@ const Billing = () => {
       // horaria del negocio. toISOString() devuelve UTC, y en Argentina
       // (UTC-3) una venta de las 21:30 quedaba asentada al dia siguiente.
       const salePayload = {
-        id: `sale_${Date.now()}`,
+        // El id sale del ref del ticket, NO de un `Date.now()` de acá adentro:
+        // ver el comentario de `idDelTicket`.
+        id: idDelTicket.current,
         payment_method: cart[0]?.method || 'ef',
         items: cart,
         total: totalAmount,

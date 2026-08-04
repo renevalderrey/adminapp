@@ -15,8 +15,8 @@ import { afterEach } from 'vitest'
 //      del `<body>` y NO lo saca solo: sin esto, la segunda prueba de un archivo
 //      encuentra los elementos de la primera y `getByText` falla con «found
 //      multiple elements» — o peor, pasa mirando el render viejo.
-//   3. Los cuatro huecos de jsdom que usan los componentes de `@base-ui/react`
-//      (el panel lateral y el tooltip).
+//   3. Los cinco huecos de jsdom que usan los componentes de `@base-ui/react`
+//      (el panel lateral, el tooltip y el área con scroll del carrito).
 //
 //  No se agrega `restoreMocks` ni `clearMocks` global: hay tests que arman su
 //  doble una vez por archivo, y limpiarlos entre pruebas los rompería sin que
@@ -70,5 +70,15 @@ if (typeof Element !== 'undefined') {
 
   if (!Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = () => {}
+  }
+
+  // Las animaciones: jsdom no implementa la Web Animations API. El `ScrollArea`
+  // de `@base-ui/react` —el que usa el carrito del punto de venta— pregunta por
+  // `viewport.getAnimations()` desde un `setTimeout` para no medir mientras algo
+  // se está animando. Sin esto, el error salta DESPUÉS de que la prueba terminó,
+  // como «unhandled error» que ningún `expect` puede atrapar: la suite queda en
+  // verde con un error impreso al lado, que es la peor de las dos opciones.
+  if (!Element.prototype.getAnimations) {
+    Element.prototype.getAnimations = () => []
   }
 }
