@@ -18,6 +18,26 @@ const { estadoVenta } = require('./estadoVenta');
  * Etiquetas de medio de pago. Son las del sistema anterior, que es lo que el
  * usuario leyo durante años en sus planillas: cambiarlas ahora hace que dos
  * exportaciones del mismo dato no se puedan comparar.
+ *
+ * Los dos ultimos son historicos: estan guardados en ventas reales y el control
+ * del punto de venta NO los ofrece.
+ *
+ *  · `tc` viene del sistema anterior y significa «tarjeta, sin decir cual».
+ *  · `tc3` lo escribio el propio punto de venta durante meses, y no estaba en
+ *    ninguna lista: se exportaba crudo por el `|| venta.payment_method` de mas
+ *    abajo, se veia crudo en el panel de detalle y aparecia como una clave sin
+ *    etiqueta en el panel de control. Nadie lo vio porque una etiqueta que
+ *    falta no hace fallar nada: se muestra el codigo.
+ *
+ * Las ventas viejas NO se migran: nada en la fila dice si esa tarjeta fue Visa,
+ * Master o Naranja, y reescribir el registro contable de una operacion cerrada
+ * a partir de una adivinanza es peor que dejarlo. El valor sigue significando
+ * lo que significaba.
+ *
+ * ⚠ `apps/web/src/utils/mediosDePago.js` tiene la misma lista del lado del
+ * navegador, y `apps/web/src/tests/mediosDePago.test.js` verifica que las dos
+ * no se vuelvan a separar. Agregar un medio aca sin agregarlo alla —o al reves—
+ * hace fallar ese test.
  */
 const ETIQUETAS_DE_PAGO = {
   ef: 'Efectivo',
@@ -30,6 +50,7 @@ const ETIQUETAS_DE_PAGO = {
   tc3n: 'Naranja 3c',
   al: 'Alianza',
   tc: 'T. Crédito',
+  tc3: 'T. Crédito 3c',
 };
 
 const ETIQUETAS_DE_TIPO = { 1: 'Factura A', 6: 'Factura B', 11: 'Factura C' };

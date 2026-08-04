@@ -228,3 +228,103 @@ describe('setEmpresaActiva · el ticket no cruza de una empresa a otra', () => {
     expect(carritoAlPedir).toEqual([])
   })
 })
+
+// ════════════════════════════════════════════
+//  El precio de una línea sale de un solo lugar
+//
+//  El mismo `priceMap` estaba escrito A MANO tres veces en este archivo:
+//  `addToCart`, `updateCartMethod` y `updateCartPrice`. Tres literales iguales
+//  empiezan iguales y terminan distintos, y con nueve medios en vez de tres hay
+//  que tocar los tres a la vez.
+//
+//  Y es plata: equivocar el mapa cobra el precio de efectivo por una compra con
+//  tarjeta y NADA falla. La venta se registra, el ticket sale, y la diferencia
+//  aparece recién cuando alguien cuenta la caja.
+// ════════════════════════════════════════════
+
+describe('El precio de la línea sale de utils/mediosDePago, no de un mapa a mano', () => {
+  /** Un producto de $10.000 de lista, con 20 % de recargo y 10 % de descuento. */
+  const CON_PRECIOS = { id: 5, name: 'Whey 1kg', cost: 10000 }
+
+  const SETTINGS = { margin_efectivo: 0, recargo_tarjeta: 20, descuento_alianza: 10 }
+
+  beforeEach(() => {
+    useStore.setState({ cart: [], settings: { ...useStore.getState().settings, ...SETTINGS } })
+  })
+
+  it('NO queda ningún priceMap escrito a mano en el store', async () => {
+    // Guardia estática, con la forma de las de `guardiasDeDiseno.test.js`: se
+    // lee el archivo como texto y falla si el literal vuelve a aparecer. Sin
+    // ella, la copia vuelve la próxima vez que alguien necesite un precio y no
+    // quiera importar nada — que es exactamente cómo llegaron a ser tres.
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const { fileURLToPath } = await import('node:url')
+
+    const AQUI = path.dirname(fileURLToPath(import.meta.url))
+    const contenido = fs.readFileSync(path.join(AQUI, '../store/useStore.js'), 'utf8')
+
+    // Un literal que mapea el código `ef` a un precio. Cubre las tres formas
+    // que tenía: `ef: cashPrice`, `ef: i.base_cash` y cualquier variante.
+    const PRICE_MAP_A_MANO = /\bef\s*:\s*[\w.]*(cashPrice|base_cash)\b/
+
+    const hallazgos = contenido
+      .split('\n')
+      .map((linea, i) => ({ n: i + 1, texto: linea.trim() }))
+      // Los comentarios se saltean: explicar por qué NO va el mapa a mano no
+      // puede hacer fallar la guardia que verifica que no esté.
+      .filter(({ texto }) => PRICE_MAP_A_MANO.test(texto) && !texto.startsWith('//') && !texto.startsWith('*'))
+      .map(({ n, texto }) => `L${n}: ${texto}`)
+
+    expect(hallazgos).toEqual([])
+  })
+
+  it('la pantalla vieja sigue cobrando la tarjeta al precio de tarjeta', () => {
+    // `Billing.jsx` escribe `'tc3'`, un código que no está entre los nueve, y
+    // lo va a seguir escribiendo hasta que se reescriba la pantalla. Si
+    // `precioDeLinea` no lo conociera, entre este cambio y aquél TODAS las
+    // ventas con tarjeta se cobrarían al precio de efectivo y nada fallaría.
+    // Este es el test que importa de esta tarea.
+    useStore.getState().addToCart(CON_PRECIOS)
+
+    const linea = useStore.getState().cart[0]
+    expect(linea.price).toBe(linea.base_cash)
+
+    useStore.getState().updateCartMethod(CON_PRECIOS.id, 'tc3')
+
+    const conTarjeta = useStore.getState().cart[0]
+    expect(conTarjeta.price).toBe(conTarjeta.base_card)
+    expect(conTarjeta.price).not.toBe(conTarjeta.base_cash)
+  })
+
+  it('los nueve medios cobran el nivel que les toca, también desde el store', () => {
+    useStore.getState().addToCart(CON_PRECIOS)
+    const { base_cash, base_card, base_alliance } = useStore.getState().cart[0]
+
+    const esperado = {
+      ef: base_cash, tr: base_cash, qr: base_cash, td: base_cash, tc1: base_cash,
+      tc3v: base_card, tc3m: base_card, tc3n: base_card,
+      al: base_alliance,
+    }
+
+    for (const [medio, precio] of Object.entries(esperado)) {
+      useStore.getState().updateCartMethod(CON_PRECIOS.id, medio)
+      expect([medio, useStore.getState().cart[0].price]).toEqual([medio, precio])
+    }
+  })
+
+  it('el precio a mano sobrevive al cambio de medio, y «Lista» lo devuelve al nivel', () => {
+    useStore.getState().addToCart(CON_PRECIOS)
+    useStore.getState().updateCartPrice(CON_PRECIOS.id, 18000)
+
+    useStore.getState().updateCartMethod(CON_PRECIOS.id, 'tc3v')
+    expect(useStore.getState().cart[0].price).toBe(18000)
+    expect(useStore.getState().cart[0].precio_manual).toBe(true)
+
+    // Volver al precio de lista tiene que dar el nivel del medio VIGENTE, que
+    // ahora es tarjeta, y no el de efectivo con el que se agregó la línea.
+    useStore.getState().updateCartPrice(CON_PRECIOS.id, '')
+    expect(useStore.getState().cart[0].price).toBe(useStore.getState().cart[0].base_card)
+    expect(useStore.getState().cart[0].precio_manual).toBe(false)
+  })
+})

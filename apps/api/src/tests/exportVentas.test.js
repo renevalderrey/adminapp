@@ -194,8 +194,18 @@ describe('Cliente, sucursal y medio de pago', () => {
     ['tc3n', 'Naranja 3c'],
     ['al', 'Alianza'],
     ['tc', 'T. Crédito'],
+    ['tc3', 'T. Crédito 3c'],
   ])('«%s» se escribe «%s»', (codigo, etiqueta) => {
     expect(filaDeExport(venta({ payment_method: codigo })).medio_de_pago).toBe(etiqueta);
+  });
+
+  it('el historial NO muestra un codigo de pago sin etiqueta', () => {
+    // `tc3` es el codigo que el propio punto de venta escribio en ventas
+    // reales durante meses y que no estaba en ninguna lista de etiquetas: se
+    // exportaba crudo por el `|| venta.payment_method`, y como eso no hace
+    // fallar nada, la planilla decia «tc3» donde tenia que decir una tarjeta.
+    expect(filaDeExport(venta({ payment_method: 'tc3' })).medio_de_pago).toBe('T. Crédito 3c');
+    expect(filaDeExport(venta({ payment_method: 'tc3' })).medio_de_pago).not.toBe('tc3');
   });
 
   it('un medio de pago desconocido se escribe tal cual, no se pierde', () => {

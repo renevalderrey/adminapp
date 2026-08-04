@@ -24,6 +24,12 @@ import { fileURLToPath } from 'node:url'
 //   · Un `<table>` o un `Table*` de shadcn rompe el patrón de tabla en grid:
 //     sin las mismas grid-template-columns en el encabezado y en las filas,
 //     las etiquetas dejan de estar sobre sus datos.
+//   · Una clase de la paleta de Tailwind —`text-blue-500`, `bg-green-50`— es
+//     lo mismo que un hexadecimal pero escrito de otra forma: un color que no
+//     existe en el sistema y que en modo oscuro queda como está. Se agregó
+//     porque los CUATRO colores fuera del sistema que tenía el punto de venta
+//     eran de esta clase, o sea que la guardia los habría dejado pasar aunque
+//     el archivo hubiera estado en la lista desde el principio.
 //
 //  La carpeta es `src/tests/` para que las otras cinco pantallas se sumen a
 //  esta misma lista cuando apliquen el patrón.
@@ -44,6 +50,20 @@ const SRC = path.join(AQUI, '..')
  * hasta T1033: hoy dibuja la tabla con los `Table*` de shadcn. Es lo buscado, y
  * queda dicho acá porque un test rojo sin explicación es un test que alguien
  * comenta.
+ *
+ * ⚠⚠ Y VUELVE A PASAR, a propósito, con el punto de venta. `pages/Billing.jsx`
+ * entra a esta lista ANTES de estar reescrita, junto con los cuatro
+ * componentes nuevos que todavía están vacíos. Hoy tiene cuatro clases de la
+ * paleta de Tailwind —`text-blue-500`, `border-orange-400`,
+ * `border-green-500/30` y `bg-green-50`— así que **esta guardia queda EN ROJO
+ * desde este commit**.
+ *
+ * La tarea que la pone en verde es **T1122**, la reescritura de la pantalla.
+ *
+ * Lo que NO vale para «arreglarla» mientras tanto: sacar `pages/Billing.jsx` de
+ * esta lista, comentar el patrón de la paleta, o meter las cuatro clases
+ * adentro de un comentario para que `lineasQueMatchean` las saltee. Si el rojo
+ * molesta, la salida es T1122.
  */
 const ARCHIVOS = [
   'pages/InvoicesList.jsx',
@@ -53,6 +73,11 @@ const ARCHIVOS = [
   'components/PanelProducto.jsx',
   'components/PanelTransferencia.jsx',
   'components/HistorialDeCostos.jsx',
+  'pages/Billing.jsx',
+  'components/MarcoDePantalla.jsx',
+  'components/pos/CatalogoDelPos.jsx',
+  'components/pos/TicketDelPos.jsx',
+  'components/pos/SegmentoDePago.jsx',
 ].map((nombre) => ({
   nombre,
   contenido: fs.readFileSync(path.join(SRC, nombre), 'utf8'),
@@ -98,12 +123,32 @@ describe('La tabla es un grid y no un <table>', () => {
   })
 })
 
+describe('No debe haber clases de la paleta de Tailwind', () => {
+  // Las veintidós familias de color de Tailwind, con sus escalas. Un
+  // `text-blue-500` es exactamente lo mismo que un `#3b82f6`: un color elegido
+  // fuera del sistema, que no cambia en modo oscuro y que nadie relaciona con
+  // ningún token.
+  //
+  // ⚠ `white` y `black` quedan FUERA del patrón a propósito, y hay que decir
+  // por qué: `REGLAS-DISENO.md` fija el botón principal como
+  // `bg-brand text-white`, y la maqueta pone `color:#fff` adentro del botón de
+  // confirmar. Un patrón que los incluyera fallaría contra el propio sistema de
+  // diseño el primer día, y la salida barata sería comentar la guardia.
+  const PATRON =
+    /\b(?:text|bg|border|ring|from|via|to|fill|stroke|divide|accent|caret|placeholder|outline|decoration|shadow)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:50|\d{3})\b/
+
+  it.each(ARCHIVOS)('$nombre no usa clases de la paleta de Tailwind', ({ contenido }) => {
+    const hallazgos = lineasQueMatchean(contenido, PATRON)
+    expect(hallazgos.map((h) => `L${h.n}: ${h.texto}`)).toEqual([])
+  })
+})
+
 // Si esta lista queda vacía, la guardia pasa a ser un test que siempre pasa.
 describe('La guardia mira los archivos que dice mirar', () => {
-  it('los siete archivos existen y tienen contenido', () => {
-    expect(ARCHIVOS).toHaveLength(7)
+  it('los doce archivos existen y tienen contenido', () => {
+    expect(ARCHIVOS).toHaveLength(12)
     for (const archivo of ARCHIVOS) {
-      // 60 y no 100: tres de los siete se crearon vacíos a propósito —un
+      // 60 y no 100: varios de la lista se crearon vacíos a propósito —un
       // componente que devuelve `null` y el comentario de qué va a ser— para
       // que la guardia los acompañe desde el primer commit en vez de auditarlos
       // al final. El umbral sigue existiendo para lo único que tiene que
@@ -156,24 +201,86 @@ describe('Los tests no engordan el CSS de producción', () => {
   })
 })
 
+/**
+ * Todos los `.jsx` de una carpeta, INCLUIDAS sus subcarpetas.
+ *
+ * Antes era un `readdirSync` sin recursión, y eso dejaba fuera de la guardia a
+ * `components/pos/` entero: un `<Can permission="…">` ahí adentro le habría
+ * dejado ver el botón a cualquiera **con la guardia en verde**. La recursión no
+ * es una mejora: es lo que hace que la guardia siga cubriendo lo que dice
+ * cubrir cuando alguien crea una subcarpeta, que es lo primero que pasa cuando
+ * una pantalla crece.
+ */
+function jsxDeLaCarpeta(carpeta) {
+  const dir = path.join(SRC, carpeta)
+
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entrada) => {
+    if (entrada.isDirectory()) return jsxDeLaCarpeta(`${carpeta}/${entrada.name}`)
+    if (!entrada.name.endsWith('.jsx')) return []
+
+    return [{
+      nombre: `${carpeta}/${entrada.name}`,
+      contenido: fs.readFileSync(path.join(dir, entrada.name), 'utf8'),
+    }]
+  })
+}
+
 describe('<Can> siempre recibe el permiso en `codigo`', () => {
   const CARPETAS = ['pages', 'components']
 
-  const archivos = CARPETAS.flatMap((carpeta) => {
-    const dir = path.join(SRC, carpeta)
-
-    return fs.readdirSync(dir)
-      .filter((f) => f.endsWith('.jsx'))
-      .map((f) => ({
-        nombre: `${carpeta}/${f}`,
-        contenido: fs.readFileSync(path.join(dir, f), 'utf8'),
-      }))
-  })
+  const archivos = CARPETAS.flatMap(jsxDeLaCarpeta)
 
   it.each(archivos)('$nombre', ({ contenido }) => {
     const malUsado = lineasQueMatchean(contenido, /<Can\s+(?!codigo=)[a-z]/)
       .map(({ n, texto }) => `L${n}: ${texto}`)
 
     expect(malUsado).toEqual([])
+  })
+
+  it('la guardia de <Can> mira también las subcarpetas de components', () => {
+    // Sin esto, agregar `components/pos/` deja tres archivos sin guardia y nada
+    // avisa: la lista de `it.each` simplemente tiene tres entradas menos.
+    const nombres = archivos.map((a) => a.nombre)
+
+    expect(nombres.some((n) => n.startsWith('components/pos/'))).toBe(true)
+    expect(nombres).toContain('components/pos/TicketDelPos.jsx')
+  })
+})
+
+// ════════════════════════════════════════════
+//  Guardia contra la segunda fuente de verdad del ticket
+//
+//  `Billing.jsx` se parte en tres componentes por TAMAÑO, no por arquitectura:
+//  los tres reciben props y no leen el estado global por su cuenta, así que la
+//  pantalla sigue teniendo un solo dueño del estado.
+//
+//  El plan da esto por no verificable y lo deja «escrito en el encabezado de
+//  cada archivo». Un comentario no detiene a nadie: el primero que agregue un
+//  `useStore(...)` adentro del ticket crea una segunda fuente para el mismo
+//  dato, y a partir de ahí la línea que se dibuja y la que se cobra pueden ser
+//  distintas.
+//
+//  La guardia pasa trivialmente mientras los archivos están vacíos, y muerde el
+//  día que importe.
+// ════════════════════════════════════════════
+
+describe('Los componentes del punto de venta no tienen su propio estado global', () => {
+  const archivos = jsxDeLaCarpeta('components/pos')
+
+  it('la carpeta components/pos tiene los tres componentes', () => {
+    // Si la carpeta se vacía o se renombra, `it.each` de abajo no corre ninguna
+    // vez y la guardia pasa por no tener nada que mirar.
+    expect(archivos.map((a) => a.nombre).sort()).toEqual([
+      'components/pos/CatalogoDelPos.jsx',
+      'components/pos/SegmentoDePago.jsx',
+      'components/pos/TicketDelPos.jsx',
+    ])
+  })
+
+  it.each(archivos)('$nombre no lee el store por su cuenta', ({ contenido }) => {
+    const hallazgos = lineasQueMatchean(contenido, /\buseStore\b/)
+      .map(({ n, texto }) => `L${n}: ${texto}`)
+
+    expect(hallazgos).toEqual([])
   })
 })

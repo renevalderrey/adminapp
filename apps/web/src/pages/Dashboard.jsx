@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useIsMounted } from '@/lib/useAsyncEffect'
 import { calcularBep, estrategiasDePrecio } from '@/utils/bep'
+import { etiquetaDePago } from '@/utils/mediosDePago'
 import {
   TrendingUp,
   Calculator,
@@ -208,7 +209,13 @@ const Dashboard = () => {
                 <div className="space-y-1.5">
                   {Object.entries(kpis.sales_30d.by_method).map(([method, total]) => (
                     <div key={method} className="flex justify-between items-center text-xs">
-                      <span className="capitalize">{method.replace(/_/g, ' ')}</span>
+                      {/* La clave cruda que devuelve `_salesByMethod` no es
+                          para mostrar: con tres valores ya era feo, y a partir
+                          de que el punto de venta ofrezca los nueve medios le
+                          mostraría «tc3n» al dueño. `capitalize` tampoco va: la
+                          etiqueta ya viene con sus mayúsculas y la regla de CSS
+                          convertía «Naranja 3c» en «Naranja 3C». */}
+                      <span>{etiquetaDePago(method)}</span>
                       <div className="flex items-center gap-2">
                         <div className="w-24 bg-muted rounded-full h-1.5">
                           <div

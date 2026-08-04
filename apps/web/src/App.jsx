@@ -7,6 +7,7 @@ import useStore from '@/store/useStore'
 import { AppSidebar } from '@/components/app-sidebar'
 import { AppTopbar } from '@/components/app-topbar'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import MarcoDePantalla from '@/components/MarcoDePantalla'
 import { Toaster } from '@/components/Toaster'
 
 // Pages
@@ -247,30 +248,48 @@ function App() {
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <AppTopbar sidebarAbierta={sidebarAbierta} onAlternarSidebar={alternarSidebar} />
 
-          {/* El contenido se centra a 1320px: sin tope, una tabla en un monitor
-              ancho deja el ojo viajando de un borde al otro. */}
-          <main className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-[1320px] px-5 py-7 lg:px-9 lg:py-8">
+          {/* ── El marco de 1320px ya no lo pone el shell ──
+
+              Antes este `<main>` scrolleaba entero y adentro había un solo
+              `<div>` que centraba TODAS las pantallas a 1320px. El punto de
+              venta es la primera que no entra en ese marco: ocupa el alto
+              completo y administra sus dos zonas de scroll —el catálogo por un
+              lado y la lista del ticket por el otro—, con la barra de búsqueda y
+              el pie de cobro siempre a la vista. Un ticket que scrollea con la
+              página deja de estar visible justo cuando tiene ocho ítems, que es
+              cuando hace falta mirarlo.
+
+              Así que el marco bajó a `<MarcoDePantalla>` —con el scroll
+              adentro— y cada ruta lo aplica. `/pos` es la ÚNICA que no, y esa
+              excepción está escrita en `docs/REGLAS-DISENO.md` y verificada por
+              `tests/marcoDePantalla.test.js`: si mañana alguien saca otra
+              pantalla del marco, ese test se pone en rojo hasta que lo declare.
+
+              El `<main>` pasa a `overflow-hidden` porque el scroll ahora es del
+              marco. Las alternativas —márgenes negativos en `Billing.jsx`, o
+              una ruta fuera del shell— están descartadas en la decisión 6 del
+              plan: las dos son peores y no hay que volver a intentarlas. */}
+          <main className="min-h-0 flex-1 overflow-hidden">
             <Routes>
               <Route path="/" element={<Navigate to="/pos" replace />} />
-              <Route path="/pos" element={<Billing />} />
-              <Route path="/ventas" element={<InvoicesList />} />
-              <Route path="/inventario" element={<Inventory />} />
-              <Route path="/recetas" element={<RouteGuard soloSuperadmin requiredModule="recetas"><Recipes /></RouteGuard>} />
-              <Route path="/produccion" element={<RouteGuard soloSuperadmin requiredModule="produccion"><Production /></RouteGuard>} />
-              <Route path="/clientes" element={<RouteGuard soloSuperadmin requiredModule="clientes"><Customers /></RouteGuard>} />
-              <Route path="/caja" element={<RouteGuard soloSuperadmin requiredModule="caja"><CashFlow /></RouteGuard>} />
-              <Route path="/impuestos" element={<RouteGuard soloSuperadmin requiredModule="impuestos"><Taxes /></RouteGuard>} />
-              <Route path="/proveedores" element={<Orders />} />
-              <Route path="/ordenes-compra" element={<RouteGuard requiredModule="ordenes-compra"><PurchaseOrders /></RouteGuard>} />
-              <Route path="/faltantes" element={<Faltantes />} />
-              <Route path="/comparador" element={<Comparador />} />
-              <Route path="/reportes" element={<RouteGuard soloSuperadmin requiredModule="reportes"><Reports /></RouteGuard>} />
-              <Route path="/gastos" element={<Expenses />} />
-              <Route path="/panel" element={<Dashboard />} />
-              <Route path="/facturacion" element={<Settings />} />
-              <Route path="/team" element={<Team />} />
-              <Route path="/suscripcion" element={<SubscriptionSettings />} />
+              <Route path="/pos" element={<div className="h-full"><Billing /></div>} />
+              <Route path="/ventas" element={<MarcoDePantalla><InvoicesList /></MarcoDePantalla>} />
+              <Route path="/inventario" element={<MarcoDePantalla><Inventory /></MarcoDePantalla>} />
+              <Route path="/recetas" element={<MarcoDePantalla><RouteGuard soloSuperadmin requiredModule="recetas"><Recipes /></RouteGuard></MarcoDePantalla>} />
+              <Route path="/produccion" element={<MarcoDePantalla><RouteGuard soloSuperadmin requiredModule="produccion"><Production /></RouteGuard></MarcoDePantalla>} />
+              <Route path="/clientes" element={<MarcoDePantalla><RouteGuard soloSuperadmin requiredModule="clientes"><Customers /></RouteGuard></MarcoDePantalla>} />
+              <Route path="/caja" element={<MarcoDePantalla><RouteGuard soloSuperadmin requiredModule="caja"><CashFlow /></RouteGuard></MarcoDePantalla>} />
+              <Route path="/impuestos" element={<MarcoDePantalla><RouteGuard soloSuperadmin requiredModule="impuestos"><Taxes /></RouteGuard></MarcoDePantalla>} />
+              <Route path="/proveedores" element={<MarcoDePantalla><Orders /></MarcoDePantalla>} />
+              <Route path="/ordenes-compra" element={<MarcoDePantalla><RouteGuard requiredModule="ordenes-compra"><PurchaseOrders /></RouteGuard></MarcoDePantalla>} />
+              <Route path="/faltantes" element={<MarcoDePantalla><Faltantes /></MarcoDePantalla>} />
+              <Route path="/comparador" element={<MarcoDePantalla><Comparador /></MarcoDePantalla>} />
+              <Route path="/reportes" element={<MarcoDePantalla><RouteGuard soloSuperadmin requiredModule="reportes"><Reports /></RouteGuard></MarcoDePantalla>} />
+              <Route path="/gastos" element={<MarcoDePantalla><Expenses /></MarcoDePantalla>} />
+              <Route path="/panel" element={<MarcoDePantalla><Dashboard /></MarcoDePantalla>} />
+              <Route path="/facturacion" element={<MarcoDePantalla><Settings /></MarcoDePantalla>} />
+              <Route path="/team" element={<MarcoDePantalla><Team /></MarcoDePantalla>} />
+              <Route path="/suscripcion" element={<MarcoDePantalla><SubscriptionSettings /></MarcoDePantalla>} />
               <Route path="/calculator" element={<Navigate to="/panel" replace />} />
               <Route path="/billing" element={<Navigate to="/pos" replace />} />
               <Route path="/invoices" element={<Navigate to="/ventas" replace />} />
@@ -279,7 +298,6 @@ function App() {
               <Route path="/expenses" element={<Navigate to="/gastos" replace />} />
               <Route path="/settings" element={<Navigate to="/facturacion" replace />} />
             </Routes>
-            </div>
           </main>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import api, { getSucursalesDeStock } from '../services/api';
 import { calcularPrecios } from '@/utils/precios';
+import { precioDeLinea } from '@/utils/mediosDePago';
 
 const useStore = create((set, get) => ({
   products: [],
@@ -203,8 +204,15 @@ const useStore = create((set, get) => ({
     const existing = cart.find(i => i.id === product.id);
     const { cashPrice, cardPrice, alliancePrice } = calculatePrices(product);
 
-    const priceMap = { ef: cashPrice, tr: cashPrice, qr: cashPrice, td: cashPrice, tc3: cardPrice, al: alliancePrice };
-    const price = priceMap[method] || cashPrice;
+    // El nivel de precio de cada medio sale de `utils/mediosDePago.js`. Antes
+    // este mapa estaba escrito a mano acá y otras dos veces más abajo: tres
+    // literales iguales empiezan iguales y terminan distintos, y con nueve
+    // medios en vez de tres hay que tocar los tres a la vez.
+    const price = precioDeLinea(method, {
+      base_cash: cashPrice,
+      base_card: cardPrice,
+      base_alliance: alliancePrice,
+    });
 
     if (existing) {
       set({
@@ -242,13 +250,11 @@ const useStore = create((set, get) => ({
       cart: get().cart.map(i => {
         if (i.id !== productId) return i;
 
-        // Un precio puesto a mano sobrevive al cambio de medio de pago. Si no,
-        // acordar $18.000 con el cliente y después tocar "Tarjeta" le devolvía
-        // el precio de lista sin avisar.
-        if (i.precio_manual) return { ...i, method };
-
-        const priceMap = { ef: i.base_cash, tr: i.base_cash, qr: i.base_cash, td: i.base_cash, tc3: i.base_card, al: i.base_alliance };
-        return { ...i, method, price: priceMap[method] || i.base_cash };
+        // Un precio puesto a mano sobrevive al cambio de medio de pago: lo
+        // resuelve `precioDeLinea`, que devuelve el precio de la línea cuando
+        // tiene la marca puesta. Si no, acordar $18.000 con el cliente y
+        // después tocar "Tarjeta" le devolvía el precio de lista sin avisar.
+        return { ...i, method, price: precioDeLinea(method, i) };
       })
     });
   },
@@ -272,8 +278,11 @@ const useStore = create((set, get) => ({
         if (i.id !== productId) return i;
 
         if (precio === '' || precio === null || precio === undefined) {
-          const priceMap = { ef: i.base_cash, tr: i.base_cash, qr: i.base_cash, td: i.base_cash, tc3: i.base_card, al: i.base_alliance };
-          return { ...i, price: priceMap[i.method] || i.base_cash, precio_manual: false };
+          // La marca se saca ANTES de pedir el precio: `precioDeLinea` respeta
+          // el precio a mano cuando la marca está puesta, que es justo lo que
+          // este camino viene a deshacer.
+          const sinMarca = { ...i, precio_manual: false };
+          return { ...sinMarca, price: precioDeLinea(i.method, sinMarca) };
         }
 
         const numero = Number(precio);

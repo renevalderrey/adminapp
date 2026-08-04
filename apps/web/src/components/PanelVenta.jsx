@@ -1,6 +1,12 @@
 import React from 'react'
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { presentacionDeEstado } from '@/utils/estadoVenta'
+// La lista de medios de pago estaba copiada acá abajo, y era la tercera copia:
+// la otra vive en `apps/api/src/utils/exportVentas.js` y la del punto de venta
+// estaba adentro de `Billing.jsx`. Ya se habían separado —el POS escribía
+// `tc3`, que no estaba en ninguna de las otras dos— y el panel lo mostraba
+// crudo sin que nada fallara.
+import { etiquetaDePago } from '@/utils/mediosDePago'
 import { AlertTriangle, Loader2, Printer } from 'lucide-react'
 
 // ════════════════════════════════════════════
@@ -17,26 +23,6 @@ import { AlertTriangle, Loader2, Printer } from 'lucide-react'
 //  retorno del foco a la fila. Escrito a mano ese trabajo de accesibilidad
 //  queda a medias. Lo nuestro es la medida, la sombra y la animación.
 // ════════════════════════════════════════════
-
-/**
- * Etiquetas de medio de pago.
- *
- * Son las mismas que escribe el archivo exportado (`routes/sales.js`), que a
- * su vez son las del sistema anterior: es lo que el usuario leyó durante años
- * en sus planillas.
- */
-const ETIQUETAS_DE_PAGO = {
-  ef: 'Efectivo',
-  tr: 'Transferencia',
-  qr: 'QR',
-  td: 'T. Débito',
-  tc1: 'Créd. 1 pago',
-  tc3v: 'Visa 3c',
-  tc3m: 'Master 3c',
-  tc3n: 'Naranja 3c',
-  al: 'Alianza',
-  tc: 'T. Crédito',
-}
 
 const ETIQUETAS_DE_TIPO = { 1: 'Factura A', 6: 'Factura B', 11: 'Factura C' }
 
@@ -199,7 +185,7 @@ export default function PanelVenta({ abierto, onOpenChange, venta, cargando, acc
                 {ETIQUETAS_DE_CONDICION[venta.customer?.tax_condition] || (venta.customer_id ? venta.customer?.tax_condition : 'Consumidor final')}
               </Dato>
               <Dato etiqueta="Medio de pago">
-                {ETIQUETAS_DE_PAGO[venta.payment_method] || venta.payment_method}
+                {venta.payment_method ? etiquetaDePago(venta.payment_method) : null}
               </Dato>
               <Dato etiqueta="Sucursal">
                 {(venta.puntoDeVenta && venta.puntoDeVenta.name) || venta.location}

@@ -26,6 +26,11 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { printInvoice } from '@/utils/printInvoice'
+import { useAtajosDelPos } from '@/hooks/useAtajosDelPos'
+import { ATRIBUTO_BUSCADOR } from '@/utils/atajosDelPos'
+import { buscarEnCatalogo } from '@/utils/busquedaDelPos'
+import { calcularVuelto, sugerenciasDeVuelto } from '@/utils/vuelto'
+import { useConfirmDialog } from '@/components/ConfirmDialog'
 
 const CATEGORIES = [
   'proteina', 'pre', 'amino', 'creatina', 'colageno', 'vitamina',
@@ -113,34 +118,36 @@ const Billing = () => {
     if (cart.length === 0) idDelTicket.current = nuevoIdDeVenta()
   }, [cart.length])
 
+  // ── El foco vive en la búsqueda ──
+  //
+  // Es el campo en el que escribe el lector de código de barras, así que es
+  // donde tiene que estar el cursor al abrir la pantalla y al terminar cada
+  // venta. Antes el foco quedaba en el `<body>` y la segunda venta de la fila
+  // arrancaba con un clic, que es justo el gesto que los atajos vienen a sacar.
+  const buscador = useRef(null)
+
+  // Al montar, y NADA MÁS que al montar. Ver el comentario del `finally` de
+  // `handleRegisterSale` para el otro momento en que el foco se fuerza.
+  useEffect(() => {
+    buscador.current?.focus()
+  }, [])
+
+  // La confirmación de `Esc`. `useConfirmDialog` ya resuelve el overlay, la
+  // trampa de foco y su propio `Esc`.
+  const { confirm, ConfirmDialog } = useConfirmDialog()
+
   // ── Vuelto ──
   // Con cuánto paga el cliente. Se mantiene como texto y no como número para
   // que el campo pueda quedar vacío: un 0 obligaría a borrarlo antes de tipear.
   const [pagaCon, setPagaCon] = useState('')
 
   const hayEfectivo = cart.some(i => i.method === 'ef')
-  const vuelto = Math.round((Number(pagaCon || 0) - totalAmount) * 100) / 100
 
-  /**
-   * Los tres billetes con los que más probablemente pague.
-   *
-   * Se redondea el total hacia arriba al siguiente múltiplo "de bolsillo". Con
-   * un total de $47.300 propone $50.000, $60.000 y $100.000, que es lo que
-   * alguien saca de la billetera. Proponer $47.400 no le sirve a nadie.
-   */
-  const sugerenciasDeVuelto = useMemo(() => {
-    if (totalAmount <= 0) return []
-
-    const escalones = [1000, 5000, 10000, 20000, 50000, 100000]
-    const montos = new Set()
-
-    for (const escalon of escalones) {
-      const redondeado = Math.ceil(totalAmount / escalon) * escalon
-      if (redondeado > totalAmount) montos.add(redondeado)
-    }
-
-    return [...montos].sort((a, b) => a - b).slice(0, 3)
-  }, [totalAmount])
+  // Las dos cuentas viven en `utils/vuelto.js`. Estaban acá adentro, una en una
+  // línea suelta y la otra en un `useMemo`, donde ningún test las alcanzaba: es
+  // aritmética con plata y CONVENCIONES obliga a probarla con casos de borde.
+  const { vuelto, falta } = calcularVuelto(pagaCon, totalAmount)
+  const sugerencias = useMemo(() => sugerenciasDeVuelto(totalAmount), [totalAmount])
 
   const getAvailableStock = (product) => {
     const entry = pvId
@@ -163,18 +170,28 @@ const Billing = () => {
     distance: 100,
   }), [baseProducts])
 
-  const filteredProducts = useMemo(() => {
-    const raw = searchQuery
-      ? fuse.search(searchQuery).map(r => r.item)
-      : baseProducts
+  // ── La búsqueda: código exacto → código inexistente → difusa ──
+  //
+  // `buscarEnCatalogo` resuelve los tres pasos. La lista que se DIBUJA y el
+  // producto que agrega `Enter` salen del mismo lugar a propósito: si la lista
+  // usara la difusa cruda y el atajo usara esto, el operador vería un producto
+  // arriba de todo y `Enter` agregaría otro.
+  //
+  // La consecuencia visible es la buscada: escanear un código que no está
+  // cargado deja la lista vacía en vez de mostrar el producto más parecido.
+  const busqueda = useMemo(
+    () => buscarEnCatalogo(baseProducts, searchQuery, fuse),
+    [fuse, searchQuery, baseProducts]
+  )
 
-    return [...raw].sort((a, b) => {
+  const filteredProducts = useMemo(() => {
+    return [...busqueda.resultados].sort((a, b) => {
       const aStock = getAvailableStock(a) >= 1 ? 1 : 0
       const bStock = getAvailableStock(b) >= 1 ? 1 : 0
       if (aStock !== bStock) return bStock - aStock
       return (a.name || '').localeCompare(b.name || '')
     })
-  }, [fuse, searchQuery, baseProducts, pvId, location])
+  }, [busqueda, pvId, location])
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PER_PAGE))
   const safePage = Math.min(page, totalPages)
@@ -337,8 +354,116 @@ const Billing = () => {
       toast.error('Error: ' + (data?.message || data?.error || err.message))
     } finally {
       setLoading(false)
+
+      // ── El foco se pide acá, imperativamente, y NO con un efecto ──
+      //
+      // Los escenarios 3.3 y 3.7 hablan del mismo instante y piden cosas
+      // opuestas: «terminó la venta → el foco vuelve a la búsqueda» y «estoy
+      // escribiendo el CUIT y llega la respuesta de un pedido en vuelo → el
+      // foco no se me mueve».
+      //
+      // Se resuelve forzando el foco SOLO al terminar la operación de cobro,
+      // que es la que además limpia el CUIT: no hay nada que preservar. Los
+      // demás pedidos en vuelo —la búsqueda de fichas de cliente— nunca tocan
+      // el foco.
+      //
+      // Un `useEffect(() => buscador.current?.focus(), [loading])` haría lo
+      // mismo en apariencia y rompería 3.7 la primera vez que el operador
+      // tipee un CUIT mientras se resuelve cualquier otra cosa. Es la salida
+      // «obvia» y vuelve sola: hay un test que la detiene.
+      //
+      // Va en el `finally` porque los tres finales —todo bien, AFIP rechaza, la
+      // API rechaza— terminan la operación, y en los tres el operador sigue con
+      // la venta que viene o corrige el ticket que quedó.
+      buscador.current?.focus()
     }
   }
+
+  // ════════════════════════════════════════════
+  //  Los cuatro atajos
+  //
+  //  `atajoDe` decide SI se dispara; acá se decide QUÉ hace cada uno. La
+  //  separación es la que permite probar las cuarenta combinaciones de teclas
+  //  sin montar la pantalla.
+  // ════════════════════════════════════════════
+
+  /** Agrega un producto y devuelve el cursor a la búsqueda (escenario 3.6). */
+  const agregarYVolverAlBuscador = (producto) => {
+    addToCart(producto)
+    buscador.current?.focus()
+  }
+
+  const enfocarBusqueda = () => {
+    buscador.current?.focus()
+    // Se selecciona lo que haya escrito: `/` en el medio de una búsqueda que no
+    // encontró nada sirve para reemplazarla, no para agregarle texto.
+    buscador.current?.select?.()
+  }
+
+  const agregarPrimero = () => {
+    if (busqueda.codigoNoEncontrado) {
+      // El aviso apunta al DATO que falta y no al producto: si el catálogo
+      // tiene los códigos de barras a medio cargar, el producto puede estar y
+      // el código no. Y la consulta NO se borra: borrarla obliga a volver a
+      // tipear el código que justamente no existe (escenario 2.5).
+      toast.warning('Ningún producto tiene ese código de barras o SKU. Buscalo por nombre en el mismo campo.')
+      return
+    }
+
+    const primero = filteredProducts[0]
+
+    if (!primero) {
+      toast.warning('No hay ningún producto que coincida con la búsqueda.')
+      return
+    }
+
+    // Lo que el botón no deja hacer, el atajo tampoco (escenario 2.6).
+    if (getAvailableStock(primero) <= 0) {
+      toast.warning(`«${primero.name}» no tiene stock en esta sucursal.`)
+      return
+    }
+
+    addToCart(primero)
+    // La consulta se vacía y el foco se queda donde estaba —en la búsqueda—
+    // para que el escaneo siguiente entre directo.
+    setSearchQuery('')
+  }
+
+  /**
+   * `Esc`, con sus tres casos.
+   *
+   * Con texto en la búsqueda limpia EL CAMPO y no toca el ticket: en un
+   * mostrador `Esc` se aprieta por reflejo para cerrar cualquier cosa, y un
+   * ticket de quince líneas con precios negociados a mano no se recupera.
+   */
+  const limpiar = async () => {
+    if (searchQuery) {
+      setSearchQuery('')
+      buscador.current?.focus()
+      return
+    }
+
+    // Con el ticket vacío no se abre nada: un diálogo para confirmar que se
+    // borre lo que ya está borrado es ruido.
+    if (cart.length === 0) return
+
+    const confirmado = await confirm('¿Vaciar el ticket? Se pierden las líneas cargadas y los precios puestos a mano.')
+
+    if (confirmado) clearCart()
+
+    // ⚠ Este `focus()` no es adorno, y va en los DOS finales. El diálogo
+    // devuelve el foco al elemento que lo abrió, y acá no hay elemento: lo
+    // abrió una tecla. Sin esto el foco vuelve al `<body>` y el operador tiene
+    // que apretar `/` para volver a donde ya estaba.
+    buscador.current?.focus()
+  }
+
+  useAtajosDelPos({
+    enfocarBusqueda,
+    agregarPrimero,
+    cobrar: handleRegisterSale,
+    limpiar,
+  })
 
   const handleTestInvoice = async () => {
     if (!docType.startsWith('afip_')) {
@@ -404,6 +529,9 @@ const Billing = () => {
 
   return (
     <div className="space-y-6">
+      {/* La confirmación de `Esc`. Se dibuja siempre y se abre sola. */}
+      <ConfirmDialog />
+
       <div>
         <h1>Punto de Venta</h1>
         <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
@@ -419,7 +547,13 @@ const Billing = () => {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar productos por nombre o marca..."
+                  // La marca la exporta `utils/atajosDelPos.js`: si el campo
+                  // dijera una cosa y la regla leyera otra, `Enter` no
+                  // agregaría nada y no habría ningún error, simplemente no
+                  // pasaría nada.
+                  {...{ [ATRIBUTO_BUSCADOR]: '' }}
+                  ref={buscador}
+                  placeholder="Buscar productos por nombre o marca... (apretá / para venir acá)"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9 h-10"
@@ -487,7 +621,7 @@ const Billing = () => {
                     <p className="text-center font-bold font-mono text-sm text-blue-500">${cardPrice.toLocaleString()}</p>
                     <p className="text-center font-bold font-mono text-sm text-warn">${alliancePrice.toLocaleString()}</p>
                     <div className="flex justify-end">
-                      <Button size="icon" className="h-8 w-8 bg-brand hover:bg-brand-dark text-white" onClick={() => addToCart(p)} disabled={outOfStock}>
+                      <Button size="icon" className="h-8 w-8 bg-brand hover:bg-brand-dark text-white" onClick={() => agregarYVolverAlBuscador(p)} disabled={outOfStock}>
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>
@@ -776,7 +910,7 @@ const Billing = () => {
 
                   {/* Atajos para los billetes con los que más se paga. */}
                   <div className="flex flex-wrap gap-1">
-                    {sugerenciasDeVuelto.map(monto => (
+                    {sugerencias.map(monto => (
                       <Button key={monto} size="sm" variant="outline"
                         className="h-6 px-2 text-[10px] font-mono"
                         onClick={() => setPagaCon(String(monto))}>
@@ -790,9 +924,14 @@ const Billing = () => {
                       <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                         Vuelto
                       </span>
-                      <span className={`text-lg font-black font-mono tabular-nums ${vuelto < 0 ? 'text-destructive' : 'text-foreground'}`}>
-                        {vuelto < 0
-                          ? `Faltan $${Math.abs(vuelto).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+                      {/* «Faltan $3.200» y no «−$3.200»: interpretar un signo
+                          con la mano en la caja es donde se entrega mal el
+                          cambio. `calcularVuelto` devuelve las dos magnitudes
+                          separadas justamente para no tener que mirar un signo
+                          acá. */}
+                      <span className={`text-lg font-black font-mono tabular-nums ${falta > 0 ? 'text-destructive' : 'text-foreground'}`}>
+                        {falta > 0
+                          ? `Faltan $${falta.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
                           : `$${vuelto.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`}
                       </span>
                     </div>

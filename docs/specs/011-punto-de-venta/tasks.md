@@ -340,7 +340,7 @@ Es la decisión 1 del plan: la regla sale del componente porque un test de rende
 que verifica una regla es diez veces más lento y se pone en rojo cuando alguien
 mueve un `<div>`. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
 
-- [ ] **T1106** [P] ⚠ **Dependencia (a) y (b).** Crear
+- [x] **T1106** [P] ⚠ **Dependencia (a) y (b).** Crear
       `apps/web/src/utils/mediosDePago.js` con `SEGMENTOS = ['efectivo',
       'tarjeta', 'alianza']`, `MEDIOS` con los nueve códigos de la decisión 2 del
       plan —cada uno con `codigo`, `etiqueta`, `etiquetaCorta`, `segmento` y
@@ -376,7 +376,7 @@ mueve un `<div>`. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       mapa cobra el precio de efectivo por una compra con tarjeta y **nada
       falla**.
 
-- [ ] **T1107** [P] ⚠ **Dependencia (d).** Crear
+- [x] **T1107** [P] ⚠ **Dependencia (d).** Crear
       `apps/web/src/utils/comprobantes.js` con
       `comprobantesDisponibles({ condicionFiscal, afipConfigurado })` →
       la lista de `{ valor, etiqueta, fiscal, disponible, motivo }`,
@@ -412,7 +412,7 @@ mueve un `<div>`. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       `desglosarIva` y el tercero. El cuarto es la regla de CONVENCIONES sobre
       dinero: casos de borde obligatorios.
 
-- [ ] **T1108** [P] Crear `apps/web/src/utils/atajosDelPos.js` con
+- [x] **T1108** [P] Crear `apps/web/src/utils/atajosDelPos.js` con
       `atajoDe(evento)` → `'enfocarBusqueda' | 'agregarPrimero' | 'cobrar' |
       'limpiar' | null`. Es **pura**: recibe `{ key, ctrlKey, metaKey, altKey,
       shiftKey, defaultPrevented, target: { tagName, isContentEditable, dataset } }`
@@ -448,7 +448,7 @@ mueve un `<div>`. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       primero se pone en rojo; se saca el `if (evento.defaultPrevented) return
       null` y el cuarto.
 
-- [ ] **T1109** [P] Crear `apps/web/src/utils/vuelto.js` moviendo
+- [x] **T1109** [P] Crear `apps/web/src/utils/vuelto.js` moviendo
       `sugerenciasDeVuelto` desde el `useMemo` de `apps/web/src/pages/Billing.jsx:106-118`,
       junto con el cálculo del vuelto (`:97`) como
       `calcularVuelto(pagaCon, total)` → `{ vuelto, falta }`. Es aritmética con
@@ -468,7 +468,7 @@ mueve un `<div>`. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       totalAmount` por `>=` y el tercero se pone en rojo; se devuelve el vuelto
       crudo sin separar `falta` y el cuarto.
 
-- [ ] **T1110** [P] ⚠ **Hallazgo 5 del plan: sin esto, `Enter` con un escáner
+- [x] **T1110** [P] ⚠ **Hallazgo 5 del plan: sin esto, `Enter` con un escáner
       agrega al ticket un producto que nadie escaneó.** Crear
       `apps/web/src/utils/busquedaDelPos.js` con
       `buscarEnCatalogo(catalogo, consulta, fuse)` →
@@ -496,7 +496,7 @@ mueve un `<div>`. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       código de barras o SKU» —apunta al dato faltante y no al producto— y el
       operador puede seguir buscando por nombre en el mismo campo.
 
-- [ ] **T1111** ⚠ **Dependencia (a): la lista de la API tiene diez claves, no
+- [x] **T1111** ⚠ **Dependencia (a): la lista de la API tiene diez claves, no
       nueve.** Dos archivos, un commit: en `apps/api/src/utils/exportVentas.js`,
       agregar `tc3: 'T. Crédito 3c'` a `ETIQUETAS_DE_PAGO` (`:22-33`) —es el
       código que el POS **ya escribió** en ventas reales y que hoy se exporta
@@ -524,7 +524,7 @@ mueve un `<div>`. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       otro paquete como texto— y es exactamente lo que hace falta: **si no
       existiera, `tc3` no lo habría visto nadie**, que es lo que pasó.
 
-- [ ] **T1112** [P] ⚠ **Dependencia (b).** En
+- [x] **T1112** [P] ⚠ **Dependencia (b).** En
       `apps/web/src/store/useStore.js`, los **tres** `priceMap` escritos a mano
       —`addToCart` (`:193`), `updateCartMethod` (`:237`) y `updateCartPrice`
       (`:262`)— pasan a llamar a `precioDeLinea` de T1106. Tres literales iguales
@@ -548,7 +548,7 @@ mueve un `<div>`. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       efectivo. **Ese es el test que importa de esta tarea**: sin él, entre la
       fase 3 y la fase 9 todas las ventas con tarjeta se cobran mal y nada falla.
 
-- [ ] **T1113** [P] En `apps/web/src/components/PanelVenta.jsx`, borrar la copia
+- [x] **T1113** [P] En `apps/web/src/components/PanelVenta.jsx`, borrar la copia
       local de `ETIQUETAS_DE_PAGO` (`:28-39`) e importar `etiquetaDePago` de
       T1106. Es la tercera copia de la misma lista y el archivo lo dice en su
       propio comentario («son las mismas que escribe el archivo exportado»), que
@@ -563,7 +563,7 @@ mueve un `<div>`. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       `PanelVenta.jsx` y el test se pone en rojo. Sin la guardia, la copia vuelve
       la próxima vez que alguien necesite una etiqueta y no quiera importar nada.
 
-- [ ] **T1114** [P] En `apps/web/src/pages/Dashboard.jsx:205-215`, el bloque «Por
+- [x] **T1114** [P] En `apps/web/src/pages/Dashboard.jsx:205-215`, el bloque «Por
       Método de Pago (30d)» deja de imprimir la clave cruda
       (`method.replace(/_/g, ' ')`) y usa `etiquetaDePago` de T1106. Con tres
       valores esto ya era feo; a partir de la fase 9 le muestra `tc3n` al
@@ -595,7 +595,7 @@ historial salen ahora de un solo lugar.
 **en el momento en que se escribe** y no treinta juntos al final, cuando ya nadie
 sabe cuál vino de dónde y la salida barata es comentar la guardia.
 
-- [ ] **T1115** ⚠⚠ **Esta tarea deja `npm run test:web` EN ROJO a propósito, y
+- [x] **T1115** ⚠⚠ **Esta tarea deja `npm run test:web` EN ROJO a propósito, y
       así se queda hasta T1122.** Crear vacíos —un componente que devuelve `null`
       y un comentario de qué va a ser— `apps/web/src/components/MarcoDePantalla.jsx`,
       `apps/web/src/components/pos/CatalogoDelPos.jsx`,
@@ -660,7 +660,7 @@ propio scroll, **sin que ninguna de las otras diecisiete pantallas cambie**.
 el POS.** Un error acá no rompe el POS: rompe **todo lo demás**. Y `npm run
 build` no lo ve.
 
-- [ ] **T1116** En `apps/web/src/components/MarcoDePantalla.jsx` (creado vacío en
+- [x] **T1116** En `apps/web/src/components/MarcoDePantalla.jsx` (creado vacío en
       T1115), mover el contenedor que hoy está en `apps/web/src/App.jsx:253`:
       `mx-auto max-w-[1320px] px-5 py-7 lg:px-9 lg:py-8`, más `overflow-y-auto
       h-full`. En `App.jsx`, el `<main>` (`:252`) pasa de
@@ -712,7 +712,7 @@ que se note** y la que tiene diecisiete criterios de aceptación; probarlos sobr
 un dibujo que ya funciona los aísla del riesgo de la reescritura. Si algo falla,
 se sabe que es el teclado y no el layout.
 
-- [ ] **T1117** Crear `apps/web/src/hooks/useAtajosDelPos.js` con el patrón de la
+- [x] **T1117** Crear `apps/web/src/hooks/useAtajosDelPos.js` con el patrón de la
       decisión 5 del plan: **dos efectos**, uno sin deps que guarda las acciones
       en un `ref` en cada render, y otro con **deps `[]`** que suscribe
       `keydown` en `window` una sola vez y devuelve su `removeEventListener`. El
@@ -750,7 +750,7 @@ se sabe que es el teclado y no el layout.
       Para el tercero, se agrega `setSearchQuery('')` incondicional en
       `agregarPrimero` y se pone en rojo.
 
-- [ ] **T1118** En `apps/web/src/pages/Billing.jsx`, el foco automático (historia
+- [x] **T1118** En `apps/web/src/pages/Billing.jsx`, el foco automático (historia
       3): un `ref` en el campo de búsqueda, `focus()` al montar, y `focus()`
       **imperativo al final del handler de cobro** —no por `useEffect`— y al
       agregar un producto con el mouse. ⚠ **El `useEffect` no puede depender de
@@ -776,7 +776,7 @@ se sabe que es el teclado y no el layout.
       que inventar para dos escenarios que se contradecían: sin él, la salida
       «obvia» —el efecto— vuelve sola.
 
-- [ ] **T1119** En `apps/web/src/pages/Billing.jsx`, la acción `limpiar` de
+- [x] **T1119** En `apps/web/src/pages/Billing.jsx`, la acción `limpiar` de
       T1117: con texto en la búsqueda, `Esc` limpia **el campo** y deja el foco
       ahí, y **no toca el ticket** (FR-036); con la búsqueda ya vacía y el ticket
       cargado, abre la confirmación con `useConfirmDialog`
