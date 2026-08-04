@@ -103,6 +103,17 @@ export default function TicketDelPos({
       {avisoDeCobro && (
         <div className="mx-4 mt-3 shrink-0 rounded-lg border border-danger-line bg-danger-soft px-3 py-2.5">
           <p className="text-[12.5px] text-danger">{avisoDeCobro.mensaje}</p>
+          {/* Las diferencias van renglón por renglón y con los números
+              concretos: «se registraron 1 y el ticket lleva 2» es lo que el
+              operador necesita para decidir, y no entra en una sola línea de
+              texto corrido. */}
+          {avisoDeCobro.detalles?.length > 0 && (
+            <ul className="mt-1.5 list-disc space-y-0.5 pl-4">
+              {avisoDeCobro.detalles.map((detalle) => (
+                <li key={detalle} className="text-[12px] text-danger">{detalle}</li>
+              ))}
+            </ul>
+          )}
           <div className="mt-2 flex items-center gap-2">
             {avisoDeCobro.reintentable && (
               <button

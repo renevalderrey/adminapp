@@ -9,6 +9,7 @@ import { ATRIBUTO_BUSCADOR, ATRIBUTO_CAMPO, campoLimpiable } from '@/utils/atajo
 import { buscarEnCatalogo } from '@/utils/busquedaDelPos'
 import { calcularVuelto, sugerenciasDeVuelto } from '@/utils/vuelto'
 import { llevaVuelto } from '@/utils/mediosDePago'
+import { comparacionDelReintento } from '@/utils/reintentoDeVenta'
 import { comprobantesDisponibles, comprobanteInicial, desglosarIva } from '@/utils/comprobantes'
 import { filaDeStock } from '@/utils/inventario'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
@@ -486,8 +487,25 @@ const Billing = () => {
     pv: settings.afip_pv,
   })
 
-  const comprobanteImpreso = (venta, afipData, lineas) => (afipData
-    ? {
+  /**
+   * El comprobante que se imprime.
+   *
+   * ⚠ Las líneas salen de LA VENTA cuando el servidor las devolvió, y solo caen
+   * a las de pantalla cuando no vinieron —el alta normal responde la cabecera—.
+   * Mezclar las dos fuentes era el defecto: `items` de pantalla con `total` del
+   * servidor imprimía **dos unidades con el total de una** después de un
+   * reintento del mismo ticket modificado. Un papel que no cierra consigo mismo
+   * es peor que no imprimir nada.
+   */
+  const lineasDelComprobante = (venta, lineasEnPantalla) => (
+    Array.isArray(venta.items) ? venta.items : lineasEnPantalla
+  )
+
+  const comprobanteImpreso = (venta, afipData, lineasEnPantalla) => {
+    const lineas = lineasDelComprobante(venta, lineasEnPantalla)
+
+    if (afipData) {
+      return {
         ...afipData,
         items: lineas,
         total: parseFloat(venta.total),
@@ -498,18 +516,21 @@ const Billing = () => {
         empresa: empresaActiva,
         empresaNombre: empresaActiva?.name,
       }
-    : {
-        voucherNumber: venta.id,
-        pointOfSale: 0,
-        typeStr: docType === 'remito' ? 'REMITO' : 'RECIBO X',
-        items: lineas,
-        total: parseFloat(venta.total),
-        customer: customerName || 'Consumidor Final',
-        date: new Date().toLocaleDateString('es-AR'),
-        isInternal: true,
-        empresa: empresaActiva,
-        empresaNombre: empresaActiva?.name,
-      })
+    }
+
+    return {
+      voucherNumber: venta.id,
+      pointOfSale: 0,
+      typeStr: docType === 'remito' ? 'REMITO' : 'RECIBO X',
+      items: lineas,
+      total: parseFloat(venta.total),
+      customer: customerName || 'Consumidor Final',
+      date: new Date().toLocaleDateString('es-AR'),
+      isInternal: true,
+      empresa: empresaActiva,
+      empresaNombre: empresaActiva?.name,
+    }
+  }
 
   const handleRegisterSale = async () => {
     if (cart.length === 0) return
@@ -538,6 +559,21 @@ const Billing = () => {
       setPasoDelCobro('registrando')
       setArcaDemora(false)
       setAvisoDeCobro(null)
+
+      // ── El comprobante de la venta ANTERIOR se olvida acá ──
+      //
+      // Y no en el final feliz, que es donde estaba implícito. La rama del
+      // rechazo de AFIP vacía el ticket y vuelve con un `return` sin tocar
+      // `lastInvoice`: quedaban, uno al lado del otro, el aviso rojo «la venta
+      // quedó REGISTRADA pero sin comprobante» y el botón verde «Imprimir el
+      // comprobante 40» —el de la venta anterior, de otro cliente—, justo
+      // cuando el operador está buscando algo que darle al que tiene enfrente.
+      //
+      // Un comprobante fiscal ajeno entregado al cliente equivocado no se
+      // deshace: hay que emitir una nota de crédito. Se limpia al EMPEZAR el
+      // cobro porque así lo cubren los cuatro finales de una sola vez, sin
+      // repetirlo en cada `return`, que es como se olvida uno.
+      setLastInvoice(null)
 
       if (isAfip && !isAfipConfigured) {
         throw new Error('AFIP no está configurado. Revisá Ajustes.')
@@ -589,6 +625,44 @@ const Billing = () => {
       // y su stock ya se descontó, así que lo que muestra la pantalla tiene que
       // decir la verdad aunque el CAE después falle.
       aplicarStockDelServidor(ventaRes.data.stock)
+
+      // ── El reintento que el servidor reconoce, pero con OTRO contenido ──
+      //
+      // `200 { yaRegistrada: true }` significa «ya tengo una venta con este
+      // id», y el id es uno por TICKET (FR-043). Aceptarlo sin mirar es cómo se
+      // entregan dos unidades habiendo registrado y descontado una: la red se
+      // corta después del commit, el operador lee «Error» y entiende que no se
+      // registró nada, el cliente pide otra unidad, se vuelve a cobrar con el
+      // mismo id y vuelve la venta VIEJA. El motivo largo está en
+      // `utils/reintentoDeVenta.js`.
+      //
+      // El ticket NO se vacía: nada de lo que hay en pantalla quedó registrado
+      // como tal, así que es el final (c) y no el (b) —vaciarlo tiraría la única
+      // evidencia de lo que se estaba por cobrar, y además renovaría el id, con
+      // lo cual el intento siguiente registraría las dos unidades ENTERAS sobre
+      // la que ya se descontó—. Lo que corresponde es que el operador vea los
+      // dos contenidos y lo resuelva desde el historial.
+      //
+      // Y no se pide el CAE: un comprobante fiscal por $1.500 mientras la
+      // pantalla dice $3.000 es exactamente el papel que no cierra.
+      if (ventaRes.data.yaRegistrada) {
+        const { coincide, diferencias } = comparacionDelReintento(venta, {
+          lineas: lineasCobradas,
+          total: totalAmount,
+        })
+
+        if (!coincide) {
+          setAvisoDeCobro({
+            reintentable: false,
+            mensaje: `La venta ${venta.id} YA estaba registrada, y con OTRO contenido: `
+              + 'lo que quedó asentado no es lo que hay en pantalla. Este ticket no se '
+              + 'registró de nuevo y sigue acá. Resolvelo desde el historial de ventas, '
+              + 'y vaciá el ticket para empezar una operación nueva.',
+            detalles: diferencias,
+          })
+          return
+        }
+      }
 
       // ── 2. Pedir el CAE, si corresponde ──
       let afipData = null

@@ -407,14 +407,37 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
     // su stock ya se descontó cuando se creó. Devolver los avisos de aquella vez
     // los mostraria dos veces y el navegador escribiria de nuevo un stock viejo.
     //
-    // El findScoped lleva req.empresaId, asi que un id que existe en OTRA
-    // empresa no se encuentra y la venta se crea normalmente. Es lo correcto:
-    // los ids son de la empresa, no globales.
+    // ── Las LINEAS van en la respuesta, y no son decoracion ──
+    //
+    // Sin ellas, «ya registrada» es una afirmacion que el navegador no puede
+    // verificar: un reintento del mismo ticket MODIFICADO —se cortó la red, el
+    // operador leyó «Error», el cliente pidió una unidad más, se volvió a
+    // cobrar— recibe la venta VIEJA con el mismo id, y la pantalla no tiene con
+    // qué darse cuenta. Se entregan dos unidades, se registró y se descontó una,
+    // y el comprobante impreso muestra dos lineas con el total de una.
+    //
+    // Con `items` en la respuesta, el cliente compara lo que mandó contra lo que
+    // volvió y solo trata como éxito silencioso el reintento que de verdad
+    // coincide. El `include` no lleva `lock`, asi que no hay riesgo del LEFT
+    // OUTER JOIN … FOR UPDATE que PostgreSQL rechaza —el motivo por el que
+    // `POST /:id/facturar` NO puede traerlas—.
+    //
+    // El findScoped lleva req.empresaId, asi que esta idempotencia es POR
+    // EMPRESA. ⚠ Un id que existe en otra empresa NO se encuentra acá y la venta
+    // se intenta crear, pero `Sale.id` es la clave primaria GLOBAL: el insert
+    // choca contra la PK, el catch relee con findScoped —que sigue sin
+    // encontrarla— y la respuesta es un 500, igual en el reintento. Es
+    // despreciable —exige el mismo milisegundo Y los mismos 8 hexadecimales de
+    // `nuevoIdDeVenta()`— y queda escrito acá porque antes este comentario
+    // afirmaba que el caso estaba resuelto y no lo está.
     //
     // Va ANTES de resolver la sucursal a proposito: un reintento de una venta ya
     // registrada tiene que responder lo mismo aunque la empresa se haya quedado
     // sin sucursales entre medio.
-    const yaExistente = await findScoped(Sale, id, req.empresaId, { transaction: t });
+    const yaExistente = await findScoped(Sale, id, req.empresaId, {
+      transaction: t,
+      include: [{ model: SaleItem, as: 'items' }],
+    });
 
     if (yaExistente) {
       await t.rollback();
@@ -595,7 +618,11 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
     // que gano ya commiteo —Postgres lo hizo esperar en el indice—, asi que la
     // fila esta.
     if (err.name === 'SequelizeUniqueConstraintError') {
-      const registrada = await findScoped(Sale, req.body.id, req.empresaId);
+      // Con las lineas, por el mismo motivo que la rama de arriba: el navegador
+      // no puede dar por buena una venta que no puede comparar.
+      const registrada = await findScoped(Sale, req.body.id, req.empresaId, {
+        include: [{ model: SaleItem, as: 'items' }],
+      });
 
       if (registrada) {
         logger.info(

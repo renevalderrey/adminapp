@@ -384,7 +384,7 @@ omisión.
     operativo o del navegador no puede terminar cobrando una venta.
 15. **Given** que salgo del punto de venta a otra pantalla, **When** aprieto `/`,
     **Then** no pasa nada: el escuchador vive y muere con la pantalla.
-16. **Given** la pantalla, **When** la miro, **Then** los tres atajos están
+16. **Given** la pantalla, **When** la miro, **Then** los atajos están
     **escritos donde se usan** —en la búsqueda, en el ticket vacío y adentro del
     botón de cobrar—, con `<kbd>` sobre `surface-3`. Un atajo que no está escrito
     en ningún lado no lo usa nadie.
@@ -753,9 +753,14 @@ anulación.
 
 #### Atajos de teclado
 
-- **FR-030**: DEBE haber exactamente tres atajos, con este comportamiento:
+- **FR-030**: DEBE haber exactamente **cuatro** atajos, con este comportamiento:
   `/` lleva el foco a la búsqueda; `Enter` **dentro de la búsqueda** agrega el
   primer resultado; `Ctrl+Enter` (y `⌘+Enter` en Mac) cobra; `Esc` limpia.
+  > Decía «tres» y enumeraba cuatro teclas. El pedido nombra **tres acciones**
+  > —buscar, cobrar y limpiar—, pero agregar el primer resultado con `Enter` es
+  > una cuarta que sale de la maqueta (`:345`, `:435`) y que `atajoDe`
+  > (`utils/atajosDelPos.js`) devuelve como un valor más. Son cuatro teclas y
+  > cuatro acciones; la tabla de la historia 2 siempre dijo cuatro.
 - **FR-031**: `Enter` **NO DEBE cobrar nunca**, esté donde esté el foco. Un
   lector de código de barras termina cada lectura con `Enter`, y ese es el uso
   principal del campo de búsqueda. Contradice la línea de
@@ -781,9 +786,11 @@ anulación.
   modificador que le corresponde.
 - **FR-040**: El escuchador de teclado DEBE montarse y desmontarse **con la
   pantalla**. Fuera del punto de venta, `/` no puede hacer nada.
-- **FR-041**: Los tres atajos DEBEN estar **escritos en la pantalla**, cada uno
-  al lado de lo que dispara: en la búsqueda, en el ticket vacío y adentro del
-  botón de cobrar, con `<kbd>`.
+- **FR-041**: Los atajos DEBEN estar **escritos en la pantalla**, cada uno al
+  lado de lo que dispara: en la búsqueda, en el ticket vacío y adentro del botón
+  de cobrar, con `<kbd>`. Son **tres lugares**, no tres atajos: `Enter` aparece
+  en dos —la búsqueda y el ticket vacío— porque es la misma tecla explicada
+  donde hace falta.
 
 #### El cobro
 

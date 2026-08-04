@@ -101,8 +101,15 @@ describe('POST / no registra dos veces la misma venta', () => {
 
   it('POST / busca la venta por id ANTES de crearla, y con findScoped', () => {
     // Con findByPk, un `id` que existe en OTRA empresa cliente devolvería esa
-    // venta y el POS imprimiría un comprobante ajeno. Los ids son de la empresa,
-    // no globales: acotado por empresa, ese mismo id se crea normalmente.
+    // venta y el POS imprimiría un comprobante ajeno. La idempotencia es POR
+    // EMPRESA: los ids se buscan acotados.
+    //
+    // ⚠ Lo que este test NO afirma —y el comentario del archivo decía mal— es
+    // que un id de otra empresa se cree normalmente. `Sale.id` es la clave
+    // primaria GLOBAL: el findScoped no lo encuentra, el insert choca contra la
+    // PK y la respuesta es un 500, también en el reintento. Es despreciable
+    // —mismo milisegundo Y los mismos 8 hexadecimales de `nuevoIdDeVenta()`— y
+    // está anotado en `sales.js`, no resuelto.
     const bloque = antesDelCreate();
 
     expect(bloque).toMatch(/findScoped\(Sale,\s*id,\s*req\.empresaId/);
@@ -118,6 +125,21 @@ describe('POST / no registra dos veces la misma venta', () => {
     expect(antesDelCreate()).toMatch(/stock:\s*\[\]/);
   });
 
+  it('el reintento devuelve las LINEAS de la venta ya registrada, no solo la cabecera', () => {
+    // Sin `items`, «ya registrada» es una afirmación que el navegador NO PUEDE
+    // VERIFICAR. El caso real: se cobra un ticket de 1 unidad, la red se corta
+    // después del commit, el operador lee «Error», el cliente pide una segunda
+    // unidad y se vuelve a cobrar con el MISMO id. El servidor responde la venta
+    // vieja y la pantalla no tiene con qué darse cuenta: se entregan 2 unidades,
+    // se registró y se descontó 1, y el comprobante sale con dos líneas y el
+    // total de una.
+    //
+    // El `include` acá es seguro porque este findScoped NO lleva `lock`: es el
+    // LEFT OUTER JOIN … FOR UPDATE lo que PostgreSQL rechaza, y por eso
+    // `POST /:id/facturar` no puede traerlas.
+    expect(antesDelCreate()).toMatch(/include:\s*\[\{\s*model:\s*SaleItem,\s*as:\s*'items'\s*\}\]/);
+  });
+
   it('el catch de POST / no responde 500 ante una clave primaria repetida', () => {
     // El findScoped previo NO es atómico: dos requests en vuelo pasan los dos
     // por el findOne y el que pierde choca contra la restricción de la base. La
@@ -126,6 +148,9 @@ describe('POST / no registra dos veces la misma venta', () => {
 
     expect(bloque).toMatch(/SequelizeUniqueConstraintError/);
     expect(bloque).toMatch(/yaRegistrada:\s*true/);
+    // Y con las líneas, igual que la rama de arriba: las dos ramas responden lo
+    // mismo, así que las dos tienen que poder verificarse igual.
+    expect(bloque).toMatch(/include:\s*\[\{\s*model:\s*SaleItem,\s*as:\s*'items'\s*\}\]/);
   });
 });
 

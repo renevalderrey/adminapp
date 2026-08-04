@@ -215,11 +215,23 @@ aislados de todo lo visual, para que si algo se rompe se sepa dónde mirar.
       (lo dice su propio encabezado): un test de idempotencia escrito sobre ellos
       probaría el doble. El comportamiento se verifica contra Postgres, en el
       paso manual 6a.
-      ⚠ **Aislamiento**: el `findScoped` lleva `req.empresaId`, así que un `id`
-      que existe en **otra** empresa **no** se encuentra y la venta se crea
-      normalmente, que es lo correcto —los ids son de la empresa, no globales—.
-      `npm --prefix apps/api test -- aislamientoEmpresas` tiene que seguir en
-      verde **sin agregarle ninguna excepción**.
+      ⚠ **Aislamiento**: el `findScoped` lleva `req.empresaId`, así que la
+      idempotencia es **por empresa** y ninguna venta ajena se puede leer desde
+      acá. `npm --prefix apps/api test -- aislamientoEmpresas` tiene que seguir
+      en verde **sin agregarle ninguna excepción**.
+      ⚠⚠ **Lo que esta tarea decía y era falso**: «un `id` que existe en otra
+      empresa no se encuentra y la venta se crea normalmente». No se crea.
+      `Sale.id` es la clave primaria **global**: el `findScoped` no lo encuentra,
+      el `create` choca contra la PK, el `catch` relee con `findScoped` —que
+      sigue sin encontrarlo— y cae en `fallo()`. Verificado contra Postgres:
+      **500, y el reintento también 500**. La probabilidad es despreciable
+      —exige el mismo milisegundo **y** los mismos 8 hexadecimales de
+      `nuevoIdDeVenta()`—, y por eso **no se maneja**: resolverlo pediría o bien
+      una clave primaria compuesta `(empresa_id, id)` —una migración de la tabla
+      más caliente del sistema, con sus índices y sus claves foráneas— o bien
+      reintentar el alta con un id nuevo, que es exactamente lo que la
+      idempotencia vino a prohibir. Lo que sí se hace es que el comentario de
+      `sales.js` deje de afirmar que está resuelto.
 
 - [x] **T1103** En `apps/api/src/routes/sales.js`, `POST /`: la llamada a
       `resolverSucursal({ empresaId, puntoDeVentaId, transaction })` que hoy está
@@ -1258,6 +1270,13 @@ puede afirmar nada sobre posiciones ni sobre tamaños**. `scrollWidth`,
 `clientWidth` y `getBoundingClientRect` devuelven **cero siempre**, así que un
 test que los mire **pasa con y sin el cambio**, que es la definición de test que
 no vale nada.
+
+⚠ Lo que sí se puede afirmar, y desde T1134 se afirma, es **la clase declarada**:
+que el botón de agregar diga `h-8 w-8` (los 32px de FR-011) y que el POS diga
+`min-w-[1080px]` (FR-002) son dos strings en el archivo, no geometría. Eso
+atrapa la edición que cambia el número —que es como el ticket había quedado en
+380px— y **no** reemplaza a los pasos 1 y 2, que son los únicos que ven si el
+resultado se ve bien.
 
 1. **El cuerpo de la página no scrollea** (escenario 1.3, FR-002). Abrir el POS
    con la ventana a **1080px** y después a **1920px**, con veinte productos en el

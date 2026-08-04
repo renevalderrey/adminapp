@@ -43,18 +43,40 @@ siendo el único endpoint que crea ventas y el único que llama esta pantalla.
 como **500 «Error al registrar la venta»** (`sales.js:512-520`).
 
 **Ahora:** antes de crear, se busca la venta con
-`findScoped(Sale, id, req.empresaId, { transaction: t })`. Si existe, se revierte
-la transacción y se responde **200**:
+`findScoped(Sale, id, req.empresaId, { transaction: t, include: [SaleItem] })`.
+Si existe, se revierte la transacción y se responde **200**:
 
 ```json
 {
   "ok": true,
   "yaRegistrada": true,
-  "data": { "id": "sale_1754320000000_9f3a1c02", "total": "47300.00", "afip_cae": null, "…": "…" },
+  "data": {
+    "id": "sale_1754320000000_9f3a1c02",
+    "total": "47300.00",
+    "afip_cae": null,
+    "items": [
+      { "product_id": 10, "product_name": "Colágeno 300g", "quantity": 1, "unit_price": "1500.00" }
+    ],
+    "…": "…"
+  },
   "warnings": [],
   "stock": []
 }
 ```
+
+**`items` va SOLO en esta rama, y es lo que hace verificable el «ya
+registrada».** Sin las líneas, la afirmación no la puede comprobar nadie: un
+reintento del mismo ticket **modificado** —se cortó la red después del commit, el
+operador leyó «Error», el cliente pidió una unidad más y se volvió a cobrar—
+recibe la venta vieja con el mismo `id`, y el navegador no tiene con qué darse
+cuenta. Se entregan dos unidades, se registró y se descontó una, y el comprobante
+impreso sale con dos líneas y el total de una. El cliente compara lo que mandó
+contra lo que volvió (`utils/reintentoDeVenta.js`) y solo trata como éxito
+silencioso el reintento que de verdad coincide.
+
+El `include` es seguro **porque este `findScoped` no lleva `lock`**: lo que
+PostgreSQL rechaza es el `LEFT OUTER JOIN … FOR UPDATE`, y por eso
+`POST /:id/facturar` sigue sin poder traerlas.
 
 Y **además** el `catch` distingue `SequelizeUniqueConstraintError` sobre la clave
 primaria y responde lo mismo. El `findScoped` previo no es atómico: dos requests
@@ -65,10 +87,18 @@ guardia real es la base; el `findOne` es el camino normal.
 nada**. La venta ya existe, su stock ya se descontó cuando se creó, y devolver los
 avisos de aquella vez haría que la pantalla los mostrara dos veces.
 
-**Aislamiento.** El `findScoped` lleva `req.empresaId`, así que un `id` que existe
-en **otra** empresa cliente **no** se encuentra y la venta se crea normalmente.
-Es lo correcto: los ids son de la empresa, no globales. Ninguna guardia de
-`aislamientoEmpresas.test.js` cambia.
+**Aislamiento.** El `findScoped` lleva `req.empresaId`, así que la idempotencia es
+**por empresa** y desde acá no se puede leer ninguna venta ajena. Ninguna guardia
+de `aislamientoEmpresas.test.js` cambia.
+
+> ⚠ **Corrección**: este documento decía que un `id` que existe en otra empresa
+> «no se encuentra y la venta se crea normalmente». **No se crea.** `Sale.id` es
+> la clave primaria **global**: el `findScoped` no lo encuentra, el `create`
+> choca contra la PK, el `catch` relee con `findScoped` —que sigue sin
+> encontrarlo— y la respuesta es **500, y el reintento también 500** (verificado
+> contra Postgres). La probabilidad es despreciable —exige el mismo milisegundo
+> **y** los mismos 8 hexadecimales de `nuevoIdDeVenta()`— y **no se maneja**: ver
+> el motivo y el costo en T1102 de `tasks.md`.
 
 **Por qué acá y no una cabecera `Idempotency-Key`:** el `id` de la venta ya es una
 clave de idempotencia —lo genera el cliente, es la clave primaria, y ya tiene una
@@ -166,7 +196,7 @@ nueve códigos entran sin tocar la base: **no hay migración**.
 | Código | Cuándo | Cuerpo |
 |---|---|---|
 | `201` | Venta creada | `{ ok: true, data, warnings, stock }` |
-| `200` | **`id` ya registrado en esta empresa** | `{ ok: true, yaRegistrada: true, data, warnings: [], stock: [] }` |
+| `200` | **`id` ya registrado en esta empresa** | `{ ok: true, yaRegistrada: true, data (con `items`), warnings: [], stock: [] }` |
 | `400 ITEM_INVALIDO` | Cantidad ≤ 0 o precio negativo | igual que hoy |
 | `400 TOTAL_INCONSISTENTE` | El total declarado no cierra contra las líneas | igual que hoy |
 | `400` | `Stock insuficiente para "…"` | igual que hoy — texto plano en `error` |

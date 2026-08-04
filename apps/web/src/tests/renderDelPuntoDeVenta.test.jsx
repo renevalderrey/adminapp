@@ -5,6 +5,35 @@ import useStore from '@/store/useStore'
 import api from '@/services/api'
 import Billing from '@/pages/Billing'
 import { MEDIOS } from '@/utils/mediosDePago'
+import { printInvoice } from '@/utils/printInvoice'
+
+// ── Los dos únicos módulos doblados de este archivo, y por qué ──
+//
+// `printInvoice` abre una ventana del navegador y le escribe HTML. En jsdom
+// `window.open` devuelve `null` y la función se va por la primera línea, así que
+// **lo que se imprime no se puede leer de ningún lado**. Doblarla es la única
+// forma de afirmar qué líneas terminaron en el papel — que es exactamente el
+// defecto que se está cubriendo: el comprobante salía con los ítems de la
+// pantalla y el total del servidor.
+vi.mock('@/utils/printInvoice', () => ({ printInvoice: vi.fn() }))
+
+// `llevaVuelto` se dobla SOLO cuando un test lo pide (`dobles.vueltoDe`), y el
+// resto del archivo corre contra la función de verdad. El motivo largo está en
+// el test que lo usa, en T1130: hoy `ef` es el único medio con vuelto, así que
+// `llevaVuelto(c)` y `c === 'ef'` dan lo mismo para los once códigos y **ninguna
+// venta sembrada por la pantalla distingue las dos expresiones**. Lo que las
+// distingue es QUIÉN decide, y eso se prueba cambiando la respuesta de la
+// función.
+const dobles = vi.hoisted(() => ({ vueltoDe: null }))
+
+vi.mock('@/utils/mediosDePago', async (importarOriginal) => {
+  const real = await importarOriginal()
+
+  return {
+    ...real,
+    llevaVuelto: (codigo) => (dobles.vueltoDe ? dobles.vueltoDe(codigo) : real.llevaVuelto(codigo)),
+  }
+})
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Punto de venta, renderizado
@@ -91,6 +120,10 @@ async function montar({
   cart = [],
   settings = SETTINGS,
   permisos = ['ventas.crear'],
+  // Clientes es un módulo que todavía no se libera: el buscador de fichas solo
+  // se dibuja para un superadmin, y por eso hay que poder montar de las dos
+  // formas.
+  superadmin = false,
 } = {}) {
   useStore.setState({
     products: productos,
@@ -98,7 +131,7 @@ async function montar({
     sucursales: [CENTRO],
     permisos,
     settings,
-    usuario: { id: 1, es_superadmin: false },
+    usuario: { id: 1, es_superadmin: superadmin },
     empresaActiva: { id: 1, name: 'Comprafit', puntosDeVenta: [CENTRO] },
     puntoDeVentaActivo: CENTRO,
     cart,
@@ -186,6 +219,8 @@ afterEach(() => {
   cleanup()
   post.mockRestore()
   get.mockRestore()
+  printInvoice.mockClear()
+  dobles.vueltoDe = null
   useStore.setState({ cart: [], products: [] })
 })
 
@@ -952,6 +987,10 @@ describe('Los tres finales del cobro dejan la pantalla como corresponde', () => 
     // La respuesta `200 { yaRegistrada: true }` de la idempotencia del servidor
     // trae la venta con su CAE. Pedirlo de nuevo sería pedir un comprobante
     // para algo que ya lo tiene.
+    //
+    // ⚠ La respuesta trae también `items`, y no es decoración: es el MISMO
+    // ticket, así que la comparación da coincidencia y esto sigue siendo un
+    // éxito normal y silencioso. Ver la sección T1132.
     await montar({ cart: UNA_LINEA })
 
     post.mockResolvedValue({
@@ -961,6 +1000,7 @@ describe('Los tres finales del cobro dejan la pantalla como corresponde', () => 
         data: {
           id: 'sale_1',
           total: '1500.00',
+          items: [ITEM_REGISTRADO(1)],
           afip_cae: '75123456789012',
           afip_nro: 41,
           afip_vto: '20260814',
@@ -976,6 +1016,192 @@ describe('Los tres finales del cobro dejan la pantalla como corresponde', () => 
     await waitFor(() => expect(cart()).toHaveLength(0))
 
     expect(post.mock.calls.filter(([url]) => String(url).includes('/facturar'))).toHaveLength(0)
+  })
+})
+
+// ════════════════════════════════════════════
+//  T1132 · El reintento que trae OTRA venta
+//
+//  `POST /api/sales` es idempotente por `id` y el id es uno por TICKET
+//  (FR-043). El caso que rompe datos no es el reintento —para eso se construyó
+//  la idempotencia— sino el reintento del ticket MODIFICADO:
+//
+//   1. Ticket con 1 unidad. Se cobra. La red se corta DESPUÉS del commit.
+//   2. Sale el `catch`, `toast.error`, y el ticket queda entero (FR-053). El
+//      operador lee «Error» y entiende que no se registró nada.
+//   3. El cliente dice «poneme dos». Sube la cantidad y vuelve a cobrar.
+//   4. Mismo id → el servidor responde la venta VIEJA: 1 unidad, $1.500.
+//
+//  Antes, la pantalla lo trataba como éxito: vaciaba el ticket, ofrecía imprimir
+//  y armaba el comprobante con los ítems de la PANTALLA (2 unidades) y el total
+//  del SERVIDOR ($1.500). Se entregaban 2, se registró y se descontó 1, y el
+//  papel no cerraba consigo mismo.
+// ════════════════════════════════════════════
+
+/** Una línea tal como la devuelve el servidor: `quantity` y `unit_price`. */
+const ITEM_REGISTRADO = (cantidad, nombre = 'Colágeno 300g') => ({
+  product_id: 10,
+  product_name: nombre,
+  quantity: cantidad,
+  unit_price: '1500.00',
+})
+
+/** `POST /sales` responde «ya registrada» con las líneas que se le digan. */
+function reintentoYaRegistrado(items, total) {
+  post.mockImplementation((url) => (
+    url === '/sales'
+      ? Promise.resolve({
+          data: {
+            ok: true,
+            yaRegistrada: true,
+            data: { id: 'sale_1', total, items, afip_cae: '75123456789012', afip_nro: 40, afip_type: 11 },
+            warnings: [],
+            stock: [],
+          },
+        })
+      : Promise.resolve({ data: { ok: true, data: { cae: '75123456789012', voucherNumber: 40 } } })
+  ))
+}
+
+describe('Un «ya registrada» que no coincide no se da por cobrado', () => {
+  it('el ticket al que le subieron la cantidad NO se da por cobrado en silencio', async () => {
+    // El operador tiene que ver qué quedó registrado de verdad y qué no.
+    await montar({ cart: [{ id: 10, name: 'Colágeno 300g', price: 1500, qty: 2, method: 'ef' }] })
+
+    reintentoYaRegistrado([ITEM_REGISTRADO(1)], '1500.00')
+
+    teclear('Enter', { ctrlKey: true })
+
+    expect(await screen.findByText(/se registraron 1 y el ticket lleva 2/)).toBeInTheDocument()
+    expect(screen.getByText(/El total registrado es \$1\.500,00 y el del ticket \$3\.000,00/))
+      .toBeInTheDocument()
+
+    // Y el ticket NO se vacía: nada de lo que hay en pantalla quedó registrado
+    // como tal. Vaciarlo tiraría la evidencia de lo que se estaba por cobrar y
+    // además renovaría el id, con lo que el intento siguiente registraría las
+    // DOS unidades sobre la que ya se descontó.
+    expect(cart()).toHaveLength(1)
+    expect(cart()[0].qty).toBe(2)
+  })
+
+  it('no se pide el CAE ni se ofrece imprimir un comprobante que no cierra', async () => {
+    // Un comprobante fiscal por $1.500 mientras la pantalla dice $3.000 es
+    // justamente el papel que no cierra consigo mismo.
+    await montar({ cart: [{ id: 10, name: 'Colágeno 300g', price: 1500, qty: 2, method: 'ef' }] })
+
+    reintentoYaRegistrado([ITEM_REGISTRADO(1)], '1500.00')
+
+    teclear('Enter', { ctrlKey: true })
+
+    await screen.findByText(/se registraron 1 y el ticket lleva 2/)
+
+    expect(post.mock.calls.filter(([url]) => String(url).includes('/facturar'))).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: /Imprimir el comprobante/ })).not.toBeInTheDocument()
+  })
+
+  it('el mismo ticket sin tocar sigue siendo un éxito silencioso', async () => {
+    // La otra mitad, y es igual de importante: éste es el caso para el que se
+    // construyó la idempotencia. Una comparación que rechaza los reintentos
+    // legítimos deja al operador sin poder cobrar después de cada corte de red.
+    await montar({ cart: UNA_LINEA })
+
+    reintentoYaRegistrado([ITEM_REGISTRADO(1)], '1500.00')
+
+    teclear('Enter', { ctrlKey: true })
+
+    await waitFor(() => expect(cart()).toHaveLength(0))
+    expect(screen.queryByText(/YA estaba registrada/)).not.toBeInTheDocument()
+  })
+
+  it('el comprobante impreso lleva las líneas del SERVIDOR, no las de la pantalla', async () => {
+    // Mezclar las dos fuentes es lo que producía el ticket que no cierra. Acá
+    // el producto se renombró en el catálogo después de la venta: lo que se
+    // imprime tiene que ser lo que quedó asentado, con `quantity`/`unit_price`
+    // —la forma del servidor— y no `qty`/`price`, la del carrito.
+    await montar({ cart: UNA_LINEA })
+
+    reintentoYaRegistrado([ITEM_REGISTRADO(1, 'Colágeno 300g · envase nuevo')], '1500.00')
+
+    teclear('Enter', { ctrlKey: true })
+
+    await userEvent.click(await screen.findByRole('button', { name: /Imprimir el comprobante/ }))
+
+    const impreso = printInvoice.mock.calls[0][0]
+
+    expect(impreso.items).toEqual([ITEM_REGISTRADO(1, 'Colágeno 300g · envase nuevo')])
+    expect(impreso.items[0].qty).toBeUndefined()
+  })
+})
+
+// ════════════════════════════════════════════
+//  T1133 · El comprobante de la venta anterior no sobrevive a la siguiente
+// ════════════════════════════════════════════
+
+describe('Ningún final del cobro deja a la vista el comprobante de otra venta', () => {
+  it('después de un rechazo de AFIP NO se ofrece imprimir el comprobante anterior', async () => {
+    // Quedaban uno al lado del otro el aviso rojo «la venta quedó REGISTRADA
+    // pero sin comprobante» y el botón verde «Imprimir el comprobante 40», que
+    // es de OTRO cliente — justo cuando el operador está resolviendo un
+    // problema y busca algo para darle al que tiene enfrente. Un comprobante
+    // fiscal ajeno entregado no se deshace sin una nota de crédito.
+    await montar({ cart: UNA_LINEA, productos: [COLAGENO] })
+
+    // Venta 1: sale bien y deja su comprobante nº 40.
+    post.mockImplementation((url) => (
+      url === '/sales'
+        ? Promise.resolve({
+            data: { ok: true, data: { id: 'sale_1', total: '1500.00' }, warnings: [], stock: [] },
+          })
+        : Promise.resolve({ data: { ok: true, data: { cae: '75123456789012', voucherNumber: 40 } } })
+    ))
+
+    teclear('Enter', { ctrlKey: true })
+    expect(await screen.findByRole('button', { name: /Imprimir el comprobante 40/ })).toBeInTheDocument()
+
+    // Venta 2: ticket nuevo, la venta se registra y ARCA la rechaza.
+    await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
+    cobroConAfipQueRechaza({ error: 'El CAE no pudo emitirse: 10016 comprobante ya registrado' })
+
+    teclear('Enter', { ctrlKey: true })
+
+    await screen.findByText(/quedó REGISTRADA pero sin comprobante/)
+    expect(cart()).toHaveLength(0)
+    expect(screen.queryByRole('button', { name: /Imprimir el comprobante/ })).not.toBeInTheDocument()
+  })
+
+  it('después de un rechazo de la API tampoco, aunque el ticket quede cargado', async () => {
+    // El otro final. El ticket queda intacto (FR-053) y el botón está oculto por
+    // eso, pero el comprobante viejo tampoco puede seguir en memoria esperando
+    // a que el ticket se vacíe.
+    await montar({ cart: UNA_LINEA, productos: [COLAGENO] })
+
+    post.mockImplementation((url) => (
+      url === '/sales'
+        ? Promise.resolve({
+            data: { ok: true, data: { id: 'sale_1', total: '1500.00' }, warnings: [], stock: [] },
+          })
+        : Promise.resolve({ data: { ok: true, data: { cae: '75123456789012', voucherNumber: 40 } } })
+    ))
+
+    teclear('Enter', { ctrlKey: true })
+    await screen.findByRole('button', { name: /Imprimir el comprobante 40/ })
+
+    await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
+    post.mockRejectedValue(rechazo(400, {
+      error: 'Stock insuficiente para "Colágeno 300g": disponible 0, requerido 1',
+    }))
+
+    teclear('Enter', { ctrlKey: true })
+
+    await waitFor(() => expect(postsDeVenta()).toHaveLength(2))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(cart()).toHaveLength(1)
+
+    // Se vacía el ticket a mano: el botón de imprimir vuelve a ser visible si
+    // hubiera algo que imprimir, y no lo hay.
+    await act(async () => { useStore.getState().clearCart() })
+
+    expect(screen.queryByRole('button', { name: /Imprimir el comprobante/ })).not.toBeInTheDocument()
   })
 })
 
@@ -1126,15 +1352,23 @@ describe('El vuelto aparece solo cuando hay billetes', () => {
     // la bandera decide el VUELTO. Una transferencia cotiza como efectivo y no
     // da vuelto, y contarla como billetes es lo que rompía el arqueo de caja.
     //
-    // ⚠ El cambio de medio va POR LA PANTALLA y no llenando el carrito con
-    // `method: 'tr'` a mano. Comprobado con la mutación: sembrado a mano, la
-    // condición vieja —`cart.some(i => i.method === 'ef')`— da lo mismo que
-    // `llevaVuelto`, porque hoy `ef` es el único medio con vuelto y las dos
-    // expresiones son equivalentes. Lo que este test protege es la CADENA
-    // completa: que el control escriba `tr` —y no `ef`, como hacía la pantalla
-    // anterior, donde una transferencia se registraba como efectivo— y que el
-    // bloque desaparezca en consecuencia. La regla suelta la cubre
-    // `utils/mediosDePago.test.js`, recorriendo `MEDIOS` entero.
+    // Lo que este test protege es la CADENA completa: que el control escriba
+    // `tr` —y no `ef`, como hacía la pantalla anterior, donde una transferencia
+    // se registraba como efectivo— y que el bloque desaparezca en consecuencia.
+    // La regla suelta la cubre `utils/mediosDePago.test.js`, recorriendo
+    // `MEDIOS` entero.
+    //
+    // ⚠ Lo que este test NO prueba, y el comentario que estaba acá afirmaba que
+    // sí: que la pantalla use `llevaVuelto` y no `i.method === 'ef'`. Pasar el
+    // cambio de medio por la pantalla **no distingue las dos expresiones**. Hoy
+    // `ef` es el único medio con `vuelto: true`, así que `llevaVuelto(c)` y
+    // `c === 'ef'` dan lo mismo para los once códigos del sistema, vengan de
+    // donde vengan. Sembrar el carrito a mano tampoco cambia eso.
+    //
+    // La mutación `cart.some((i) => i.method === 'ef')` dejaba este test en
+    // verde. El que la pone en rojo está en T1134 —«Quién decide si hay vuelto
+    // es la bandera del medio»— y para eso dobla `llevaVuelto`, que es el único
+    // experimento capaz de separar las dos.
     await montar({ cart: [{ id: 10, name: 'Colágeno 300g', price: 1500, qty: 1, method: 'ef' }] })
 
     expect(screen.getByPlaceholderText('0')).toBeInTheDocument()
@@ -1247,5 +1481,286 @@ describe('El ticket no promete lo que no hay', () => {
 
     await waitFor(() => expect(cart()).toHaveLength(0))
     expect(screen.getByText(aviso)).toBeInTheDocument()
+  })
+})
+
+// ════════════════════════════════════════════
+//  T1134 · Los diez criterios que estaban bien y no tenían quién los cuidara
+//
+//  `sdd-verify` los revirtió uno por uno y las 26 suites se quedaron en verde.
+//  Cada test de esta sección lleva escrita, en su comentario, **la mutación
+//  exacta** con la que se comprobó que sirve: revertirla tiene que ponerlo en
+//  rojo, y si algún día deja de hacerlo el test dejó de valer.
+// ════════════════════════════════════════════
+
+describe('Un comprobante interno no habla con ARCA', () => {
+  it('con Remito sale UN solo pedido y no se pide ningún CAE', async () => {
+    // Escenario 4.5. Mutación: `const isAfip = true` en `Billing.jsx`. Con eso,
+    // un Remito cae en `vType = 11` y emite una **Factura C real ante ARCA**,
+    // con número correlativo consumido. Es el más grave de los diez: lo que se
+    // pierde no es una pantalla, es un comprobante fiscal que ya no se puede
+    // devolver sin una nota de crédito.
+    await montar({ cart: UNA_LINEA })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remito' }))
+
+    teclear('Enter', { ctrlKey: true })
+
+    await waitFor(() => expect(postsDeVenta()).toHaveLength(1))
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(post.mock.calls.filter(([url]) => String(url).includes('/facturar'))).toHaveLength(0)
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Lo que se limpia al terminar una venta se limpia de verdad', () => {
+  it('el CUIT del comprador NO se hereda a la venta siguiente', async () => {
+    // FR-048. Mutación: borrar `setCustomerDoc('')`, `setCustomerName('')` y
+    // `clearCustomer()` de `limpiarDespuesDeCobrar`. El CUIT del cliente
+    // anterior en la factura del siguiente es un comprobante mal declarado, y
+    // deshacerlo exige una nota de crédito.
+    await montar({ cart: UNA_LINEA })
+
+    await userEvent.type(screen.getByLabelText('CUIT / DNI'), '20304050607')
+    expect(screen.getByLabelText('CUIT / DNI')).toHaveValue(20304050607)
+
+    teclear('Enter', { ctrlKey: true })
+
+    await waitFor(() => expect(cart()).toHaveLength(0))
+    expect(screen.getByLabelText('CUIT / DNI')).toHaveValue(null)
+  })
+
+  it('el nombre del cliente tampoco', async () => {
+    // La otra mitad: con un comprobante interno el campo es el nombre libre, y
+    // es lo que se imprime en el remito del cliente que viene después.
+    await montar({ cart: UNA_LINEA })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remito' }))
+    await userEvent.type(screen.getByPlaceholderText('Consumidor final'), 'Pérez')
+
+    teclear('Enter', { ctrlKey: true })
+
+    await waitFor(() => expect(cart()).toHaveLength(0))
+    expect(screen.getByPlaceholderText('Consumidor final')).toHaveValue('')
+  })
+
+  it('la FICHA de cliente tampoco: la venta siguiente no va a su cuenta corriente', async () => {
+    // La mitad que los dos anteriores NO cubren, y es la más cara: `customer_id`
+    // es lo único que habilita cuenta corriente (`sales.js`). Heredado, la
+    // venta del cliente siguiente queda como deuda del anterior.
+    get.mockImplementation((url) => (
+      String(url).includes('/customers')
+        ? Promise.resolve({ data: { ok: true, data: [{ id: 7, name: 'Pérez', tax_id: '20304050607' }] } })
+        : Promise.resolve({ data: { ok: true, data: [] } })
+    ))
+
+    await montar({ cart: UNA_LINEA, productos: [COLAGENO], superadmin: true })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remito' }))
+    await userEvent.type(screen.getByPlaceholderText('Buscar ficha de cliente…'), 'Pér')
+    await userEvent.click(await screen.findByRole('button', { name: /Pérez/ }))
+
+    teclear('Enter', { ctrlKey: true })
+    await waitFor(() => expect(cart()).toHaveLength(0))
+
+    expect(postsDeVenta()[0][1].customer_id).toBe(7)
+
+    // Ticket nuevo, otro cliente: sin ficha.
+    await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
+    teclear('Enter', { ctrlKey: true })
+
+    await waitFor(() => expect(postsDeVenta()).toHaveLength(2))
+    expect(postsDeVenta()[1][1].customer_id).toBeUndefined()
+  })
+})
+
+describe('El bloque fiscal y el campo Cliente son excluyentes', () => {
+  it('con Remito no hay CUIT ni Condición IVA, y sí el nombre del cliente', async () => {
+    // FR-023. Mutación: `{true ? (` en `TicketDelPos.jsx`. Con los dos bloques
+    // a la vez, el operador carga el nombre en un campo que el remito no usa —o
+    // el CUIT en uno que el comprobante interno no manda— y el dato se pierde
+    // sin que nada falle.
+    await montar()
+
+    // El inicial de un monotributista es Factura C: bloque fiscal.
+    expect(screen.getByLabelText('CUIT / DNI')).toBeInTheDocument()
+    expect(screen.getByLabelText('Condición IVA')).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('Consumidor final')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remito' }))
+
+    expect(screen.queryByLabelText('CUIT / DNI')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Condición IVA')).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Consumidor final')).toBeInTheDocument()
+  })
+})
+
+describe('El catálogo no deja agregar lo que no hay', () => {
+  it('el producto agotado tiene el botón de agregar DESHABILITADO', async () => {
+    // FR-010. Mutación: quitar `disabled` del botón de `CatalogoDelPos.jsx`.
+    // Prometerle al cliente un producto que no está es lo que ese `disabled`
+    // evita; el atajo ya tiene su propio test (escenario 2.6).
+    await montar({ productos: [COLAGENO, SIN_STOCK] })
+
+    expect(screen.getByRole('button', { name: /Agregar Barrita 30g al ticket/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ })).toBeEnabled()
+  })
+})
+
+describe('El comprobante para imprimir vive hasta que empieza el ticket siguiente', () => {
+  it('desaparece con la PRIMERA línea del ticket nuevo', async () => {
+    // FR-050. Mutación: sacar `lineas.length === 0` de la condición del botón
+    // en `TicketDelPos.jsx`. Sin esa mitad, el botón de imprimir la venta
+    // anterior convive con el ticket que se está armando, arriba de las líneas
+    // y a un clic de distancia: se entrega el comprobante de otro.
+    await montar({ cart: UNA_LINEA, productos: [COLAGENO] })
+
+    post.mockImplementation((url) => (
+      url === '/sales'
+        ? Promise.resolve({
+            data: { ok: true, data: { id: 'sale_1', total: '1500.00' }, warnings: [], stock: [] },
+          })
+        : Promise.resolve({ data: { ok: true, data: { cae: '75123456789012', voucherNumber: 40 } } })
+    ))
+
+    teclear('Enter', { ctrlKey: true })
+    await screen.findByRole('button', { name: /Imprimir el comprobante 40/ })
+
+    await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
+
+    expect(screen.queryByRole('button', { name: /Imprimir el comprobante/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('Los atajos están escritos donde se usan', () => {
+  it('el de cobrar va ADENTRO del botón que dispara, en un <kbd>', async () => {
+    // FR-041. Mutación: borrar el `<kbd>` del botón en `TicketDelPos.jsx`. Un
+    // atajo que no está escrito en ningún lado no lo usa nadie, y entonces el
+    // hito entero —cobrar sin soltar el lector de código de barras— no pasa de
+    // ser una función que existe.
+    await montar({ cart: UNA_LINEA })
+
+    const boton = screen.getByRole('button', { name: /Confirmar venta/ })
+    const tecla = boton.querySelector('kbd')
+
+    expect(tecla).not.toBeNull()
+    expect(tecla).toHaveTextContent('Ctrl+Enter')
+  })
+})
+
+describe('El encabezado del ticket dice cuántos ítems lleva', () => {
+  it('la cantidad de líneas va en un chip del encabezado', async () => {
+    // FR-014. Mutación: borrar el `<span>` del chip en `TicketDelPos.jsx`. Es
+    // el único número que dice cuántas líneas hay sin recorrer la lista: con
+    // ocho ítems, el ticket no entra en su propia zona de scroll.
+    await montar({
+      cart: [
+        { id: 10, name: 'Colágeno 300g', price: 1500, qty: 1, method: 'ef' },
+        { id: 11, name: 'Creatina 300g', price: 3000, qty: 4, method: 'ef' },
+      ],
+    })
+
+    const encabezado = screen.getByRole('heading', { name: 'Ticket' }).parentElement
+
+    // DOS líneas, no cinco unidades: el chip cuenta líneas, que es lo que dice
+    // el vocabulario de la spec. Confundir las dos cosas es lo que hace que
+    // nadie lo mire.
+    expect(within(encabezado).getByText('2')).toBeInTheDocument()
+  })
+})
+
+describe('Los filtros del catálogo sobreviven a la venta', () => {
+  it('la categoría y «Solo con stock» siguen puestos después de cobrar', async () => {
+    // FR-049. Mutación: resetear los filtros en `limpiarDespuesDeCobrar`. En un
+    // mostrador con cola se cobran cincuenta ventas seguidas del mismo rubro;
+    // volver a elegir el filtro cincuenta veces es exactamente el gesto que
+    // este hito vino a sacar.
+    await montar({
+      productos: [COLAGENO, CREATINA, SIN_STOCK],
+      cart: [{ id: 11, name: 'Creatina 300g', price: 3000, qty: 1, method: 'ef' }],
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: /Solo con stock/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Creatina' }))
+
+    expect(screen.queryByText('Colágeno 300g')).not.toBeInTheDocument()
+    expect(screen.queryByText('Barrita 30g')).not.toBeInTheDocument()
+
+    teclear('Enter', { ctrlKey: true })
+    await waitFor(() => expect(cart()).toHaveLength(0))
+
+    // El catálogo sigue filtrado igual: ni la categoría ni el conmutador se
+    // resetearon.
+    expect(screen.queryByText('Colágeno 300g')).not.toBeInTheDocument()
+    expect(screen.queryByText('Barrita 30g')).not.toBeInTheDocument()
+    expect(screen.getByText('Creatina 300g')).toBeInTheDocument()
+  })
+})
+
+describe('Quién decide si hay vuelto es la bandera del medio, no una comparación', () => {
+  // ⚠ Esto NO se puede probar sembrando otro medio ni pasando el cambio por la
+  // pantalla, y el comentario que decía lo contrario en T1130 era falso. Hoy
+  // `ef` es el ÚNICO medio con `vuelto: true`, así que `llevaVuelto(c)` y
+  // `c === 'ef'` devuelven lo mismo para los once códigos del sistema: las dos
+  // expresiones son indistinguibles por datos.
+  //
+  // Lo que las distingue es **quién decide**. Con la bandera doblada, la
+  // pantalla que delega en `llevaVuelto` sigue a la bandera y la que compara
+  // contra `'ef'` no la ve. Es el único experimento que separa las dos, y es
+  // exactamente la decisión 1 de la spec: el segmento decide el PRECIO y la
+  // bandera decide el VUELTO, que son dos ejes distintos.
+  //
+  // Mutación: `cart.some((i) => i.method === 'ef')` en `Billing.jsx`.
+
+  it('un medio marcado con vuelto muestra el bloque aunque NO sea «ef»', async () => {
+    dobles.vueltoDe = (codigo) => codigo === 'tr'
+
+    await montar({ cart: [{ id: 10, name: 'Colágeno 300g', price: 1500, qty: 1, method: 'tr' }] })
+
+    expect(screen.getByPlaceholderText('0')).toBeInTheDocument()
+  })
+
+  it('un «ef» sin la bandera NO muestra el bloque', async () => {
+    // La otra mitad, y es la que atrapa el caso que viene: el día que un medio
+    // nuevo cotice como efectivo sin billetes de por medio, la pantalla tiene
+    // que hacerle caso a la lista y no a un literal escrito acá.
+    dobles.vueltoDe = () => false
+
+    await montar({ cart: UNA_LINEA })
+
+    expect(screen.queryByPlaceholderText('0')).not.toBeInTheDocument()
+    expect(screen.queryByText('Vuelto')).not.toBeInTheDocument()
+  })
+})
+
+describe('Las dos medidas que la maqueta fija, tal como están declaradas', () => {
+  // ⚠ Acá se afirma la CLASE DECLARADA y nada más. Que el botón mida 32px de
+  // verdad y que el cuerpo no scrollee horizontal por debajo de 1080px son los
+  // pasos manuales 1 y 2: jsdom no tiene motor de maquetado y
+  // `getBoundingClientRect` devuelve cero siempre. Lo que esto atrapa es la
+  // edición que cambia el número, que es como el ticket había quedado en 380px.
+
+  it('el botón de agregar declara 32px, no los 29 de BotonDeFila', async () => {
+    // FR-011 (`maqueta:378`). Mutación: `h-8 w-8` → `h-6 w-6`.
+    await montar({ productos: [COLAGENO] })
+
+    const boton = screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ })
+
+    expect(boton.className).toContain('h-8')
+    expect(boton.className).toContain('w-8')
+  })
+
+  it('el punto de venta declara el ancho mínimo de la maqueta', async () => {
+    // FR-002 (`maqueta:337`). Mutación: sacar `min-w-[1080px]`. Sin el mínimo,
+    // por debajo de ese ancho las dos columnas se comprimen en vez de desbordar
+    // adentro de la zona que scrollea, y el ticket deja de entrar.
+    await montar()
+
+    const dosColumnas = screen.getByText('Ticket').closest('aside').parentElement
+
+    expect(dosColumnas.className).toContain('min-w-[1080px]')
+    // Y el desbordamiento queda ADENTRO del POS, no en el cuerpo de la página.
+    expect(dosColumnas.parentElement.className).toContain('overflow-x-auto')
   })
 })
