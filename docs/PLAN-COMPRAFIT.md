@@ -143,7 +143,10 @@ Cada una tiene dos columnas: **diseño** (llevarla a la maqueta) y **función**
 
 El orden es por uso real: lo que Comprafit toca todos los días primero.
 
-### 4.1 · Punto de venta
+### 4.1 · Punto de venta · ✔ hecho
+
+Hito 5, en `docs/specs/011-punto-de-venta/`. Cuatro cortes: `6d8f99a`,
+`10b5e60`, `b215fc3` y `6ebe393`.
 
 **Diseño.** Es la pantalla más lejos de la maqueta. Dos columnas: catálogo a la
 izquierda con búsqueda y filtros, ticket fijo a la derecha de 400px con su
@@ -155,6 +158,18 @@ no como tres botones sueltos.
 - Atajos de teclado: buscar con `/`, cobrar con `Enter`, limpiar con `Esc`. En
   un mostrador con cola, el mouse es el cuello de botella.
 - Foco automático en la búsqueda al abrir y después de cada venta.
+
+**Dos cosas salieron distintas de lo que dice acá arriba**, y quedan escritas
+porque el motivo sigue valiendo:
+
+- **`Enter` no cobra.** Un lector de código de barras escribe en el campo
+  enfocado y termina con `Enter`: cada escaneo habría cobrado la venta. `Enter`
+  agrega el primer resultado y se cobra con `Ctrl/⌘+Enter`, que es lo que la
+  maqueta ya dibujaba.
+- **Los tres segmentos no son medios de pago, son niveles de precio.** El medio
+  exacto —transferencia, QR, débito— se elige adentro del segmento de efectivo,
+  que es lo que permite que el vuelto aparezca solo con billetes de verdad y que
+  el efectivo del día deje de incluir plata que entró por CBU.
 
 ### 4.2 · Historial de ventas
 
@@ -295,11 +310,11 @@ la spec para que la revises. Nada se implementa sin ese visto bueno.
 
 | # | Hito | Por qué en ese orden |
 |---|---|---|
-| 1 | Superadmin y gateo de módulos | Sin esto, cualquier pantalla que se toque después hay que revisarla de nuevo para ver quién la ve |
-| 2 | Agentes SDD y `/sdd` | Para que los hitos siguientes se hagan con el método, no a mano |
-| 3 | Historial de ventas | La pantalla que la maqueta dibuja completa: fija el patrón de tabla que copian las demás |
-| 4 | Inventario | La de más deuda funcional |
-| 5 | Punto de venta | La de más uso diario |
+| ✔ 1 | Superadmin y gateo de módulos | Sin esto, cualquier pantalla que se toque después hay que revisarla de nuevo para ver quién la ve |
+| ✔ 2 | Agentes SDD y `/sdd` | Para que los hitos siguientes se hagan con el método, no a mano |
+| ✔ 3 | Historial de ventas | La pantalla que la maqueta dibuja completa: fija el patrón de tabla que copian las demás |
+| ✔ 4 | Inventario | La de más deuda funcional |
+| ✔ 5 | Punto de venta | La de más uso diario |
 | 6 | Proveedores y Órdenes de compra | |
 | 7 | TiendaNube | Pantalla nueva completa |
 | 8 | Panel, Gastos, Equipo, Ajustes AFIP | |
