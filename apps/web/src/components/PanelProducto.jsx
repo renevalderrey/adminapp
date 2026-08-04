@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import api from '@/services/api'
 import { calcularPrecios } from '@/utils/precios'
+import { cuerposDeStockAlCrear, unidadesComprometidas } from '@/utils/inventario'
 import { usePermission } from '@/hooks/usePermission'
 import HistorialDeCostos from '@/components/HistorialDeCostos'
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet'
@@ -297,18 +298,23 @@ export default function PanelProducto({
       const respuesta = await api.post('/products', cuerpoDelProducto())
       const creado = respuesta.data.data
 
-      // Solo las sucursales donde se cargó algo: crear una fila en cero en cada
-      // sucursal por cada producto nuevo llena la tabla de filas que no dicen
-      // nada y que igual se crean solas cuando entra mercadería.
-      const conCarga = filasDeStock.filter((f) => Number(f.quantity) > 0 || Number(f.min_stock) > 0)
-
-      for (const fila of conCarga) {
-        await api.post('/stock', {
-          product_id: creado.id,
-          punto_de_venta_id: fila.punto_de_venta_id,
-          quantity: Number(fila.quantity),
-          min_stock: Number(fila.min_stock),
-        })
+      // ── Una fila por sucursal, aunque vaya en cero ──
+      //
+      // Antes se filtraba por `quantity > 0 || min_stock > 0`, así que un
+      // producto dado de alta sin cantidad quedaba con **cero** filas de stock.
+      // La consecuencia no era cosmética: Inventario lo sumaba a «Stock bajo»
+      // —para reponer, no tener fila y tener cero es lo mismo— y
+      // `GET /api/faltantes`, que recorre `Stock.findAll`, no podía listarlo
+      // nunca. O sea que el producto que hay que comprar era justo el que no
+      // aparecía en la pantalla con la que se arma el pedido al proveedor
+      // (criterio de éxito 19).
+      //
+      // El argumento de «no llenar la tabla de filas que no dicen nada» era el
+      // equivocado: una fila en cero SÍ dice algo. Un producto que existe y no
+      // tiene stock en ninguna sucursal es distinto de un producto del que no
+      // sabemos nada, y esa diferencia es la que decide si se pide o no.
+      for (const cuerpo of cuerposDeStockAlCrear(filasDeStock, creado.id)) {
+        await api.post('/stock', cuerpo)
       }
 
       toast.success('Producto creado')
@@ -703,7 +709,17 @@ export default function PanelProducto({
                     // hay. Cuando difieren, la diferencia son unidades
                     // comprometidas, y mostrar solo una de las dos hace que el
                     // usuario corrija la que no era.
-                    const reservadas = Number(fila.quantity) - Number(fila.available)
+                    //
+                    // Se calcula sobre la fila GUARDADA (`original.stock[i]`) y
+                    // no sobre `fila`, que tiene la `quantity` atada al
+                    // `<input>`: escribir 15 en un renglón que tenía 10/10 hacía
+                    // aparecer «Hay 5 unidades comprometidas en ventas o
+                    // producción» sin que hubiera ninguna, y bajar la cantidad
+                    // hacía aparecer el mensaje contrario sobre una fila sana.
+                    // El panel afirmaba un hecho del servidor a partir de una
+                    // tecla del usuario.
+                    const guardada = original.stock[i]
+                    const reservadas = unidadesComprometidas(guardada)
 
                     return (
                       <div key={fila.punto_de_venta_id} className="border-b border-border px-4 py-2.5 last:border-b-0">
@@ -730,7 +746,7 @@ export default function PanelProducto({
 
                         {reservadas !== 0 && (
                           <p className="mt-1.5 text-[11.5px] text-fg-3">
-                            Disponible para vender: <span className="num">{fila.available}</span>.
+                            Disponible para vender: <span className="num">{guardada?.available ?? 0}</span>.
                             {reservadas > 0
                               ? ` Hay ${reservadas} unidad${reservadas === 1 ? '' : 'es'} comprometida${reservadas === 1 ? '' : 's'} en ventas o producción.`
                               : ' El disponible quedó por encima de la cantidad física: hay que revisarlo.'}

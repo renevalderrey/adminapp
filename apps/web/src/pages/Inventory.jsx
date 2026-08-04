@@ -3,7 +3,10 @@ import { toast } from 'sonner'
 import useStore from '@/store/useStore'
 import { getStockTransfers, getProducts } from '@/services/api'
 import { calcularPrecios } from '@/utils/precios'
-import { esStockBajo } from '@/utils/stockBajo'
+import {
+  TODAS_LAS_CATEGORIAS, TODAS_LAS_SUCURSALES, filaDeStock, filtrarInventario,
+  calcularIndicadores, tonoDeStock, sucursalesComparables as calcularSucursalesComparables,
+} from '@/utils/inventario'
 import { descargarInventario } from '@/utils/exportarInventario'
 import { imprimirInventario } from '@/utils/impresionInventario'
 import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid'
@@ -92,26 +95,6 @@ const unidades = (n) => Number(n || 0).toLocaleString('es-AR')
 /** El valorizado del inventario entero: sin centavos, que en un total de siete
  *  cifras son ruido y empujan la columna. */
 const pesosRedondos = (n) => Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })
-
-/**
- * Un texto comparable: sin acentos, sin mayúsculas.
- *
- * «Colágeno» y «colageno» tienen que dar lo mismo. Sin esto, el usuario que
- * escribe rápido —o el que copia del proveedor, que escribe sin tilde— no
- * encuentra el producto y concluye que no está cargado.
- */
-function comparable(texto) {
-  return String(texto ?? '')
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-}
-
-/** El valor del filtro de categoría que significa «no filtres». */
-const TODAS_LAS_CATEGORIAS = 'todas'
-
-/** El valor del filtro de sucursal que significa «mostralas todas». */
-const TODAS_LAS_SUCURSALES = 'todas'
 
 /**
  * Cuántas columnas de stock se dibujan a la vez.
@@ -431,34 +414,6 @@ const Inventory = () => {
     ? sucursalDelFiltro
     : (puntoDeVentaActivo?.id ? String(puntoDeVentaActivo.id) : TODAS_LAS_SUCURSALES)
 
-  /**
-   * La fila de stock de un producto en una sucursal, o `undefined`.
-   *
-   * Por **`punto_de_venta_id`** y nunca por el texto `location` (FR-061): dos
-   * sucursales distintas pueden haber tenido el mismo texto, y una fila con un
-   * `location` que no corresponde a ninguna sucursal no aparecía en ninguna
-   * columna. Los ids se comparan como texto porque el de la sucursal viene del
-   * `<select>` como string y el de la fila como número.
-   */
-  const filaDeStock = (p, sucursalId) =>
-    (p.stock || []).find(s => String(s.punto_de_venta_id) === String(sucursalId))
-
-  /**
-   * Las filas de stock que entran en el alcance del filtro de sucursal.
-   *
-   * Todo lo que la pantalla cuenta —los cuatro indicadores y el conmutador de
-   * stock bajo— sale de acá, así que hay un solo lugar donde el alcance está
-   * definido. Con la lógica repetida en cada cálculo, el indicador y el filtro
-   * terminan contando conjuntos distintos y el usuario ve «7 en stock bajo» y
-   * cinco filas al filtrar.
-   */
-  const filasEnAlcance = (p) => {
-    const filas = p.stock || []
-    if (sucursalElegida === TODAS_LAS_SUCURSALES) return filas
-    const fila = filaDeStock(p, sucursalElegida)
-    return fila ? [fila] : []
-  }
-
   /** Las categorías que EXISTEN en el catálogo. `Product.category` es texto
    *  libre: una lista cerrada dejaría afuera lo que el cliente ya cargó. */
   const categorias = useMemo(() => {
@@ -469,71 +424,33 @@ const Inventory = () => {
 
   const umbralStockBajo = Number(settings.umbral_stock_bajo)
 
-  const filteredProducts = useMemo(() => {
-    // Los tokens se normalizan UNA vez y no una por producto: con mil productos
-    // y cinco campos, normalizar adentro del bucle son cinco mil llamadas a
-    // `normalize()` por tecla.
-    const tokens = comparable(searchQuery).trim().split(/\s+/).filter(Boolean)
-
-    return catalogo.filter(p => {
-      if (categoria !== TODAS_LAS_CATEGORIAS && p.category !== categoria) return false
-
-      if (soloStockBajo) {
-        const filas = filasEnAlcance(p)
-        // Sin ninguna fila en el alcance el producto está en cero ahí, que es el
-        // caso más urgente: no tener fila y tener cero es lo mismo para reponer.
-        const bajo = filas.length === 0
-          ? esStockBajo({ quantity: 0, min_stock: 0 }, umbralStockBajo)
-          : filas.some(s => esStockBajo(s, umbralStockBajo))
-        if (!bajo) return false
-      }
-
-      if (tokens.length === 0) return true
-
-      // Todos los campos con `?? ''`: un producto sin marca, sin categoría o sin
-      // SKU no puede romper la búsqueda por los demás campos.
-      const texto = [p.name, p.brand?.name, p.category, p.sku, p.barcode]
-        .map(comparable)
-        .join(' ')
-      const costo = parseFloat(p.cost)
-
-      return tokens.every(token => texto.includes(token)
-        || (!isNaN(Number(token)) && costo === parseFloat(token)))
-    })
-    // `filasEnAlcance` depende de `sucursalElegida`, que está en las dependencias.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogo, searchQuery, categoria, soloStockBajo, sucursalElegida, umbralStockBajo])
-
   /**
-   * Los cuatro indicadores, sobre el RESULTADO FILTRADO y la sucursal elegida.
+   * El resultado del listado.
    *
-   * Que se refieran al filtro y no al catálogo entero es lo que los hace útiles:
-   * filtrando por una marca, «Valor del stock» contesta cuánto vale lo de esa
-   * marca. Referidos al catálogo entero serían cuatro números que no cambian
-   * nunca y que nadie mira.
+   * La regla vive en `utils/inventario.js` y no acá: adentro del componente no
+   * hay forma de testearla —`apps/web` no tiene entorno de render— y así fue
+   * como el filtro de sucursal se quedó sin su predicado (FR-064) sin que
+   * ningún test se pusiera en rojo.
    */
-  const indicadores = useMemo(() => {
-    let valor = 0
-    let bajo = 0
-    let sin = 0
+  const filteredProducts = useMemo(
+    () => filtrarInventario(catalogo, {
+      texto: searchQuery,
+      categoria,
+      soloStockBajo,
+      sucursalElegida,
+      umbral: umbralStockBajo,
+    }),
+    [catalogo, searchQuery, categoria, soloStockBajo, sucursalElegida, umbralStockBajo]
+  )
 
-    for (const p of filteredProducts) {
-      const filas = filasEnAlcance(p)
-      const cantidad = filas.reduce((suma, s) => suma + (Number(s.quantity) || 0), 0)
-
-      valor += cantidad * (parseFloat(p.cost) || 0)
-
-      if (cantidad <= 0) sin++
-
-      const enFalta = filas.length === 0
-        ? esStockBajo({ quantity: 0, min_stock: 0 }, umbralStockBajo)
-        : filas.some(s => esStockBajo(s, umbralStockBajo))
-      if (enFalta) bajo++
-    }
-
-    return { productos: filteredProducts.length, valor, bajo, sin }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredProducts, sucursalElegida, umbralStockBajo])
+  /** Los cuatro indicadores, sobre el RESULTADO FILTRADO y la sucursal elegida. */
+  const indicadores = useMemo(
+    () => calcularIndicadores(filteredProducts, {
+      sucursalElegida,
+      umbral: umbralStockBajo,
+    }),
+    [filteredProducts, sucursalElegida, umbralStockBajo]
+  )
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / FILAS_POR_PAGINA))
   const paginatedProducts = filteredProducts.slice((page - 1) * FILAS_POR_PAGINA, page * FILAS_POR_PAGINA)
@@ -561,23 +478,14 @@ const Inventory = () => {
 
 
   /**
-   * Las sucursales que pueden ser columna.
-   *
-   * Las activas siempre; las dadas de baja **solo si tienen mercadería adentro**
-   * (FR-066). Una sucursal cerrada y vacía es ruido en la tabla; una cerrada con
-   * stock es un problema pendiente, y esconderla es esconder el problema.
+   * Las sucursales que pueden ser columna: las activas, y las dadas de baja con
+   * mercadería adentro (FR-066). La regla —y por qué es `!== 0` y no `> 0`—
+   * está en `utils/inventario.js`.
    */
-  const sucursalesComparables = useMemo(() => {
-    const conMercaderia = new Set()
-
-    for (const p of catalogo) {
-      for (const s of p.stock || []) {
-        if (Number(s.quantity) > 0) conMercaderia.add(String(s.punto_de_venta_id))
-      }
-    }
-
-    return sucursales.filter(s => s.is_active !== false || conMercaderia.has(String(s.id)))
-  }, [sucursales, catalogo])
+  const sucursalesComparables = useMemo(
+    () => calcularSucursalesComparables(sucursales, catalogo),
+    [sucursales, catalogo]
+  )
 
   /** Con el filtro en una sucursal, una sola columna; con «Todas», hasta tres. */
   const columnasDeStock = useMemo(() => {
@@ -698,11 +606,18 @@ const Inventory = () => {
     })
   }
 
-  /** Si hay algún filtro puesto. Decide cuál de los dos vacíos se muestra. */
+  /**
+   * Si hay algún filtro puesto. Decide cuál de los dos vacíos se muestra.
+   *
+   * La sucursal cuenta como filtro desde que acota el listado (FR-064): sin
+   * ella acá, elegir una sucursal que no maneja ningún producto mostraría «No
+   * hay productos cargados» —que es mentira— en vez de «ninguno coincide».
+   */
   const hayFiltros = searchQuery.trim() !== ''
     || categoria !== TODAS_LAS_CATEGORIAS
     || soloStockBajo
     || verDesactivados
+    || sucursalElegida !== TODAS_LAS_SUCURSALES
 
   /**
    * Todo cambio de filtro vuelve a la página 1.
@@ -717,25 +632,16 @@ const Inventory = () => {
     setPage(1)
   }
 
+  // «Limpiar» limpia lo mismo que cuenta `hayFiltros`, la sucursal incluida: el
+  // botón aparece justo en el vacío que produjo el filtro de sucursal, y uno que
+  // no lo saca es un botón que no cambia nada.
   const limpiarFiltros = () => aplicarFiltro(() => {
     setSearchQuery('')
     setCategoria(TODAS_LAS_CATEGORIAS)
     setSoloStockBajo(false)
     setVerDesactivados(false)
+    setSucursalDelFiltro(TODAS_LAS_SUCURSALES)
   })
-
-  /**
-   * El badge de una celda de stock.
-   *
-   * `danger` en cero o negativo, `warn` por debajo del mínimo, neutro si está
-   * bien. Los tres tonos van juntos —texto, fondo y línea—: un color de estado
-   * suelto sobre el fondo de la tarjeta se lee como un error de estilo.
-   */
-  const tonoDeStock = (cantidad, minimo) => {
-    if (cantidad <= 0) return 'border-danger-line bg-danger-soft text-danger'
-    if (minimo > 0 && cantidad <= minimo) return 'border-warn-line bg-warn-soft text-warn'
-    return 'border-border bg-surface-3 text-fg-2'
-  }
 
   if (error) {
     return (
@@ -1221,7 +1127,7 @@ const Inventory = () => {
                               render={
                                 <span
                                   className={`num inline-block min-w-[38px] cursor-default rounded-md border px-2 py-[3px]
-                                              text-[12.5px] font-semibold ${tonoDeStock(cantidad, minimo)}`}
+                                              text-[12.5px] font-semibold ${tonoDeStock(entry, umbralStockBajo)}`}
                                 />
                               }
                             >
