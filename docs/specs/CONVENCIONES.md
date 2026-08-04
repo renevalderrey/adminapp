@@ -142,6 +142,73 @@ archivos se tocaron.
 
 ---
 
+## Tests de render en la web
+
+`apps/web` tiene entorno de render desde el proyecto 5d: jsdom,
+`@testing-library/react` y `@testing-library/user-event`, todo en
+`devDependencies`. El bloque `test` está en `apps/web/vite.config.js` y los
+matchers y la limpieza entre pruebas, en `apps/web/src/tests/preparacion.js`.
+
+Los ejemplos a copiar son `src/tests/renderDeInventario.test.jsx` y
+`src/tests/renderDePanelProducto.test.jsx`.
+
+### Cuándo va un test de render y cuándo una función pura
+
+La pregunta es **qué se está afirmando**:
+
+| Se afirma… | Dónde va |
+|---|---|
+| Una regla: de qué color va el badge, qué filas entran, cuánto suma un indicador | Función pura en `utils/`, test en `utils/*.test.js` |
+| El dibujo: que el badge esté en la celda de la sucursal que corresponde, que el encabezado y las filas compartan columnas, que el aviso caiga bajo su renglón | Test de render en `src/tests/*.test.jsx` |
+| Que apretar algo dispare lo que tiene que disparar —y **solo** eso— | Test de render |
+| Que un campo quede deshabilitado sin el permiso, con su explicación | Test de render |
+
+**Primero se intenta la función pura.** Un test de render que verifica una
+regla es diez veces más lento y se rompe cuando alguien mueve un `<div>`; la
+regla no cambió y el test igual se puso en rojo. Sacar la regla del componente
+a `utils/` —como hicieron `estadoVenta.js`, `exportarVentas.js` e
+`inventario.js`— es lo primero, y el test de render cubre lo que queda.
+
+### Cómo se escribe uno acá
+
+1. **El store se llena a mano** con `useStore.setState`, incluidas las
+   acciones: `initialize` y `cargarSucursales` se reemplazan por `vi.fn()`
+   porque las pantallas las llaman en un `useEffect` al montar.
+2. **No se mockea `@/services/api` entero.** El grafo de imports de una
+   pantalla arrastra decenas de exportaciones nombradas y la lista se
+   desactualiza sola. Cuando hace falta interceptar, se espía la instancia de
+   axios: `vi.spyOn(api, 'post').mockResolvedValue(...)`.
+3. **Las filas se buscan por su `grid-template-columns`.** La tabla es un grid
+   y no un `<table>`, así que no hay `role="row"`:
+   `screen.getByText('Colágeno').closest('[style*="grid-template-columns"]')`.
+   Desde ahí se mira con `within`.
+4. **Los permisos se cargan como códigos** en `useStore.setState({ permisos })`:
+   es de donde los lee `usePermission`.
+5. **Si el componente pide algo al montar** —`HistorialDeCostos` pide el
+   historial de costos— el render va envuelto en `await act(async () => …)`.
+   Sin eso React llena la salida de «An update … was not wrapped in act(...)», y
+   una suite que imprime ruido en verde es una que nadie lee cuando se pone en
+   rojo.
+6. **Un archivo que necesite el entorno `node`** —porque prueba justamente que
+   no hay navegador— lo declara con un docblock `@vitest-environment node`. El
+   único hoy es `utils/impresionInventario.test.js`.
+
+### Lo que no se hace
+
+- **No se afirma nada sobre posiciones ni tamaños.** jsdom no tiene motor de
+  maquetado. Que un elemento esté «arriba» o «no se superponga» no se puede
+  contestar acá; para eso hace falta un navegador.
+- **No se mencionan clases de Tailwind al pasar.** El CSS de producción crece:
+  Tailwind v4 escanea las fuentes solo y no distingue un test de un componente.
+  `src/index.css` tiene tres `@source not` que sacan a los tests del escaneo —
+  se agregaron después de que la variable `container` de `@testing-library`
+  metiera 272 bytes de `.container` en el bundle.
+- **Un test de render que pasa con y sin el cambio no vale nada, igual que
+  cualquier otro.** La forma de comprobarlo es la de siempre: revertir la
+  corrección, correr el test, verificar que se pone en rojo, y restaurar.
+
+---
+
 ## Definición de terminado
 
 Una tarea está terminada cuando:

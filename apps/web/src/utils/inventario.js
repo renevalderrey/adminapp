@@ -7,9 +7,8 @@ import { esStockBajo } from '@/utils/stockBajo'
 //  indicador, de qué color va cada badge, qué sucursales pueden ser columna—
 //  vive acá y no adentro de `pages/Inventory.jsx`. Es el mismo movimiento que
 //  ya se hizo con `estadoVenta.js` y `exportarVentas.js`, y por el mismo
-//  motivo: `apps/web` no tiene entorno de tests de render (ni jsdom ni
-//  testing-library), así que una regla escrita adentro del componente es una
-//  regla **sin ninguna cobertura posible**.
+//  motivo: una regla escrita adentro del componente cuesta mucho más verificar
+//  que una función que se llama y se compara.
 //
 //  No es una hipótesis. Cuatro incumplimientos de la spec —el badge con la
 //  regla vieja, el filtro de sucursal que no filtraba, el conteo de sucursales
@@ -17,10 +16,13 @@ import { esStockBajo } from '@/utils/stockBajo'
 //  estaba tipeando— pasaron los 274 tests de la web sin ponerse en rojo, porque
 //  no había forma de llamarlos.
 //
-//  Montar el entorno de render sigue haciendo falta y sigue siendo otro
-//  proyecto (`docs/PROXIMOS-PROYECTOS.md`, 5d). Lo que este archivo consigue es
-//  que lo que quede sin cubrir sea el **dibujo** —que el badge esté en la celda
-//  que corresponde— y no la **regla** —de qué color va—.
+//  El entorno de render **ya existe** (proyecto 5d): jsdom más
+//  `@testing-library/react`, con el bloque `test` en `vite.config.js`. Así que
+//  el **dibujo** —que el badge esté en la celda de la sucursal que
+//  corresponde— se verifica en `src/tests/renderDeInventario.test.jsx`, y la
+//  **regla** —de qué color va— acá, en `inventario.test.js`, que es donde es
+//  más barata. La división sigue valiendo: un test de render que verifica una
+//  función pura es un test lento que se rompe cuando alguien mueve un `<div>`.
 // ════════════════════════════════════════════
 
 /** El valor del filtro de sucursal que significa «mostralas todas». */

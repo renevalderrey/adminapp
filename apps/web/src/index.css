@@ -2,6 +2,18 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Los archivos de test quedan FUERA del escaneo de clases de Tailwind.
+   Tailwind v4 detecta las fuentes solo y no distingue un test de un
+   componente: un test de render menciona clases —`text-warn`, `bg-warn-soft`—
+   para verificar que el badge esté pintado, y cualquier palabra suelta que
+   coincida con una utilidad entra al CSS de producción. Pasó en el primer
+   intento: la variable `container` de `@testing-library` agregó 272 bytes de
+   `.container` al bundle. Los tests no se sirven a nadie; su vocabulario no
+   tiene por qué costar bytes en el navegador del cliente. */
+@source not "./tests/**";
+@source not "./**/*.test.js";
+@source not "./**/*.test.jsx";
+
 @custom-variant dark (&:is(.dark *));
 
 /* ════════════════════════════════════════════

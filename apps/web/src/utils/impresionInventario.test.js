@@ -1,3 +1,12 @@
+/**
+ * @vitest-environment node
+ *
+ * La suite corre entera en jsdom (`vite.config.js`), y este archivo es la
+ * excepción: su última prueba —«sin navegador tampoco explota»— verifica el
+ * camino en el que `window` NO existe. Bajo jsdom `window` existe, así que ese
+ * test pasaría sin probar lo que dice su nombre y `window.open` de jsdom
+ * ensuciaría la salida con un «Not implemented».
+ */
 import { describe, it, expect, vi } from 'vitest'
 import { armarHtml, totalesDeImpresion, imprimirInventario } from './impresionInventario'
 
