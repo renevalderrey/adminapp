@@ -8,6 +8,62 @@ Cuando uno arranca, se le hace su spec con `/sdd` y se lo saca de acá.
 
 ---
 
+## 0 · Las migraciones no pueden recrear la base
+
+**Es lo primero de la lista porque no es una funcionalidad que falta: es una
+base de datos que no se puede reconstruir.**
+
+Cuatro tablas tienen modelo y **ninguna migración las crea**:
+
+| Tabla | Modelo |
+|---|---|
+| `roles` | `models/Rol.js` |
+| `permisos` | `models/Permiso.js` |
+| `rol_permisos` | `models/RolPermiso.js` |
+| `usuario_permisos` | `models/UsuarioPermiso.js` |
+
+Tampoco existe la columna `usuario_empresas.rol_id`, que es de donde sale el rol
+de cada persona en cada empresa.
+
+Cómo comprobarlo, sin levantar nada:
+
+```bash
+grep -ho "createTable(\s*'[a-z_]*'" apps/api/src/migrations/*.js | sed "s/.*'\(.*\)'/\1/" | sort -u
+grep -rho "tableName:\s*'[a-z_]*'" apps/api/src/models/*.js   | sed "s/.*'\(.*\)'/\1/" | sort -u
+```
+
+La segunda lista tiene cuatro entradas que la primera no.
+
+**Qué pasa con una base creada solo con las migraciones.** `middleware/auth.js`
+consulta `RolPermiso` y `UsuarioPermiso` para armar `req.usuarioPermisos`
+(`:196-212`). Las consultas fallan, el `catch` deja el arreglo **vacío** y solo
+escribe un `logger.warn`. `checkPermission` entonces niega **todo**, a **todos**:
+la aplicación arranca, deja entrar, y ninguna acción funciona. Falla cerrado,
+que es lo correcto, pero el sintoma no señala la causa por ningún lado.
+
+**Por qué producción anda igual.** La base actual se creó con `sequelize.sync()`
+antes de que existieran las migraciones, así que tiene las tablas. Lo que no se
+puede es **volver a crearla**: una recuperación ante desastre, una réplica de
+staging, o el entorno local de cualquiera que empiece de cero.
+
+**Por qué el CI no lo ve.** El job «la imagen arranca y migra» comprueba que el
+contenedor levante y que las migraciones corran, no que el esquema resultante
+sirva. Es la misma clase de agujero que dejó pasar el `references: { table, key }`
+de la migración de TiendaNube — con la diferencia de que aquella rompía ruidosamente.
+
+**Qué hace falta**: una migración que cree las cuatro tablas y la columna, con
+el mismo contenido con el que se sembraron en producción (los códigos de permiso
+y los roles por defecto), y un paso de CI que después de migrar **haga una
+consulta real** por cada modelo. Hasta que ese paso exista, la próxima tabla que
+se agregue sin migración va a repetir esto.
+
+Encontrado el 4/8/2026, mientras `sdd-verify` intentaba levantar una base local
+para el hito 5: `sequelize.sync({ alter: true })` —que corre en todo entorno que
+no sea producción— muere con `default for column "unit_type" cannot be cast
+automatically to type enum_products_unit_type` y el servidor no arranca.
+
+---
+
 ## 1 · Notas de crédito
 
 **Por qué es lo primero.** Hoy anular una venta que ya tiene CAE la deja
