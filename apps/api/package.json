@@ -17,6 +17,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "db:migrate:raw": "npx sequelize-cli db:migrate --config src/config/sequelize-cli.js --migrations-path src/migrations",
+    "verificar:esquema": "node scripts/verificar-esquema.js",
     "backup": "node scripts/backup.js",
     "informe:stock": "node scripts/informe-stock-sucursal.js",
     "suscripcion": "node scripts/suscripcion.js",

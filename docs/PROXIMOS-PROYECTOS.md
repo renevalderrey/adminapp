@@ -8,59 +8,74 @@ Cuando uno arranca, se le hace su spec con `/sdd` y se lo saca de acá.
 
 ---
 
-## 0 · Las migraciones no pueden recrear la base
+## ~~0 · Las migraciones no pueden recrear la base~~ · hecho la mitad
 
-**Es lo primero de la lista porque no es una funcionalidad que falta: es una
-base de datos que no se puede reconstruir.**
+Hecho el **4/8/2026**, sin ciclo SDD: la causa estaba comprobada y el arreglo no
+cambia el comportamiento de la aplicación.
 
-Cuatro tablas tienen modelo y **ninguna migración las crea**:
+**Lo que se cerró.** Las cuatro tablas que tenían modelo y ninguna migración
+—`roles`, `permisos`, `rol_permisos`, `usuario_permisos`— y la columna
+`usuario_empresas.rol_id` ahora las crea
+`migrations/20260806-esquema-de-permisos.js`, con exactamente la forma que dejó
+`sequelize.sync()` en producción (se obtuvo sincronizando una base limpia y
+volcándola con `pg_dump`; el DDL coincide byte a byte). Es aditiva y toda
+`IF NOT EXISTS`, así que sobre producción —donde las tablas ya están, con datos—
+no hace nada. **No es reversible**: su `down` se niega con un error explicando
+por qué, porque en producción un `down` borraría el modelo de permisos entero.
 
-| Tabla | Modelo |
-|---|---|
-| `roles` | `models/Rol.js` |
-| `permisos` | `models/Permiso.js` |
-| `rol_permisos` | `models/RolPermiso.js` |
-| `usuario_permisos` | `models/UsuarioPermiso.js` |
+No siembra: `seedPermissions()` ya lo hace en cada arranque, es idempotente, y el
+catálogo de permisos cambia con cada funcionalidad — congelarlo en una migración
+garantiza que quede viejo.
 
-Tampoco existe la columna `usuario_empresas.rol_id`, que es de donde sale el rol
-de cada persona en cada empresa.
+Apareció una quinta ausencia por el camino: `cashflow_entries.punto_de_venta_id`,
+que el modelo declara con índice y ninguna migración creaba
+(`20260604-add-pv-to-fixed-expenses.js` se la puso a `fixed_expenses` y se olvidó
+de caja). En una base recreada, cualquier consulta a caja devolvía 500. La crea
+`migrations/20260807-punto-de-venta-en-cashflow.js`, que sí es reversible porque
+la columna está vacía.
 
-Cómo comprobarlo, sin levantar nada:
+**El paso de CI que faltaba** es `apps/api/scripts/verificar-esquema.js`: recorre
+los modelos de `src/models/index.js` y hace un `findOne` por cada uno. No hay
+lista que mantener y es más estricto que preguntar si la tabla existe, porque
+Sequelize enumera todas las columnas del modelo en el `SELECT` — así apareció lo
+de caja. Corre en el job «la imagen arranca y migra», después de migrar.
 
-```bash
-grep -ho "createTable(\s*'[a-z_]*'" apps/api/src/migrations/*.js | sed "s/.*'\(.*\)'/\1/" | sort -u
-grep -rho "tableName:\s*'[a-z_]*'" apps/api/src/models/*.js   | sed "s/.*'\(.*\)'/\1/" | sort -u
+**Y el error que se tragaba.** `seedPermissions()` separa ahora el fallo de
+esquema (42P01/42703) del transitorio: el primero va como `fatal`, dice que
+ningún usuario va a tener permisos y nombra el script que lo arregla. `auth.js`
+sigue fallando cerrado —eso está bien y no se toca— pero el aviso subió de `warn`
+a `error` y se reporta a Sentry una vez por proceso. **Ninguno de los dos tumba
+el arranque**: el freno duro va en CI, donde equivocarse cuesta un pipeline en
+rojo y no un cliente sin sistema.
+
+### Lo que sigue abierto: los ENUM
+
+Una base creada solo con migraciones **todavía no puede levantar en desarrollo**.
+El síntoma original del 4/8/2026 sigue igual:
+
+```
+default for column "unit_type" cannot be cast automatically to type enum_products_unit_type
 ```
 
-La segunda lista tiene cuatro entradas que la primera no.
+La causa es otra: ocho columnas están declaradas `DataTypes.ENUM` en el modelo y
+creadas `VARCHAR` por las migraciones —`products.unit_type`,
+`cashflow_entries.type`, `invitaciones.role`, `invitaciones.status`,
+`production_orders.status`, `supplier_movements.type`, `supplier_orders.status`,
+`suscripciones.status`—. `sequelize.sync({ alter: true })`, que corre en todo
+entorno que no sea producción, intenta convertirlas y muere.
 
-**Qué pasa con una base creada solo con las migraciones.** `middleware/auth.js`
-consulta `RolPermiso` y `UsuarioPermiso` para armar `req.usuarioPermisos`
-(`:196-212`). Las consultas fallan, el `catch` deja el arreglo **vacío** y solo
-escribe un `logger.warn`. `checkPermission` entonces niega **todo**, a **todos**:
-la aplicación arranca, deja entrar, y ninguna acción funciona. Falla cerrado,
-que es lo correcto, pero el sintoma no señala la causa por ningún lado.
+No lo detecta `verificar-esquema.js` porque un `SELECT` sobre un `VARCHAR` donde
+el modelo espera un ENUM anda perfecto: el chequeo responde «¿puede el código
+leer esta tabla?», no «¿es el esquema idéntico al de los modelos?».
 
-**Por qué producción anda igual.** La base actual se creó con `sequelize.sync()`
-antes de que existieran las migraciones, así que tiene las tablas. Lo que no se
-puede es **volver a crearla**: una recuperación ante desastre, una réplica de
-staging, o el entorno local de cualquiera que empiece de cero.
+**Qué implica**: decidir de qué lado se unifica —crear los tipos ENUM en una
+migración, o bajar los modelos a `STRING` con validación— y aplicarlo. Ojo con
+producción: ahí las columnas **sí** son ENUM, así que la migración tiene que
+contemplar los dos estados posibles.
 
-**Por qué el CI no lo ve.** El job «la imagen arranca y migra» comprueba que el
-contenedor levante y que las migraciones corran, no que el esquema resultante
-sirva. Es la misma clase de agujero que dejó pasar el `references: { table, key }`
-de la migración de TiendaNube — con la diferencia de que aquella rompía ruidosamente.
-
-**Qué hace falta**: una migración que cree las cuatro tablas y la columna, con
-el mismo contenido con el que se sembraron en producción (los códigos de permiso
-y los roles por defecto), y un paso de CI que después de migrar **haga una
-consulta real** por cada modelo. Hasta que ese paso exista, la próxima tabla que
-se agregue sin migración va a repetir esto.
-
-Encontrado el 4/8/2026, mientras `sdd-verify` intentaba levantar una base local
-para el hito 5: `sequelize.sync({ alter: true })` —que corre en todo entorno que
-no sea producción— muere con `default for column "unit_type" cannot be cast
-automatically to type enum_products_unit_type` y el servidor no arranca.
+Faltan además tres índices que los modelos declaran y las migraciones no crean:
+`products.barcode`, `products.category` y `products.supplier_id`. Es rendimiento,
+no corrección, y por eso no lo ve ningún chequeo.
 
 ---
 

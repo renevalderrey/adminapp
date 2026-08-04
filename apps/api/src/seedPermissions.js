@@ -1,5 +1,7 @@
 const { Permiso, Rol, RolPermiso, UsuarioEmpresa, sequelize } = require('./models');
 const logger = require('./utils/logger');
+const { esErrorDeEsquema } = require('./utils/errores');
+const { reportarError } = require('./config/sentry');
 
 const PERMISOS = [
   // Productos
@@ -148,8 +150,69 @@ async function seedPermissions() {
     await fixMissingRolIds();
     logger.info('UsuarioEmpresa rol_id fix completed');
   } catch (err) {
-    logger.error({ err }, 'Error seeding permissions');
+    avisarQueLaSiembraFallo(err, 'seedPermissions');
   }
+}
+
+/**
+ * Deja constancia de que la siembra de permisos fallo, con el peso que
+ * corresponde.
+ *
+ * ── Que estaba mal ──
+ *
+ * El catch original era `logger.error({ err }, 'Error seeding permissions')` y
+ * nada mas. Cuando faltaban las cuatro tablas de permisos, eso producia un
+ * arranque APARENTEMENTE normal: `Server started`, `/api/health` en `ok`, y una
+ * aplicacion donde ningun usuario podia hacer absolutamente nada porque
+ * `checkPermission` le negaba todo. Una linea de log entre cientos, en el nivel
+ * que se usa para cosas que se reintentan solas.
+ *
+ * ── Que cambia ──
+ *
+ * Se separan dos casos que no son el mismo problema:
+ *
+ * - **El esquema no tiene las tablas** (42P01/42703). No es transitorio y no se
+ *   arregla reintentando: falta una migracion, y la aplicacion NO va a servir
+ *   para nada hasta que se corra. Va como `fatal` y se reporta a Sentry, con el
+ *   nombre del script que lo arregla.
+ * - **Cualquier otra cosa** —la base tardo, se corto la conexion, se perdio una
+ *   carrera con otra instancia sembrando lo mismo—. Eso si puede resolverse
+ *   solo en el proximo arranque. Queda en `error` y tambien se reporta, porque
+ *   antes no se reportaba nada.
+ *
+ * ── Por que NO tumba el arranque ──
+ *
+ * Seria lo mas contundente: si el esquema esta roto, no arrancar. Y es
+ * tentador, porque un servidor que arranca inservible es peor que uno que no
+ * arranca.
+ *
+ * No se hace, y el motivo es de riesgo, no de gusto. Hoy `seedPermissions()`
+ * jamas impide arrancar. Convertirlo en una condicion de arranque significa que
+ * cualquier caso que este chequeo clasifique de mas —un `search_path` raro, una
+ * base que responde a medias durante un failover, un permiso de Postgres
+ * cambiado— deja a produccion sin API, y produccion hoy anda. La restriccion es
+ * clara: nada de lo que se agregue puede hacer que no arranque un despliegue
+ * que hoy arranca.
+ *
+ * El lugar donde el esquema incompleto SI tiene que ser un freno duro es antes
+ * de llegar a produccion: `scripts/verificar-esquema.js`, que corre en CI
+ * despues de migrar y pone el build en rojo. Ahi el costo de equivocarse es un
+ * pipeline fallado, no un cliente sin sistema.
+ */
+function avisarQueLaSiembraFallo(err, donde) {
+  if (esErrorDeEsquema(err)) {
+    logger.fatal(
+      { err, donde },
+      'El esquema de permisos no existe en esta base. NINGUN usuario va a tener ' +
+      'permisos y ninguna accion del sistema va a funcionar, aunque el servidor ' +
+      'arranque y el health check de en verde. Corre las migraciones: ' +
+      'node scripts/migrar.js'
+    );
+  } else {
+    logger.error({ err, donde }, 'Fallo la siembra de permisos');
+  }
+
+  reportarError(err, { ruta: `seedPermissions/${donde}` });
 }
 
 async function fixMissingRolIds() {
@@ -165,7 +228,7 @@ async function fixMissingRolIds() {
       }
     }
   } catch (err) {
-    logger.error({ err }, 'Error fixing missing rol_ids');
+    avisarQueLaSiembraFallo(err, 'fixMissingRolIds');
   }
 }
 

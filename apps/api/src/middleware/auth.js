@@ -2,7 +2,12 @@ const { auth } = require('express-oauth2-jwt-bearer');
 const { Usuario, UsuarioEmpresa, Empresa, PuntoDeVenta, Rol, RolPermiso, UsuarioPermiso, Permiso } = require('../models');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
+const { esErrorDeEsquema } = require('../utils/errores');
+const { reportarError } = require('../config/sentry');
 require('dotenv').config();
+
+// Se reporta a Sentry una sola vez por proceso: ver el catch de permisos.
+let yaSeReportoElFalloDePermisos = false;
 
 const checkJwt = auth({
   audience: process.env.AUTH0_AUDIENCE,
@@ -220,8 +225,50 @@ const loadEmpresaContext = async (req, res, next) => {
 
         req.usuarioPermisos = [...permisos];
       } catch (permErr) {
-        logger.warn({ err: permErr, userId: req.userId }, 'Error loading permissions, defaulting to empty');
+        // ── Falla cerrado, pero ahora se nota ──
+        //
+        // Quedarse con la lista vacia es lo correcto y no se toca: ante la duda
+        // sobre que puede hacer alguien, la respuesta es "nada". Lo que estaba
+        // mal era el aviso.
+        //
+        // Esto era un `logger.warn` que decia "defaulting to empty". Cuando
+        // faltaban las tablas de permisos, ese warn se repetia en CADA request
+        // y describia el sintoma —la lista quedo vacia— sin nombrar la causa ni
+        // su gravedad: la aplicacion deja entrar y despues no funciona ninguna
+        // accion, para nadie.
+        //
+        // Sube a `error` y separa el caso de esquema, que no es transitorio.
         req.usuarioPermisos = [];
+
+        if (esErrorDeEsquema(permErr)) {
+          logger.error(
+            { err: permErr, userId: req.userId, empresaId: req.empresaId },
+            'No se pudieron leer los permisos porque el esquema no tiene las tablas. ' +
+            'Este usuario queda sin NINGUN permiso: va a poder entrar y no va a poder ' +
+            'hacer nada. Faltan migraciones.'
+          );
+        } else {
+          logger.error(
+            { err: permErr, userId: req.userId, empresaId: req.empresaId },
+            'No se pudieron leer los permisos; el usuario queda sin ninguno'
+          );
+        }
+
+        // Sentry, una sola vez por proceso.
+        //
+        // Esto corre en el camino de todos los requests: reportar cada uno
+        // convertiria un problema en miles de eventos identicos y haria que
+        // Sentry descarte el resto por cuota. Con uno alcanza para enterarse, y
+        // el log tiene todas las repeticiones si hace falta contarlas.
+        if (!yaSeReportoElFalloDePermisos) {
+          yaSeReportoElFalloDePermisos = true;
+          reportarError(permErr, {
+            requestId: req.id,
+            ruta: req.originalUrl,
+            usuario: req.userId,
+            empresaId: req.empresaId,
+          });
+        }
       }
     }
 

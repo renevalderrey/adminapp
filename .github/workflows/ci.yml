@@ -119,6 +119,19 @@ jobs:
             adminapp-api:ci \
             node scripts/migrar.js
 
+      # Migrar y arrancar no dicen nada del esquema: una base sin las tablas de
+      # permisos levantaba igual, con el health check en verde, y quedaba
+      # inservible. Este paso hace una consulta real por cada modelo — si falta
+      # una tabla o una columna, se cae acá y no tres meses después.
+      - name: El esquema migrado sirve (una consulta por modelo)
+        run: |
+          docker run --rm --network host \
+            -e NODE_ENV=production \
+            -e DATABASE_URL='postgresql://adminapp:adminapp@localhost:5432/adminapp_ci' \
+            -e DB_SSL=false \
+            adminapp-api:ci \
+            node scripts/verificar-esquema.js
+
       - name: El servidor levanta y responde el health check
         run: |
           docker run -d --name api-ci --network host \

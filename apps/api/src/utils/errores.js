@@ -100,4 +100,27 @@ function fallo(req, res, err, mensaje = 'Error interno del servidor') {
   });
 }
 
-module.exports = { fallo, ErrorDeNegocio };
+/**
+ * Si el error es «la base no tiene la forma que el codigo espera».
+ *
+ * No es lo mismo que una base caida o lenta. Postgres tiene codigos distintos:
+ * 42P01 es "esa tabla no existe" y 42703 es "esa columna no existe". Los dos
+ * significan que el esquema quedo atras del codigo —una migracion que falta— y
+ * ninguno se arregla reintentando.
+ *
+ * Hace falta distinguirlos porque los dos casos piden reacciones opuestas: un
+ * fallo de conexion es transitorio y se reintenta; un esquema incompleto es
+ * permanente y hay que decirlo fuerte. Confundirlos fue exactamente lo que dejo
+ * pasar tres meses sin migracion a las tablas de permisos: el catch los trataba
+ * a todos igual y solo dejaba un `logger.error`.
+ *
+ * @param {Error} err
+ * @returns {boolean}
+ */
+function esErrorDeEsquema(err) {
+  // Sequelize envuelve el error de pg: el codigo viene en `parent`/`original`.
+  const codigo = err?.parent?.code || err?.original?.code || err?.code;
+  return codigo === '42P01' || codigo === '42703';
+}
+
+module.exports = { fallo, ErrorDeNegocio, esErrorDeEsquema };
