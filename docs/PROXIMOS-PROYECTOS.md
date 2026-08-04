@@ -140,31 +140,20 @@ convierte a `sdd-verify` de lector de código en verificador de verdad.
 
 ---
 
-## 5d · Tests de render en la web
+## ~~5d · Tests de render en la web~~ · hecho
 
-**Apareció** verificando el historial de ventas (1/8/2026).
+Hecho en **`3bd02fc`** (3/8/2026), sin ciclo SDD porque no cambia el
+comportamiento de la aplicación: `jsdom` y `@testing-library` en
+`apps/web/devDependencies`, el bloque `test` en `vite.config.js`, y 28 tests de
+render que atrapan los cuatro incumplimientos de Inventario que habían pasado
+en verde. Cómo se escribe uno —y cuándo corresponde uno en vez de una función
+pura— está en
+[CONVENCIONES.md](specs/CONVENCIONES.md#tests-de-render-en-la-web).
 
-`sdd-verify` aplicó diez mutaciones que revierten requisitos concretos y **las
-684 pruebas siguieron pasando**. Cinco eran de la API y se cerraron extrayendo
-las funciones puras del handler del export. **Las otras cinco eran de la
-pantalla y siguen sin cobertura.**
-
-No hay entorno de render: `vite.config.js` no declara bloque `test`, no hay
-`jsdom` ni `@testing-library/react`. Los ocho archivos de test de la web son de
-funciones puras, y el de guardia lee el archivo como **texto**.
-
-Queda expuesto todo lo que depende de renderizar: que el badge muestre la
-etiqueta de la API y no una derivación propia, que la celda «Estado» tenga el
-badge y la de «Total» el importe —que es el defecto que ya pasó una vez—, que
-el encabezado y las filas compartan las mismas columnas, que «Anular» quede
-deshabilitada con explicación en vez de ausente, y que los dos estados vacíos
-sigan siendo distintos.
-
-**Qué implica**: `jsdom` + `@testing-library/react` y el bloque `test` en la
-configuración de Vite. Una tarde.
-
-Junto con **5c** —los tests de integración de la API— es lo que convierte a
-`sdd-verify` de lector de código en verificador de verdad.
+Queda **5c** —los tests de integración de la API contra Postgres— como la otra
+mitad de lo que convierte a `sdd-verify` de lector de código en verificador de
+verdad. Y queda sin cubrir Historial de ventas: el entorno ya está, los tests
+de esa pantalla no se escribieron.
 
 ---
 
