@@ -239,9 +239,12 @@ describe('el id es del ticket, no del disparo del cobro', () => {
         afip_cuit: '20304050607',
         afip_pv: '3',
       },
-      // La pantalla lo llama al montar y al terminar cada venta: doblado, para
-      // que el test no dependa de tres requests que no está mirando.
+      // La pantalla lo llama al montar: doblado, para que el test no dependa de
+      // tres requests que no está mirando.
       initialize: vi.fn(),
+      // El botón de cobrar consulta el permiso desde T1127: sin esto queda
+      // deshabilitado y el test fallaría por el motivo equivocado.
+      permisos: ['ventas.crear'],
     })
 
     let primerIntento = true
@@ -264,7 +267,8 @@ describe('el id es del ticket, no del disparo del cobro', () => {
 
     render(React.createElement(Billing))
 
-    const boton = screen.getByRole('button', { name: /Registrar Venta/i })
+    // El botón se llamaba «Registrar Venta» antes de la reescritura de T1122.
+    const boton = screen.getByRole('button', { name: /Confirmar venta/i })
 
     await act(async () => { fireEvent.click(boton) })
     await act(async () => { fireEvent.click(boton) })

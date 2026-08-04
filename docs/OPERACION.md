@@ -85,6 +85,52 @@ Van a **stdout** y se ven en el panel de Render, en JSON. Los campos útiles:
 
 ## Situaciones
 
+### "El efectivo de ayer no da" — el arqueo cambia el día del deploy del POS
+
+**No se rompió nada.** A partir del día en que se despliega el punto de venta
+nuevo (funcionalidad 011), el arqueo de caja y el panel de control muestran
+números distintos a los de siempre. Esta sección existe porque este cambio llega
+como «el sistema está mal», y sin ella la respuesta se reconstruye desde cero
+cada vez.
+
+**1 · Qué cambia.** El «Efectivo» del día **deja de incluir transferencias, QR y
+débito**. `GET /api/sales/summary` (`routes/sales.js:203`) y
+`dashboardService._salesByMethod` (`:106`) agrupan por
+`Sale.payment_method`, y ese campo pasa de tener **tres** valores posibles a
+tener hasta **nueve**:
+
+| Antes | Ahora |
+|---|---|
+| `ef` · `tc3` · `al` | `ef` (efectivo) · `tr` (transferencia) · `qr` · `td` (débito) · `tc1` (crédito 1 pago) · `tc3v` (Visa 3c) · `tc3m` (Master 3c) · `tc3n` (Naranja 3c) · `al` (alianza) |
+
+Así que el total de «Efectivo» **baja**, y aparecen filas que antes no existían.
+La suma de todas ellas sigue dando lo mismo que antes.
+
+**2 · Por qué es lo correcto.** El sistema anterior manejaba nueve medios de
+pago y el POS ofrecía tres, que además **no eran medios sino niveles de precio**
+(efectivo / tarjeta / alianza). Una transferencia se registraba como `ef`: el
+arqueo contaba **como billetes plata que entró por CBU**, y el bloque de vuelto
+aparecía cuando no correspondía. Ahora el segmento sigue decidiendo el precio
+—una transferencia cotiza al precio de efectivo, como siempre— pero se registra
+con su medio real, y el vuelto aparece **solo con efectivo de verdad**.
+
+**3 · Qué NO se hizo, y por qué.** **El histórico no se toca.** Las ventas
+anteriores conservan el valor que tienen:
+
+- La comparación año contra año **sigue siendo válida para los códigos que ya
+  existían**. Lo que no se puede hacer es comparar «efectivo de este mes» contra
+  «efectivo del mismo mes del año pasado» y esperar que midan lo mismo: el de
+  antes incluía transferencias.
+- `tc3` —el código que el POS escribió durante meses— **conserva su significado**
+  («tarjeta, sin decir cuál») y ahora tiene etiqueta propia, «T. Crédito 3c», en
+  vez de mostrarse crudo en el historial, en el archivo exportado y en el panel.
+  No se migró a `tc3v`/`tc3m`/`tc3n` porque **nada en la fila dice si esa tarjeta
+  fue Visa, Master o Naranja**, y reescribir el registro contable de una
+  operación cerrada a partir de una adivinanza es peor que dejarlo.
+
+**Si alguien pregunta «¿dónde está la plata que falta?»**: sumar las filas
+nuevas. Está toda ahí, repartida.
+
 ### "No puedo facturar" / AFIP rechaza
 
 Por orden de probabilidad:

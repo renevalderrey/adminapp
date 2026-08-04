@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { atajoDe, ATRIBUTO_BUSCADOR } from './atajosDelPos'
+import { atajoDe, ATRIBUTO_BUSCADOR, ATRIBUTO_CAMPO, ATRIBUTO_LINEA, campoLimpiable } from './atajosDelPos'
 
 // ════════════════════════════════════════════
 //  La tabla de atajos, entera
@@ -201,5 +201,47 @@ describe('El campo de búsqueda y la regla usan la misma marca', () => {
     e.target.dataset = { [enCamelCase]: '' }
 
     expect(atajoDe(e)).toBe('agregarPrimero')
+  })
+})
+
+// ════════════════════════════════════════════
+//  FR-036 · `Esc` sabe en qué campo está el foco
+//
+//  El atajo estaba definido SOLO sobre la búsqueda: apretar `Esc` en el CUIT o
+//  en «Paga con» no limpiaba nada y —si la búsqueda estaba vacía— abría la
+//  confirmación de vaciado del ticket, que es lo contrario de lo que pide el
+//  requisito. `campoLimpiable` es lo que le da a la pantalla el dato que le
+//  faltaba, sin que la regla deje de ser pura.
+// ════════════════════════════════════════════
+
+describe('Esc sabe qué campo tiene el foco', () => {
+  it('el atributo que exporta el módulo es el que lee dataset', () => {
+    // El mismo defecto silencioso que el del buscador: si el campo escribiera
+    // una cosa y la regla leyera otra, `Esc` no limpiaría nada y no habría
+    // ningún error.
+    expect(ATRIBUTO_CAMPO).toBe('data-campo-del-pos')
+    expect(ATRIBUTO_LINEA).toBe('data-linea-del-pos')
+  })
+
+  it('un campo marcado se reconoce, con su línea si la tiene', () => {
+    const e = evento({ key: 'Escape', foco: 'INPUT' })
+    e.target.dataset = { campoDelPos: 'precioDeLinea', lineaDelPos: '10' }
+
+    expect(campoLimpiable(e)).toEqual({ nombre: 'precioDeLinea', linea: '10' })
+  })
+
+  it('la búsqueda NO es un campo limpiable: su Esc lo resuelve la pantalla', () => {
+    // La búsqueda tiene su propia marca y su propio comportamiento —limpiar el
+    // campo y quedarse ahí—, así que no entra por este camino.
+    const e = evento({ key: 'Escape', foco: 'INPUT' })
+    e.target.dataset = { buscadorDelPos: '' }
+
+    expect(campoLimpiable(e)).toBeNull()
+  })
+
+  it('fuera de todo campo no hay nada que limpiar', () => {
+    expect(campoLimpiable(evento({ key: 'Escape', foco: 'BODY' }))).toBeNull()
+    expect(campoLimpiable(undefined)).toBeNull()
+    expect(campoLimpiable({})).toBeNull()
   })
 })

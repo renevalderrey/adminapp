@@ -56,7 +56,14 @@ export function useAtajosDelPos(acciones) {
       if (!atajo) return
 
       evento.preventDefault()
-      ultimo.current?.[atajo]?.()
+
+      // ⚠ El evento se le pasa a la acción, y no es decorativo: `limpiar`
+      // necesita saber DÓNDE está el foco para cumplir FR-036 —`Esc` en el CUIT
+      // o en «Paga con» limpia ESE campo—. Sin el evento, `limpiar` solo veía
+      // la consulta de búsqueda y, si estaba vacía, abría la confirmación de
+      // vaciado del ticket desde cualquier campo. `atajoDe` sigue siendo puro y
+      // sigue sin saber qué hace cada atajo.
+      ultimo.current?.[atajo]?.(evento)
     }
 
     window.addEventListener('keydown', alTeclear)

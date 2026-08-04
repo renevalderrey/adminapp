@@ -207,8 +207,32 @@ Dos decisiones que conviene no revertir sin pensarlo:
   listas separadas garantizaba que tarde o temprano una pantalla se llamara de
   dos formas distintas.
 
-**Una pantalla nueva no dibuja su propio marco.** Devuelve su contenido y el
-shell la envuelve: el `<main>` ya centra a 1320px y aplica el padding.
+**Una pantalla nueva no dibuja su propio marco.** Devuelve su contenido y la
+ruta lo envuelve en `components/MarcoDePantalla.jsx`, que es el que centra a
+1320px, aplica el padding y **tiene el scroll adentro**. El `<main>` del shell
+es `overflow-hidden`.
+
+#### La única salvedad: `/pos`
+
+**El punto de venta es la única ruta que no usa `MarcoDePantalla`.** Recibe
+`h-full` a secas y administra sus **dos zonas de scroll** propias: el catálogo
+por un lado y la lista del ticket por el otro, con la barra de búsqueda y el pie
+de cobro siempre a la vista.
+
+No es una preferencia estética. Un ticket que scrollea con la página deja de
+estar visible justo cuando tiene ocho ítems, que es cuando hace falta mirarlo; y
+un pie de cobro que hay que ir a buscar con la rueda del mouse anula lo que los
+atajos de teclado vienen a resolver. Además el POS declara su propio
+`min-width` de 1080px, y el desbordamiento horizontal queda **adentro** de la
+pantalla, nunca en el `<body>`.
+
+`apps/web/src/tests/marcoDePantalla.test.js` verifica las dos mitades: que
+ninguna de las otras rutas se haya quedado sin el marco, y que la lista de
+excepciones tenga **exactamente un** elemento. Si mañana otra pantalla necesita
+salirse, hay que venir acá y escribirlo — una regla que dice «todas las
+pantallas» y tiene una excepción no escrita deja de ser una regla, y la
+siguiente se resuelve a mano y distinta **sin que nada lo detecte, porque no hay
+test visual**.
 
 ## Patrones
 
@@ -216,6 +240,13 @@ shell la envuelve: el `<main>` ya centra a 1320px y aplica el padding.
 
 Todas las pantallas arrancan igual: título, una línea que explica para qué sirve,
 y las acciones a la derecha.
+
+**Salvo el punto de venta**, que es la única sin `h1` y sin descripción. La
+barra de búsqueda ocupa ese lugar (`AdminApp-Rediseno.dc.html:339-358`) y la
+miga de pan del `AppTopbar` ya dice «Punto de venta», así que el título no
+informaría nada nuevo. Sesenta píxeles de alto en la pantalla que se usa ocho
+horas por día valen más que eso. Es una excepción **de esa pantalla y de ninguna
+otra**: si la próxima quiere ahorrarse el encabezado, la discusión es acá.
 
 ```jsx
 <div className="flex flex-wrap items-end justify-between gap-6">

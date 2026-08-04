@@ -62,6 +62,35 @@ que el comprobante impreso valida el QR.
 **Bloquea**: notas de crédito, y honestamente también el primer comprobante
 real de Comprafit.
 
+### 2b · Dónde va «Emitir Factura de Prueba (1 ARS)»
+
+**Ya salió del punto de venta** (funcionalidad 011, T1122, FR-068). Estaba en el
+pie de cobro, a un clic del botón de cobrar, y **en producción no emite una
+prueba: emite un comprobante fiscal REAL de $1**, con número correlativo
+consumido que después hay que dar de baja con una nota de crédito — que es el
+proyecto 1, y no existe. Pedía confirmación por `window.confirm`, y eso es todo
+lo que había entre un clic mal apuntado y un comprobante fiscal.
+
+Lo que esta funcionalidad necesitaba era que **no estuviera ahí**, y eso ya está.
+Lo que falta es decidir su destino, y son dos:
+
+| Salida | Qué implica |
+|---|---|
+| **Ajustes → Facturación AFIP** (hito 8, `PLAN-COMPRAFIT.md` 4.9) | Es donde tiene sentido: al lado del CUIT, el punto de venta y el certificado, como el «probar la conexión» de la pantalla que los configura. Debería emitir **solo en homologación** y estar deshabilitado con su motivo cuando `afip_environment` sea `production` |
+| **Eliminarlo** | Es lo más barato y no se pierde nada **si el proyecto 2 se hace**: probar el circuito en homologación cubre lo mismo y mejor, con Factura A, B y C, con y sin CUIT, y verificando el QR del comprobante impreso |
+
+**Hay que cruzarlo con el proyecto 2, y en este orden**: si el circuito de
+homologación se prueba de verdad, este botón no hace falta y se elimina. Si no
+se prueba, mudarlo a Ajustes es lo único que queda para verificar que la
+configuración de AFIP de un cliente nuevo funciona antes de la primera venta
+real — y ahí **tiene que quedar restringido a homologación**, porque hoy no lo
+está.
+
+El código sale de `apps/web/src/pages/Billing.jsx` y está en el commit de T1122
+(`handleTestInvoice`, que llamaba a `POST /api/afip/invoice` y después a
+`POST /api/sales` con un `id` `test_…`). El endpoint sigue existiendo: lo único
+que se sacó es el botón.
+
 ---
 
 ## 3 · Alícuotas de IVA distintas del 21 %

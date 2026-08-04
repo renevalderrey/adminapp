@@ -809,7 +809,7 @@ a la búsqueda. La pantalla sigue fea y sigue en una columna.
 `docs/maqueta/AdminApp-Rediseno.dc.html:336-489`, y **la guardia del corte 4 pasa
 a verde**.
 
-- [ ] **T1120** [P] Escribir `apps/web/src/components/pos/CatalogoDelPos.jsx` (la
+- [x] **T1120** [P] Escribir `apps/web/src/components/pos/CatalogoDelPos.jsx` (la
       columna izquierda): barra de búsqueda **fija arriba** con sus filtros
       —chips de categoría de 29px y el conmutador «Solo con stock»
       (`maqueta:347-357`)— y la lista con **su propio scroll** debajo; el
@@ -844,7 +844,7 @@ a verde**.
       que la 010 dejó como patrón: dos strings que empiezan iguales y se separan
       es cómo un precio termina bajo otra etiqueta.
 
-- [ ] **T1121** [P] Escribir `apps/web/src/components/pos/TicketDelPos.jsx` (la
+- [x] **T1121** [P] Escribir `apps/web/src/components/pos/TicketDelPos.jsx` (la
       columna derecha, **400px** y no 380 como hoy `Billing.jsx:387`): encabezado
       propio con título, la cantidad de ítems en `.num` dentro de un chip y
       **Vaciar** a la derecha (FR-014); la lista de líneas con **su propio
@@ -878,7 +878,7 @@ a verde**.
       del estado vacío y el segundo; se vuelve al `<select>` de `Billing.jsx:614`
       y el tercero.
 
-- [ ] **T1122** ⚠ **Es la tarea que pone en verde la guardia de T1115.**
+- [x] **T1122** ⚠ **Es la tarea que pone en verde la guardia de T1115.**
       Reescribir `apps/web/src/pages/Billing.jsx` como las dos columnas: `h-full`
       con `min-width: 1080px` propio (`maqueta:337`), el catálogo ocupando el
       ancho restante y el ticket declarando **400px**, con un borde entre las
@@ -922,7 +922,7 @@ T1115**.
 está la espera; y los tres finales posibles —todo bien, AFIP rechaza, la red se
 cae— dejan la pantalla en un estado que no invita a cobrar de nuevo.
 
-- [ ] **T1123** En `apps/web/src/pages/Billing.jsx`, `handleRegisterSale`: el
+- [x] **T1123** En `apps/web/src/pages/Billing.jsx`, `handleRegisterSale`: el
       guardia contra el doble disparo pasa a ser un **`useRef`** y no `loading`
       (FR-042, defecto 5). `loading` es estado de React: cada render **captura
       una copia**, y dos eventos de la misma tanda —doble clic, o la tecla en
@@ -963,7 +963,7 @@ cae— dejan la pantalla en un estado que no invita a cobrar de nuevo.
       desde el primer instante: el test se pone en rojo porque la afirma
       **ausente** antes de avanzar el reloj.
 
-- [ ] **T1124** En la misma pantalla, el ticket queda **bloqueado** mientras dura
+- [x] **T1124** En la misma pantalla, el ticket queda **bloqueado** mientras dura
       el cobro (FR-046): no se pueden cambiar cantidades, precios ni medios de
       pago, ni agregar productos. Lo que se está facturando no puede cambiar
       mientras se factura.
@@ -979,7 +979,7 @@ cae— dejan la pantalla en un estado que no invita a cobrar de nuevo.
       `disabled` pero se permite que `agregarPrimero` siga funcionando durante el
       cobro y se pone en rojo en la segunda.
 
-- [ ] **T1125** En la misma pantalla, reemplazar las **dos** llamadas a
+- [x] **T1125** En la misma pantalla, reemplazar las **dos** llamadas a
       `initialize()` de `handleRegisterSale` (`:261` en el camino de fallo de AFIP
       y `:297` en el de éxito) por el recorrido del campo `stock` que devuelve
       `POST /api/sales` (T1104), llamando a `actualizarProducto`
@@ -1003,7 +1003,7 @@ cae— dejan la pantalla en un estado que no invita a cobrar de nuevo.
       propia es **mentira** en el caso que la spec nombra —el producto sin fila de
       stock, que no se descontó— y el catálogo mostraría un stock que no bajó.
 
-- [ ] **T1126** En la misma pantalla, los tres finales del cobro y lo que se
+- [x] **T1126** En la misma pantalla, los tres finales del cobro y lo que se
       limpia:
       **(a) éxito** → se limpian ticket, «Paga con», CUIT/DNI, nombre del
       cliente, cliente seleccionado y consulta de búsqueda (FR-048); **se
@@ -1038,7 +1038,7 @@ cae— dejan la pantalla en un estado que no invita a cobrar de nuevo.
       hace que el reintento de CUIT vuelva a llamar a `handleRegisterSale`
       entero y el cuarto.
 
-- [ ] **T1127** En la misma pantalla, tres cosas que van juntas porque las tres
+- [x] **T1127** En la misma pantalla, tres cosas que van juntas porque las tres
       son «decirlo antes y no después»:
       **(a)** el comprobante se puede **imprimir** sin bloquear la venta
       siguiente, y la opción sigue disponible hasta que empieza la próxima, pero
@@ -1078,7 +1078,7 @@ pantalla como corresponde; y entre una venta y la siguiente no sale ningún
 que muestra el ticket es el de la sucursal activa, y el vuelto solo aparece
 cuando hay billetes de por medio.
 
-- [ ] **T1128** Escribir `apps/web/src/components/pos/SegmentoDePago.jsx`: **tres
+- [x] **T1128** Escribir `apps/web/src/components/pos/SegmentoDePago.jsx`: **tres
       segmentos** (Efectivo · Tarjeta · Alianza) que se reparten el ancho y
       comparten borde y estados (FR-020, `maqueta:404-417`). Un clic elige el
       segmento y le pone su `medioPorDefecto` (`ef`, `tc3v`, `al`); un **segundo
@@ -1106,7 +1106,7 @@ cuando hay billetes de por medio.
       Tarjeta a `'tc3'` —que es lo que escribe `Billing.jsx:565`— y el primero se
       pone en rojo.
 
-- [ ] **T1129** El **medio de pago del ticket, heredado** (decisión 3 de la
+- [x] **T1129** El **medio de pago del ticket, heredado** (decisión 3 de la
       spec, como el sistema viejo `legacy:6237-6240`): el pie de cobro lleva el
       medio vigente; `addToCart` en `apps/web/src/store/useStore.js:187` lo recibe
       del llamador en vez de nacer siempre en `'ef'` (`:188`); cambiarlo por línea
@@ -1128,7 +1128,7 @@ cuando hay billetes de por medio.
       `method = 'ef'` fijo y el primero se pone en rojo; se hace que el control de
       línea escriba el medio del ticket y el segundo.
 
-- [ ] **T1130** El vuelto de verdad: el bloque aparece **solo si alguna línea
+- [x] **T1130** El vuelto de verdad: el bloque aparece **solo si alguna línea
       lleva vuelto** según `llevaVuelto` de T1106 —no `i.method === 'ef'` a mano
       (`Billing.jsx:96`)—, con las sugerencias de billetes de `utils/vuelto.js`
       (T1109) intactas (FR-018); si **ninguna** línea queda en efectivo, el
@@ -1150,7 +1150,7 @@ cuando hay billetes de por medio.
       exactamente por qué el test se llama así. Para el segundo, se oculta el
       bloque sin limpiar `pagaCon` y se pone en rojo.
 
-- [ ] **T1131** El ticket contra el stock de la sucursal activa:
+- [x] **T1131** El ticket contra el stock de la sucursal activa:
       **(a)** cambiar de **sucursal** conserva el ticket, revalida el stock de
       cada línea contra la sucursal nueva y avisa de lo que ya no alcanza
       (FR-063) — el producto es el mismo, lo que cambia es de dónde sale;
@@ -1189,7 +1189,7 @@ inventario» queda a la vista.
 botón de prueba tiene destino, y quien opera se entera de que el arqueo de caja
 va a mostrar números distintos.
 
-- [ ] **T1132** [P] En `docs/REGLAS-DISENO.md`, la excepción en **dos** lugares:
+- [x] **T1132** [P] En `docs/REGLAS-DISENO.md`, la excepción en **dos** lugares:
       en «El shell» (`:190`), donde hoy dice «Una pantalla nueva no dibuja su
       propio marco. Devuelve su contenido y el shell la envuelve: el `<main>` ya
       centra a 1320px y aplica el padding» — pasa a decir que el marco lo aplica
@@ -1207,7 +1207,7 @@ va a mostrar números distintos.
       resolver a mano, distinto, y **nada lo detectaría porque no hay test
       visual**.
 
-- [ ] **T1133** [P] En `docs/PROXIMOS-PROYECTOS.md`, anotar el destino de «Emitir
+- [x] **T1133** [P] En `docs/PROXIMOS-PROYECTOS.md`, anotar el destino de «Emitir
       Factura de Prueba (1 ARS)» —sacado del pie de cobro en T1122—: Ajustes →
       Facturación AFIP (hito 8 de `PLAN-COMPRAFIT.md` 4.9), **o eliminarlo**, ya
       que emite un comprobante fiscal **real** y el circuito de homologación
@@ -1219,7 +1219,7 @@ va a mostrar números distintos.
       pantalla sin quedar anotada en ningún lado es una función que alguien
       vuelve a pedir dentro de tres meses.
 
-- [ ] **T1134** ⚠ **Riesgo 3.** En `docs/OPERACION.md`, en «Situaciones»
+- [x] **T1134** ⚠ **Riesgo 3.** En `docs/OPERACION.md`, en «Situaciones»
       (`:86`), una sección nueva: **el arqueo de caja y el panel de control van a
       mostrar números distintos a partir del día del deploy**. Tres cosas:
       **(1)** qué cambia — el «Efectivo» del día deja de incluir transferencias,

@@ -36,6 +36,42 @@ export const ATRIBUTO_BUSCADOR = 'data-buscador-del-pos'
 const CLAVE_BUSCADOR = 'buscadorDelPos'
 
 /**
+ * El atributo que marca un campo que `Esc` puede limpiar.
+ *
+ * FR-036: con el foco en un campo de texto, `Esc` limpia ESE campo y devuelve
+ * el foco a la búsqueda, sin tocar el ticket. Sin una marca, la pantalla no
+ * tiene forma de saber dónde estaba el foco y `Esc` en el CUIT terminaba
+ * abriendo la confirmación de vaciado del ticket, que es lo contrario de lo que
+ * pide el requisito.
+ *
+ * El valor del atributo es el NOMBRE del campo, y la pantalla lo usa para
+ * elegir qué setter llamar.
+ */
+export const ATRIBUTO_CAMPO = 'data-campo-del-pos'
+
+/** Para los campos que se repiten por línea del ticket: cuál de ellas. */
+export const ATRIBUTO_LINEA = 'data-linea-del-pos'
+
+const CLAVE_CAMPO = 'campoDelPos'
+const CLAVE_LINEA = 'lineaDelPos'
+
+/**
+ * Qué campo limpiable tiene el foco, si es que hay alguno.
+ *
+ * Es pura, igual que `atajoDe`: recibe la descripción del evento y devuelve
+ * `{ nombre, linea }` o `null`. La pantalla decide qué setter corresponde.
+ *
+ * @param {object} evento
+ * @returns {{nombre: string, linea: string|undefined}|null}
+ */
+export function campoLimpiable(evento) {
+  const nombre = evento?.target?.dataset?.[CLAVE_CAMPO]
+  if (!nombre) return null
+
+  return { nombre, linea: evento.target.dataset[CLAVE_LINEA] }
+}
+
+/**
  * Dónde se está escribiendo.
  *
  * `SELECT` entra en la lista aunque no sea un campo de texto: el `<select>`
