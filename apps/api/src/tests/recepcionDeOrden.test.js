@@ -114,6 +114,20 @@ function levantarApi(empresaId = PROPIA) {
   api.use((req, _res, siguiente) => {
     req.empresaId = empresaId;
     req.id = 'req-de-prueba';
+
+    // La cabecera `X-Punto-De-Venta-Id` se resuelve igual que en
+    // `middleware/auth.js:311-327`: se acepta solo si ese punto de venta es de
+    // la empresa activa y está activo, y si no, se ignora. Se reproduce acá en
+    // vez de montar el middleware real porque ese arrastra Auth0 y la carga de
+    // permisos; que auth.js siga resolviéndola contra la empresa lo cuida su
+    // propia guardia en `aislamientoEmpresas.test.js`.
+    const pedido = parseInt(req.headers['x-punto-de-venta-id'], 10);
+    const sucursal = mockPuntoDeVenta.filas.find(
+      (pv) => pv.id === pedido && pv.empresa_id === empresaId && pv.is_active
+    );
+
+    if (sucursal) req.puntoDeVentaId = sucursal.id;
+
     siguiente();
   });
   api.use('/api/suppliers', require('../routes/suppliers'));
@@ -240,14 +254,22 @@ describe('Dos líneas del mismo producto en la MISMA orden', () => {
     expect(mockSupplierMovement.filas[0].amount).toBe(15000);
   });
 
-  it('el cuerpo viejo sobre una orden con dos líneas del mismo producto responde LINEA_REQUERIDA y nombra el producto', async () => {
+  it('el cuerpo viejo sobre una orden con dos líneas del mismo producto responde LINEA_REQUERIDA', async () => {
+    // ⚠ Este caso perdió media afirmación en **T1239** y hay que decir por qué.
+    // Hasta entonces el mensaje NOMBRABA el producto repetido —«la orden tiene
+    // dos líneas de Colágeno 300g»— porque el rechazo dependía de que la orden
+    // fuera ambigua, así que había que recorrer el detalle para decidirlo y de
+    // ahí salía el nombre gratis. Desde T1239 `linea` es obligatorio SIEMPRE:
+    // no hay ambigüedad que evaluar, no hay detalle que recorrer y no hay
+    // producto que nombrar. Conservar el nombre exigiría dejar viva la búsqueda
+    // de duplicados solo para redactar el mensaje de un camino que ninguna
+    // pantalla ejercita.
     const res = await request(levantarApi())
       .put('/api/suppliers/orders/200/receive')
       .send({ items: [{ product_id: 41, quantity_received: 10 }], location: 'general' });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('LINEA_REQUERIDA');
-    expect(res.body.message).toContain('Colágeno 300g');
     // Y no entró nada: ni stock, ni deuda, ni cambio de estado.
     expect(mockStock.filas).toEqual([]);
     expect(mockSupplierMovement.filas).toEqual([]);
@@ -255,9 +277,24 @@ describe('Dos líneas del mismo producto en la MISMA orden', () => {
   });
 });
 
-describe('El respaldo transitorio del cuerpo viejo', () => {
-  // Entre este corte y el rediseño de las dos pantallas, un navegador abierto
-  // desde antes del deploy sigue mandando { product_id, quantity_received }.
+// ════════════════════════════════════════════
+//  El respaldo del cuerpo viejo, borrado (T1239)
+//
+//  ⚠ **Este bloque cambió de signo.** Hasta T1238 afirmaba lo contrario: que un
+//  cuerpo `{ product_id, quantity_received }` sobre una orden sin ambigüedad
+//  «todavía funciona». Era cierto y era necesario **durante un solo corte**: el
+//  corte 1 se desplegó antes que el rediseño de las dos pantallas, y un
+//  navegador abierto desde antes del deploy seguía mandando esa forma. Sin el
+//  respaldo, esa persona no podía recibir mercadería hasta recargar.
+//
+//  Con la pantalla nueva desplegada (T1237 y T1238) ya no hay quien lo mande, y
+//  el camino se borra en vez de quedarse «por las dudas»: `{ product_id }` no
+//  alcanza para distinguir dos líneas del mismo producto ni dos líneas sin
+//  producto —es el camino ambiguo que este hito viene a cerrar— y **un camino
+//  que nadie usa es un camino que nadie mira cuando cambia**.
+// ════════════════════════════════════════════
+
+describe('El cuerpo viejo ya no se acepta (T1239)', () => {
   beforeEach(() => {
     mockSupplierOrder.filas = [{
       id: 300, empresa_id: PROPIA, supplier_id: 10, status: 'pending', date: '2026-07-20',
@@ -268,34 +305,55 @@ describe('El respaldo transitorio del cuerpo viejo', () => {
     }];
   });
 
-  it('el cuerpo viejo sobre una orden sin ambigüedad todavía funciona', async () => {
-    // Es lo que hace que este corte se pueda desplegar con la pantalla vieja
-    // arriba: si esto se rompiera, entre el deploy y el rediseño nadie podría
-    // recibir mercadería.
+  it('el cuerpo viejo se rechaza aunque la orden no sea ambigua', async () => {
+    // Dos productos distintos y ninguna línea sin producto: es exactamente el
+    // caso que el respaldo aceptaba. Ahora responde 400 y **no escribe nada**.
     const res = await request(levantarApi())
       .put('/api/suppliers/orders/300/receive')
       .send({ items: [{ product_id: 55, quantity_received: 4 }], location: 'general' });
 
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('LINEA_REQUERIDA');
+
+    const orden = mockSupplierOrder.filas[0];
+    expect(orden.status).toBe('pending');
+    expect(orden.detail[1].quantity_received).toBeFalsy();
+    expect(mockStock.filas).toEqual([]);
+    expect(mockSupplierMovement.filas).toEqual([]);
+  });
+
+  it('un cuerpo mixto —una línea con posición y otra sin— se rechaza entero', async () => {
+    // Sin esta afirmación, la validación podría mirar «alguno trae línea» y el
+    // ítem sin posición caería en `aplicarRecepcion` como LINEA_INEXISTENTE:
+    // ese mensaje le dice al usuario que su detalle está viejo cuando lo que
+    // está mal es el cuerpo que manda su pantalla. Y lo que importa más: no se
+    // recibe la mitad de una recepción.
+    const res = await request(levantarApi())
+      .put('/api/suppliers/orders/300/receive')
+      .send({ items: [{ linea: 0, cantidad: 2 }, { product_id: 55, quantity_received: 4 }] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('LINEA_REQUERIDA');
+    expect(mockSupplierOrder.filas[0].detail[0].quantity_received).toBeFalsy();
+  });
+
+  it('el cuerpo por línea sigue devolviendo id y status', async () => {
+    // La otra mitad, y sin ella los dos casos de arriba pasarían con un endpoint
+    // que rechaza TODO. `data.id` y `data.status` son los dos campos que la
+    // pantalla mira para decir qué pasó.
+    const res = await request(levantarApi())
+      .put('/api/suppliers/orders/300/receive')
+      .send({ items: [{ linea: 1, cantidad: 4 }] });
+
     expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.data.id).toBe(300);
     expect(res.body.data.status).toBe('partial');
 
     const orden = mockSupplierOrder.filas[0];
     expect(orden.detail[1].quantity_received).toBe(4);
     expect(orden.detail[0].quantity_received).toBeFalsy();
     expect(mockSupplierMovement.filas[0].amount).toBe(32000);
-  });
-
-  it('la pantalla vieja sigue leyendo id y status de la respuesta', async () => {
-    // Las dos pantallas de hoy solo miran `data.id` y `data.status`. El contrato
-    // nuevo agrega campos; si sacara esos dos, la pantalla vieja quedaría rota
-    // sin que ningún test de la API se enterara.
-    const res = await request(levantarApi())
-      .put('/api/suppliers/orders/300/receive')
-      .send({ items: [{ product_id: 55, quantity_received: 4 }], location: 'general' });
-
-    expect(res.body.ok).toBe(true);
-    expect(res.body.data.id).toBe(300);
-    expect(res.body.data.status).toBe('partial');
   });
 });
 
@@ -831,6 +889,128 @@ describe('El detalle de la orden dice qué línea es cuál y qué costo propone'
     const res = await request(levantarApi()).get('/api/suppliers/orders/900');
 
     expect(res.body.data.items[0].costo_actual).toBeNull();
+  });
+});
+
+describe('La sucursal donde entra la mercadería', () => {
+  // US10. Hasta este corte la recepción caía SIEMPRE en la sucursal por defecto
+  // de la empresa: recibir el camión en Ortiz obligaba a hacer una transferencia
+  // después, y si nadie la hacía la mercadería figuraba en el local equivocado
+  // sin que nada fallara.
+  //
+  // ⚠ La asimetría que ya costó un hito es descontar de una sucursal y
+  // registrar en otra. Acá se evita igual que en POST /api/sales: la sucursal se
+  // resuelve UNA vez antes del bucle, y esa misma ubicación es la que se usa
+  // para BUSCAR la fila y para CREARLA. Por eso el primer test siembra una fila
+  // en la sucursal por defecto: si la búsqueda mirara una sucursal y la
+  // escritura otra, esa fila crecería.
+  const ordenPendiente = (id) => ({
+    id,
+    empresa_id: PROPIA,
+    supplier_id: 10,
+    status: 'pending',
+    date: '2026-07-20',
+    detail: [
+      { product_id: 41, product_name: 'Colágeno 300g', quantity: 10, unit_price: 1200, quantity_received: 0 },
+    ],
+  });
+
+  beforeEach(() => {
+    mockPuntoDeVenta.filas.push(
+      { id: 2, empresa_id: PROPIA, code: 'ortiz', name: 'Sucursal Ortiz', is_active: true },
+      // De OTRA empresa cliente: existe, y elegirlo tiene que no resolver.
+      { id: 3, empresa_id: AJENA, code: 'ajena', name: 'Local de otro cliente', is_active: true }
+    );
+    mockPuntoDeVenta.llamadas = [];
+
+    mockSupplierOrder.filas = [
+      ordenPendiente(1300), ordenPendiente(1301), ordenPendiente(1302), ordenPendiente(1303),
+    ];
+  });
+
+  it('el stock sube en la sucursal elegida y no en la por defecto', async () => {
+    // Ya hay Colágeno cargado en la sucursal por defecto. Es la fila que NO se
+    // tiene que tocar.
+    mockStock.filas = [{
+      id: 1,
+      product_id: 41,
+      empresa_id: PROPIA,
+      punto_de_venta_id: 1,
+      location: 'principal',
+      quantity: 100,
+      available: 100,
+    }];
+
+    const res = await request(levantarApi())
+      .put('/api/suppliers/orders/1300/receive')
+      // `location` viaja y NO ubica nada (FR-104): la fila nueva tiene que
+      // quedar en Ortiz, no en un lugar llamado «general».
+      .send({ items: [{ linea: 0, cantidad: 10 }], punto_de_venta_id: 2, location: 'general' });
+
+    expect(res.status).toBe(200);
+
+    const enOrtiz = mockStock.filas.find((f) => f.punto_de_venta_id === 2);
+    expect(enOrtiz).toMatchObject({
+      product_id: 41,
+      empresa_id: PROPIA,
+      location: 'ortiz',
+      quantity: 10,
+      available: 10,
+    });
+
+    // Y la sucursal por defecto quedó exactamente como estaba.
+    expect(mockStock.filas.find((f) => f.punto_de_venta_id === 1)).toMatchObject({
+      quantity: 100,
+      available: 100,
+    });
+  });
+
+  it('sin punto_de_venta_id cae a la cabecera, y sin cabecera a la sucursal por defecto', async () => {
+    // La pantalla vieja no manda sucursal en el cuerpo, y la que está abierta en
+    // Ortiz manda la cabecera. Si el segundo escalón se perdiera, esa recepción
+    // aterrizaría en la sucursal por defecto sin decirlo.
+    await request(levantarApi())
+      .put('/api/suppliers/orders/1301/receive')
+      .set('X-Punto-De-Venta-Id', '2')
+      .send({ items: [{ linea: 0, cantidad: 10 }] });
+
+    expect(mockStock.filas).toEqual([
+      expect.objectContaining({ product_id: 41, punto_de_venta_id: 2, quantity: 10 }),
+    ]);
+
+    mockStock.filas.length = 0;
+
+    // Sin nada: la sucursal por defecto de la empresa, que es la de código
+    // `principal`. Es el comportamiento de siempre y tiene que seguir siendo el
+    // de una empresa de una sola sucursal, que es la mayoría.
+    await request(levantarApi())
+      .put('/api/suppliers/orders/1302/receive')
+      .send({ items: [{ linea: 0, cantidad: 10 }] });
+
+    expect(mockStock.filas).toEqual([
+      expect.objectContaining({ product_id: 41, punto_de_venta_id: 1, quantity: 10 }),
+    ]);
+  });
+
+  it('una sucursal de otra empresa no se puede elegir', async () => {
+    // Lo garantiza `resolverSucursal` con findScoped, y no puede dejar de
+    // garantizarlo: aceptar el id sin validarlo escribe mercadería propia en el
+    // local de otro cliente, que es la fuga que cerró el hito 4.
+    const res = await request(levantarApi())
+      .put('/api/suppliers/orders/1303/receive')
+      .send({ items: [{ linea: 0, cantidad: 10 }], punto_de_venta_id: 3 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Punto de venta inválido/);
+
+    // Y no entró nada: ni la fila de stock, ni la deuda, ni el cambio de estado.
+    expect(mockStock.filas).toEqual([]);
+    expect(mockSupplierMovement.filas).toEqual([]);
+    expect(mockSupplierOrder.filas.find((o) => o.id === 1303).status).toBe('pending');
+
+    // findByPk devolvería el punto de venta ajeno tal cual: la sucursal se
+    // resuelve acotada a la empresa o no se resuelve.
+    expect(mockPuntoDeVenta.llamadas.filter((l) => l.metodo === 'findByPk')).toEqual([]);
   });
 });
 

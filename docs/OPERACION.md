@@ -131,6 +131,59 @@ anteriores conservan el valor que tienen:
 **Si alguien pregunta «¿dónde está la plata que falta?»**: sumar las filas
 nuevas. Está toda ahí, repartida.
 
+### "El margen de ayer no da" — recibir mercadería cambia el costo desde el deploy de Proveedores
+
+**No se rompió nada.** A partir del día en que se despliega Proveedores y Órdenes
+de compra (funcionalidad 012), **el costo de un producto puede cambiar solo por
+recibir mercadería**, y con él el margen que muestra el punto de venta. Esta
+sección existe porque este cambio llega como «el sistema está mal, el margen de
+ayer no da», y sin ella la respuesta se reconstruye desde cero cada vez.
+
+**1 · Qué cambia.** Al recibir una orden de compra, la pantalla propone
+—**línea por línea, y con una casilla que hay que marcar**— actualizar el costo
+del producto al precio al que se lo acaba de comprar. Si se acepta:
+
+- `Product.cost` pasa a ser ese precio;
+- **el producto elaborado que use ese insumo se recostea en cascada**, con la
+  misma recursión que usa la recepción de una orden de producción;
+- y sobre `Product.cost` se calculan **el margen del POS, el punto de equilibrio
+  del panel y el precio recomendado del Comparador**, así que los tres se mueven.
+
+La casilla viene marcada solo cuando el precio nuevo **difiere de verdad** del
+costo cargado, y el servidor **vuelve a evaluar el umbral antes de escribir**: la
+casilla del navegador es un pedido, no una orden. Si se desmarca, no se escribe
+nada — ni el costo ni el historial.
+
+**2 · Por qué es lo correcto.** Hasta este deploy, comprar a $1.200 lo costeado a
+$900 **no hacía absolutamente nada**: el sistema seguía calculando el margen sobre
+$900. O sea que el número que mostraba era **mentira**, y cuanto más subían los
+precios más mentía. Que el margen «baje» el día del deploy no es una pérdida
+nueva: es la primera vez que se ve la que ya existía.
+
+**3 · Dónde se ve el porqué, sin abrir el código.** Cada cambio queda registrado
+en `ProductCostHistory` con el motivo **«Actualización por recepción de compra»**,
+y el panel de historial ya existe en la pantalla: Inventario → abrir el producto →
+bloque de historial de costos (`components/HistorialDeCostos.jsx`, dentro de
+`PanelProducto`). Ahí se ve **qué costo tenía, cuál tiene, cuándo cambió y por
+qué**. La pregunta «¿por qué bajó el margen?» tiene respuesta **en la pantalla**;
+no hace falta consultar a nadie.
+
+Si el cambio vino de una cascada —el insumo cambió y el elaborado se recosteó
+detrás—, la respuesta de la recepción dice cuántos elaborados se recostearon, y
+cada uno tiene su propia fila en su historial.
+
+**4 · Qué NO cambió, y son dos números distintos a propósito.** El saldo del
+proveedor sigue siendo **la mercadería recibida**, no la pedida. Una orden emitida
+y todavía no entregada **no genera deuda**. El número que el sistema viejo contaba
+al emitir la orden se muestra **al lado**, con la etiqueta «pedido pendiente de
+recibir», y son dos cosas distintas: uno es lo que se debe, el otro es lo que
+falta que llegue. Si alguien compara el saldo de acá contra el del sistema viejo y
+no le da, la diferencia es exactamente lo pedido y no recibido.
+
+**Lo que NO se hizo**: dejar la casilla desmarcada por defecto «para que no cambie
+nada». Sería tener la corrección escrita y apagada, o sea el problema anterior con
+más pasos.
+
 ### "No puedo facturar" / AFIP rechaza
 
 Por orden de probabilidad:

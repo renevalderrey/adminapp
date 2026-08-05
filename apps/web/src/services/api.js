@@ -235,6 +235,21 @@ export const getSupplier = (id) => api.get(`/suppliers/${id}`);
 // El historial de cuenta, paginado y con el saldo acumulado ya calculado. Antes
 // venía adentro de `GET /suppliers/:id` sin paginar.
 export const getSupplierMovements = (id, params) => api.get(`/suppliers/${id}/movimientos`, { params });
+
+// Las filas del archivo del contador (T1247, US8). **El servidor arma las filas
+// y el navegador arma la hoja** (FR-097): esto devuelve JSON, no un archivo, y
+// el `.xlsx` lo escribe `utils/exportarProveedores.js` desde la pantalla.
+//
+// ⚠ Los dos extremos del rango viajan por PRESENCIA y no como cadena vacía. Es
+// la misma regla que cerró el `?supplier_id=%20` del listado de órdenes: el
+// endpoint valida la forma `AAAA-MM-DD` de lo que le llegue, así que un
+// `desde=` vacío sería un filtro que hay que descartar del otro lado en vez de
+// no mandarlo. Y con `params: { desde: '', hasta: '' }` axios los serializa
+// igual: la ausencia se construye acá.
+export const exportarCuenta = (id, { desde, hasta } = {}) => api.get(
+  `/suppliers/${id}/movimientos/export`,
+  { params: { ...(desde ? { desde } : {}), ...(hasta ? { hasta } : {}) } }
+);
 export const createSupplier = (data) => api.post('/suppliers', data);
 export const deleteSupplier = (id) => api.delete(`/suppliers/${id}`);
 export const createSupplierOrder = (id, data) => api.post(`/suppliers/${id}/orders`, data);
@@ -246,7 +261,35 @@ export const deleteDocument = (id) => api.delete(`/suppliers/documents/${id}`);
 export const updateSupplier = (id, data) => api.put(`/suppliers/${id}`, data);
 export const getPurchaseOrders = (params) => api.get('/suppliers/orders', { params });
 export const getPurchaseOrder = (id) => api.get(`/suppliers/orders/${id}`);
-export const receivePurchaseOrder = (id, items, location) => api.put(`/suppliers/orders/${id}/receive`, { items, location });
+// `location` se fue del cuerpo (FR-104). Su único valor era el literal
+// 'general', que en una empresa cuyos códigos de sucursal son otros no coincide
+// con ninguna: desde que existe `resolverSucursal`, mandarlo no ubicaba nada y
+// solo hacía creer que la pantalla elegía el depósito. Los `items` van por
+// LÍNEA —`{ linea, cantidad, actualizar_costo }`— y no por producto: dos líneas
+// del mismo producto son dos líneas (FR-031).
+//
+// `punto_de_venta_id` es OPCIONAL y solo lo manda la pantalla cuando la empresa
+// tiene más de una sucursal (FR-103). Ausente, el servidor cae a la cabecera
+// `X-Punto-De-Venta-Id` y después a la sucursal por defecto, que es el camino de
+// siempre: con una sola sucursal no hay nada que elegir y mandar el id «por las
+// dudas» solo agrega una forma más de equivocarse.
+//
+// ⚠ El id se manda solo si es un NÚMERO positivo, y ese filtro no es adorno: el
+// tercer argumento de esta función fue durante meses el `location` viejo, un
+// literal `'general'`. Sin el filtro, ese texto viajaría como
+// `punto_de_venta_id` y `resolverSucursal` respondería «Punto de venta
+// inválido» sin escribir nada — un 400 que no tiene nada que ver con la causa y
+// que manda a revisar las sucursales de la empresa, que están bien. El `value`
+// de un `<option>` también es un string, así que la conversión es la misma para
+// los dos casos.
+export const receivePurchaseOrder = (id, items, puntoDeVentaId = null) => {
+  const sucursal = Number(puntoDeVentaId);
+  const cuerpo = Number.isFinite(sucursal) && sucursal > 0
+    ? { items, punto_de_venta_id: sucursal }
+    : { items };
+
+  return api.put(`/suppliers/orders/${id}/receive`, cuerpo);
+};
 export const cancelPurchaseOrder = (id) => api.put(`/suppliers/orders/${id}/cancel`);
 
 // ═══════ SETTINGS ═══════

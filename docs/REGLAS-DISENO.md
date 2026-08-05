@@ -386,6 +386,10 @@ const tonoDeStock = (cantidad, minimo) => {
 }
 ```
 
+Es un caso de **«Badge de estado»**, que tiene sección propia más abajo: la forma
+—función pura, tres clases juntas, nada de `variant`— es la misma para el stock,
+para el saldo de un proveedor y para el que venga.
+
 **4. `Tooltip` para lo que no entra en la celda.** En 92px entra una cantidad y
 nada más. El mínimo y el valorizado van en el tooltip
 (`components/ui/tooltip.jsx`, el proveedor ya está montado en `main.jsx`) y **no
@@ -395,6 +399,83 @@ en la celda y hace falta completo va al panel y al archivo exportado.
 
 Sin esto escrito, la tercera pantalla resuelve el ancho variable a mano y queda
 distinta — y **nada lo detectaría, porque no hay test visual**.
+
+### Badge de estado
+
+Un dato que además dice **cómo está**: el stock contra su mínimo, el saldo de un
+proveedor, el estado de una orden de compra. Aparece en dos pantallas, así que la
+forma se escribe acá una vez.
+
+**La forma son cuatro reglas:**
+
+**1. Una función pura devuelve las TRES clases juntas**, en un solo string:
+`border-…-line`, `bg-…-soft` y `text-…`. Nunca una sola. Un color de estado
+suelto sobre el fondo de la tarjeta se lee como un error de estilo, no como un
+estado — es la regla de «Estados», más arriba, aplicada a un componente.
+
+```js
+// apps/web/src/utils/cuentaDeProveedor.js
+const TONOS = {
+  sin_movimientos: 'border-border bg-surface-3 text-fg-2',
+  saldado:         'border-ok-line bg-ok-soft text-ok',
+  pago_parcial:    'border-warn-line bg-warn-soft text-warn',
+  con_deuda:       'border-danger-line bg-danger-soft text-danger',
+}
+
+export function tonoDeProveedor(estado) {
+  // Un estado desconocido cae en el tono neutro y NO devuelve undefined: una
+  // fila con el badge sin pintar es un bug visible; un `className` con
+  // `undefined` adentro es una pantalla rota.
+  return TONOS[estado] || TONOS.sin_movimientos
+}
+```
+
+**2. El estado se calcula aparte del color**, y también puro:
+
+```js
+export function estadoDeProveedor({ deuda, pagado, saldo } = {}) { … }
+
+// En la pantalla, siempre así: el tono recibe el CÓDIGO, no el objeto.
+<span className={`… ${tonoDeProveedor(estadoDeProveedor(cuenta))}`}>
+```
+
+Son dos funciones y no una porque el estado se usa además para la etiqueta, para
+ordenar y para los tests; el color es solo una de sus consecuencias.
+
+**3. Y por eso NO es una variante de `Badge`.** Un `<Badge variant="danger">`
+obliga a que alguien elija la variante en el JSX, y el tono acá **depende de un
+cálculo** —el signo del saldo, el umbral del stock, el estado de la orden—, no de
+una decisión de quien escribe la fila. Con `variant`, la regla termina escrita en
+la pantalla; con dos pantallas, escrita dos veces; y el día que el umbral cambie,
+cambia en una sola. Ya pasó: `VARIANTE_POR_TONO` fue el puente entre el `tono` del
+sistema y el `variant` de shadcn, y existió justamente porque la traducción estaba
+en dos lugares.
+
+**4. Las etiquetas van al lado de los tonos**, en el mismo archivo y con las
+mismas claves:
+
+```js
+export const ETIQUETAS = {
+  sin_movimientos: 'Sin movimientos',
+  saldado: 'Saldado',
+  pago_parcial: 'Pago parcial',
+  con_deuda: 'Con deuda',
+}
+```
+
+Así, agregar un quinto estado sin su etiqueta es imposible: el badge dibujaría el
+código crudo, que es lo que ya pasó con `tc3` en los comprobantes.
+
+**Dónde mirarlo funcionando**: `utils/cuentaDeProveedor.js` (el saldo),
+`utils/inventario.js` → `tonoDeStock` (el stock) y `utils/ordenDeCompra.js` →
+`ESTADOS` (los cuatro estados de una orden, cada uno con su `tono`, que
+`components/PanelOrdenDeCompra.jsx` traduce a clases con `CLASES_POR_TONO` en **un
+solo lugar** y las dos pantallas importan de ahí en vez de escribir su copia).
+
+**Por qué esto está escrito y no solo hecho**: un patrón que se repite en dos
+pantallas y no está documentado es un patrón que la tercera resuelve distinto, y
+**nada lo detectaría** — la guardia de `guardiasDeDiseno.test.js` prohíbe colores
+fuera del sistema, no formas distintas de usarlos.
 
 ### Botones
 

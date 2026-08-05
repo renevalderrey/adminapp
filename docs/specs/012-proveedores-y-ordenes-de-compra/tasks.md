@@ -1320,7 +1320,7 @@ Corte 9 del plan. **El corte 10 después del 9 es deliberado**: la lista es dibu
 puro y el panel lleva el defecto de plata. Si el panel falla, tiene que saberse
 que es el panel.
 
-- [ ] **T1233** En `apps/web/src/pages/PurchaseOrders.jsx`, la tabla
+- [x] **T1233** En `apps/web/src/pages/PurchaseOrders.jsx`, la tabla
       (`:245-310`) se reescribe con `TablaGrid` / `Encabezado` / `Fila` /
       `BotonDeFila` (`components/TablaGrid.jsx:47,63,86,114`) y **se van los
       `Table*` de shadcn** (FR-001). El `grid-template-columns` es **el mismo
@@ -1356,7 +1356,7 @@ que es el panel.
       `scrollWidth` y `clientWidth`, así que un test que los mire pasa con y sin el
       cambio. Eso es **P-N1**, en el navegador.
 
-- [ ] **T1234** En `apps/web/src/pages/PurchaseOrders.jsx`, los controles de
+- [x] **T1234** En `apps/web/src/pages/PurchaseOrders.jsx`, los controles de
       arriba: el bloque de filtros (`:203-243`) se reemplaza por el **control
       segmentado** —Todas / Pendientes / Parciales / Recibidas, **cada uno con su
       contador en `.num`**, FR-008— copiando el patrón de
@@ -1384,7 +1384,7 @@ que es el panel.
       `<SelectItem value=" ">` y se elige esa opción: el segundo se pone en rojo
       mostrando el parámetro en la URL.
 
-- [ ] **T1235** FR-022 y FR-011. En `apps/web/src/pages/PurchaseOrders.jsx`, la
+- [x] **T1235** FR-022 y FR-011. En `apps/web/src/pages/PurchaseOrders.jsx`, la
       paginación pasa a usarse: `components/Pagination.jsx` —que ya existe y es
       **1-indexado**, `{ page, totalPages, onPageChange }`— y `getPurchaseOrders`
       con `limit` y `offset`. Hoy `:128` manda `limit = 100` fijo y **nunca**
@@ -1422,7 +1422,7 @@ Corte 10 del plan. Es FR-034 exactamente: «la recepción DEBE ser un solo
 componente usado por las dos pantallas. **Dos implementaciones es lo que dejó una
 de ellas rota.**»
 
-- [ ] **T1236** Escribir `apps/web/src/components/PanelOrdenDeCompra.jsx` (creado
+- [x] **T1236** Escribir `apps/web/src/components/PanelOrdenDeCompra.jsx` (creado
       vacío en T1231) en **modo detalle**, sobre `ui/sheet.jsx`. El ancho va en
       `style={{ width: '520px', maxWidth: '92vw' }}` y **no en clases**, porque el
       `data-[side=right]:sm:max-w-sm` propio de `SheetContent` vive en una media
@@ -1461,7 +1461,7 @@ de ellas rota.**»
       del pie y el primero se pone en rojo con «Anular orden» sobre una orden ya
       anulada; se borra uno de los dos botones de WhatsApp y el segundo.
 
-- [ ] **T1237** ⚠ **Es donde se cierra el defecto 4 del lado de la pantalla.** El
+- [x] **T1237** ⚠ **Es donde se cierra el defecto 4 del lado de la pantalla.** El
       **modo recepción** de `PanelOrdenDeCompra.jsx`, y `PurchaseOrders.jsx`
       reemplaza sus **dos** modales (`:310-405`) por el panel. Lo que hay que
       hacer bien:
@@ -1525,7 +1525,7 @@ de ellas rota.**»
       leerse como una pérdida de función**. Lo que no cambia: la API ya los
       exigía; lo que se agrega es que la pantalla lo diga antes.
 
-- [ ] **T1238** El panel se abre **desde los dos lugares** de
+- [x] **T1238** El panel se abre **desde los dos lugares** de
       `/ordenes-compra`: el clic en la fila lo abre en modo detalle, y el botón
       «Recibir» de la fila lo abre **en modo recepción**, no un diálogo aparte. Es
       lo que dibuja la maqueta —el `onClick` del botón «Recibir» es el mismo de la
@@ -1552,7 +1552,7 @@ de ellas rota.**»
       test propio**: lo resuelve `ui/sheet.jsx` (Radix) y afirmarlo acá sería
       testear la librería. Se mira en el paso manual **P9**.
 
-- [ ] **T1239** ⚠ **Se borra el respaldo del cuerpo viejo.** En
+- [x] **T1239** ⚠ **Se borra el respaldo del cuerpo viejo.** En
       `apps/api/src/services/purchaseService.js`, `receiveOrder`: desaparece la
       rama que aceptaba `{ product_id, quantity_received }` (T1204, punto **e**).
       A partir de acá, `linea` es obligatorio y un cuerpo sin él responde
@@ -1586,7 +1586,7 @@ Corte 11 del plan. ⚠ **La maqueta no dibuja esta pantalla**: `proveedores` cae
 maqueta sí fijó y de la referencia viva, `pages/Comparador.jsx`. **Cualquier cosa
 que `sdd-verify` quiera comparar contra la maqueta acá no tiene contra qué.**
 
-- [ ] **T1240** En `apps/web/src/pages/Orders.jsx`, la columna izquierda: las dos
+- [x] **T1240** En `apps/web/src/pages/Orders.jsx`, la columna izquierda: las dos
       columnas con lista a la izquierda y cuenta a la derecha (FR-054); cada fila
       con nombre, **badge de estado** —`estadoDeProveedor` y `tonoDeProveedor` de
       T1227— y el **saldo en `.num`** a la derecha (FR-055, FR-056); el buscador
@@ -1609,7 +1609,7 @@ que `sdd-verify` quiera comparar contra la maqueta acá no tiene contra qué.**
       del proveedor anterior —el error clásico del `map`— y el primero se pone en
       rojo nombrando la fila; se vuelve a `toast.error(err.message)` y el tercero.
 
-- [ ] **T1241** En `apps/web/src/pages/Orders.jsx`, la columna derecha: el
+- [x] **T1241** En `apps/web/src/pages/Orders.jsx`, la columna derecha: el
       **saldo pendiente en grande y en `.num`**, con el tono del signo, como
       elemento de más peso visual del bloque (FR-057); **total comprado** y
       **total pagado** al lado —un saldo de $0 no distingue «nunca le compré» de
@@ -1642,7 +1642,7 @@ que `sdd-verify` quiera comparar contra la maqueta acá no tiene contra qué.**
       sobre el arreglo del estado y el primero se pone en rojo; se dibuja la
       fecha con `new Date(iso).toLocaleDateString()` y el segundo.
 
-- [ ] **T1242** ⚠ **Acá la guardia del corte 7 queda en verde del todo.** En
+- [x] **T1242** ⚠ **Acá la guardia del corte 7 queda en verde del todo.** En
       `apps/web/src/pages/Orders.jsx`, el bloque de órdenes del proveedor: deja de
       leer `selectedSupplier.orders` —que ya no viene (T1216)— y pide
       `getPurchaseOrders({ supplier_id })`. Cada orden abre **el mismo
@@ -1691,7 +1691,7 @@ proveedor; un pago vacío, de cero o negativo no llega a la API; y los dos
 endpoints de editar y eliminar movimientos, que existen desde siempre, por fin
 tienen un botón.
 
-- [ ] **T1243** [P] Escribir `apps/web/src/components/BloqueDeDocumentos.jsx`
+- [x] **T1243** [P] Escribir `apps/web/src/components/BloqueDeDocumentos.jsx`
       (creado vacío en T1231) y engancharlo en la cuenta de `Orders.jsx`. Nombre,
       tipo, fecha y enlace (FR-080); alta con los cuatro tipos del modelo;
       **AdminApp no sube ningún archivo, guarda el enlace** (FR-081); un enlace
@@ -1722,7 +1722,7 @@ tienen un botón.
       existe en jsdom sin doblarlo, y un test sobre el doble dice que se llamó al
       doble. Se mira en el paso manual **P10**.
 
-- [ ] **T1244** En `apps/web/src/pages/Orders.jsx`, el formulario de pago: se
+- [x] **T1244** En `apps/web/src/pages/Orders.jsx`, el formulario de pago: se
       valida **antes** de llamar —vacío, cero o negativo no salen (FR-088,
       criterio 13)—; se agrega **cheque** a los métodos, que hoy faltan
       (`:636-639` tiene efectivo, transferencia y QR, FR-091); la **fecha pasa a
@@ -1742,7 +1742,7 @@ tienen un botón.
       llamada espiada; se saca uno de los dos números de la confirmación y el
       tercero.
 
-- [ ] **T1245** En `apps/web/src/pages/Orders.jsx`, editar y eliminar un
+- [x] **T1245** En `apps/web/src/pages/Orders.jsx`, editar y eliminar un
       movimiento del historial (FR-093): los dos endpoints existen desde siempre
       —`PUT /api/suppliers/movements/:id` y `DELETE …` (`suppliers.js:218`,
       `:233`), los dos con `findScoped` y lista blanca— y **ningún botón los
@@ -1758,7 +1758,7 @@ tienen un botón.
       **Cómo se comprueba que el test sirve**: se llama al endpoint sin
       confirmación y el segundo se pone en rojo.
 
-- [ ] **T1246** En `apps/web/src/pages/Orders.jsx`, eliminar un proveedor: con
+- [x] **T1246** En `apps/web/src/pages/Orders.jsx`, eliminar un proveedor: con
       saldo cero, la confirmación dice **cuántas órdenes, movimientos y
       documentos** se van; con saldo distinto de cero, el servidor lo bloquea
       (T1221) y la pantalla muestra **el mensaje del servidor tal cual**, con el
@@ -1792,7 +1792,7 @@ ninguna de las dos pantallas falla en silencio.
 columna de importes **suma** y cuyo saldo es el mismo número que muestra la
 pantalla.
 
-- [ ] **T1247** En `apps/web/src/pages/Orders.jsx` y
+- [x] **T1247** En `apps/web/src/pages/Orders.jsx` y
       `apps/web/src/services/api.js`, la exportación (US8): `exportarCuenta(id,
       { desde, hasta })` pide `GET /api/suppliers/:id/movimientos/export`
       (T1220), y la pantalla arma la hoja con `armarHoja` y
@@ -1834,7 +1834,7 @@ una con una sola no ve ningún selector.
 
 Corte 14 del plan. **Último a propósito: se puede cortar sin romper nada.**
 
-- [ ] **T1248** [P] En `apps/api/src/services/purchaseService.js`,
+- [x] **T1248** [P] En `apps/api/src/services/purchaseService.js`,
       `receiveOrder` acepta `punto_de_venta_id` en el cuerpo y se lo pasa a
       `resolverSucursal({ empresaId, puntoDeVentaId, transaction })` —que ya subió
       antes del bucle en T1204—. El orden de precedencia es: el del cuerpo, si no
@@ -1856,7 +1856,7 @@ Corte 14 del plan. **Último a propósito: se puede cortar sin romper nada.**
       del cuerpo y el primero se pone en rojo con la fila en la sucursal
       equivocada.
 
-- [ ] **T1249** En `apps/web/src/components/PanelOrdenDeCompra.jsx`, modo
+- [x] **T1249** En `apps/web/src/components/PanelOrdenDeCompra.jsx`, modo
       recepción: **con más de una sucursal** aparece un selector de destino con la
       **vigente preseleccionada** (FR-103); **con una sola no hay selector**, que
       es US10 escenario 2 y no un detalle —un control con una sola opción es ruido
@@ -1881,7 +1881,7 @@ fila de `Stock` de esa sucursal y deja el `StockMovement` con ese
 están automatizadas, y lo que cambió para quien opera está escrito donde lo va a
 buscar.
 
-- [ ] **T1250** ⚠ **El plan da por sembrado algo que no está.** En
+- [x] **T1250** ⚠ **El plan da por sembrado algo que no está.** En
       `apps/web/pruebas-de-navegador/preparacion.js`, sembrar **proveedores y
       órdenes**. El plan dice que el nombre de 80 caracteres de `:35` ya sirve
       para la afirmación del nombre largo de proveedor — **y no**: ese
@@ -1906,7 +1906,7 @@ buscar.
       **comando exacto** cuando algo falta, como ya hace `:60-75`: una suite que
       falla veinte veces con `ECONNREFUSED` no le dice a nadie qué hacer.
 
-- [ ] **T1251** Crear `apps/web/pruebas-de-navegador/proveedoresYOrdenes.navegador.js`
+- [x] **T1251** Crear `apps/web/pruebas-de-navegador/proveedoresYOrdenes.navegador.js`
       con **las cuatro afirmaciones que solo contesta un navegador**, y ninguna
       más:
       **(1)** la tabla de órdenes scrollea **dentro de su tarjeta** y el `<body>`
@@ -1942,7 +1942,7 @@ buscar.
       columnas tienen que pisarse. **Una prueba de geometría que pasa con y sin el
       defecto no vale nada, y acá es más fácil que en ningún otro nivel.**
 
-- [ ] **T1252** [P] En `docs/REGLAS-DISENO.md`, el **badge de estado por
+- [x] **T1252** [P] En `docs/REGLAS-DISENO.md`, el **badge de estado por
       tokens**, con el ejemplo del saldo. Hoy la referencia del patrón es
       `tonoDeStock` y está atada al inventario; lo que hay que escribir es la
       **forma**: una función pura que devuelve **las tres clases juntas**
@@ -1956,7 +1956,7 @@ buscar.
       resuelve distinto, y **nada lo detectaría** porque la guardia solo prohíbe
       colores fuera del sistema, no formas distintas de usarlos.
 
-- [ ] **T1253** [P] En `docs/PROXIMOS-PROYECTOS.md`, anotar lo que este hito
+- [x] **T1253** [P] En `docs/PROXIMOS-PROYECTOS.md`, anotar lo que este hito
       dejó afuera **con su motivo y su primer paso**:
       **(1)** **enlace de factura por orden**, además del del proveedor —el
       legacy lo tenía (`:8182`) y es una columna nueva en `supplier_documents`—;
@@ -1983,7 +1983,7 @@ buscar.
       meses; y un riesgo conocido sin su mitigación escrita es un riesgo que se
       reconstruye desde cero el día que muerde.
 
-- [ ] **T1254** [P] ⚠ **Riesgo 2.** En `docs/OPERACION.md`, en «Situaciones», una
+- [x] **T1254** [P] ⚠ **Riesgo 2.** En `docs/OPERACION.md`, en «Situaciones», una
       sección nueva: **el costo de los productos y el margen del panel van a
       cambiar a partir del día del deploy**. Cuatro cosas:
       **(1)** **qué cambia** — recibir mercadería más cara actualiza
@@ -2020,6 +2020,27 @@ cambió para quien opera está escrito donde lo va a buscar.
 **Esto no son tareas.** Son las verificaciones que **no se pueden escribir como
 test en este repositorio**, escritas como pasos reproducibles justamente para no
 disfrazarlas de test. Cada una dice **qué hacer** y **qué tiene que verse**.
+
+### Qué quedó automatizado al cerrar la fase 15
+
+Revisado paso por paso después de T1250 y T1251, porque una lista de pasos
+manuales que no se poda es una lista que nadie corre entera:
+
+| Paso | Cómo quedó |
+|---|---|
+| **P8** · Las rutas siguen centradas | **Automático.** `marcoDeLasPantallas.navegador.js`, y ahora `/proveedores` y `/ordenes-compra` tienen además su propio archivo, `proveedoresYOrdenes.navegador.js` |
+| Las cuatro medidas de maquetado del hito | **Automáticas.** Son T1251 y ya no son pasos: el scroll de la tabla en su tarjeta, los 520px del panel, el nombre de 80 caracteres y las dos columnas de `/proveedores` |
+| **P1** · El `GROUP BY` de saldos | **Parcial.** El `GROUP BY` corre contra Postgres de verdad en **cada corrida** de las pruebas de navegador —`preparacion.js` siembra por HTTP y las dos pantallas leen `GET /suppliers`—, así que una consulta rota ya no llega a producción en silencio. Lo que sigue necesitando `psql` es el centavo exacto |
+| **P2** y **P3** · Recepción por línea contra Postgres | **Parcial.** `preparacion.js` crea seis órdenes, recibe una entera y otra a medias **por posición de línea** contra Postgres real: si la recepción por línea se rompiera, la siembra falla y la suite entera no arranca. Lo que sigue necesitando `psql` es mirar el JSONB y la fila de `Stock` |
+| **P4**, **P5**, **P6**, **P7**, **P9**, **P10**, **P11**, **P12** | **Siguen necesitando una persona**, y abajo está el motivo de cada uno |
+
+⚠ **Lo que NO se automatizó pudiendo**, y queda dicho para quien retome: **P2 se
+puede cerrar sin `psql`**. `GET /api/suppliers/orders/:id` devuelve el detalle con
+el `quantity_received` de cada línea, así que recibir una de las dos líneas del
+mismo producto y leer la respuesta demuestra que el JSONB guardó **dos valores
+distintos** —que es exactamente lo que P2 mira—. No se hizo acá porque cambiaría
+el estado de la orden sembrada y con él el reparto de los cuatro estados de orden
+que T1250 pide.
 
 ### P0 · El procedimiento, con la trampa del esquema
 
@@ -2058,7 +2079,27 @@ docker run -d --name adminapp-e2e-pg \
 # NODE_ENV=production, checkPermission responde 500 y loguea «BYPASS_AUTH esta
 # activo en produccion». Nunca ponerlo en Railway.
 cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55432/adminapp_e2e \
-  DB_SSL=false NODE_ENV=development BYPASS_AUTH=true PORT=5099 node src/server.js
+  DB_SSL=false NODE_ENV=development BYPASS_AUTH=true PORT=5099 \
+  ALLOWED_ORIGINS=http://localhost:5199 node src/server.js
+```
+
+⚠⚠ **`ALLOWED_ORIGINS` no es opcional y no estaba escrito en ninguna parte.** La
+lista blanca de CORS (`server.js:112-119`) trae `5173`, `5174` y `3000`, y el
+servidor de las pruebas de navegador corre en el **5199**
+(`playwright.config.js:56`). Sin esa variable el navegador recibe la respuesta sin
+cabecera de CORS, la carga del contexto falla y `App.jsx` dibuja «Redirigiendo al
+inicio de sesión…»: **las diecisiete pruebas fallan diciendo que no encuentran
+`<main>`**, que es el síntoma que no deja adivinar la causa. El único rastro es un
+`WARN CORS: origen rechazado` en el log de la API. Está también en el mensaje de
+error de `pruebas-de-navegador/preparacion.js`.
+
+⚠ Y el usuario de pruebas tiene que ser **superadmin**, o seis de las diecisiete
+pantallas redirigen a `/pos` y la prueba del marco no prueba nada.
+`preparacion.js` lo verifica y dice el comando:
+
+```bash
+cd apps/api && DATABASE_URL=<la de pruebas> DB_SSL=false \
+  node scripts/superadmin.js activar dev@adminapp.app
 ```
 
 ```bash
@@ -2103,6 +2144,13 @@ devuelve **dos filas** para ese proveedor, con `amount` como **string**. Es el
 riesgo 9 del plan: `modelosFalsos` no soporta `group`, así que **este paso es el
 único que verifica que la consulta traiga las filas correctas**.
 
+↻ **Parcialmente automático desde T1250.** `preparacion.js` siembra cuatro
+proveedores en los cuatro estados de cuenta y las dos pantallas leen
+`GET /suppliers` en cada corrida de `test:navegador`, así que el `GROUP BY` corre
+contra Postgres de verdad y una consulta rota hace fallar la suite. Lo que sigue
+siendo de una persona es **el centavo**: que `saldo` responda exactamente
+`1234.56` y no `1234.5600000000002`.
+
 **P2 · Dos líneas del mismo producto — T1204.** Crear una orden con Colágeno en
 la posición 0 y en la 2, y recibir 10 en la 2 con
 `{ items: [{ linea: 2, cantidad: 10 }] }`.
@@ -2116,12 +2164,25 @@ devuelve `0`, `0`, `10` — **dos valores distintos en el JSONB**. Es el bug del
 `changed('detail', true)` que ya se corrigió una vez y que **los dobles no pueden
 ver**.
 
+↻ **Parcialmente automático desde T1250.** La siembra de las pruebas de navegador
+crea seis órdenes y recibe dos —una entera y otra a medias— mandando
+`{ linea, cantidad }` contra Postgres real, así que si la recepción por posición
+se rompiera, `test:navegador` no arranca. Lo que sigue siendo de una persona es el
+`SELECT` de arriba: que el JSONB haya guardado dos valores **distintos** en dos
+líneas del mismo producto. **Y se puede cerrar sin `psql`** —ver la nota del
+principio de esta sección—.
+
 **P3 · Una línea sin producto — T1204.** Una orden con una línea normal y una con
 `product_id: null` («Fletes»), y recibir las dos.
 *Qué tiene que verse*: `200`, un `SupplierMovement` de tipo `deuda` por **las
 dos** líneas, la fila de `Stock` de la línea normal **sí** creció, **no** hay
 fila de stock para «Fletes», y `avisos` trae la frase que lo dice. Hoy esto
 responde **500 y no entra nada, ni de la otra línea**.
+
+↻ **Parcialmente automático desde T1250**, igual que P2: el camino feliz —recibir
+y que crezca el stock y se cree el movimiento de deuda— lo ejercita la siembra en
+cada corrida. La línea **sin producto** no se siembra y sigue siendo de una
+persona: es el caso que revertía la transacción entera.
 
 ### Contra Postgres (base B)
 
@@ -2165,11 +2226,13 @@ criterio de éxito 12 y es lo único de la exportación que el test del tipo de
 celda no puede afirmar. *No baja a prueba de navegador*: un Chromium sin manos no
 abre Excel.
 
-**P8 · Las dos rutas siguen centradas — T1232.** Después del corte 8, que toca
-`App.jsx`, correr `npm --prefix apps/web run test:navegador -- marcoDeLasPantallas`.
+**P8 · Las dos rutas siguen centradas — T1232.** ✔ **Automático.** Después del
+corte 8, que toca `App.jsx`, correr
+`npm --prefix apps/web run test:navegador -- marcoDeLasPantallas`.
 *Qué tiene que verse*: las diecisiete pantallas siguen centradas a 1320px con su
-padding. **Esto ya está automatizado** y se anota acá solo para que no se saltee
-después de tocar el shell.
+padding. Se anota acá solo para que no se saltee después de tocar el shell.
+Desde T1251, `/proveedores` y `/ordenes-compra` tienen además sus propias medidas
+en `proveedoresYOrdenes.navegador.js`.
 
 **P9 · El foco al cerrar el panel — T1238.** Abrir una orden desde la tabla,
 apretar `Esc`.

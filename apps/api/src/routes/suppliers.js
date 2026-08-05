@@ -601,6 +601,50 @@ router.get('/:id/movimientos/export', checkPermission('proveedores.ver'), async 
   }
 });
 
+/**
+ * El indice unico `(empresa_id, name)` traducido a una frase (T1246).
+ *
+ * `models/Supplier.js:44` no deja repetir el nombre de un proveedor dentro de
+ * una empresa, y eso esta bien: dos «Distribuidora Norte» en la misma lista son
+ * dos cuentas corrientes que nadie sabe cual es cual. Lo que estaba mal era lo
+ * que se veia al chocar con el.
+ *
+ * `fallo()` ya impedia que el error crudo llegara al cliente —`err.message` de
+ * un SequelizeUniqueConstraintError trae el nombre del indice y de la columna—,
+ * pero lo tapaba con «Error al crear el proveedor», que es un 500 generico: no
+ * dice que el problema es el nombre, no dice que hacer, y manda a mirar los
+ * logs por una condicion prevista que el usuario puede corregir solo.
+ *
+ * Devuelve **el mismo error** si no es una violacion de unicidad, para que el
+ * catch quede en una sola linea y ningun otro fallo se traduzca por accidente a
+ * «ese nombre ya existe».
+ *
+ * @param {Error} err
+ * @param {string} [nombre] El que venia en el cuerpo, si vino.
+ * @returns {Error} Un ErrorDeNegocio 409, o `err` tal cual.
+ */
+function conNombreRepetido(err, nombre) {
+  // El nombre del error lo pone Sequelize; el 23505 es el codigo de Postgres,
+  // y va como respaldo porque el envoltorio depende del dialecto y de la
+  // version, y quedarse solo con el nombre es como esta clase de traduccion
+  // deja de funcionar en silencio despues de un upgrade.
+  const esRepetido = err
+    && (err.name === 'SequelizeUniqueConstraintError'
+      || (err.parent && err.parent.code === '23505')
+      || (err.original && err.original.code === '23505'));
+
+  if (!esRepetido) return err;
+
+  const escrito = typeof nombre === 'string' && nombre.trim() !== '' ? nombre.trim() : null;
+
+  return new ErrorDeNegocio(
+    escrito
+      ? `Ya existe un proveedor llamado «${escrito}». Abrí el que ya está o usá otro nombre.`
+      : 'Ya existe otro proveedor con ese nombre. Usá uno distinto.',
+    409
+  );
+}
+
 // POST /api/suppliers — Crear proveedor
 router.post('/', checkPermission('proveedores.crear'), async (req, res) => {
   try {
@@ -610,7 +654,7 @@ router.post('/', checkPermission('proveedores.crear'), async (req, res) => {
     });
     res.status(201).json({ ok: true, data: supplier });
   } catch (err) {
-    fallo(req, res, err, 'Error al crear el proveedor');
+    fallo(req, res, conNombreRepetido(err, req.body && req.body.name), 'Error al crear el proveedor');
   }
 });
 
@@ -622,7 +666,7 @@ router.put('/:id', checkPermission('proveedores.editar'), async (req, res) => {
     await supplier.update(soloCampos(req.body, CAMPOS_DE_PROVEEDOR));
     res.json({ ok: true, data: supplier });
   } catch (err) {
-    fallo(req, res, err, 'Error al actualizar el proveedor');
+    fallo(req, res, conNombreRepetido(err, req.body && req.body.name), 'Error al actualizar el proveedor');
   }
 });
 

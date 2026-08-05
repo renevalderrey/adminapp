@@ -24,12 +24,17 @@ const PAGINAS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'p
 //  «una pila anotada dos veces».
 // ════════════════════════════════════════════
 
-const { llamadas } = vi.hoisted(() => ({ llamadas: [] }))
+// `respuestas` es lo que permite montar una pantalla acá adentro y no solo
+// llamar a las funciones sueltas: sin un cuerpo de respuesta, el listado llega
+// vacío y una paginación de una sola página no dibuja ningún botón que apretar.
+// Vacío se comporta igual que antes —`{ ok: true }`—, así que los casos que ya
+// estaban no cambian.
+const { llamadas, respuestas } = vi.hoisted(() => ({ llamadas: [], respuestas: new Map() }))
 
 vi.mock('axios', () => {
   const registrar = (metodo) => (url, ...resto) => {
     llamadas.push({ metodo, url, resto })
-    return Promise.resolve({ data: { ok: true } })
+    return Promise.resolve({ data: respuestas.get(url) || { ok: true } })
   }
 
   const instancia = {
@@ -56,12 +61,14 @@ const {
   nuevoIdDeVenta,
   getSuppliers,
   getSupplierMovements,
+  exportarCuenta,
 } = await import('../services/api.js')
 
 const { default: useStore } = await import('../store/useStore.js')
 const { default: Billing } = await import('../pages/Billing.jsx')
+const { default: PurchaseOrders } = await import('../pages/PurchaseOrders.jsx')
 
-beforeEach(() => { llamadas.length = 0 })
+beforeEach(() => { llamadas.length = 0; respuestas.clear() })
 
 /** La última llamada registrada. */
 const ultima = () => llamadas[llamadas.length - 1]
@@ -154,6 +161,37 @@ describe('getSuppliers después de que el listado pasó a paginar', () => {
     expect(ultima()).toMatchObject({ metodo: 'get', url: '/suppliers/7/movimientos' })
   })
 
+  it('la exportación pide el rango que está mirando la pantalla', async () => {
+    // T1247 y US8. La ruta cuelga de `/:id/…` y no de un literal: `GET /:id`
+    // está declarado más arriba en `routes/suppliers.js` y se come cualquier
+    // palabra suelta que venga después —un `/suppliers/export` iría a parar a
+    // `GET /:id` con `id = 'export'`—. Escribirla mal no falla en build ni en
+    // ningún test de render: falla en producción, la primera vez que alguien
+    // aprieta el botón.
+    await exportarCuenta(3, { desde: '2026-07-01', hasta: '2026-07-31' })
+
+    expect(ultima()).toMatchObject({ metodo: 'get', url: '/suppliers/3/movimientos/export' })
+    expect(ultima().resto[0]).toEqual({ params: { desde: '2026-07-01', hasta: '2026-07-31' } })
+  })
+
+  it('sin rango NO manda desde ni hasta vacíos', async () => {
+    // Los dos extremos viajan por PRESENCIA, igual que el `q` del buscador y que
+    // el `supplier_id` del listado de órdenes: `desde=` vacío es un filtro de
+    // fecha que el servidor tiene que validar para descartar, y ese es
+    // exactamente el camino que produjo el `?supplier_id=%20` contra una columna
+    // INTEGER. La ausencia se construye del lado del cliente.
+    await exportarCuenta(3)
+    expect(ultima().resto[0]).toEqual({ params: {} })
+
+    await exportarCuenta(3, { desde: '', hasta: '' })
+    expect(ultima().resto[0]).toEqual({ params: {} })
+
+    // Y un solo extremo viaja solo: exportar «desde marzo» sin cerrar el rango
+    // es un caso real.
+    await exportarCuenta(3, { desde: '2026-03-01' })
+    expect(ultima().resto[0]).toEqual({ params: { desde: '2026-03-01' } })
+  })
+
   it('la pantalla vieja NO suma movimientos que ya no vienen', async () => {
     // El puente de T1219: `GET /suppliers` dejó de devolver `movements`, así que
     // `calculateBalance` sumaría siempre cero. Un saldo de $0 para todos los
@@ -163,6 +201,55 @@ describe('getSuppliers después de que el listado pasó a paginar', () => {
 
     expect(texto).not.toContain('calculateBalance')
     expect(texto).not.toContain('movements.reduce')
+  })
+})
+
+// ════════════════════════════════════════════
+//  La orden 101 (T1235)
+//
+//  `PurchaseOrders.jsx` pedía `limit: 100` fijo y NUNCA un `offset`: con 312
+//  órdenes cargadas, el contador de arriba decía 312 y no había forma de llegar
+//  a la 101 — ni scrolleando, ni filtrando, ni cambiando nada. No fallaba nada:
+//  la lista mostraba cien filas y se veía completa.
+//
+//  Va acá y no en el test de render porque lo que se afirma es LA URL: que el
+//  botón «2» de la paginación termine convertido en `offset=50` sobre
+//  `/suppliers/orders`, que es la capa donde un parámetro que no se manda no lo
+//  detecta ningún otro test.
+// ════════════════════════════════════════════
+
+describe('La paginación de /ordenes-compra pide la página que se apretó', () => {
+  const ORDEN = {
+    id: 118,
+    supplier_id: 3,
+    supplier_name: 'Distribuidora Norte',
+    date: '2026-07-31',
+    status: 'pending',
+    total: '15000',
+    items: [{ product_id: 1, product_name: 'Colágeno 300g', quantity: 12, quantity_received: 0, unit_price: '1000' }],
+  }
+
+  /** Las llamadas al listado, en orden. */
+  const listado = () => llamadas.filter((l) => l.url === '/suppliers/orders')
+
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('la página 2 pide offset y no vuelve a pedir la 1', async () => {
+    // 120 órdenes son tres páginas de 50. Sin `total`, la paginación no se
+    // dibuja y el caso pasaría por no haber nada que apretar.
+    respuestas.set('/suppliers/orders', { ok: true, data: [ORDEN], total: 120 })
+
+    await act(async () => { render(React.createElement(PurchaseOrders)) })
+
+    expect(listado()).toHaveLength(1)
+    expect(listado()[0].resto[0]).toEqual({ params: { limit: 50, offset: 0 } })
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '2' })) })
+
+    // La segunda llamada es la de la página 2, y es UNA: si `offset` no viajara,
+    // apretar «2» volvería a pedir las mismas cincuenta de siempre.
+    expect(listado()).toHaveLength(2)
+    expect(listado()[1].resto[0]).toEqual({ params: { limit: 50, offset: 50 } })
   })
 })
 

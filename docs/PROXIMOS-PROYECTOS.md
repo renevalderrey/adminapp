@@ -346,3 +346,110 @@ Bloqueado hasta tener acceso al hosting viejo. El procedimiento completo está
 en [OPERACION.md](OPERACION.md#migrar-un-cliente-desde-el-sistema-legacy).
 
 **Rotar las credenciales antes**, no después.
+
+---
+
+## 10 · Lo que dejó afuera Proveedores y Órdenes de compra
+
+**Apareció** implementando `docs/specs/012-proveedores-y-ordenes-de-compra/`
+(5/8/2026). Cinco cosas: tres funciones del sistema viejo que no entraron y dos
+riesgos conocidos con su mitigación ya escrita.
+
+Cada una dice **qué falta**, **por qué no entró** y **cuál es el primer paso**.
+Una función que desaparece de una pantalla sin quedar anotada es una función que
+alguien vuelve a pedir dentro de tres meses; y un riesgo conocido sin su
+mitigación escrita es un riesgo que se reconstruye desde cero el día que muerde.
+
+### 10a · Enlace de factura por ORDEN, además del del proveedor
+
+**Qué falta.** El legacy (`legacy:8182`) permitía colgarle el enlace de la
+factura a **la orden** que la generó. Lo que entró en el hito 012 es el bloque de
+documentos **del proveedor** (`components/BloqueDeDocumentos.jsx`): sirve para
+guardar facturas, remitos y presupuestos, pero no dice a qué orden corresponde
+cada uno.
+
+**Por qué no entró.** La spec resolvió el badge «sin factura» por proveedor
+(FR-086) y con eso se cubre la pregunta que Comprafit hacía todos los días —«¿a
+quién le compré sin que me facture?»—. La pregunta por orden aparece recién al
+conciliar con el contador.
+
+**Primer paso.** Una columna `supplier_order_id` (nullable) en
+`supplier_documents`, con su índice `(empresa_id, supplier_order_id)`, y el
+bloque de documentos dibujado también adentro de `PanelOrdenDeCompra`. No hace
+falta modelo nuevo ni ruta nueva.
+
+### 10b · Estado de cuenta del proveedor por WhatsApp
+
+**Qué falta.** Mandarle al proveedor su estado de cuenta —lo que se le debe y
+desde cuándo— por WhatsApp, como hacía el legacy (`legacy:8242`).
+
+**Por qué no entró.** El envío de **la orden** sí está y se conserva
+(`enviarOrdenPorWhatsapp` en `components/PanelOrdenDeCompra.jsx`, con y sin
+precios): es lo que se usa para comprar. El estado de cuenta se manda una vez por
+mes y hoy se resuelve con el `.xlsx` exportado.
+
+**Primer paso.** Reusar `enviarOrdenPorWhatsapp` como molde —ya resuelve el
+teléfono, el aviso cuando no hay y el armado del texto— sobre las filas que
+devuelve `GET /api/suppliers/:id/movimientos/export`, que ya existen y ya traen
+el saldo acumulado.
+
+### 10c · Badge de «sin factura» en la barra lateral
+
+**Qué falta.** El contador global de proveedores con actividad y sin ningún
+documento cargado, al lado del ítem «Proveedores» del menú (`legacy:1445`,
+`:7889`).
+
+**Por qué no entró.** El badge **por proveedor** sí entró (FR-086, en la fila de
+la lista). El de la barra lateral es un número que hay que calcular en cada carga
+de cualquier pantalla, y hoy no existe ningún endpoint de conteos para el menú:
+sería el primero, y esa decisión —qué más va a contar la barra lateral— es más
+grande que este hito.
+
+**Primer paso.** Decidir si la barra lateral va a tener contadores en general. Si
+sí, un `GET /api/badges` que devuelva todos juntos; si no, no hacerlo solo para
+proveedores.
+
+### 10d · ⚠ El lock de la recepción es sobre el stock, NO sobre la orden
+
+Es el **riesgo 7** del plan de la 012, y está declarado *Fuera de alcance* en la
+spec.
+
+**Qué falta.** `purchaseService.receiveOrder` abre una transacción y toma
+`lock: t.LOCK.UPDATE` sobre la fila de `Stock` —el único `lock` del archivo—,
+**no sobre la orden**. Dos personas recibiendo la misma orden a la vez leen el mismo
+`detail`, y la segunda escritura pisa a la primera: la orden puede quedar con
+**menos recibido del que entró de verdad**. El stock no se duplica —eso sí lo
+protege el lock— pero el detalle de la orden y la deuda quedan cortos.
+
+**El hito 012 empeora la exposición y hay que decirlo**: «Recibir» pasó a estar
+en **cada fila** de la tabla (FR-007), donde antes había que expandir un acordeón.
+Más gente puede llegar a la misma orden al mismo tiempo.
+
+**Primer paso, y es UNA línea**: agregarle `lock: t.LOCK.UPDATE` al
+`SupplierOrder.findOne` de `receiveOrder`. No entró ahora porque cambiar el
+locking de una transacción que **ya bloquea filas de `Stock` en otro orden** es
+una decisión sobre deadlocks, y eso merece su propia verificación contra Postgres
+—dos recepciones simultáneas, dos órdenes que comparten producto, en los dos
+órdenes de llegada—, que es un paso manual y no un test.
+
+### 10e · Sacar la cascada de costos de la transacción de la recepción
+
+Es el **riesgo 3** del plan de la 012.
+
+**Qué falta.** `receiveOrder` recostea en cascada los productos elaborados que
+usan el insumo comprado (`recostearDependientes` →
+`costService.recalculateCascadingCosts`), **dentro de la misma transacción** que
+el stock y la deuda. Una orden de veinte insumos anidados puede recostear decenas
+de productos con la transacción abierta.
+
+**Por qué no entró.** Se acepta porque es exactamente lo que hace
+`productionService.recibirOrden` desde siempre, sobre el mismo grafo de recetas.
+Y porque la alternativa **no es gratis**: sacarla deja una ventana en la que el
+insumo ya cambió de costo y el elaborado todavía no, o sea el defecto 3 corrido
+un nivel durante unos segundos.
+
+**Primer paso.** Medir antes de tocar: es el paso manual **P11** de
+`docs/specs/012-proveedores-y-ordenes-de-compra/tasks.md` —recibir una orden de
+veinte insumos anidados y cronometrar—. Si el número molesta, mover la llamada
+después del `commit` es un cambio de una línea; lo que hay que decidir junto con
+eso es qué pasa si el proceso se cae en el medio.

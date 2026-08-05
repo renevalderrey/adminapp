@@ -1226,3 +1226,102 @@ describe('POST /api/suppliers/:id/payments', () => {
     expect(mockSupplierMovement.filas.some((m) => m.type === 'pago')).toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────
+//  Parte 8 · El nombre repetido (T1246)
+//
+//  `models/Supplier.js:44` tiene un índice único `(empresa_id, name)`, y eso
+//  está bien: dos «Nutrifit» en la misma lista son dos cuentas corrientes que
+//  nadie sabe cuál es cuál. Lo que estaba mal era lo que se veía al chocar con
+//  él —un 500 genérico— y lo que se vería si alguien sacara `fallo` del camino:
+//  `err.message` de un SequelizeUniqueConstraintError trae el nombre del índice
+//  y de la columna.
+// ─────────────────────────────────────────────
+
+describe('POST y PUT /api/suppliers con un nombre que ya existe', () => {
+  /** El error tal como lo envuelve Sequelize sobre el 23505 de Postgres. */
+  function choqueDeUnicidad() {
+    const err = new Error(
+      'Validation error: duplicate key value violates unique constraint "suppliers_empresa_id_name"'
+    );
+    err.name = 'SequelizeUniqueConstraintError';
+    err.parent = { code: '23505', constraint: 'suppliers_empresa_id_name', table: 'suppliers' };
+    return err;
+  }
+
+  // ⚠ Los dos dobles se guardan y se restauran: `crearModelo` los comparte con
+  // todo el archivo, así que dejarlos pisados haría que cualquier caso que se
+  // agregue después de este describe falle por un motivo que no está escrito en
+  // ninguna parte.
+  const createOriginal = mockSupplier.create;
+  const findOneOriginal = mockSupplier.findOne;
+
+  beforeEach(() => {
+    mockSupplier.create = async () => { throw choqueDeUnicidad(); };
+  });
+
+  afterEach(() => {
+    mockSupplier.create = createOriginal;
+    mockSupplier.findOne = findOneOriginal;
+  });
+
+  it('un proveedor con el nombre de otro NO devuelve el error de constraint crudo', async () => {
+    const res = await request(levantarApi())
+      .post('/api/suppliers')
+      .send({ name: 'Nutrifit' });
+
+    // Nada de la estructura interna: ni el nombre del índice, ni el de la
+    // tabla, ni «SequelizeUniqueConstraintError». Eso le sirve a quien busca
+    // dónde apretar y no le dice nada a quien está cargando un proveedor.
+    const cuerpo = JSON.stringify(res.body);
+    expect(cuerpo).not.toContain('SequelizeUniqueConstraintError');
+    expect(cuerpo).not.toContain('suppliers_empresa_id_name');
+    expect(cuerpo).not.toContain('unique constraint');
+  });
+
+  it('el mensaje dice que ese nombre ya existe, y no «Error al crear el proveedor»', async () => {
+    // Es una condición prevista que el usuario puede corregir solo: taparla con
+    // el genérico de `fallo` manda a mirar los logs por un nombre repetido.
+    const res = await request(levantarApi())
+      .post('/api/suppliers')
+      .send({ name: 'Nutrifit' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain('Nutrifit');
+    expect(res.body.error).toContain('Ya existe un proveedor');
+  });
+
+  it('renombrar un proveedor con el nombre de otro dice lo mismo', async () => {
+    // El índice muerde igual en el UPDATE, y hasta acá el PUT devolvía el mismo
+    // 500 genérico que el POST. El doble se interviene en `findOne` y no en la
+    // fila: `_hidratar` define su propio `update` **después** de esparcir la
+    // fila, así que un `update` puesto en el arreglo no lo ve nadie.
+    mockSupplier.findOne = async (opciones) => {
+      const instancia = await findOneOriginal.call(mockSupplier, opciones);
+      if (!instancia) return null;
+
+      return { ...instancia, update: async () => { throw choqueDeUnicidad(); } };
+    };
+
+    const res = await request(levantarApi())
+      .put('/api/suppliers/11')
+      .send({ name: 'Nutrifit' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain('Ya existe un proveedor');
+  });
+
+  it('un fallo que NO es de unicidad sigue siendo un 500 genérico', async () => {
+    // Lo que impide que la traducción se coma cualquier error: una base caída no
+    // puede salir como «ese nombre ya existe», que manda a corregir un dato que
+    // está bien.
+    mockSupplier.create = async () => { throw new Error('connection terminated unexpectedly'); };
+
+    const res = await request(levantarApi())
+      .post('/api/suppliers')
+      .send({ name: 'Molino Sur' });
+
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Error al crear el proveedor');
+  });
+});

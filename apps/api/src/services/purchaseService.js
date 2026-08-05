@@ -69,21 +69,28 @@ async function recostearDependientes(productId, transaction) {
 }
 
 /**
- * Traduce el cuerpo de una recepción a la forma «por línea».
+ * Valida que el cuerpo de una recepción venga «por línea».
  *
  * La identidad de una línea es su **posición en `detail`** (decisión 1 del
- * plan). El cuerpo nuevo la manda explícita; el viejo mandaba
- * `{ product_id, quantity_received }`, que no alcanza para distinguir dos
- * líneas del mismo producto ni dos líneas sin producto.
+ * plan). `detail` es un JSONB sin tabla de líneas: no hay id que usar, y la
+ * posición es lo único que distingue dos líneas idénticas.
  *
- * ⚠ **El camino del cuerpo viejo es un respaldo transitorio de un solo corte.**
- * Existe porque este corte se despliega antes que el rediseño de las dos
- * pantallas: un navegador que quedó abierto desde antes del deploy sigue
- * mandando la forma vieja, y rechazarla dejaría al usuario sin poder recibir
- * mercadería hasta que recargue. Se acepta **solo si la orden no es ambigua**;
- * si lo es, se rechaza con un mensaje que dice qué producto la hace ambigua.
- * Cuando las dos pantallas manden `linea`, este camino se borra: un camino que
- * nadie usa es un camino que nadie mira cuando cambia.
+ * ⚠ **Acá vivía el respaldo que aceptaba el cuerpo viejo
+ * `{ product_id, quantity_received }`, y T1239 lo borró.** Existió durante un
+ * solo corte y con un motivo acotado: entre el despliegue de la API y el de las
+ * dos pantallas, un navegador abierto desde antes seguía mandando esa forma, y
+ * rechazarla habría dejado a alguien sin poder recibir mercadería hasta
+ * recargar. Con la pantalla nueva arriba ya no hay quien la mande.
+ *
+ * **Por qué se borra y no se deja «por las dudas»**: es el camino ambiguo que
+ * este hito viene a cerrar —`{ product_id }` no alcanza para distinguir dos
+ * líneas del mismo producto ni dos líneas sin producto— y **un camino que nadie
+ * usa es un camino que nadie mira cuando cambia**. Dejarlo vivo significa que
+ * el día que alguien toque la resolución de líneas, la mitad de los casos que
+ * se rompen no los ejercita ninguna pantalla.
+ *
+ * A partir de acá `linea` es obligatorio: un cuerpo sin él responde
+ * **`400 LINEA_REQUERIDA`**, sea la orden ambigua o no.
  *
  * @param {Array<object>} items Los del cuerpo del request.
  * @param {Array<object>} detalle El `detail` de la orden.
@@ -94,73 +101,42 @@ function itemsPorLinea(items, detalle = []) {
 
   if (lista.length === 0) return [];
 
-  const traeLinea = lista.some((i) => i && i.linea !== undefined && i.linea !== null);
+  // Se exige en TODOS los ítems y no en «alguno»: un cuerpo mixto —dos líneas
+  // con posición y una sin— caería en `aplicarRecepcion` como
+  // `LINEA_INEXISTENTE`, que le dice al usuario que su detalle está viejo
+  // cuando lo que está mal es el cuerpo que manda su pantalla.
+  const sinLinea = lista.some((i) => !i || i.linea === undefined || i.linea === null);
 
-  if (traeLinea) {
-    // Red contra una pantalla que se quedó con un detalle viejo: si manda la
-    // línea Y el producto y no coinciden, el índice apunta a otra cosa de la
-    // que el usuario cree, y eso hay que decirlo antes de mover stock.
-    for (const item of lista) {
-      if (item.product_id === undefined || item.product_id === null) continue;
-
-      const indice = Number(item.linea);
-      const enLaOrden = Number.isInteger(indice) ? detalle[indice] : undefined;
-      if (!enLaOrden) continue; // `aplicarRecepcion` lo rechaza con su código.
-
-      const deLaLinea = enLaOrden.product_id ?? null;
-
-      if (Number(item.product_id) !== Number(deLaLinea)) {
-        throw errorDeCuerpo(
-          'LINEA_INCONSISTENTE',
-          `La línea ${indice} de la orden no es del producto que se está recibiendo. `
-          + 'Volvé a abrir la orden: el detalle cambió desde que la cargaste.'
-        );
-      }
-    }
-
-    return lista;
-  }
-
-  // ── Respaldo transitorio: el cuerpo viejo ──
-  const conteo = new Map();
-  let hayLineaSinProducto = false;
-
-  for (const linea of detalle) {
-    if (linea.product_id === null || linea.product_id === undefined) {
-      hayLineaSinProducto = true;
-      continue;
-    }
-    conteo.set(linea.product_id, (conteo.get(linea.product_id) || 0) + 1);
-  }
-
-  const repetido = [...conteo.entries()].find(([, veces]) => veces > 1);
-
-  if (repetido) {
-    const nombre = detalle.find((l) => l.product_id === repetido[0])?.product_name
-      || 'un producto';
-
+  if (sinLinea) {
     throw errorDeCuerpo(
       'LINEA_REQUERIDA',
-      `La orden tiene dos líneas de «${nombre}», así que no alcanza con decir qué `
-      + 'producto llegó: hay que decir qué línea. Recargá la pantalla y volvé a '
-      + 'cargar la recepción.'
+      'Falta decir a qué línea de la orden va cada cantidad. Recargá la pantalla '
+      + 'y volvé a cargar la recepción.'
     );
   }
 
-  if (hayLineaSinProducto) {
-    throw errorDeCuerpo(
-      'LINEA_REQUERIDA',
-      'La orden tiene líneas que no son de un producto del catálogo, así que hay '
-      + 'que decir qué línea llegó. Recargá la pantalla y volvé a cargar la '
-      + 'recepción.'
-    );
+  // Red contra una pantalla que se quedó con un detalle viejo: si manda la
+  // línea Y el producto y no coinciden, el índice apunta a otra cosa de la que
+  // el usuario cree, y eso hay que decirlo antes de mover stock.
+  for (const item of lista) {
+    if (item.product_id === undefined || item.product_id === null) continue;
+
+    const indice = Number(item.linea);
+    const enLaOrden = Number.isInteger(indice) ? detalle[indice] : undefined;
+    if (!enLaOrden) continue; // `aplicarRecepcion` lo rechaza con su código.
+
+    const deLaLinea = enLaOrden.product_id ?? null;
+
+    if (Number(item.product_id) !== Number(deLaLinea)) {
+      throw errorDeCuerpo(
+        'LINEA_INCONSISTENTE',
+        `La línea ${indice} de la orden no es del producto que se está recibiendo. `
+        + 'Volvé a abrir la orden: el detalle cambió desde que la cargaste.'
+      );
+    }
   }
 
-  return lista.map((item) => ({
-    ...item,
-    linea: detalle.findIndex((l) => l.product_id === item.product_id),
-    cantidad: item.quantity_received,
-  }));
+  return lista;
 }
 
 class PurchaseService {
@@ -261,6 +237,15 @@ class PurchaseService {
     // `location` ya no se lee. Su valor por defecto era el literal 'general',
     // que en una empresa cuyos códigos son otros no coincide con ninguna
     // sucursal, y desde que existe `resolverSucursal` no ubicaba nada (FR-104).
+    //
+    // `punto_de_venta_id` es la sucursal que se eligió en la pantalla (US10).
+    // Llega ya decidida por la ruta, que aplica los dos primeros escalones de la
+    // precedencia: el id del cuerpo, y si no vino, la cabecera
+    // `X-Punto-De-Venta-Id`. El tercero —la sucursal por defecto de la empresa—
+    // lo resuelve `resolverSucursal` y **no se repite acá**: esa regla vive en
+    // un solo lugar (FR-049), y tenerla escrita en cada escritura de stock es
+    // como se llegó a diez lugares que decidían la sucursal cada uno a su
+    // manera, con filas que la pantalla no muestra.
     const { items, punto_de_venta_id: puntoDeVentaId = null } = cuerpo || {};
 
     // La fecha del negocio se resuelve ANTES de abrir la transacción. Es una
