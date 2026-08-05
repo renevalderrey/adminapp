@@ -7,6 +7,11 @@ import { presentacionDeEstado } from '@/utils/estadoVenta'
 // `tc3`, que no estaba en ninguna de las otras dos— y el panel lo mostraba
 // crudo sin que nada fallara.
 import { etiquetaDePago } from '@/utils/mediosDePago'
+// `pesos` y `fechaCorta` vivían acá abajo y eran las dos únicas versiones
+// correctas del repositorio: la primera fija los DOS extremos de decimales y la
+// segunda no pasa por `new Date()`. Mientras estuvieron adentro de este
+// archivo, reutilizarlas significaba copiarlas.
+import { pesos, fechaCorta } from '@/utils/formato'
 import { AlertTriangle, Loader2, Printer } from 'lucide-react'
 
 // ════════════════════════════════════════════
@@ -33,25 +38,11 @@ const ETIQUETAS_DE_CONDICION = {
   exento: 'Exento',
 }
 
-const pesos = (n) => Number(n || 0).toLocaleString('es-AR', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
-
 /** AFIP devuelve el vencimiento del CAE como «20260811». */
 function fechaDeAfip(vto) {
   const t = String(vto || '')
   if (!/^\d{8}$/.test(t)) return t || '—'
   return `${t.slice(6, 8)}/${t.slice(4, 6)}/${t.slice(0, 4)}`
-}
-
-/** «2026-08-01» → «01/08/2026», sin pasar por Date: `new Date('2026-08-01')`
- *  se interpreta en UTC y en Argentina muestra el día anterior. */
-function fechaCorta(iso) {
-  const t = String(iso || '')
-  if (!/^\d{4}-\d{2}-\d{2}/.test(t)) return t || '—'
-  const [a, m, d] = t.slice(0, 10).split('-')
-  return `${d}/${m}/${a}`
 }
 
 /** Momento completo de un timestamp, para la fecha del último intento. */

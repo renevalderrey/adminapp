@@ -714,6 +714,38 @@ router.post('/:id/orders', checkPermission('ordenes_compra.crear'), async (req, 
 
 // ── Pagos ──
 
+/**
+ * El importe de un pago, validado antes de que llegue a la base (FR-088).
+ *
+ * **Qué pasaba hasta este corte**: `Orders.jsx:125` mandaba
+ * `parseFloat(payData.amount)` sin mirar nada, así que un formulario vacío
+ * escribía **NaN en una columna DECIMAL(14,2)**. Nada fallaba: la fila entraba,
+ * y a partir de ahí el saldo del proveedor, el badge de la lista, el saldo
+ * grande de la cuenta y el archivo del contador decían todos «NaN».
+ *
+ * ⚠ **Un importe mayor que el saldo SÍ se acepta** (FR-089): pagar por
+ * adelantado es legítimo y deja el saldo negativo, que es la forma correcta de
+ * decir «el proveedor me debe a mí» (US6 escenario 6). La confirmación con los
+ * dos números es de la pantalla (T1244), no de acá. Bloquearlo sería «arreglar»
+ * esto rompiendo un caso real.
+ *
+ * La validación va en los **dos** lados —navegador y servidor— porque el
+ * requisito lo dice y porque el navegador no es una barrera.
+ *
+ * @throws {ErrorDeNegocio} 400 con el mensaje que lee el usuario.
+ */
+function importeDePago(valor) {
+  // `Number('')` es 0 y `Number(null)` también: los dos tienen que quedar
+  // afuera por el `<= 0`, no por el `isFinite`.
+  const monto = Number(valor);
+
+  if (!Number.isFinite(monto) || monto <= 0) {
+    throw new ErrorDeNegocio('El monto del pago tiene que ser un número mayor que cero', 400);
+  }
+
+  return monto;
+}
+
 // POST /api/suppliers/:id/payments — Registrar pago
 router.post('/:id/payments', checkPermission('proveedores.crear'), async (req, res) => {
   try {
@@ -728,13 +760,19 @@ router.post('/:id/payments', checkPermission('proveedores.crear'), async (req, r
     const supplier = await findScoped(Supplier, req.params.id, req.empresaId);
     if (!supplier) return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
 
+    // El importe se valida DESPUÉS del findScoped y no antes: ese findScoped es
+    // lo que hace que `analizarCreates` dé por validado el create de abajo, y
+    // moverlo —o interponerle un return— es la clase de reordenamiento que pone
+    // una guardia en rojo sin que se entienda por qué.
     const { date, amount, payment_method, notes } = req.body;
+    const monto = importeDePago(amount);
+
     const movement = await SupplierMovement.create({
       supplier_id: supplier.id,
       empresa_id: req.empresaId,
       type: 'pago',
       date,
-      amount,
+      amount: monto,
       payment_method,
       notes,
     });

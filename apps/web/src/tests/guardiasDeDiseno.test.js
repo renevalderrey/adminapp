@@ -31,6 +31,13 @@ import { fileURLToPath } from 'node:url'
 //     eran de esta clase, o sea que la guardia los habría dejado pasar aunque
 //     el archivo hubiera estado en la lista desde el principio.
 //
+//  Hay un QUINTO patrón, más abajo, que NO se aplica a toda la lista: solo a
+//  las dos pantallas de órdenes, porque lo que detecta —elegir la orden a
+//  recibir con un `find()` por estado adentro de un `onClick`— no es un
+//  problema de dibujo sino de plata mal aplicada. Vive en este archivo y no en
+//  otro porque entra por el mismo motivo que los cuatro de arriba: acompañar
+//  la reescritura desde el primer commit en vez de auditarla al final.
+//
 //  La carpeta es `src/tests/` para que las otras cinco pantallas se sumen a
 //  esta misma lista cuando apliquen el patrón.
 // ════════════════════════════════════════════
@@ -64,8 +71,36 @@ const SRC = path.join(AQUI, '..')
  * esta lista, comentar el patrón de la paleta, o meter las cuatro clases
  * adentro de un comentario para que `lineasQueMatchean` las saltee. Si el rojo
  * molesta, la salida es T1122.
+ *
+ * ⚠⚠⚠ Y VUELVE A PASAR POR TERCERA VEZ, a propósito, con proveedores y órdenes
+ * de compra. Entran CUATRO archivos antes de estar escritos:
+ * `pages/Orders.jsx` y `pages/PurchaseOrders.jsx` sin reescribir (FR-012,
+ * FR-069), y `components/PanelOrdenDeCompra.jsx` y
+ * `components/BloqueDeDocumentos.jsx` creados vacíos.
+ *
+ * **Esta guardia queda EN ROJO desde este commit**, y lo que la pone en rojo
+ * está enumerado —no es «algo falla»—:
+ *
+ *   · `pages/Orders.jsx` tiene cuatro clases de la paleta: `border-green-500/30`
+ *     (L353 y L464), `border-green-600/30` (L421) y
+ *     `bg-green-600 hover:bg-green-700` (L677).
+ *   · `pages/Orders.jsx` dibuja con `<table>` (L396, L415) y con los `Table*`
+ *     de shadcn (L23-27 y L447-477).
+ *   · `pages/PurchaseOrders.jsx` dibuja con los `Table*` de shadcn (L18-22,
+ *     L275-321 y L346-361).
+ *   · `pages/Orders.jsx` elige la orden a recibir con un `find()` por estado
+ *     adentro del `onClick` de «Confirmar Recepción» (L645), que es el quinto
+ *     patrón de más abajo.
+ *
+ * Las tareas que la ponen en verde son **T1237** para `pages/PurchaseOrders.jsx`
+ * y **T1240** y **T1242** para `pages/Orders.jsx`.
+ *
+ * Lo que NO vale para «arreglarla» mientras tanto: sacar cualquiera de los
+ * cuatro de esta lista, comentar el patrón nuevo, meter las clases adentro de un
+ * comentario para que `lineasQueMatchean` las saltee, o bajar el
+ * `toHaveLength`. Si el rojo molesta, la salida es T1237, T1240 y T1242.
  */
-const ARCHIVOS = [
+const NOMBRES = [
   'pages/InvoicesList.jsx',
   'components/TablaGrid.jsx',
   'components/PanelVenta.jsx',
@@ -78,10 +113,36 @@ const ARCHIVOS = [
   'components/pos/CatalogoDelPos.jsx',
   'components/pos/TicketDelPos.jsx',
   'components/pos/SegmentoDePago.jsx',
-].map((nombre) => ({
-  nombre,
-  contenido: fs.readFileSync(path.join(SRC, nombre), 'utf8'),
-}))
+  'pages/Orders.jsx',
+  'pages/PurchaseOrders.jsx',
+  'components/PanelOrdenDeCompra.jsx',
+  'components/BloqueDeDocumentos.jsx',
+]
+
+/**
+ * Un archivo de la lista, exista o no.
+ *
+ * ⚠ El `readFileSync` directo era una bomba: un archivo de la lista que todavía
+ * no está escrito hace explotar el módulo entero al importarlo, así que la
+ * suite no dice «falta PanelOrdenDeCompra.jsx» sino un ENOENT de Node, y NINGÚN
+ * caso de este archivo llega a correr —ni los de los otros quince—. El arreglo
+ * barato es envolverlo en un try, y ahí la guardia deja de mirar: el archivo que
+ * falta pasa a ser un archivo sin hallazgos, que es exactamente igual a un
+ * archivo impecable.
+ *
+ * Por eso el archivo que falta se marca, y los dos rojos se leen distinto:
+ * «todavía no se escribió» es una tarea pendiente, «L353: border-green-500/30»
+ * es un color fuera del sistema. Confundirlos es cómo se archiva el segundo
+ * creyendo que era el primero.
+ */
+function leer(nombre) {
+  const ruta = path.join(SRC, nombre)
+  if (!fs.existsSync(ruta)) return { nombre, existe: false, contenido: '' }
+
+  return { nombre, existe: true, contenido: fs.readFileSync(ruta, 'utf8') }
+}
+
+const ARCHIVOS = NOMBRES.map(leer)
 
 /**
  * Las líneas que matchean, con su número.
@@ -96,30 +157,41 @@ function lineasQueMatchean(contenido, regex) {
     .filter(({ texto }) => regex.test(texto) && !texto.startsWith('//') && !texto.startsWith('*'))
 }
 
+/**
+ * Los hallazgos de un archivo de la lista, ya formateados.
+ *
+ * Un archivo que no existe devuelve un hallazgo propio en vez de la lista vacía
+ * que devolvería su contenido en blanco. Sin eso, los cuatro patrones pasarían
+ * en verde sobre un archivo que nadie leyó, y el único rojo sería el del ancla
+ * —que es un solo caso y el primero que alguien aflojaría—.
+ */
+function hallazgosDe({ nombre, existe, contenido }, regex) {
+  if (!existe) return [`${nombre} — el archivo NO existe: la guardia no miró nada`]
+
+  return lineasQueMatchean(contenido, regex).map((h) => `L${h.n}: ${h.texto}`)
+}
+
 describe('No debe haber colores fuera de los tokens del sistema', () => {
   const PATRON = /#[0-9a-fA-F]{3,8}\b/
 
-  it.each(ARCHIVOS)('$nombre no tiene ningún valor hexadecimal', ({ contenido }) => {
-    const hallazgos = lineasQueMatchean(contenido, PATRON)
-    expect(hallazgos.map((h) => `L${h.n}: ${h.texto}`)).toEqual([])
+  it.each(ARCHIVOS)('$nombre no tiene ningún valor hexadecimal', (archivo) => {
+    expect(hallazgosDe(archivo, PATRON)).toEqual([])
   })
 })
 
 describe('No debe hacer falta ninguna regla dark:', () => {
   const PATRON = /\bdark:/;
 
-  it.each(ARCHIVOS)('$nombre no tiene reglas dark:', ({ contenido }) => {
-    const hallazgos = lineasQueMatchean(contenido, PATRON)
-    expect(hallazgos.map((h) => `L${h.n}: ${h.texto}`)).toEqual([])
+  it.each(ARCHIVOS)('$nombre no tiene reglas dark:', (archivo) => {
+    expect(hallazgosDe(archivo, PATRON)).toEqual([])
   })
 })
 
 describe('La tabla es un grid y no un <table>', () => {
   const PATRON = /<table\b|<\/table>|@\/components\/ui\/table|\bTableCell\b|\bTableHeader\b|\bTableRow\b/
 
-  it.each(ARCHIVOS)('$nombre no usa <table> ni los Table* de shadcn', ({ contenido }) => {
-    const hallazgos = lineasQueMatchean(contenido, PATRON)
-    expect(hallazgos.map((h) => `L${h.n}: ${h.texto}`)).toEqual([])
+  it.each(ARCHIVOS)('$nombre no usa <table> ni los Table* de shadcn', (archivo) => {
+    expect(hallazgosDe(archivo, PATRON)).toEqual([])
   })
 })
 
@@ -137,16 +209,26 @@ describe('No debe haber clases de la paleta de Tailwind', () => {
   const PATRON =
     /\b(?:text|bg|border|ring|from|via|to|fill|stroke|divide|accent|caret|placeholder|outline|decoration|shadow)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:50|\d{3})\b/
 
-  it.each(ARCHIVOS)('$nombre no usa clases de la paleta de Tailwind', ({ contenido }) => {
-    const hallazgos = lineasQueMatchean(contenido, PATRON)
-    expect(hallazgos.map((h) => `L${h.n}: ${h.texto}`)).toEqual([])
+  it.each(ARCHIVOS)('$nombre no usa clases de la paleta de Tailwind', (archivo) => {
+    expect(hallazgosDe(archivo, PATRON)).toEqual([])
   })
 })
 
 // Si esta lista queda vacía, la guardia pasa a ser un test que siempre pasa.
 describe('La guardia mira los archivos que dice mirar', () => {
-  it('los doce archivos existen y tienen contenido', () => {
-    expect(ARCHIVOS).toHaveLength(12)
+  it('los dieciséis archivos existen y tienen contenido', () => {
+    expect(ARCHIVOS).toHaveLength(16)
+
+    // Primero los que faltan, y con su propio texto: un archivo que todavía no
+    // se escribió es una tarea pendiente y se lee distinto de un color fuera
+    // del sistema. Los cuatro patrones de arriba también lo dicen, cada uno por
+    // su lado; esto es lo que lo dice UNA vez y con el nombre completo.
+    const faltantes = ARCHIVOS
+      .filter((a) => !a.existe)
+      .map((a) => `${a.nombre} — todavía no se escribió`)
+
+    expect(faltantes).toEqual([])
+
     for (const archivo of ARCHIVOS) {
       // 60 y no 100: varios de la lista se crearon vacíos a propósito —un
       // componente que devuelve `null` y el comentario de qué va a ser— para
@@ -156,6 +238,166 @@ describe('La guardia mira los archivos que dice mirar', () => {
       // quedó en cero bytes, y que la guardia pase por no tener nada que mirar.
       expect(archivo.contenido.length).toBeGreaterThan(60)
     }
+  })
+})
+
+// ════════════════════════════════════════════
+//  Guardia contra la orden que se recibe sin haberla elegido
+//
+//  Es el defecto 4 del relevamiento, y es el único de este archivo que no es de
+//  dibujo: el botón «Confirmar Recepción» de `Orders.jsx` resuelve QUÉ orden
+//  recibir con
+//
+//      selectedSupplier?.orders?.find(o => o.status === 'pending' || …)
+//
+//  o sea **la primera pendiente del proveedor**, que no tiene por qué ser la
+//  que el usuario abrió. Recibir la #118 carga la mercadería, la deuda y el
+//  cambio de estado en la #112.
+//
+//  Y no se repara después: hay que deshacer a mano el stock, el movimiento de
+//  deuda y el estado de dos órdenes, contra un registro que dice que todo salió
+//  bien. Por eso la guardia entra ANTES de reescribir las pantallas —el rediseño
+//  pone «Recibir» en cada fila, así que multiplica el defecto— y no después.
+//
+//  Lo que se detecta es la FORMA: un `find()` sobre una colección de órdenes
+//  adentro de un handler de clic. La orden a recibir tiene que salir del estado
+//  —la que se abrió—, no de una búsqueda por estado hecha en el momento del
+//  clic.
+//
+//  ── Sobre pasar en vacío ──
+//
+//  El detector se ejercita contra dos muestras sintéticas, con y sin el defecto,
+//  igual que los de `apps/api/src/tests/aislamientoEmpresas.test.js`. La mala
+//  prueba que encuentra algo; la buena, que se puede poner en verde. Y la cuenta
+//  de handlers revisados es el ancla: si mañana el `onClick` se escribe de otra
+//  forma, el detector no encontraría nada y pasaría en verde sin haber mirado.
+// ════════════════════════════════════════════
+
+/** Índice del cierre que corresponde a la apertura en `inicio`. */
+function cierreDe(texto, inicio, abre, cierra) {
+  let nivel = 0
+  for (let i = inicio; i < texto.length; i++) {
+    if (texto[i] === abre) nivel++
+    else if (texto[i] === cierra) {
+      nivel--
+      if (nivel === 0) return i
+    }
+  }
+  return texto.length - 1
+}
+
+const numeroDeLinea = (contenido, i) => contenido.slice(0, i).split('\n').length
+
+/**
+ * Una colección de órdenes, por el nombre de quien recibe el `.find(`.
+ *
+ * Se mira por «contiene» y no por igualdad para que `purchaseOrders`,
+ * `ordenesFiltradas` y `selectedSupplier?.orders` entren todas. El costo de
+ * mirar de más es un falso positivo que se resuelve renombrando; el de mirar de
+ * menos es el defecto 4 otra vez.
+ */
+const COLECCION_DE_ORDENES = /orders|ordenes|órdenes/i
+
+/**
+ * @returns {{ handlers: number, hallazgos: string[] }}
+ *   `handlers` es la población que se revisó —es el ancla—; `hallazgos` es lo
+ *   que hay que arreglar.
+ */
+function analizarFindDeOrden(nombre, contenido) {
+  const hallazgos = []
+  let handlers = 0
+
+  for (const m of contenido.matchAll(/\bon(?:Click|DoubleClick)\s*=\s*\{/g)) {
+    const abre = contenido.indexOf('{', m.index + m[0].length - 1)
+    const fin = cierreDe(contenido, abre, '{', '}')
+    const cuerpo = contenido.slice(abre, fin + 1)
+    handlers++
+
+    for (const f of cuerpo.matchAll(/([A-Za-z_$][\w$]*)\s*\??\.\s*find\s*\(/g)) {
+      if (!COLECCION_DE_ORDENES.test(f[1])) continue
+
+      const linea = numeroDeLinea(contenido, abre + f.index)
+      hallazgos.push(
+        `${nombre}:${linea} — ${f[1]}.find(…) adentro de un onClick: elige la orden por estado y no la que se abrió`
+      )
+    }
+  }
+
+  return { handlers, hallazgos }
+}
+
+// ── Las dos muestras sintéticas ──
+//
+// No son documentación: son lo que sostiene a la guardia el día que el
+// repositorio deje de tener el defecto. Si alguien afloja el detector, estos dos
+// casos se ponen en rojo aunque las dos pantallas estén impecables.
+
+const MUESTRA_FIND_MALA = `
+<DialogFooter>
+  <Button variant="outline" onClick={() => setIsReceive(false)}>Cancelar</Button>
+  <Button onClick={() => {
+    const order = selectedSupplier?.orders?.find(o => o.status === 'pending' || o.status === 'partial')
+    if (order) handleReceiveOrder(order)
+  }}>
+    Confirmar Recepción
+  </Button>
+</DialogFooter>
+`
+
+const MUESTRA_FIND_BUENA = `
+<DialogFooter>
+  <Button variant="outline" onClick={() => setIsReceive(false)}>Cancelar</Button>
+  <Button onClick={() => handleReceiveOrder(ordenAbierta)}>
+    Confirmar Recepción
+  </Button>
+  <Button onClick={() => setProducto(productos.find(p => p.id === productoId))}>
+    Elegir producto
+  </Button>
+</DialogFooter>
+`
+
+describe('La orden a recibir sale del estado, no de un find() por estado', () => {
+  const PANTALLAS = ['pages/Orders.jsx', 'pages/PurchaseOrders.jsx']
+  const pantallas = ARCHIVOS.filter((a) => PANTALLAS.includes(a.nombre))
+
+  it('el detector encuentra la forma y la nombra con archivo y línea', () => {
+    const { hallazgos } = analizarFindDeOrden('muestra/mala.jsx', MUESTRA_FIND_MALA)
+
+    expect(hallazgos).toHaveLength(1)
+    expect(hallazgos[0]).toContain('muestra/mala.jsx:5')
+    expect(hallazgos[0]).toContain('orders.find(…)')
+  })
+
+  it('el detector NO se queja cuando la orden sale del estado', () => {
+    // Sin esto la guardia podría estar fallando siempre, que es tan inútil como
+    // no fallar nunca: nadie convive con una guardia que no se puede poner en
+    // verde. El tercer botón de la muestra buena tiene un `find()` sobre
+    // productos, para que quede claro que lo que se detecta es la colección de
+    // órdenes y no cualquier `find()` adentro de un clic.
+    expect(analizarFindDeOrden('muestra/buena.jsx', MUESTRA_FIND_BUENA).hallazgos).toEqual([])
+  })
+
+  it('miró los onClick que dice mirar', () => {
+    // **El ancla.** Si el `onClick` se escribiera de otra forma —un handler
+    // suelto pasado por variable, por ejemplo—, el detector recorrería cero
+    // handlers y pasaría en verde sin haber mirado nada.
+    expect(pantallas.map((p) => p.nombre).sort()).toEqual([...PANTALLAS].sort())
+
+    const revisados = pantallas
+      .map((p) => analizarFindDeOrden(p.nombre, p.contenido).handlers)
+      .reduce((a, b) => a + b, 0)
+
+    expect(revisados).toBeGreaterThan(5)
+  })
+
+  it('ninguna pantalla elige la orden a recibir con un find() adentro de un onClick', () => {
+    const hallazgos = pantallas.flatMap((p) =>
+      p.existe
+        ? analizarFindDeOrden(p.nombre, p.contenido).hallazgos
+        : [`${p.nombre} — el archivo NO existe: la guardia no miró nada`]
+    )
+
+    expect(hallazgos).toEqual([])
   })
 })
 

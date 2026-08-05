@@ -190,6 +190,29 @@ describe('No se consulta por un id del cliente sin acotar a la empresa', () => {
     ],
   };
 
+  it('la lista de excepciones de suppliers.js no crecio', () => {
+    // FR-068: la lista de excepciones **no puede crecer**. Son las tres lineas
+    // del DELETE que borran los hijos del proveedor, y el padre ya se resolvio
+    // con empresa_id unas lineas antes.
+    //
+    // El hito 012 le agrego a ese handler el chequeo de saldo (T1221) —una
+    // consulta mas, ANTES de los tres destroy— y no toco las tres lineas. Esta
+    // prueba es la que hace que eso siga siendo verdad.
+    expect(EXCEPCIONES['suppliers.js']).toHaveLength(3);
+
+    // ⚠ Y las tres siguen escritas TAL CUAL: la exencion es un match exacto
+    // sobre la linea recortada, asi que un cambio de espaciado la rompe y la
+    // linea vuelve a aparecer como un hallazgo de aislamiento que no lo es.
+    // Sin este segundo bloque, el falso positivo se descubre corriendo la suite
+    // entera y sin saber que lo causo.
+    const { contenido } = leerRutas().find((r) => r.nombre === 'suppliers.js');
+    const lineas = contenido.split('\n').map((l) => l.trim());
+
+    for (const excepcion of EXCEPCIONES['suppliers.js']) {
+      expect(lineas).toContain(excepcion);
+    }
+  });
+
   it.each(leerRutas())('$nombre', ({ nombre, contenido }) => {
     const permitidas = EXCEPCIONES[nombre] || [];
 

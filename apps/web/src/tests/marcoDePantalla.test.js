@@ -29,6 +29,7 @@ const SRC = path.join(AQUI, '..')
 
 const APP = fs.readFileSync(path.join(SRC, 'App.jsx'), 'utf8')
 const MARCO = fs.readFileSync(path.join(SRC, 'components/MarcoDePantalla.jsx'), 'utf8')
+const NAVEGACION = fs.readFileSync(path.join(SRC, 'components/navegacion.js'), 'utf8')
 
 /**
  * Las rutas que dibujan una pantalla, con el texto de su `element`.
@@ -98,6 +99,122 @@ describe('El marco de 1320px se aplica ruta por ruta', () => {
 
     expect(pos).toBeDefined()
     expect(pos.texto).toContain('h-full')
+  })
+})
+
+// ════════════════════════════════════════════
+//  Lo que el menú gatea, la ruta lo gatea
+//
+//  El gate de módulo va en tres lados —barra lateral, `RouteGuard` y API— y
+//  `/proveedores` lo tenía en dos: `app-sidebar.jsx:74` le sacaba el ítem del
+//  menú a una empresa sin el módulo, pero la URL escrita a mano entraba igual.
+//  Es la segunda vez que pasa lo mismo, y por eso lo que se verifica NO es
+//  «`/proveedores` tiene guard» —una constante que hay que acordarse de
+//  actualizar— sino la relación entre las dos listas: si mañana alguien agrega
+//  una pantalla con `modulo` en `navegacion.js` y se olvida del guard, esto se
+//  pone en rojo solo.
+//
+//  Se lee el texto de los dos archivos, no se monta nada: lo que se afirma es
+//  que las dos declaraciones coinciden, y montar diecisiete rutas en jsdom para
+//  eso cuesta más de lo que atrapa.
+// ════════════════════════════════════════════
+
+/**
+ * Los ítems del menú que declaran un módulo, con su ruta.
+ *
+ * `navegacion.js` escribe un ítem por línea, así que alcanza con leer línea por
+ * línea. Los comentarios se saltean: el encabezado del archivo explica qué es
+ * `modulo` y no es una declaración.
+ */
+function itemsConModulo() {
+  return NAVEGACION
+    .split('\n')
+    .map((linea) => linea.trim())
+    .filter((texto) => !texto.startsWith('//') && !texto.startsWith('*'))
+    .map((texto) => ({
+      ruta: (texto.match(/to:\s*'([^']+)'/) || [])[1],
+      modulo: (texto.match(/modulo:\s*'([^']+)'/) || [])[1],
+    }))
+    .filter(({ ruta, modulo }) => ruta && modulo)
+}
+
+/** La línea de la `<Route>` de esa ruta en App.jsx, o `undefined`. */
+function elementoDeLaRuta(ruta) {
+  return APP
+    .split('\n')
+    .map((linea) => linea.trim())
+    .find((texto) => /^<Route\s/.test(texto) && texto.includes(`path="${ruta}"`))
+}
+
+/** Las rutas cuyo ítem declara módulo y cuya `<Route>` no lo exige. */
+function rutasSinGuard() {
+  return itemsConModulo()
+    .filter(({ ruta, modulo }) => {
+      const elemento = elementoDeLaRuta(ruta)
+      return !elemento || !elemento.includes(`requiredModule="${modulo}"`)
+    })
+    .map(({ ruta }) => ruta)
+}
+
+/**
+ * Las rutas que declaran módulo en el menú y todavía NO lo exigen en la ruta.
+ *
+ * Son deuda declarada, no una decisión: son anteriores a esta guardia. Cada una
+ * es una URL que una empresa sin el módulo puede escribir a mano y entrar, igual
+ * que pasaba con `/proveedores`.
+ *
+ * ⚠ No se cierran de un tirón, y el motivo está en la fase 8 de las tareas de la
+ * 012: agregar un guard es una línea que puede dejar a alguien afuera de una
+ * ruta, y antes de cada una hay que mirar en producción qué empresas tienen ese
+ * módulo en `enabled_modules` —una que no lo tenga pierde la pantalla y
+ * redirige a `/pos`—. Ocho de esas revisiones metidas en un commit de rediseño
+ * es exactamente lo que esa fase separa para poder revertir de a una.
+ *
+ * `enabled_modules` las alcanza a todas: el ejemplo de
+ * `docs/implementation_plan_production.md:249` incluye `pos`, `inventario`,
+ * `gastos` y `equipo`, así que ninguna de estas es un módulo que toda empresa
+ * tenga por definición.
+ *
+ * Sacar una de acá sin ponerle el guard pone la guardia en rojo, y ponerle el
+ * guard sin sacarla de acá también.
+ */
+const SIN_GUARD_TODAVIA = [
+  '/pos',
+  '/ventas',
+  '/inventario',
+  '/gastos',
+  '/panel',
+  '/facturacion',
+  '/team',
+  '/suscripcion',
+]
+
+describe('El gate de módulo está en la ruta y no solo en el menú', () => {
+  it('toda ruta cuyo ítem de menú declara un módulo lleva RouteGuard con ese mismo módulo', () => {
+    const items = itemsConModulo()
+
+    // Si el parseo de cualquiera de los dos archivos fallara, esto pasaría sin
+    // mirar nada: cero ítems es cero incumplimientos.
+    expect(items.length).toBeGreaterThanOrEqual(13)
+    expect(items.map((i) => i.ruta)).toContain('/proveedores')
+    expect(elementoDeLaRuta('/proveedores')).toBeDefined()
+
+    const sinGuard = itemsConModulo()
+      .filter(({ ruta }) => !SIN_GUARD_TODAVIA.includes(ruta))
+      .filter(({ ruta, modulo }) => {
+        const elemento = elementoDeLaRuta(ruta)
+        return !elemento || !elemento.includes(`requiredModule="${modulo}"`)
+      })
+      .map(({ ruta, modulo }) => `${ruta} — el menú lo gatea con modulo "${modulo}" y la <Route> no exige requiredModule="${modulo}"`)
+
+    expect(sinGuard).toEqual([])
+  })
+
+  it('la lista de rutas sin guard es exactamente la que hay en App.jsx', () => {
+    // Los dos sentidos, igual que con las excepciones del marco. Sin esto, una
+    // ruta que ya recibió su guard puede quedarse en la lista para siempre, y a
+    // partir de ahí nadie se enteraría si alguien se lo saca.
+    expect(rutasSinGuard().sort()).toEqual([...SIN_GUARD_TODAVIA].sort())
   })
 })
 

@@ -43,13 +43,12 @@ import {
   Users, Truck, Plus, CreditCard, Pencil, Package, XCircle, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { Label } from '@/components/ui/label'
+import { ESTADOS } from '@/utils/ordenDeCompra'
 
-const STATUS_LABELS = {
-  pending: 'Pendiente',
-  partial: 'Recibido Parcial',
-  received: 'Recibido',
-  cancelled: 'Anulado',
-}
+// La lista de estados estaba copiada acá y en `PurchaseOrders.jsx`, con
+// etiquetas que ya no coincidían. Ahora sale de `utils/ordenDeCompra.js`
+// (FR-107) y `tests/estadosDeOrden.test.js` la ata contra el ENUM del modelo:
+// una etiqueta que falta no hace fallar nada, se dibuja el código crudo.
 
 // Los tres endpoints paginan desde el hito 012 y esta pantalla los dibuja
 // enteros. Los límites son explícitos para que se vea que son una decisión y no
@@ -384,7 +383,7 @@ const Orders = () => {
                             </div>
                             <div className="flex items-center gap-3">
                               <Badge variant={order.status === 'pending' ? 'secondary' : order.status === 'received' ? 'default' : 'outline'}>
-                                {STATUS_LABELS[order.status] || order.status}
+                                {ESTADOS[order.status]?.etiqueta || order.status}
                               </Badge>
                               <span className="font-mono font-bold text-sm">${parseFloat(order.total).toLocaleString()}</span>
                               {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}

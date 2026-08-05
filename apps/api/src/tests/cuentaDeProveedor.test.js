@@ -142,6 +142,8 @@ for (const doble of [mockSupplier, mockSupplierMovement, mockSupplierDocument, m
   conDestroy(doble);
 }
 
+conCastDeIds(mockSupplier);
+
 // findScoped normaliza el id contra la clave primaria del modelo: sin esto, un
 // id que llega como '10' en la URL no coincidiría nunca con el 10 del arreglo y
 // todo daría 404, incluido el caso legítimo.
@@ -160,6 +162,27 @@ jest.mock('../config/database', () => ({
 }));
 
 /**
+ * Un `where` con el id del texto de la URL casteado, como hace Postgres.
+ *
+ * ⚠ Los cuatro `destroy` del borrado llevan `req.params.id` **tal cual**, que es
+ * el texto de la URL; Postgres lo castea al INTEGER de la columna y por eso el
+ * borrado funciona en producción. Si el doble comparara con `===`, los cuatro
+ * `destroy` no encontrarían nada y el caso «con saldo cero sigue borrando las
+ * cuatro cosas» pasaría **en verde sobre una base que no cambió**, que es
+ * exactamente la forma de test que este repositorio ya tuvo diez veces.
+ */
+function comoEnPostgres(where = {}) {
+  const salida = {};
+
+  for (const clave of Reflect.ownKeys(where)) {
+    const valor = where[clave];
+    salida[clave] = typeof valor === 'string' && /^\d+$/.test(valor) ? Number(valor) : valor;
+  }
+
+  return salida;
+}
+
+/**
  * `crearModelo` no tiene `destroy` estático —ningún test lo necesitaba— y el
  * borrado del proveedor usa cuatro. Se agrega acá, no en el helper compartido.
  */
@@ -167,9 +190,23 @@ function conDestroy(doble) {
   doble.destroy = async (opciones = {}) => {
     doble.llamadas.push({ metodo: 'destroy', ...opciones });
     const antes = doble.filas.length;
-    doble.filas = doble.filas.filter((f) => !cumple(f, opciones.where || {}));
+    doble.filas = doble.filas.filter((f) => !cumple(f, comoEnPostgres(opciones.where || {})));
     return antes - doble.filas.length;
   };
+}
+
+/**
+ * Lo mismo para el `findOne` del borrado.
+ *
+ * `DELETE /:id` no pasa por `findScoped` —abre la transacción y consulta con
+ * `id: req.params.id` tal cual— así que el id llega como texto. Sin el casteo,
+ * el doble responde 404 en el único camino donde el borrado sí funciona.
+ */
+function conCastDeIds(doble) {
+  const original = doble.findOne;
+
+  doble.findOne = async (opciones = {}) =>
+    original.call(doble, { ...opciones, where: comoEnPostgres(opciones.where || {}) });
 }
 
 jest.mock('../models', () => ({
@@ -987,5 +1024,205 @@ describe('GET /api/suppliers/:id/movimientos/export', () => {
 
     expect(res.body).toHaveProperty('saldo_final');
     expect(res.body).not.toHaveProperty('documents');
+  });
+});
+
+// ─────────────────────────────────────────────
+//  Parte 6 · DELETE /api/suppliers/:id — borrar el respaldo de una deuda
+// ─────────────────────────────────────────────
+
+describe('DELETE /api/suppliers/:id', () => {
+  /** Las cuatro tablas del proveedor 10, con su saldo de $64.000. */
+  function sembrarConDeuda() {
+    mockSupplierMovement.filas = [
+      { id: 1, supplier_id: 10, empresa_id: PROPIA, type: 'deuda', amount: '184000.00', date: '2026-07-01' },
+      { id: 2, supplier_id: 10, empresa_id: PROPIA, type: 'pago', amount: '120000.00', date: '2026-07-15' },
+    ];
+    mockSupplierDocument.filas = [
+      { id: 1, supplier_id: 10, empresa_id: PROPIA, name: 'Factura 0001-00012345' },
+    ];
+    mockSupplierOrder.filas = [
+      { id: 1, supplier_id: 10, empresa_id: PROPIA, status: 'received', detail: [] },
+    ];
+  }
+
+  it('NO borra un proveedor con saldo distinto de cero', async () => {
+    // Hasta este corte el DELETE se llevaba la cuenta entera —órdenes,
+    // movimientos y documentos— con una confirmación genérica: **es borrar el
+    // respaldo de una deuda**. Después de eso no queda forma de saber cuánto se
+    // le debía a ese proveedor ni por qué.
+    sembrarConDeuda();
+
+    const res = await request(levantarApi()).delete('/api/suppliers/10');
+
+    expect(res.status).toBe(400);
+    // Y las cuatro tablas quedan con exactamente las filas que tenían.
+    expect(mockSupplier.filas.map((s) => s.id)).toEqual([10, 11, 20]);
+    expect(mockSupplierMovement.filas).toHaveLength(2);
+    expect(mockSupplierDocument.filas).toHaveLength(1);
+    expect(mockSupplierOrder.filas).toHaveLength(1);
+  });
+
+  it('el mensaje dice el saldo, para que se sepa cuánto saldar', async () => {
+    // «No se puede eliminar» sin decir cuánto obliga a ir a buscar el número a
+    // otra pantalla. Y el importe va escrito como se escribe en Argentina:
+    // $64.000,00 —leerlo al revés convierte $64.000 en $64— .
+    sembrarConDeuda();
+
+    const res = await request(levantarApi()).delete('/api/suppliers/10');
+
+    expect(res.body.error).toContain('Nutrifit');
+    expect(res.body.error).toContain('$64.000,00');
+  });
+
+  it('el saldo que bloquea el borrado es el MISMO número que el de la lista', async () => {
+    // Sale de `resumenDeCuenta`, igual que el listado, la ficha y el archivo
+    // (FR-101). Con una segunda suma escrita acá, el día que difieran en un
+    // centavo el borrado se bloquearía sobre un número que la pantalla no
+    // muestra y nadie sabría cuál de los dos está mal.
+    sembrarConDeuda();
+
+    const lista = await request(levantarApi()).get('/api/suppliers');
+    const res = await request(levantarApi()).delete('/api/suppliers/10');
+
+    const enLaLista = lista.body.data.find((s) => s.id === 10);
+    expect(enLaLista.saldo).toBe(64000);
+    expect(res.body.error).toContain('$64.000,00');
+  });
+
+  it('un saldo a favor tampoco deja borrar: el proveedor me debe a mí', async () => {
+    // Saldo negativo es un adelanto sin usar, no una cuenta cerrada. Un
+    // `saldo > 0` en vez de `saldo !== 0` dejaría borrar la única constancia de
+    // esa plata.
+    mockSupplierMovement.filas = [
+      { id: 1, supplier_id: 10, empresa_id: PROPIA, type: 'pago', amount: '5000.00', date: '2026-07-15' },
+    ];
+
+    const res = await request(levantarApi()).delete('/api/suppliers/10');
+
+    expect(res.status).toBe(400);
+    expect(mockSupplier.filas.map((s) => s.id)).toContain(10);
+  });
+
+  it('con saldo cero sigue borrando las cuatro cosas en una transacción', async () => {
+    // Lo que impide que la validación quede bloqueando siempre: con la cuenta
+    // saldada, el DELETE hace **exactamente** lo que hacía antes.
+    mockSupplierMovement.filas = [
+      { id: 1, supplier_id: 10, empresa_id: PROPIA, type: 'deuda', amount: '184000.00', date: '2026-07-01' },
+      { id: 2, supplier_id: 10, empresa_id: PROPIA, type: 'pago', amount: '184000.00', date: '2026-07-15' },
+      { id: 3, supplier_id: 11, empresa_id: PROPIA, type: 'deuda', amount: '5000.00', date: '2026-07-02' },
+    ];
+    mockSupplierDocument.filas = [
+      { id: 1, supplier_id: 10, empresa_id: PROPIA, name: 'Factura 0001-00012345' },
+    ];
+    mockSupplierOrder.filas = [
+      { id: 1, supplier_id: 10, empresa_id: PROPIA, status: 'received', detail: [] },
+    ];
+
+    const res = await request(levantarApi()).delete('/api/suppliers/10');
+
+    expect(res.status).toBe(200);
+    expect(mockSupplier.filas.map((s) => s.id)).toEqual([11, 20]);
+    expect(mockSupplierDocument.filas).toEqual([]);
+    expect(mockSupplierOrder.filas).toEqual([]);
+    // El movimiento del proveedor 11 no se lo lleva puesto.
+    expect(mockSupplierMovement.filas.map((m) => m.id)).toEqual([3]);
+
+    // Las cuatro escrituras van en la MISMA transacción: un borrado que se
+    // corta en la mitad deja el proveedor sin sus movimientos o al revés.
+    for (const doble of [mockSupplier, mockSupplierMovement, mockSupplierDocument, mockSupplierOrder]) {
+      const borrado = doble.llamadas.find((l) => l.metodo === 'destroy');
+      expect(borrado.transaction).toBeDefined();
+    }
+  });
+
+  it('un proveedor de otra empresa NO se borra ni se distingue de uno que no existe', async () => {
+    const ajeno = await request(levantarApi()).delete('/api/suppliers/20');
+    const inexistente = await request(levantarApi()).delete('/api/suppliers/99999');
+
+    expect(ajeno.status).toBe(404);
+    expect(inexistente.status).toBe(404);
+    expect(ajeno.body.error).toBe(inexistente.body.error);
+    expect(mockSupplier.filas.map((s) => s.id)).toContain(20);
+  });
+});
+
+// ─────────────────────────────────────────────
+//  Parte 7 · POST /api/suppliers/:id/payments — el importe del pago
+// ─────────────────────────────────────────────
+
+describe('POST /api/suppliers/:id/payments', () => {
+  beforeEach(() => {
+    mockSupplierMovement.filas = [
+      { id: 1, supplier_id: 10, empresa_id: PROPIA, type: 'deuda', amount: '10000.00', date: '2026-07-01' },
+    ];
+  });
+
+  it('un pago sin importe NO escribe NaN en la base', async () => {
+    // `Orders.jsx:125` mandaba `parseFloat(payData.amount)` sin validar nada,
+    // así que un formulario vacío escribía NaN en una columna DECIMAL(14,2). No
+    // fallaba nada: la fila entraba y a partir de ahí el saldo, el badge y el
+    // archivo del contador decían todos «NaN».
+    const res = await request(levantarApi())
+      .post('/api/suppliers/10/payments')
+      .send({ date: '2026-07-20', payment_method: 'transferencia' });
+
+    expect(res.status).toBe(400);
+    expect(mockSupplierMovement.filas).toHaveLength(1);
+    expect(mockSupplierMovement.filas.some((m) => m.type === 'pago')).toBe(false);
+  });
+
+  it('un pago de cero o negativo se rechaza con un mensaje legible', async () => {
+    for (const amount of [0, '0', -500, '-500', '', '  ', 'mil pesos', null]) {
+      const res = await request(levantarApi())
+        .post('/api/suppliers/10/payments')
+        .send({ date: '2026-07-20', amount });
+
+      expect(res.status).toBe(400);
+      // Legible: dice qué corregir, no «Error al registrar el pago».
+      expect(res.body.error).toBe('El monto del pago tiene que ser un número mayor que cero');
+    }
+
+    expect(mockSupplierMovement.filas).toHaveLength(1);
+  });
+
+  it('un pago mayor que el saldo SÍ se registra', async () => {
+    // FR-089, y es el caso que impide que alguien «arregle» esto bloqueando los
+    // adelantos: pagar por adelantado es legítimo y deja el saldo negativo, que
+    // es la forma correcta de decir «el proveedor me debe a mí» (US6 esc. 6).
+    // La confirmación con los dos números es de la pantalla.
+    const res = await request(levantarApi())
+      .post('/api/suppliers/10/payments')
+      .send({ date: '2026-07-20', amount: 15000, payment_method: 'transferencia' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.amount).toBe(15000);
+
+    const ficha = await request(levantarApi()).get('/api/suppliers/10');
+    expect(ficha.body.data.saldo).toBe(-5000);
+  });
+
+  it('el importe llega a la base como número y no como el texto del formulario', async () => {
+    // `amount: '15000.50'` en una columna DECIMAL entra igual, pero después
+    // `resumenDeCuenta` suma sobre lo que guardó el cliente. Convertirlo acá es
+    // lo que hace que la validación y la escritura miren el mismo valor.
+    await request(levantarApi())
+      .post('/api/suppliers/10/payments')
+      .send({ date: '2026-07-20', amount: '15000.50' });
+
+    const pago = mockSupplierMovement.filas.find((m) => m.type === 'pago');
+    expect(pago.amount).toBe(15000.5);
+  });
+
+  it('el pago sobre un proveedor de otra empresa sigue dando 404 y no crea nada', async () => {
+    // Es el arreglo de `dfd7009`, y la validación del importe se metió DESPUÉS
+    // del findScoped justamente para no moverlo: ese findScoped es lo que ancla
+    // la guardia `analizarCreates` a este archivo.
+    const res = await request(levantarApi())
+      .post('/api/suppliers/20/payments')
+      .send({ date: '2026-07-20', amount: 1000 });
+
+    expect(res.status).toBe(404);
+    expect(mockSupplierMovement.filas.some((m) => m.type === 'pago')).toBe(false);
   });
 });

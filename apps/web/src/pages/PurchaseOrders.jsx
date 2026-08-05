@@ -44,23 +44,32 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { enviarPedidoPorWhatsapp } from '@/utils/pedidoWhatsapp';
+import { ESTADOS } from '@/utils/ordenDeCompra';
 import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
 import PageHeader from '@/components/PageHeader'
 
-const STATUS_LABELS = {
-  pending: 'Pendiente',
-  partial: 'Recibido Parcial',
-  received: 'Recibido',
-  cancelled: 'Anulado',
+// Las etiquetas de estado salen de `utils/ordenDeCompra.js` y no de una copia
+// local (FR-107): esta pantalla y `Orders.jsx` tenían la misma lista escrita dos
+// veces, con etiquetas que ya no coincidían entre sí. Es el defecto de los
+// medios de pago otra vez: dos copias empiezan iguales y terminan distintas, y
+// una etiqueta que falta no hace fallar nada — se dibuja el código crudo.
+
+/**
+ * Del `tono` del sistema de diseño al `variant` del Badge de shadcn.
+ *
+ * La traducción vive acá, en la pantalla vieja, y se va con ella: T1233 dibuja
+ * el tono con los tokens directamente. Lo que no podía seguir duplicado es la
+ * LISTA de estados, que es la que se separa sin que nada avise.
+ */
+const VARIANTE_POR_TONO = {
+  neutro: 'secondary',
+  warn: 'warning',
+  ok: 'default',
 };
 
-const STATUS_VARIANTS = {
-  pending: 'secondary',
-  partial: 'warning',
-  received: 'default',
-  cancelled: 'outline',
-};
+const etiquetaDeEstado = (estado) => ESTADOS[estado]?.etiqueta || estado;
+const varianteDeEstado = (estado) => VARIANTE_POR_TONO[ESTADOS[estado]?.tono] || 'outline';
 
 // El tope que acepta `GET /suppliers`. El desplegable del filtro los dibuja
 // todos, así que el límite tiene que ser explícito: el por defecto es 50.
@@ -231,10 +240,12 @@ const PurchaseOrders = () => {
                 <SelectTrigger className="w-36"><SelectValue placeholder="Todos" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value=" ">Todos</SelectItem>
-                  <SelectItem value="pending">Pendiente</SelectItem>
-                  <SelectItem value="partial">Recibido Parcial</SelectItem>
-                  <SelectItem value="received">Recibido</SelectItem>
-                  <SelectItem value="cancelled">Anulado</SelectItem>
+                  {/* Las opciones se dibujan desde ESTADOS: escritas a mano eran
+                      una TERCERA copia de la lista, y ya decía «Recibido
+                      Parcial» donde el badge de la fila decía otra cosa. */}
+                  {Object.entries(ESTADOS).map(([clave, estado]) => (
+                    <SelectItem key={clave} value={clave}>{estado.etiqueta}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -287,8 +298,8 @@ const PurchaseOrders = () => {
                     <TableCell className="text-xs">{o.items?.length || 0} items</TableCell>
                     <TableCell className="text-right font-mono text-sm">{formatCurrency(o.total)}</TableCell>
                     <TableCell>
-                      <Badge variant={STATUS_VARIANTS[o.status] || 'outline'}>
-                        {STATUS_LABELS[o.status] || o.status}
+                      <Badge variant={varianteDeEstado(o.status)}>
+                        {etiquetaDeEstado(o.status)}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -327,8 +338,8 @@ const PurchaseOrders = () => {
                 <div className="text-xs text-muted-foreground">
                   Fecha: {selectedOrder.date} | {selectedOrder.notes || 'Sin notas'}
                 </div>
-                <Badge variant={STATUS_VARIANTS[selectedOrder.status]}>
-                  {STATUS_LABELS[selectedOrder.status]}
+                <Badge variant={varianteDeEstado(selectedOrder.status)}>
+                  {etiquetaDeEstado(selectedOrder.status)}
                 </Badge>
               </div>
               <Table>

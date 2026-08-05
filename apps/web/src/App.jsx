@@ -280,7 +280,7 @@ function App() {
               <Route path="/clientes" element={<MarcoDePantalla><RouteGuard soloSuperadmin requiredModule="clientes"><Customers /></RouteGuard></MarcoDePantalla>} />
               <Route path="/caja" element={<MarcoDePantalla><RouteGuard soloSuperadmin requiredModule="caja"><CashFlow /></RouteGuard></MarcoDePantalla>} />
               <Route path="/impuestos" element={<MarcoDePantalla><RouteGuard soloSuperadmin requiredModule="impuestos"><Taxes /></RouteGuard></MarcoDePantalla>} />
-              <Route path="/proveedores" element={<MarcoDePantalla><Orders /></MarcoDePantalla>} />
+              <Route path="/proveedores" element={<MarcoDePantalla><RouteGuard requiredModule="proveedores"><Orders /></RouteGuard></MarcoDePantalla>} />
               <Route path="/ordenes-compra" element={<MarcoDePantalla><RouteGuard requiredModule="ordenes-compra"><PurchaseOrders /></RouteGuard></MarcoDePantalla>} />
               <Route path="/faltantes" element={<MarcoDePantalla><Faltantes /></MarcoDePantalla>} />
               <Route path="/comparador" element={<MarcoDePantalla><Comparador /></MarcoDePantalla>} />

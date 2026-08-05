@@ -600,6 +600,31 @@ describe('Un create no cuelga una fila de un padre que no se valido', () => {
     // **El ancla.** Sin esto, mover estos creates a otro lado —o cambiar la
     // forma de escribirlos— dejaria a la guardia recorriendo una lista vacia y
     // pasando en verde sin haber mirado nada.
+    //
+    // ── Que la sostiene, y que impide (hito 012) ──
+    //
+    // Los dos archivos del arrayContaining son los dos que escriben la cuenta
+    // corriente de un proveedor, y cada uno tiene el suyo:
+    //
+    //   routes/suppliers.js         SupplierMovement.create — el PAGO
+    //                               (POST /:id/payments), con findScoped(Supplier
+    //                               ...) inmediatamente antes.
+    //                               Y SupplierDocument.create, con el mismo
+    //                               findScoped adelante.
+    //   services/purchaseService.js SupplierMovement.create — la DEUDA que genera
+    //                               la recepcion, y SupplierOrder.create.
+    //
+    // **Consecuencia concreta: el create del pago se QUEDA en
+    // routes/suppliers.js y no se muda a un servicio.** Es una restriccion de
+    // arquitectura, no un detalle de estilo: es la clase de mudanza que alguien
+    // hace «para ordenar» —«los creates van en services/»— y que pone esta ancla
+    // en rojo con un arrayContaining que no dice nada sobre que se rompio.
+    //
+    // El dia que haya que moverlo de verdad: **se mueve el ancla con el y se
+    // escribe el motivo ahi mismo**. Nunca se borra. Un ancla borrada deja a la
+    // guardia mirando una lista que puede quedar vacia sin que nada avise, que
+    // es como este repositorio ya tuvo dos guardias pasando en verde sin
+    // verificar nada.
     const conClaveForanea = analisis.flatMap((a) => a.conClaveForanea);
     const porArchivo = [...new Set(conClaveForanea.map((h) => h.archivo))];
 
@@ -608,6 +633,32 @@ describe('Un create no cuelga una fila de un padre que no se valido', () => {
       'routes/suppliers.js',
       'services/purchaseService.js',
     ]));
+  });
+
+  it('el create del pago sigue viviendo en routes/suppliers.js', () => {
+    // El ancla de arriba solo dice «este archivo tiene ALGUN create con clave
+    // foranea», y eso lo cumpliria cualquier otro: routes/suppliers.js tiene
+    // ademas el de SupplierDocument, asi que mudar el pago a un servicio dejaria
+    // el ancla **en verde**. Este caso es el que nombra el archivo.
+    const escribenElMovimiento = archivos
+      .filter(({ contenido }) => contenido.includes('SupplierMovement.create('))
+      .map(({ nombre }) => nombre);
+
+    expect(escribenElMovimiento).toEqual([
+      'routes/suppliers.js',          // el pago
+      'services/purchaseService.js',  // la deuda de la recepcion
+    ]);
+
+    // Y sigue teniendo el findScoped del proveedor delante: es lo que hace que
+    // el detector lo de por validado. Sin el, el ancla apuntaria a un create que
+    // volvio a colgar una fila de un padre que nadie miro, que es exactamente el
+    // agujero que cerro dfd7009.
+    const { contenido } = archivos.find((a) => a.nombre === 'routes/suppliers.js');
+    const iCreate = contenido.indexOf('SupplierMovement.create(');
+    const iHandler = contenido.lastIndexOf("router.post('/:id/payments'", iCreate);
+
+    expect(iHandler).toBeGreaterThan(-1);
+    expect(contenido.slice(iHandler, iCreate)).toContain('findScoped(Supplier');
   });
 
   it.each(archivos)('$nombre', ({ nombre, contenido }) => {

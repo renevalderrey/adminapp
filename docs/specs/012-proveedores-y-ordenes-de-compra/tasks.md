@@ -900,7 +900,7 @@ llega a la base.
 
 Corte 5 del plan, más la tercera guardia con ancla.
 
-- [ ] **T1220** Crear `GET /api/suppliers/:id/movimientos/export` en
+- [x] **T1220** Crear `GET /api/suppliers/:id/movimientos/export` en
       `apps/api/src/routes/suppliers.js`, con `proveedores.ver` (FR-102). Mismo
       molde que `GET /api/sales/export` (`routes/sales.js:232-290`): **el
       servidor arma las filas con `filaDeCuentaParaExport` de T1213, el navegador
@@ -927,7 +927,7 @@ Corte 5 del plan, más la tercera guardia con ancla.
       un segundo `reduce` en vez de reusar `resumenDeCuenta` y el tercero deja de
       cerrar en el caso del residuo de coma flotante.
 
-- [ ] **T1221** [PENDIENTE 10] por defecto. En
+- [x] **T1221** [PENDIENTE 10] por defecto. En
       `apps/api/src/routes/suppliers.js`, `DELETE /:id` (`:149-169`) calcula el
       saldo con `resumenDeCuenta` —la misma función, no una segunda suma— y, si
       no es cero, responde `ErrorDeNegocio` con el número adentro: «Nutrifit tiene
@@ -956,7 +956,7 @@ Corte 5 del plan, más la tercera guardia con ancla.
       como hallazgo — que es justamente el falso positivo que esta advertencia
       existe para evitar.
 
-- [ ] **T1222** FR-088, del lado del servidor. En
+- [x] **T1222** FR-088, del lado del servidor. En
       `apps/api/src/routes/suppliers.js`, `POST /:id/payments` (`:186-213`)
       valida el importe antes de crear: ausente, `NaN`, cero o negativo →
       **400** «El monto del pago tiene que ser un número mayor que cero». Un
@@ -980,7 +980,7 @@ Corte 5 del plan, más la tercera guardia con ancla.
       **Cómo se comprueba que el test sirve**: se borra la validación y el
       primero se pone en rojo con el movimiento creado.
 
-- [ ] **T1223** ⚠ **El ancla de `analizarCreates`, y por qué el `create` del pago
+- [x] **T1223** ⚠ **El ancla de `analizarCreates`, y por qué el `create` del pago
       no se puede mudar.** En `apps/api/src/tests/aislamientoEmpresas.test.js:599-611`,
       el caso «leyó los archivos que dice leer» ancla en
       `expect.arrayContaining(['routes/suppliers.js', 'services/purchaseService.js'])`.
@@ -1025,7 +1025,7 @@ pantalla haya cambiado todavía.
 
 Corte 6 del plan. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
 
-- [ ] **T1224** [P] Crear `apps/web/src/utils/formato.js` con `pesos` y
+- [x] **T1224** [P] Crear `apps/web/src/utils/formato.js` con `pesos` y
       `fechaCorta`, movidas desde `apps/web/src/components/PanelVenta.jsx:36` y
       `:48`, que las importa y **borra las suyas**.
       **`pesos` es la única del repositorio que fija los dos extremos** de
@@ -1055,7 +1055,7 @@ Corte 6 del plan. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       sobre el archivo. Sin ella la copia vuelve la próxima vez que alguien
       necesite formatear un importe y no quiera importar nada.
 
-- [ ] **T1225** [P] Crear `apps/web/src/utils/ordenDeCompra.js` con `ESTADOS`
+- [x] **T1225** [P] Crear `apps/web/src/utils/ordenDeCompra.js` con `ESTADOS`
       —los cuatro, cada uno con `etiqueta`, `tono`, `recibible` y `anulable`,
       tal cual la decisión 10 del plan—, más `porcentajeRecibido`, `esRecibible`,
       `esAnulable`, `filtrarOrdenes` y `contadoresPorSegmento`.
@@ -1083,7 +1083,7 @@ Corte 6 del plan. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       número de orden de la búsqueda y el cuarto; se calcula el contador sobre la
       lista sin filtrar y el quinto.
 
-- [ ] **T1226** Crear `apps/web/src/tests/estadosDeOrden.test.js`: el contrato
+- [x] **T1226** Crear `apps/web/src/tests/estadosDeOrden.test.js`: el contrato
       entre `ESTADOS` de T1225 y el `ENUM` de
       `apps/api/src/models/Supplier.js:82`, **leyendo el archivo del modelo como
       texto**, igual que hace `tests/mediosDePago.test.js` con `exportVentas.js`.
@@ -1109,7 +1109,7 @@ Corte 6 del plan. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       `ENUM` del modelo y el primero se pone en rojo nombrándolo; se pega
       `STATUS_LABELS` de vuelta en cualquiera de las dos pantallas y el segundo.
 
-- [ ] **T1227** [P] Crear `apps/web/src/utils/cuentaDeProveedor.js` con
+- [x] **T1227** [P] Crear `apps/web/src/utils/cuentaDeProveedor.js` con
       `estadoDeProveedor({ deuda, pagado, saldo })` —los cuatro de la tabla de la
       spec: Sin movimientos, Saldado, Pago parcial, Con deuda—, `tonoDeProveedor`
       y `ETIQUETAS`.
@@ -1130,7 +1130,7 @@ Corte 6 del plan. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       «Saldado» a `saldo === 0` y el caso del saldo negativo se pone en rojo; se
       reemplaza un tono por `text-red-500` y el último.
 
-- [ ] **T1228** [P] Crear `apps/web/src/utils/documentosDeProveedor.js` con
+- [x] **T1228** [P] Crear `apps/web/src/utils/documentosDeProveedor.js` con
       `nubeDelEnlace(url)` —Google Drive, Dropbox, OneDrive, «otro»—,
       `esEnlaceAceptable(url)` y `TIPOS` —factura / remito / presupuesto / otro,
       los del modelo (`models/Supplier.js:163`)—.
@@ -1148,7 +1148,7 @@ Corte 6 del plan. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       vacío y el primero se pone en rojo; se hace que una nube desconocida se
       rechace y el cuarto.
 
-- [ ] **T1229** [P] Crear `apps/web/src/utils/exportarProveedores.js` con
+- [x] **T1229** [P] Crear `apps/web/src/utils/exportarProveedores.js` con
       `COLUMNAS`, `armarHoja(filas)` y `nombreDelArchivo({ proveedor, desde,
       hasta })`, copiando el corte de `utils/exportarVentas.js:32,76,115`.
       **Lo que se copia es el corte, no las columnas**: las de una cuenta
@@ -1173,7 +1173,7 @@ Corte 6 del plan. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       abrirla en una planilla de verdad. Eso es el paso manual **P7**, y es lo
       único de la exportación que no baja a un test.
 
-- [ ] **T1230** [P] Crear `apps/web/src/utils/erroresDeApi.js` con
+- [x] **T1230** [P] Crear `apps/web/src/utils/erroresDeApi.js` con
       `mensajeDeError(err, generico)`, que lee `err.response?.data?.error`, cae a
       `err.response?.data?.message` y después al genérico.
       **Nunca `err.message`**: en axios eso es «Request failed with status code
@@ -1206,7 +1206,7 @@ cada `find()` sobre órdenes adentro de un `onClick` falla **en el momento en qu
 se escribe** y no treinta juntos al final, cuando ya nadie sabe cuál vino de
 dónde y la salida barata es comentar la guardia.
 
-- [ ] **T1231** ⚠⚠ **Esta tarea deja `npm run test:web` EN ROJO a propósito, y
+- [x] **T1231** ⚠⚠ **Esta tarea deja `npm run test:web` EN ROJO a propósito, y
       así se queda hasta T1242.** En
       `apps/web/src/tests/guardiasDeDiseno.test.js`:
       **(a)** entran cuatro archivos a `ARCHIVOS` (`:68-84`) y el
@@ -1276,7 +1276,7 @@ sea de otra pantalla.** Es **una línea** que puede dejar a alguien afuera de un
 ruta, y mezclada con setecientas líneas de reescritura nadie sabría cuál de las
 dos cosas la rompió. El revert es de una línea.
 
-- [ ] **T1232** FR-090. En `apps/web/src/App.jsx:283`, `/proveedores` pasa de
+- [x] **T1232** FR-090. En `apps/web/src/App.jsx:283`, `/proveedores` pasa de
       `<MarcoDePantalla><Orders /></MarcoDePantalla>` a
       `<MarcoDePantalla><RouteGuard requiredModule="proveedores"><Orders /></RouteGuard></MarcoDePantalla>`,
       **con el mismo anidamiento que `/ordenes-compra`** (`:284`): el marco
