@@ -315,7 +315,7 @@ la spec para que la revises. Nada se implementa sin ese visto bueno.
 | ✔ 3 | Historial de ventas | La pantalla que la maqueta dibuja completa: fija el patrón de tabla que copian las demás |
 | ✔ 4 | Inventario | La de más deuda funcional |
 | ✔ 5 | Punto de venta | La de más uso diario |
-| 6 | Proveedores y Órdenes de compra | |
+| ✔ 6 | Proveedores y Órdenes de compra | |
 | 7 | TiendaNube | Pantalla nueva completa |
 | 8 | Panel, Gastos, Equipo, Ajustes AFIP | |
 | 9 | Repaso de coherencia | Recorrer las doce pantallas juntas y corregir lo que se desalineó |
