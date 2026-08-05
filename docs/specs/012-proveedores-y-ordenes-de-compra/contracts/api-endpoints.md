@@ -207,7 +207,7 @@ GET /api/suppliers/7/movimientos/export?desde=2026-01-01&hasta=2026-07-31
   "ok": true,
   "total": 23,
   "proveedor": { "name": "Nutrifit", "cuit": "30123456789" },
-  "saldo_final": 64000.00,
+  "saldo_inicial": 0, "saldo_final": 64000.00,
   "data": [
     { "fecha": "2026-01-08", "tipo": "Pedido", "descripcion": "Recepción orden #103",
       "debe": 72000, "haber": 0, "saldo": 72000, "cuit": "30123456789" }
@@ -226,8 +226,33 @@ descubra en la reunión con el contador.
 | `debe` y `haber` son **números**, no strings | FR-098. Es la trampa de los importes argentinos del lado de la escritura: si la celda dice `"1.234,50"`, la columna no suma |
 | `cuit` viaja **como string** en cada fila | FR-099. La web lo escribe con `{ t: 's', z: '@' }`; once dígitos inferidos como número salen en notación científica y pierden dígitos, igual que el CAE (`exportarVentas.js:63-65`) |
 | **Sin paginar**, con tope | `LIMITE_EXPORT` como en ventas. Por encima, `400 LIMITE_EXPORT_SUPERADO` con el total y el límite en el cuerpo, para que la pantalla diga qué acotar |
-| `saldo_final` es **el mismo número** que el `saldo` del listado | FR-101. Sale de la misma función, no de una segunda suma |
-| Sin movimientos → `data: []` y `total: 0`, **200** | US8 escenario 7: el archivo sale con encabezados y sin filas, y no falla |
+| `saldo_final` es **el acumulado de la última fila del archivo**. Sin rango, o con solo `desde`, es **el mismo número** que el `saldo` del listado; **con `hasta` es el saldo a esa fecha** | FR-101. Sale de la misma acumulación en centavos que las filas, no de una segunda suma. La salvedad de `hasta` está abajo |
+| `saldo_inicial` es el saldo **anterior** al primer movimiento del archivo | Con `desde`, los movimientos más viejos que el corte existen y son el «saldo anterior» de la cuenta: sin este número la primera fila parece el principio de la cuenta y no lo es. Sin `desde` es `0` y no se consulta nada. Mismo campo que devuelve `GET /:id/movimientos` |
+| Sin movimientos → `data: []` y `total: 0`, **200** | US8 escenario 7: el archivo sale con encabezados y sin filas, y no falla. `saldo_final` cae en `saldo_inicial` |
+
+### La salvedad de `hasta`, y por qué no es una excepción a FR-101
+
+La primera versión de esta línea decía, **sin condicionar**, que `saldo_final` es
+el mismo número que el `saldo` del listado. Con `?desde=` lo es —el arreglo
+arranca en `saldo_inicial`, así que el acumulado llega al saldo entero—. **Con
+`?hasta=` no puede serlo, y forzarlo rompería el archivo**: si el corte deja
+movimientos posteriores afuera, un archivo que cerrara en el saldo de hoy no
+cuadraría con sus propias filas —la última fila diría una cosa y el pie otra— y
+eso es exactamente lo que prohíben FR-101 y el escenario 6 de US8, que piden que
+el archivo cierre en el número con el que cierra la planilla.
+
+Lo que FR-101 exige es **una sola fuente**, no un solo valor: los cuatro saldos
+—listado, ficha, bloqueo del borrado y archivo— salen de `resumenDeCuenta` y de
+la misma acumulación en centavos (`utils/cuentaDeProveedor.js`). Cortar un
+período cambia **qué se está sumando**, no cómo. Por eso:
+
+- **sin rango**, y **con solo `desde`** (porque el período arranca en
+  `saldo_inicial`), `saldo_final` es el saldo de la cuenta y coincide con el
+  listado y con el saldo grande de la pantalla;
+- **con `hasta`**, `saldo_final` es el saldo **a esa fecha**, que es lo que
+  significa cortar un período. La pantalla que ofrezca el rango tiene que decirlo
+  en el archivo o al lado del botón: un contador que compara el pie de la
+  planilla contra el saldo de la pantalla tiene que saber por qué difieren.
 
 El nombre del archivo lo arma la web (`nombreDelArchivo({ proveedor, desde, hasta })`,
 FR-100), como en ventas: la API no sabe cómo se llama la descarga.

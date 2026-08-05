@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { assertEmpresaId } = require('../utils/tenantScope');
+const { assertEmpresaId, findScoped } = require('../utils/tenantScope');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
 const {
   ProductionOrder,
@@ -15,6 +15,148 @@ const {
   esCambioSignificativo,
   MOTIVOS,
 } = require('../utils/historialDeCostos');
+// El motivo real de un recosteo que se cae no puede quedarse solo en el aviso
+// del usuario: «revisá esa receta» no dice cuál de las dos cosas pasó, y el
+// aviso es lo único que quedaría si el error se traga en silencio.
+const logger = require('../utils/logger');
+
+/**
+ * Propaga el costo nuevo del elaborado a las recetas que lo usan como insumo.
+ *
+ * Cerrar una orden de producción recalcula el costo del producto terminado. Ese
+ * producto puede a su vez ser insumo de otras recetas —una preparación
+ * intermedia dentro de un combo—, y si no se propaga, el combo sigue costeado
+ * con el número viejo: el margen que muestra el POS y el precio recomendado del
+ * Comparador se calculan sobre algo que dejó de ser cierto, y no falla nada.
+ *
+ * `costService` se requiere adentro para no cerrar el ciclo de imports en la
+ * carga del módulo.
+ *
+ * ── Por qué el `visited` se clona por rama ──
+ *
+ * Hasta este corte había **un solo Set** para todas las ramas del bucle, y
+ * encima se le agregaba cada elaborado ya recosteado. Con un grafo en diamante
+ * —el Colágeno es insumo de la Premezcla, y el Combo lleva Colágeno **y**
+ * Premezcla— la segunda rama se encontraba el Combo ya marcado por la primera y
+ * `costService` respondía «Dependencia circular detectada» sobre un grafo **que
+ * no tiene ningún ciclo**.
+ *
+ * El Set contesta «por dónde vine», que es una pregunta por camino. Compartirlo
+ * entre ramas hermanas lo convierte en «quién pasó antes», que es otra cosa y
+ * no corta ciclos: los inventa. `costService.recalculateCascadingCosts` ya
+ * clonaba por rama desde siempre; acá no, y esa era toda la diferencia.
+ *
+ * El error que lanzaba es un `Error` pelado y la llamada está adentro de la
+ * transacción de la orden, así que subía como 500 genérico —sin nombrar ni el
+ * producto ni la receta— y revertía la orden entera: el descuento de insumos, el
+ * alta de producto terminado, el costo y su fila de historial. Y era
+ * intermitente, que es lo peor que podía ser: el `findAll` no llevaba `ORDER BY`
+ * y con la fila de la Premezcla primero la misma orden se cerraba sin problema.
+ *
+ * ── Qué pasa si el recosteo falla de verdad ──
+ *
+ * **La orden de producción vale igual, y el recosteo se informa como aviso.** Es
+ * el mismo criterio que se tomó en `purchaseService.recostearDependientes`, y
+ * acá pesa todavía más:
+ *
+ *  - el lote se produjo: los insumos se consumieron y el producto terminado
+ *    existe en el depósito. Son hechos del mundo, y abortar deja al sistema
+ *    diciendo lo contrario de lo que hay en la estantería;
+ *  - la receta que se rompe es la de un TERCER producto, aguas abajo. Bloquear
+ *    la producción de A porque la receta de C está mal cargada castiga a la
+ *    operación equivocada, y quien cierra un lote casi nunca puede tocar esa
+ *    receta;
+ *  - abortar revierte también el costo del producto recién producido y su fila
+ *    de historial, que es el propósito de cerrar la orden.
+ *
+ * Lo que **no** se hace es callarlo: el aviso nombra el elaborado y viaja en
+ * `warnings`, la misma lista con la que ya se avisa el stock insuficiente y que
+ * la pantalla ya dibuja. El motivo real queda en el log del servidor.
+ *
+ * ⚠ Lo que queda afuera: la cascada pudo haber escrito algunos costos antes de
+ * fallar y eso **no** se deshace —haría falta un SAVEPOINT—. Sobre un grafo con
+ * un ciclo real esos costos ya eran indefendibles antes de esta orden; el aviso
+ * es lo que hace que alguien vaya a mirarlos.
+ *
+ * @param {number} productId El elaborado cuyo costo acaba de cambiar.
+ * @param {object} transaction La MISMA de la orden de producción.
+ * @param {{empresaId?: number, avisos?: string[]}} [contexto] `avisos` se muta:
+ *   es la lista que se le devuelve al usuario.
+ */
+async function recostearDependientes(productId, transaction, { empresaId = null, avisos = [] } = {}) {
+  const costService = require('./costService');
+
+  const dependientes = await RecipeItem.findAll({
+    where: { ingredient_product_id: productId },
+    include: [{ model: Recipe, as: 'recipe', attributes: ['product_id'] }],
+    // Sin `ORDER BY`, el orden de las filas lo elige Postgres, y con él cambiaba
+    // el resultado de cerrar la orden: la misma producción respondía 201 o 500
+    // según qué rama del diamante saliera primero. Hoy ya no cambia el
+    // resultado, pero sí el orden de los avisos, y un aviso que aparece en
+    // distinto lugar en cada orden es un aviso que nadie termina de leer.
+    order: [['id', 'ASC']],
+    transaction,
+  });
+
+  // Una misma receta puede listar el mismo insumo dos veces: `recipe_items` no
+  // tiene índice único por (recipe_id, ingredient_product_id). Recostear dos
+  // veces el mismo elaborado da exactamente el mismo número, y con el defecto
+  // viejo ni siquiera llegaba a hacerlo: la segunda vuelta encontraba el
+  // elaborado ya marcado y el 500 era determinístico, sin depender del orden.
+  const yaRecosteados = new Set();
+
+  for (const dep of dependientes) {
+    if (!dep.recipe || !dep.recipe.product_id) continue;
+
+    const elaborado = dep.recipe.product_id;
+
+    if (yaRecosteados.has(elaborado)) continue;
+    yaRecosteados.add(elaborado);
+
+    try {
+      // Un Set NUEVO por rama, con el producto producido adentro para cortar los
+      // ciclos que sí existen. Ver arriba por qué no puede ser el de la rama
+      // anterior.
+      await costService.recalculateCascadingCosts(
+        elaborado,
+        new Set([productId]),
+        transaction
+      );
+    } catch (err) {
+      logger.warn(
+        { err, producido: productId, elaborado, empresaId },
+        'No se pudo recostear un elaborado al cerrar una orden de producción'
+      );
+
+      avisos.push(await avisoDeRecosteoFallido(elaborado, empresaId, transaction));
+    }
+  }
+}
+
+/**
+ * El aviso de un elaborado que no se pudo recostear.
+ *
+ * **Nombra el producto.** Lo que había antes era un 500 «Error al crear la orden
+ * de producción»: no decía ni qué producto ni qué receta, así que ni siquiera se
+ * sabía qué abrir para arreglarlo.
+ *
+ * `findScoped` y no `findByPk`: el id sale del grafo de recetas y no del
+ * cliente, pero `recipe_items` no tiene `empresa_id`, así que una fila cruzada
+ * entre empresas pondría el nombre de un producto ajeno en la respuesta.
+ */
+async function avisoDeRecosteoFallido(productId, empresaId, transaction) {
+  const elaborado = empresaId
+    ? await findScoped(Product, productId, empresaId, { transaction })
+    : null;
+
+  const nombre = elaborado && elaborado.name
+    ? `«${elaborado.name}»`
+    : `el producto #${productId}`;
+
+  return `No se pudo recalcular el costo de ${nombre}: su receta tiene una `
+    + 'dependencia circular o un rendimiento que no deja producto terminado. '
+    + 'La producción se registró igual; revisá esa receta.';
+}
 
 class ProductionService {
   async calculateOrderCosts(productId, quantityProduced) {
@@ -260,19 +402,11 @@ class ProductionService {
           transaction: t,
         });
 
-        let visited = new Set([product_id]);
-        const costService = require('./costService');
-        const dependentItems = await RecipeItem.findAll({
-          where: { ingredient_product_id: product_id },
-          include: [{ model: Recipe, as: 'recipe', attributes: ['product_id'] }],
-          transaction: t,
-        });
-        for (const dep of dependentItems) {
-          if (dep.recipe && dep.recipe.product_id) {
-            await costService.recalculateCascadingCosts(dep.recipe.product_id, visited, t);
-            visited.add(dep.recipe.product_id);
-          }
-        }
+        // `warnings` es la MISMA lista que ya lleva los faltantes de stock: un
+        // recosteo que no se pudo hacer es información de la misma clase —la
+        // orden se registró, pero hay algo que revisar— y la pantalla ya la
+        // dibuja.
+        await recostearDependientes(product_id, t, { empresaId, avisos: warnings });
       }
 
       await t.commit();

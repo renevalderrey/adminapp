@@ -1025,6 +1025,137 @@ describe('GET /api/suppliers/:id/movimientos/export', () => {
     expect(res.body).toHaveProperty('saldo_final');
     expect(res.body).not.toHaveProperty('documents');
   });
+
+  // ── El rango de fechas ──
+  //
+  // ⚠ **Los doce casos de arriba van todos sin `desde` ni `hasta`**, y esa es la
+  // única razón por la que este defecto llegó hasta acá: con la cuenta entera
+  // adentro del archivo, arrancar el acumulado en cero da el número correcto.
+  // Apenas el rango deja algo afuera, el archivo del contador cierra en el neto
+  // del período y la pantalla muestra otro número.
+
+  /**
+   * Tres movimientos ANTERIORES al período que se va a exportar.
+   *
+   * Los tres hacen falta y ninguno sobra:
+   *
+   *  · El propio (80) es el que el rango deja afuera. Sin él, un `desde` no
+   *    excluye nada y el defecto es indistinguible del código corregido.
+   *  · El ajeno (79) y el del proveedor 11 (78) son anteriores también: sin
+   *    ellos, un saldo anterior consultado sin `empresa_id` o sin `supplier_id`
+   *    daría el mismo número y el caso pasaría en verde sobre una fuga.
+   */
+  function conMovimientosAnteriores() {
+    mockSupplierMovement.filas.push(
+      { id: 80, supplier_id: 10, empresa_id: PROPIA, type: 'deuda', amount: '100000.00', date: '2026-06-30', notes: 'Factura de junio' },
+      { id: 79, supplier_id: 10, empresa_id: AJENA, type: 'deuda', amount: '999999.00', date: '2026-06-15' },
+      { id: 78, supplier_id: 11, empresa_id: PROPIA, type: 'deuda', amount: '444444.00', date: '2026-06-20' }
+    );
+  }
+
+  it('con un desde, el archivo NO cierra en el neto del período sino en el saldo de la cuenta', async () => {
+    // **El caso de esta corrección.** `conSaldoAcumulado(descendentes, 0)` —el
+    // cero escrito a mano— hacía que el archivo del contador cerrara en $22.000
+    // sobre una cuenta que debe $122.000. El contrato lo dice sin condicionar
+    // (`contracts/api-endpoints.md:229`) y US8 escenario 6 también: la última
+    // fila del archivo y el saldo grande son **el mismo número**.
+    conMovimientosAnteriores();
+
+    const archivo = await request(levantarApi()).get('/api/suppliers/10/movimientos/export?desde=2026-07-01');
+    const lista = await request(levantarApi()).get('/api/suppliers');
+    const enLaLista = lista.body.data.find((s) => s.id === 10);
+
+    expect(enLaLista.saldo).toBe(122000);
+    expect(archivo.body.saldo_final).toBe(122000);
+    expect(archivo.body.saldo_final).toBe(enLaLista.saldo);
+    // Y la última fila del archivo cierra en ese mismo número.
+    expect(archivo.body.data[archivo.body.data.length - 1].saldo).toBe(enLaLista.saldo);
+  });
+
+  it('las filas del período arrancan en el saldo anterior y no en cero', async () => {
+    // El acumulado de la primera fila del archivo tiene que ser el saldo
+    // anterior más ese movimiento. Arrancando en cero, la columna Saldo entera
+    // sale corrida por el mismo importe.
+    conMovimientosAnteriores();
+
+    const res = await request(levantarApi()).get('/api/suppliers/10/movimientos/export?desde=2026-07-01');
+
+    expect(res.body.data.map((f) => f.saldo)).toEqual([172000, 122000]);
+  });
+
+  it('el archivo dice con qué saldo anterior arranca el período', async () => {
+    // Sin este número, la primera fila del archivo parece el principio de la
+    // cuenta y no lo es: el contador ve una columna que arranca en $172.000 sin
+    // nada que lo explique. Es el mismo campo que ya devuelve
+    // `GET /:id/movimientos`.
+    //
+    // Que dé exactamente 100.000 es lo que prueba que la consulta del saldo
+    // anterior filtra por empresa **y** por proveedor: el ajeno aportaría
+    // 999.999 y el del proveedor 11, 444.444.
+    conMovimientosAnteriores();
+
+    const res = await request(levantarApi()).get('/api/suppliers/10/movimientos/export?desde=2026-07-01');
+
+    expect(res.body.saldo_inicial).toBe(100000);
+  });
+
+  it('el movimiento anterior al desde NO entra en las filas: solo en el saldo inicial', async () => {
+    // Lo que impide «arreglar» esto ensanchando la consulta: el archivo es el
+    // período que se pidió. Un `desde` que igual trae junio no es un rango.
+    conMovimientosAnteriores();
+
+    const res = await request(levantarApi()).get('/api/suppliers/10/movimientos/export?desde=2026-07-01');
+
+    expect(res.body.total).toBe(2);
+    expect(res.body.data.map((f) => f.fecha)).toEqual(['2026-07-14', '2026-07-28']);
+  });
+
+  it('sin rango el saldo inicial es cero y NO se consulta nada anterior', async () => {
+    // Una consulta menos en el caso común, igual que en el historial paginado:
+    // sin `desde` no hay nada afuera del archivo que pueda ser saldo anterior.
+    conMovimientosAnteriores();
+
+    const res = await request(levantarApi()).get('/api/suppliers/10/movimientos/export');
+
+    expect(res.body.saldo_inicial).toBe(0);
+    expect(res.body.saldo_final).toBe(122000);
+
+    const agregados = mockSupplierMovement.llamadas
+      .filter((l) => l.metodo === 'findAll' && l.attributes);
+
+    expect(agregados).toEqual([]);
+  });
+
+  it('con desde y hasta, arranca en el saldo anterior y cierra en el saldo a la fecha de corte', async () => {
+    // Con `hasta`, el archivo cierra en el saldo **a esa fecha** y no en el de
+    // hoy: es lo que significa cortar un período. Un archivo que cerrara en el
+    // saldo actual sobre filas que terminan el 14 de julio no cuadraría con sus
+    // propias filas, que es el número que el contador suma.
+    conMovimientosAnteriores();
+
+    const res = await request(levantarApi())
+      .get('/api/suppliers/10/movimientos/export?desde=2026-07-01&hasta=2026-07-14');
+
+    expect(res.body.data.map((f) => f.fecha)).toEqual(['2026-07-14']);
+    expect(res.body.saldo_inicial).toBe(100000);
+    expect(res.body.saldo_final).toBe(172000);
+    expect(res.body.data[0].saldo).toBe(172000);
+  });
+
+  it('un rango sin movimientos igual dice el saldo anterior, y cierra en él', async () => {
+    // El archivo sale vacío pero la cuenta no está en cero: un estado de cuenta
+    // de agosto sobre una deuda de julio tiene que decir que se deben $122.000,
+    // no que no se debe nada.
+    conMovimientosAnteriores();
+
+    const res = await request(levantarApi()).get('/api/suppliers/10/movimientos/export?desde=2026-08-01');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.total).toBe(0);
+    expect(res.body.saldo_inicial).toBe(122000);
+    expect(res.body.saldo_final).toBe(122000);
+  });
 });
 
 // ─────────────────────────────────────────────
@@ -1088,6 +1219,45 @@ describe('DELETE /api/suppliers/:id', () => {
     const enLaLista = lista.body.data.find((s) => s.id === 10);
     expect(enLaLista.saldo).toBe(64000);
     expect(res.body.error).toContain('$64.000,00');
+  });
+
+  it('el mensaje dice DOS decimales sobre un saldo que no es redondo', async () => {
+    // Las otras fixtures del borrado son enteros, y con enteros el mensaje sale
+    // igual esté o no la disciplina de centavos: «$64.000,00» no distingue un
+    // `Math.round` de un `Math.trunc` ni una suma en pesos de una en centavos.
+    // Con un importe de tres decimales sí (FR-050 + FR-051).
+    //
+    // ⚠ **Lo que este caso NO puede pinchar es el `maximumFractionDigits: 2` de
+    // `enPesos`**, y no por estar mal escrito: `resumenDeCuenta` devuelve el
+    // saldo en centavos enteros, así que **ningún** importe alcanzable por este
+    // endpoint produce un tercer decimal. Comprobado a fuerza bruta sobre dos
+    // millones de valores: cero diferencias entre formatear con el máximo y sin
+    // él. Ese tope es la segunda red —la que tapa el residuo si algún día la
+    // suma vuelve a hacerse en pesos— y solo se puede verificar desde afuera del
+    // servidor. Está anotado para que el próximo no lo intente de nuevo.
+    // **Dos** deudas de medio centavo y no una: con una sola, redondear cada
+    // importe y redondear el total dan lo mismo, y el caso pasaría igual con la
+    // suma hecha en pesos. Con dos, los dos caminos se separan en un centavo.
+    mockSupplierMovement.filas = [
+      { id: 1, supplier_id: 10, empresa_id: PROPIA, type: 'deuda', amount: '184000.005', date: '2026-07-01' },
+      { id: 2, supplier_id: 10, empresa_id: PROPIA, type: 'deuda', amount: '88000.005', date: '2026-07-05' },
+      { id: 3, supplier_id: 10, empresa_id: PROPIA, type: 'pago', amount: '120000.00', date: '2026-07-15' },
+    ];
+
+    const res = await request(levantarApi()).delete('/api/suppliers/10');
+
+    expect(res.status).toBe(400);
+    // Cada importe se redondea al centavo antes de sumar, así que el saldo es
+    // 152.000,02. Sumado en pesos daría «$152.000,01» y truncando en vez de
+    // redondear, «$152.000,00»: un centavo de diferencia con lo que muestra la
+    // lista, sobre el número que bloquea el borrado.
+    expect(res.body.error).toContain('$152.000,02');
+    // Y nunca un tercer decimal, venga de donde venga el importe.
+    expect(res.body.error).not.toMatch(/\$[\d.]+,\d{3}/);
+
+    // Es el MISMO número que el listado (FR-101), hasta el centavo.
+    const lista = await request(levantarApi()).get('/api/suppliers');
+    expect(lista.body.data.find((s) => s.id === 10).saldo).toBe(152000.02);
   });
 
   it('un saldo a favor tampoco deja borrar: el proveedor me debe a mí', async () => {
@@ -1228,6 +1398,159 @@ describe('POST /api/suppliers/:id/payments', () => {
 });
 
 // ─────────────────────────────────────────────
+//  Parte 7 bis · PUT /api/suppliers/movements/:id — corregir un movimiento
+//
+//  Entre el `findScoped` y el `update` no había NINGUNA validación, y
+//  `SupplierMovement.amount` es DECIMAL(14,2) sin `validate`. Es el único camino
+//  del módulo que **escribe un número falso y lo deja escrito**: no revierte, no
+//  avisa, y el saldo corrupto se propaga al listado, al badge, al bloqueo del
+//  borrado y al archivo del contador, porque los cuatro salen de
+//  `resumenDeCuenta`.
+//
+//  La regla ya existía y estaba aplicada en el endpoint hermano —`POST
+//  /:id/payments` rechaza con 400 desde T1222—; lo que faltaba era llamarla acá.
+// ─────────────────────────────────────────────
+
+describe('PUT /api/suppliers/movements/:id', () => {
+  // Tres movimientos y no uno: con una sola fila, un importe negativo y un tipo
+  // convertido dan saldos que se parecen, y el caso no distinguiría cuál de los
+  // dos agujeros quedó abierto. Y los importes son distintos entre sí por lo
+  // mismo.
+  beforeEach(() => {
+    mockSupplierMovement.filas = [
+      { id: 1, supplier_id: 10, empresa_id: PROPIA, type: 'deuda', amount: '184000.00', date: '2026-07-01', notes: 'Recepción orden #118' },
+      { id: 2, supplier_id: 10, empresa_id: PROPIA, type: 'deuda', amount: '88000.00', date: '2026-07-10', notes: 'Recepción orden #121' },
+      { id: 3, supplier_id: 10, empresa_id: PROPIA, type: 'pago', amount: '150000.00', date: '2026-07-15', payment_method: 'tr', notes: 'Transferencia' },
+      // De otra empresa, colgado del mismo proveedor.
+      { id: 9, supplier_id: 10, empresa_id: AJENA, type: 'pago', amount: '999999.00', date: '2026-07-20' },
+    ];
+  });
+
+  /** El saldo que ve la pantalla: el número que este endpoint podía corromper. */
+  async function saldoDeLaFicha() {
+    const res = await request(levantarApi()).get('/api/suppliers/10');
+    return res.body.data.saldo;
+  }
+
+  it('un importe negativo NO se escribe: respondía 200 y le SUMABA plata al saldo', async () => {
+    // **El peor defecto del hito.** `PUT /movements/3` con `{amount: -50000}`
+    // respondía 200 ok:true, y a partir de ahí el saldo del proveedor estaba mal
+    // en las cuatro pantallas que lo muestran.
+    expect(await saldoDeLaFicha()).toBe(122000);
+
+    const res = await request(levantarApi())
+      .put('/api/suppliers/movements/3')
+      .send({ amount: -50000 });
+
+    expect(res.status).toBe(400);
+    // Legible: dice qué corregir, y dice «movimiento» y no «pago», porque lo que
+    // se está editando puede ser una deuda.
+    expect(res.body.error).toBe('El monto del movimiento tiene que ser un número mayor que cero');
+
+    // Y la fila quedó como estaba. Mirar solo el código de respuesta no alcanza:
+    // el defecto no revertía nada, así que el daño está en la base y no en la
+    // respuesta.
+    expect(mockSupplierMovement.filas.find((m) => m.id === 3).amount).toBe('150000.00');
+    expect(await saldoDeLaFicha()).toBe(122000);
+  });
+
+  it('un importe cero, vacío o ilegible tampoco se escribe', async () => {
+    // `Number('')` y `Number(null)` son 0, y `Number('mil pesos')` es NaN: los
+    // tres tienen que quedar afuera. Un movimiento de $0 no es una corrección,
+    // es una fila que no dice nada; un NaN en DECIMAL(14,2) contagia el saldo
+    // entero.
+    for (const amount of [0, '0', -500, '-500', '', '  ', 'mil pesos', null]) {
+      const res = await request(levantarApi())
+        .put('/api/suppliers/movements/1')
+        .send({ amount });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('El monto del movimiento tiene que ser un número mayor que cero');
+    }
+
+    expect(mockSupplierMovement.filas.find((m) => m.id === 1).amount).toBe('184000.00');
+    expect(await saldoDeLaFicha()).toBe(122000);
+  });
+
+  it('editar un movimiento NO puede convertir una deuda en un pago', async () => {
+    // `type` salió de la lista blanca y es una decisión escrita: el tipo es **de
+    // dónde salió la fila**, no un campo que se corrija. Convertida en pago, la
+    // fila mueve el saldo por el DOBLE del importe y su nota sigue diciendo
+    // «Recepción orden #118», o sea que el asiento no se corresponde con nada.
+    const res = await request(levantarApi())
+      .put('/api/suppliers/movements/1')
+      .send({ type: 'pago', notes: 'Recepción orden #118 — factura A' });
+
+    expect(res.status).toBe(200);
+
+    const fila = mockSupplierMovement.filas.find((m) => m.id === 1);
+    expect(fila.type).toBe('deuda');
+    // Y lo que SÍ es editable se editó: el endpoint no quedó ignorando el cuerpo
+    // entero, que sería otra forma de romperlo.
+    expect(fila.notes).toBe('Recepción orden #118 — factura A');
+
+    expect(await saldoDeLaFicha()).toBe(122000);
+  });
+
+  it('una corrección legítima del importe sí entra, y mueve el saldo', async () => {
+    // Lo que impide «arreglar» esto rechazando todo: un pago cargado por
+    // $150.000 en vez de $120.000,50 tiene que poder corregirse, que es
+    // exactamente para lo que existe el endpoint (FR-093).
+    const res = await request(levantarApi())
+      .put('/api/suppliers/movements/3')
+      .send({ amount: '120000.50', notes: 'Transferencia corregida' });
+
+    expect(res.status).toBe(200);
+    // Número y no el texto del formulario, igual que en el alta del pago: la
+    // validación y la escritura tienen que mirar el mismo valor.
+    expect(mockSupplierMovement.filas.find((m) => m.id === 3).amount).toBe(120000.5);
+    expect(await saldoDeLaFicha()).toBe(151999.5);
+  });
+
+  it('corregir solo la nota NO obliga a remandar el importe', async () => {
+    // La edición es parcial. Validar `amount` siempre —y no solo cuando vino—
+    // pondría un 400 en el camino de una corrección que ni toca la plata.
+    const res = await request(levantarApi())
+      .put('/api/suppliers/movements/1')
+      .send({ notes: 'Factura A 0001-00012345' });
+
+    expect(res.status).toBe(200);
+
+    const fila = mockSupplierMovement.filas.find((m) => m.id === 1);
+    expect(fila.amount).toBe('184000.00');
+    expect(fila.notes).toBe('Factura A 0001-00012345');
+    expect(await saldoDeLaFicha()).toBe(122000);
+  });
+
+  it('un movimiento de otra empresa con importe inválido responde 404 y no 400', async () => {
+    // El orden importa: la validación va DESPUÉS del `findScoped`. Un 400
+    // delante del 404 confirmaría que ese movimiento existe en otra empresa, que
+    // es justo lo que permite enumerar ids ajenos.
+    const res = await request(levantarApi())
+      .put('/api/suppliers/movements/9')
+      .send({ amount: -1 });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Movimiento no encontrado');
+    expect(mockSupplierMovement.filas.find((m) => m.id === 9).amount).toBe('999999.00');
+  });
+
+  it('el cuerpo NO puede mudar el movimiento a otra empresa ni a otro proveedor', async () => {
+    // La lista blanca ya estaba y este caso la ancla: sin ella, un pago propio
+    // se reasignaba al proveedor de otro cliente sin crear nada, solo editando.
+    const res = await request(levantarApi())
+      .put('/api/suppliers/movements/3')
+      .send({ amount: 150000, empresa_id: AJENA, supplier_id: 11 });
+
+    expect(res.status).toBe(200);
+
+    const fila = mockSupplierMovement.filas.find((m) => m.id === 3);
+    expect(fila.empresa_id).toBe(PROPIA);
+    expect(fila.supplier_id).toBe(10);
+  });
+});
+
+// ─────────────────────────────────────────────
 //  Parte 8 · El nombre repetido (T1246)
 //
 //  `models/Supplier.js:44` tiene un índice único `(empresa_id, name)`, y eso
@@ -1323,5 +1646,195 @@ describe('POST y PUT /api/suppliers con un nombre que ya existe', () => {
 
     expect(res.status).toBe(500);
     expect(res.body.error).toBe('Error al crear el proveedor');
+  });
+});
+
+// ─────────────────────────────────────────────
+//  Parte 9 · GET /api/suppliers/orders?q= — la búsqueda que no viajaba (FR-009)
+//
+//  El endpoint aceptaba `supplier_id`, `status`, `from`, `to`, `limit` y
+//  `offset`, y **no** `q`. La pantalla de órdenes buscaba entonces sobre las 50
+//  filas que tenía cargadas mientras el servidor paginaba: buscar la orden 77
+//  —que existe, en la página 2— respondía «ninguna orden coincide con el filtro»
+//  y la red ni se tocaba. Es un **falso negativo**, y hace cerrar la búsqueda y
+//  dar la orden por perdida.
+//
+//  ⚠ **Lo que estos casos verifican es la condición que sale hacia la base**, no
+//  las filas que vuelven: el `translate()` y el `CAST` los ejecuta Postgres y los
+//  dobles de `modelosFalsos` no saben evaluarlos. Es el mismo corte —y el mismo
+//  motivo— que el caso «q filtra por nombre sin distinguir acentos» de
+//  `GET /api/suppliers`, más arriba en este archivo.
+//
+//  El SQL que sale de acá se leyó contra el generador de consultas de Postgres,
+//  y es lo que estos casos afirman por partes:
+//
+//    WHERE ((translate(lower("supplier"."name"), 'áàä…', 'aaa…') LIKE '%norte%'
+//        OR CAST("SupplierOrder"."id" AS TEXT) LIKE '%norte%'))
+//      AND "SupplierOrder"."empresa_id" = 7
+// ─────────────────────────────────────────────
+
+describe('GET /api/suppliers/orders', () => {
+  beforeEach(() => {
+    // `crearModelo` no tiene `findAndCountAll` —ningún test de este archivo lo
+    // necesitaba— y es lo único que consulta `getOrders`. Se agrega acá y no en
+    // el helper compartido, igual que `conDestroy` y `conOrdenYPaginacion`.
+    mockSupplierOrder.findAndCountAll = async (opciones = {}) => {
+      mockSupplierOrder.llamadas.push({ metodo: 'findAndCountAll', ...opciones });
+      return { count: 0, rows: [] };
+    };
+  });
+
+  /** El `where` con el que salió la consulta del listado. */
+  const whereDelListado = () =>
+    mockSupplierOrder.llamadas.find((l) => l.metodo === 'findAndCountAll').where;
+
+  /**
+   * Las condiciones que agregó la búsqueda, o `[]` si no agregó ninguna.
+   *
+   * Viajan bajo `Op.and` → `Op.or`, que son Symbols: `JSON.stringify` los borra
+   * sin avisar, así que se leen por el símbolo.
+   */
+  function condicionesDeBusqueda() {
+    const where = whereDelListado();
+    if (!Object.getOwnPropertySymbols(where).includes(Op.and)) return [];
+
+    return where[Op.and].flatMap((c) => c[Op.or] || [c]);
+  }
+
+  it('q busca por nombre de proveedor Y por número de orden', async () => {
+    // FR-009. Son DOS condiciones y no una: el número es el dato que el
+    // proveedor menciona por teléfono, y buscar solo por proveedor obliga a
+    // recorrer la lista a ojo. Buscar solo por número deja afuera el caso más
+    // común, que es acordarse del proveedor.
+    const res = await request(levantarApi()).get('/api/suppliers/orders?q=NORT%C3%89');
+
+    expect(res.status).toBe(200);
+
+    const condiciones = condicionesDeBusqueda();
+    expect(condiciones).toHaveLength(2);
+
+    const [porNombre, porNumero] = condiciones;
+
+    // El nombre, normalizado en la COLUMNA con el translate del núcleo de
+    // Postgres, sobre el alias del include de `getOrders`.
+    expect(JSON.stringify(porNombre.attribute)).toContain('translate');
+    expect(JSON.stringify(porNombre.attribute)).toContain('supplier.name');
+    expect(porNombre.logic[Op.like]).toBe('%norte%');
+
+    // Y el número, comparado como TEXTO: `CAST(id AS TEXT) LIKE '%…%'`. Con
+    // `id = Number(texto)` una búsqueda por nombre mandaría NaN a una columna
+    // INTEGER, que es el 500 de Postgres que este listado ya cerró una vez.
+    expect(JSON.stringify(porNumero.attribute)).toContain('SupplierOrder.id');
+    expect(JSON.stringify(porNumero.attribute)).toContain('text');
+    expect(porNumero.logic[Op.like]).toBe('%norte%');
+  });
+
+  it('«NORTÉ» y «norte» salen con el MISMO patrón: la búsqueda no distingue acentos', async () => {
+    // FR-059, y es **el mismo criterio que `GET /suppliers`** a propósito: si
+    // cada pantalla normalizara por su cuenta, buscar «Norté» encontraría al
+    // proveedor en una y no en la otra, y no fallaría nada.
+    await request(levantarApi()).get('/api/suppliers/orders?q=NORT%C3%89');
+    const conAcento = condicionesDeBusqueda()[0].logic[Op.like];
+
+    mockSupplierOrder.llamadas = [];
+    await request(levantarApi()).get('/api/suppliers/orders?q=norte');
+    const sinAcento = condicionesDeBusqueda()[0].logic[Op.like];
+
+    expect(conAcento).toBe('%norte%');
+    expect(conAcento).toBe(sinAcento);
+
+    // Y la columna se normaliza con la MISMA lista que el texto: `translate()`
+    // empareja las dos cadenas por posición, así que dos listas distintas
+    // dejarían el patrón y la columna comparando cosas que no coinciden.
+    expect(JSON.stringify(condicionesDeBusqueda()[0].attribute)).toContain(SIN_ACENTOS);
+  });
+
+  it('el # que la pantalla dibuja delante del número no se busca dentro del número', async () => {
+    // La fila dice «#118» y quien copia el número se lo lleva puesto. Sin
+    // sacarlo, `CAST(id AS TEXT) LIKE '%#118%'` no encuentra nunca nada: la
+    // búsqueda respondería vacío sobre una orden que está a la vista.
+    await request(levantarApi()).get('/api/suppliers/orders?q=%23118');
+
+    expect(condicionesDeBusqueda()[1].logic[Op.like]).toBe('%118%');
+  });
+
+  it('un q vacío o de puros espacios NO es un filtro: sale como si no hubiera venido', async () => {
+    // FR-020. El valor centinela con un espacio adentro ya rompió esta misma
+    // pantalla una vez —`?supplier_id=%20` contra una columna INTEGER, 500 de
+    // Postgres y la lista con lo anterior sin ningún aviso—. Un `q` de un
+    // espacio no rompería nada: dejaría la lista **vacía**, porque
+    // `LIKE '% %'` no matchea un nombre de una sola palabra, y se leería como
+    // «no hay órdenes».
+    for (const crudo of ['', '%20', '%20%20%20', '%23', '%20%23%20']) {
+      mockSupplierOrder.llamadas = [];
+
+      const res = await request(levantarApi()).get(`/api/suppliers/orders?q=${crudo}`);
+
+      expect(res.status).toBe(200);
+      expect(condicionesDeBusqueda()).toEqual([]);
+      expect(whereDelListado()).toEqual({ empresa_id: PROPIA });
+    }
+  });
+
+  it('sin q el where queda exactamente como estaba', async () => {
+    // Lo que impide «arreglar» esto aplicando el filtro siempre: un listado sin
+    // búsqueda no puede llevar una condición de texto encima. Es además la forma
+    // exacta que afirma `aislamientoDeProveedores.test.js`.
+    await request(levantarApi()).get('/api/suppliers/orders');
+
+    expect(whereDelListado()).toEqual({ empresa_id: PROPIA });
+  });
+
+  it('la búsqueda se SUMA al empresa_id y a los demás filtros, no los reemplaza', async () => {
+    // ⚠⚠ Es la regla que no se negocia. Un filtro nuevo escrito como
+    // `const where = { [Op.and]: [...] }` devuelve las órdenes de TODAS las
+    // empresas cliente en la misma respuesta —con el nombre del proveedor
+    // adentro, paginadas— y no falla nada.
+    await request(levantarApi())
+      .get('/api/suppliers/orders?q=norte&status=pending&supplier_id=10&from=2026-07-01&to=2026-07-31');
+
+    const where = whereDelListado();
+
+    expect(where.empresa_id).toBe(PROPIA);
+    expect(where.status).toBe('pending');
+    expect(where.supplier_id).toBe(10);
+    expect(where.date[Op.gte]).toBe('2026-07-01');
+    expect(where.date[Op.lte]).toBe('2026-07-31');
+    expect(condicionesDeBusqueda()).toHaveLength(2);
+  });
+
+  it('la búsqueda no se lleva puesta la paginación', async () => {
+    // El `limit` y el `offset` tienen que seguir viajando: la búsqueda acota la
+    // lista, no la convierte en una consulta sin paginar. Sin esto, buscar «a»
+    // sobre tres años de órdenes pediría la tabla entera.
+    await request(levantarApi()).get('/api/suppliers/orders?q=norte&limit=25&offset=50');
+
+    const llamada = mockSupplierOrder.llamadas.find((l) => l.metodo === 'findAndCountAll');
+
+    expect(llamada.limit).toBe(25);
+    expect(llamada.offset).toBe(50);
+  });
+
+  it('el total que devuelve es el del COUNT de la búsqueda, no el largo de la página', async () => {
+    // **Es la mitad que hace que la corrección sirva.** Con la búsqueda del lado
+    // del servidor, `total` cuenta todas las que coinciden: de ese número salen
+    // el badge del encabezado y la cantidad de páginas, así que la pantalla no
+    // puede volver a decir «Órdenes 120» sobre una lista de una fila.
+    mockSupplierOrder.findAndCountAll = async (opciones = {}) => {
+      mockSupplierOrder.llamadas.push({ metodo: 'findAndCountAll', ...opciones });
+
+      return {
+        count: 3,
+        rows: [{
+          id: 77, supplier_id: 10, date: '2026-07-01', total: '1000',
+          status: 'received', notes: null, detail: [],
+        }],
+      };
+    };
+
+    const res = await request(levantarApi()).get('/api/suppliers/orders?q=77&limit=1');
+
+    expect(res.body.total).toBe(3);
+    expect(res.body.data.map((o) => o.id)).toEqual([77]);
   });
 });

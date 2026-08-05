@@ -453,3 +453,226 @@ un nivel durante unos segundos.
 veinte insumos anidados y cronometrar—. Si el número molesta, mover la llamada
 después del `commit` es un cambio de una línea; lo que hay que decidir junto con
 eso es qué pasa si el proceso se cae en el medio.
+
+⚠ **P11 ya no es solo una medición.** La verificación adversarial reprodujo un
+fallo de la cascada sobre un grafo en diamante; el defecto se corrigió y lo que
+quedó abierto está en **11d** y **11e**, acá abajo. El paso manual sigue
+pendiente y ahora contesta dos preguntas: cuánto tarda, y si el recosteo llega a
+todo el grafo.
+
+---
+
+## 11 · Lo que encontró la verificación adversarial del hito 6
+
+**Apareció** verificando `docs/specs/012-proveedores-y-ordenes-de-compra/`
+(5/8/2026). La verificación encontró ocho defectos y se corrigieron todos; **esto
+es lo otro**: lo que se vio de paso y **no** se corrigió, cada cosa con por qué no
+y cuál es el primer paso.
+
+Ocho, agrupadas: dos son de permisos y no son de este hito —se cruzaron mirando
+otra cosa—; tres son del grafo de costos, y una de ellas (**11d**) es **la causa
+raíz de los dos defectos de diamante que sí se corrigieron**; dos son limpieza; y
+la última es la verificación manual que nadie corrió todavía.
+
+### 11a · `GET /api/empresas/:id/suscripcion` no declara ningún permiso
+
+**Qué falta.** El endpoint (`routes/empresas.js:538`) va detrás de
+`requireEmpresa` + `requireEmpresaPropia()`, así que **no cruza empresas**: nadie
+lee la suscripción de otro cliente. Lo que sí pasa es que **cualquier miembro de
+la empresa —un cajero— puede leer el plan, el estado y las fechas de
+vencimiento**. Le correspondería `config.ver`, que es lo que ya piden
+`GET /api/empresas` y `GET /api/empresas/:id` (`:412`, `:424`).
+
+**Y el permiso ya está elegido, en el lugar que no manda.** El ítem de menú
+declara `permission: 'config.ver'` (`components/navegacion.js:51`), así que hoy el
+gateo existe **solo en la barra lateral**, que es exactamente lo que el plan
+llama cosmético: la ruta `/suscripcion` se monta **sin `RouteGuard`**
+(`App.jsx:292`) y el endpoint no pide nada. Quien no ve el ítem llega igual
+escribiendo la URL.
+
+**Por qué no se corrigió.** Un endpoint que empieza a responder 403 en producción
+deja afuera a quien hoy entra, y acá encima **no se nota**: el único llamador es
+`pages/SubscriptionSettings.jsx:28`, y su `catch { }` está vacío, así que un 403
+no se ve como «no tenés permiso» sino como **«No hay información de
+suscripción»** — que es mentira y manda a mirar la base. Eso es una decisión con
+consecuencia para el cliente, y toca tres archivos, no una línea.
+
+**Primer paso.** Cerrar los tres lados juntos —`checkPermission('config.ver')` en
+el endpoint, `RouteGuard` en la ruta, y el ítem que ya está— y **arreglar ese
+`catch` vacío en el mismo movimiento**, o el arreglo se va a leer como una
+pantalla rota. **Y borrar esta entrada al hacerlo**: hay un test que se pone en
+rojo el día que alguien lo arregle —`src/tests/permisosDeRutas.test.js`, entrada
+`DEUDA_DE_PERMISOS`—, justamente para que la lista de deuda no le sobreviva a la
+deuda.
+
+### 11b · El mismo pago pide dos permisos distintos según a quién se le pague
+
+**Qué falta.** `POST /api/suppliers/:id/payments` exige `proveedores.crear`
+(`routes/suppliers.js:866`) y `POST /api/customers/:id/payments` exige
+`caja.crear` (`routes/customers.js:108`). Es **la misma operación** —registrar un
+movimiento de plata en una cuenta corriente— con dos permisos distintos.
+
+**Por qué importa.** Un rol con `proveedores.crear` y sin `caja.crear` puede
+pagarle a proveedores. Quien arma ese rol está pensando «que pueda dar de alta
+proveedores», no «que pueda mover plata», y el permiso no se lo dice. Es un
+agujero de intención, no de aislamiento: la fila queda en la empresa correcta.
+
+**Por qué no se corrigió.** Unificar el criterio cambia qué puede hacer cada rol
+ya creado en producción, en los dos sentidos: si el pago a proveedores pasa a
+pedir `caja.crear`, alguien que hoy paga deja de poder; si se elige al revés,
+alguien gana un permiso. Eso se decide con el catálogo de permisos a la vista, no
+en un fix.
+
+**Primer paso.** Escribir qué significa cada familia —`caja.*` es «mueve plata»,
+`proveedores.*` es «administra la ficha del proveedor»— y recién después mover el
+permiso. Con la definición escrita, el resto del catálogo se revisa una vez y no
+se vuelve a discutir.
+
+### 11c · `recipe_items` no tiene índice único por `(recipe_id, ingredient_product_id)`
+
+**Qué falta.** Nada impide que una receta liste el mismo insumo dos veces
+(`models/RecipeItem.js`, sin índice único). Cuando pasa,
+`costService.calculateProductCost` **suma el mismo insumo dos veces** y el
+elaborado queda costeado de más, en silencio: el margen del POS y el precio
+recomendado del Comparador salen de ese número.
+
+**Por qué importa.** Es el mismo error que la spec de la 012 persigue en otros
+lados —un número de plata que está mal y no falla nada—, pero acá no lo tapa
+ninguna función pura: el dato ya está mal en la base.
+
+**Por qué no se corrigió.** Pide una migración con dos pasos, y el segundo no es
+mecánico: **antes del índice hay que limpiar los duplicados que ya existan**, y
+fusionar dos líneas del mismo insumo significa decidir si las cantidades se suman
+o si una es un error de carga. Eso lo contesta quien cargó la receta.
+
+**Primer paso.** Una consulta que cuente cuántas recetas tienen el problema hoy.
+Con cero filas, la migración es el índice y nada más; con filas, sale un informe
+como el de `stock_migracion_sucursal` (5f) antes de tocar nada. El recosteo ya
+protege el otro lado —`recostearDependientes` deduplica por elaborado, así que un
+insumo repetido no recostea dos veces—, pero eso no arregla el costo.
+
+### 11d · `recalculateCascadingCosts` tira un `Error` pelado y confía en el `Set` que le pasan
+
+**Es la causa raíz de los dos defectos de diamante del hito**, y el que más
+conviene cerrar de esta lista.
+
+**Qué falta.** `costService.recalculateCascadingCosts(productId, visited, transaction)`
+hace dos cosas frágiles (`services/costService.js:80-84`):
+
+1. si el `Set` que recibe **ya trae** el producto, tira
+   `new Error('Dependencia circular detectada…')` —un `Error` pelado, sin
+   `status` y sin el nombre del producto—, así que sube como **500 genérico** y
+   quien lo lee no sabe qué receta abrir;
+2. **muta el `Set` del llamador** (`visited.add`) y clona solo hacia adentro, en
+   la recursión. O sea que reusar un `Set` entre dos ramas hermanas es un falso
+   «ciclo» sobre un grafo que no tiene ninguno: el llamador tiene que acordarse
+   de clonar, y el día que se olvide no falla en la función que se olvidó, falla
+   acá, con un mensaje que dice otra cosa.
+
+Los dos defectos que el hito corrigió son exactamente eso: `recostearDependientes`
+compartía un `Set` entre ramas y el error salía como 500 sin nombrar nada. Se
+arregló **del lado del llamador**, que era lo que estaba en alcance.
+
+**Por qué importa.** El próximo llamador vuelve a caer. Y el defecto es
+**intermitente** —depende de qué rama del grafo se recorra primero—, que es la
+forma más cara de que un bug exista: la misma operación responde 200 o 500 según
+el orden de las filas.
+
+**Por qué no se corrigió.** `costService` lo usan producción, recetas y compras;
+cambiar el tipo de error que tira cambia qué responden esos tres caminos, y eso
+es otra verificación.
+
+**Primer paso, y son dos líneas.** Que el error sea un `ErrorDeNegocio` con el
+**nombre** del producto —el molde ya está escrito en
+`purchaseService.avisoDeRecosteoFallido`—, y que la función **clone ella misma**
+el `Set` que recibe en vez de confiar en que el llamador se acuerde. Lo segundo
+es lo que cierra la clase entera de defectos, no un caso.
+
+### 11e · La cascada de costos no se deshace por partes
+
+**Qué falta.** Si el recosteo en cascada falla a la mitad, **los costos que ya
+escribió quedan escritos**. La decisión 13 de la spec de la 012 dice que la
+recepción vale igual y el fallo se informa como aviso —y eso está bien: la
+mercadería entró—, pero deja el grafo a medio recostear sin que nadie lo
+deshaga.
+
+**Por qué importa.** Sobre un grafo con un ciclo real esos costos ya eran
+indefendibles antes de la recepción, y el aviso es lo que manda a alguien a
+mirarlos. Sobre uno sano —el caso de 11d— el fallo era espurio y los costos
+parciales no tenían por qué existir.
+
+**Por qué no se corrigió, y ojo con el test.** Pide un SAVEPOINT alrededor de la
+cascada. Y hay una trampa: **el doble de `tests/helpers/modelosFalsos.js` no
+soporta `rollback`**, así que un test unitario que afirmara «los costos parciales
+se deshicieron» **pasaría con y sin el SAVEPOINT**. Sería uno más de los tests
+que no prueban nada, que es lo que este proyecto viene sacando.
+
+**Primer paso.** El SAVEPOINT es corto de escribir; lo que hay que resolver
+primero es **contra qué se verifica**, y hoy la respuesta es el proyecto **5c**
+—tests de integración contra un Postgres real—. Sin eso, se escribe la línea y no
+se puede afirmar que funciona.
+
+### 11f · `contadoresPorSegmento` quedó sin uso en producción
+
+**Qué falta.** `apps/web/src/utils/ordenDeCompra.js` exporta
+`contadoresPorSegmento`, y **el único que la llama es su propio test**. Los
+contadores de los segmentos los devuelve el servidor y la pantalla los lee de ahí
+(`PurchaseOrders.jsx`, estado `contadores`).
+
+**Por qué importa.** No rompe nada, y por eso es peligrosa: es código muerto que
+sigue **verde**, así que la suite da la impresión de estar cubriendo el contador
+de los segmentos cuando lo que se dibuja sale de otro lado. Un test que pasa
+sobre una función que nadie usa es ruido con forma de garantía: es el mismo
+problema que persigue `todosLosTestsCorren.test.js`, visto por el otro lado —allá
+un test que nunca corre, acá uno que corre sobre algo que ya no se dibuja—.
+
+**Primer paso.** Borrar la función y su test, o —si se decide volver a contar en
+el navegador cuando el listado no está paginado— dejar escrito quién la va a
+llamar. Las dos salidas sirven; lo que no sirve es que quede así.
+
+### 11g · Tres copias de «la fecha de hoy» en la web
+
+**Qué falta.** La misma función —el día de hoy como `AAAA-MM-DD` leído en la zona
+del usuario, **sin pasar por UTC**— está escrita tres veces:
+`pages/Orders.jsx` (`hoy`), `pages/PurchaseOrders.jsx` (`fechaDeHoy`) y
+`components/BloqueDeDocumentos.jsx` (`hoy`). Su lugar es `utils/formato.js`, al
+lado de `fechaCorta`.
+
+**Por qué importa.** El comentario de las tres explica el mismo defecto: con
+`toISOString()` toda la tarde argentina del día 5 se guarda como día 6, y el pago
+—o la factura— cargado a las 21:30 aparece en el mes equivocado cada fin de mes.
+Tres copias es cómo una se arregla y las otras no.
+
+**Por qué no se corrigió.** Mudarla toca `utils/formato.js` —que hoy exporta
+`pesos` y `fechaCorta` y nada más—, y ese archivo estaba fuera del alcance de la
+corrección que encontró las copias.
+
+**Primer paso.** Mover **una sola** versión a `utils/formato.js` con su
+comentario, y que los tres archivos la importen. Es un commit, no cambia
+comportamiento, y le da a la función un test propio: hoy **ninguna de las tres
+copias tiene uno que verifique lo que su propio comentario explica** —que la
+tarde del día 5 no se guarde como día 6—, porque son funciones privadas de un
+módulo y desde afuera no se las puede llamar.
+
+### 11h · 11 de los 12 pasos manuales del hito siguen sin correr
+
+**Qué falta.** `tasks.md` de la 012 deja doce verificaciones que **necesitan una
+persona**. Corrió una: **P8** (las rutas siguen centradas), que además quedó
+automatizada. Las once restantes están pendientes, y estas cuatro son las que
+importan:
+
+| Paso | Qué contesta, y por qué no lo contesta ningún test |
+|---|---|
+| **P11** · La recepción con cascada | **Urgente**: dejó de ser una medición. La verificación confirmó que la cascada **se caía** sobre un grafo en diamante. Hay que correrlo sobre un diamante —no sobre una cadena, que es donde el defecto no aparece— y además cronometrar los veinte insumos anidados |
+| **P6** · El índice **se usa** | Es el único que verifica que la migración de índices haya servido de algo. `verificar:esquema` no mira índices y una consulta con `Seq Scan` devuelve **los mismos datos**, solo que tarda. Necesita un `EXPLAIN ANALYZE` con datos suficientes, o el planificador prefiere el `Seq Scan` por tamaño y el paso no prueba nada |
+| **P5** · El `down` de la migración, **corrido** | Leerlo no es correrlo: el `IF EXISTS` puede estar bien escrito y el `down` fallar igual, por el orden de la transacción o por un nombre de índice que no coincide con el del `up`. Y no se descubre al escribir la migración: se descubre **el día que hay que revertir un deploy** |
+| **P7** · La columna suma en una planilla | El test afirma que cada celda lleva `{ t: 'n' }`, que es todo lo que un test puede afirmar. Lo que no puede es abrir el `.xlsx`: si el tipo se pierde al escribir la hoja, **el archivo abre, se ve bien y está mal**, y el contador se entera cuando selecciona la columna Saldo y no aparece ninguna suma |
+
+**Por qué no se corrieron.** Todos cuelgan del procedimiento **P0**, que necesita
+**dos bases descartables** —una migrada y otra sincronizada— y el
+`ALLOWED_ORIGINS` armado. No es una tarde de trabajo y no lo puede hacer un
+agente.
+
+**Primer paso.** P11 primero, porque ya se sabe que ahí había un defecto y lo que
+falta es confirmar que el arreglo alcanza. Después P6 y P5, que son la misma
+sesión de `psql`. P7 se cierra abriendo un archivo.

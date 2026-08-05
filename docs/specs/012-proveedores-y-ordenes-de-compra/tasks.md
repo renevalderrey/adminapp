@@ -2042,6 +2042,78 @@ distintos** —que es exactamente lo que P2 mira—. No se hizo acá porque camb
 el estado de la orden sembrada y con él el reparto de los cuatro estados de orden
 que T1250 pide.
 
+### ⏳ Qué se corrió DE VERDAD — estado después de la verificación del hito 6
+
+⚠ **La tabla de arriba dice qué se puede automatizar. Esta dice qué se corrió, y
+no es lo mismo.** La verificación adversarial sobre el hito 6 encontró que **de
+los doce pasos se corrió uno: P8**, y ese porque es automático. Los otros once
+figuraban al lado de cincuenta y cuatro casillas marcadas, y eso se lee como
+«verificado» cuando lo único que dice es «escrito».
+
+Queda anotado acá y no en la cabeza de nadie, porque un paso manual que no se
+corre no falla: **se archiva**.
+
+| Paso | Estado | Qué sigue sin saberse mientras no se corra |
+|---|---|---|
+| **P8** · Las rutas centradas | ✔ **Corrido** | — |
+| **P1** · El centavo del `GROUP BY` | ⏳ Pendiente | Que `saldo` responda `1234.56` y no `1234.5600000000002`. La aritmética está testeada (T1213); lo que no está probado es que la consulta agregada devuelva las filas que la aritmética espera —`modelosFalsos` no soporta `group`— |
+| **P2** · Dos líneas del mismo producto en el JSONB | ⏳ Pendiente | Que el `changed('detail', true)` siga guardando **dos** `quantity_received` distintos. Es el bug que ya se corrigió una vez y que ningún doble puede ver. **Se puede cerrar sin `psql`**, ver la nota de arriba |
+| **P3** · La línea sin producto | ⏳ Pendiente | Que una línea sin `product_id` deje la deuda y **no** revierta las otras. Hoy —antes del hito— eso respondía 500 y no entraba nada |
+| **P4** · Los cuatro índices existen | ⏳ Pendiente | Que `db:migrate` los haya creado. `verificar:esquema` **no mira índices** y no lo tapa |
+| **P5** · La migración es reversible | ⏳ Pendiente | Ver abajo, «los cuatro que no se postergan» |
+| **P6** · El índice se usa | ⏳ Pendiente | Ídem |
+| **P7** · La columna suma en una planilla | ⏳ Pendiente | Ídem |
+| **P9** · El foco al cerrar el panel | ⏳ Pendiente | Que `Esc` devuelva el foco a la fila. Lo resuelve Radix y por eso no lleva test; **por eso mismo nadie se entera si deja de pasar** |
+| **P10** · Copiar el enlace | ⏳ Pendiente | Que el portapapeles quede con el enlace completo. `navigator.clipboard` no existe en jsdom |
+| **P11** · La recepción con cascada | ⏳ **Pendiente y urgente** | Ver abajo. **Dejó de ser una medición** |
+| **P12** · Dos personas recibiendo | ⏳ Pendiente | Está declarado Fuera de alcance: se corre para **documentar** el comportamiento, no para arreglarlo. Sigue siendo el riesgo 7 y este hito empeoró la exposición |
+
+⚠ **Y las tres filas «parciales» de la tabla anterior valen solo si la suite de
+navegador corre.** P1, P2 y P3 quedan parcialmente cubiertos **en cada corrida de
+`npm --prefix apps/web run test:navegador`**; si esa suite no se corre —y hace
+falta el procedimiento P0 entero, con las dos bases y el `ALLOWED_ORIGINS`—, la
+cobertura parcial es cero, no parcial.
+
+#### Los cuatro que no se postergan
+
+**P11 · La recepción con cascada — y ya no es una medición.** La verificación
+reprodujo el fallo: con un grafo **en diamante** —un insumo que llega al mismo
+elaborado por dos caminos: Colágeno es insumo de la Premezcla, y el Combo lleva
+Colágeno **y** Premezcla— la cascada de recosteo **se cae**, con «Dependencia
+circular detectada» sobre un grafo que no tiene ningún ciclo. Y era
+**intermitente**, que es lo peor que podía ser: el `findAll` de las recetas
+dependientes no lleva `ORDER BY`, así que el orden de las filas decidía si la
+misma recepción respondía 200 o rompía. Este paso pasa de «cuánto tarda» a
+**«¿el recosteo llega a todo el grafo?»**, y hay que correrlo sobre un diamante
+—no sobre una cadena, que es donde el defecto no aparece— además de sobre los
+veinte insumos anidados que ya pedía. La medición de tiempo sigue valiendo: si
+duele, sacar la cascada de la transacción está anotado en T1253.
+
+**P6 · El índice se usa — es el único que verifica que T1214 haya servido de
+algo.** Que los cuatro índices existan (P4) y que el chequeo de esquema pase no
+dicen **nada** sobre si el planificador los elige: `verificar:esquema` hace un
+`findOne` por modelo y no mira índices, y una consulta con `Seq Scan` devuelve
+exactamente los mismos datos, solo que tarda. Un índice creado y no usado es una
+migración que se desplegó, se revisó y no hizo nada, y el día que se note va a ser
+por una pantalla lenta con tres años de movimientos —cuando ya nadie relacione las
+dos cosas—. **Con datos suficientes**, o el planificador prefiere el `Seq Scan`
+por tamaño y el paso no prueba nada.
+
+**P5 · El `down` de la migración, corrido de verdad.** Leerlo no es correrlo:
+el `IF EXISTS` puede estar bien escrito y el `down` fallar igual —por el orden de
+la transacción, por un nombre de índice que no coincide con el del `up`, por el
+lock de migraciones—. Y esto **no se descubre cuando se agrega la migración**: se
+descubre el día que hay que revertir un deploy, que es el peor momento posible
+para enterarse de que la vuelta atrás no existe. Es el requisito del proyecto 0,
+textual: una migración que no se puede revertir no se puede probar.
+
+**P7 · La columna suma en una planilla de verdad.** El test afirma que cada celda
+lleva `{ t: 'n' }`, que es todo lo que un test puede afirmar. Lo que no puede es
+abrir el archivo: si el tipo se pierde al escribir la hoja, **el `.xlsx` abre, se
+ve bien y está mal**, y el contador se entera cuando selecciona la columna Saldo y
+no aparece ninguna suma. Es el criterio de éxito 12 y es de las pocas cosas de
+este hito que le llegan a alguien de afuera del equipo.
+
 ### P0 · El procedimiento, con la trampa del esquema
 
 ⚠⚠ **Hacen falta DOS bases descartables, y no es opcional.** El motivo es el
@@ -2151,6 +2223,9 @@ contra Postgres de verdad y una consulta rota hace fallar la suite. Lo que sigue
 siendo de una persona es **el centavo**: que `saldo` responda exactamente
 `1234.56` y no `1234.5600000000002`.
 
+⏳ **La mitad manual sigue pendiente al cierre del hito 6**, y la automática vale
+solo si `test:navegador` se corre de verdad (procedimiento P0).
+
 **P2 · Dos líneas del mismo producto — T1204.** Crear una orden con Colágeno en
 la posición 0 y en la 2, y recibir 10 en la 2 con
 `{ items: [{ linea: 2, cantidad: 10 }] }`.
@@ -2172,6 +2247,9 @@ se rompiera, `test:navegador` no arranca. Lo que sigue siendo de una persona es 
 líneas del mismo producto. **Y se puede cerrar sin `psql`** —ver la nota del
 principio de esta sección—.
 
+⏳ **La mitad manual sigue pendiente al cierre del hito 6.** Es el paso más barato
+de los once que faltan y el que cubre el defecto más caro.
+
 **P3 · Una línea sin producto — T1204.** Una orden con una línea normal y una con
 `product_id: null` («Fletes»), y recibir las dos.
 *Qué tiene que verse*: `200`, un `SupplierMovement` de tipo `deuda` por **las
@@ -2183,6 +2261,8 @@ responde **500 y no entra nada, ni de la otra línea**.
 y que crezca el stock y se cree el movimiento de deuda— lo ejercita la siembra en
 cada corrida. La línea **sin producto** no se siembra y sigue siendo de una
 persona: es el caso que revertía la transacción entera.
+
+⏳ **La mitad manual sigue pendiente al cierre del hito 6.**
 
 ### Contra Postgres (base B)
 
@@ -2196,12 +2276,18 @@ persona: es el caso que revertía la transacción entera.
 que ya estaban. ⚠ **`verificar:esquema` no los mira** —está escrito en su propio
 comentario—, así que este paso no se puede saltear con «el chequeo pasó».
 
+⏳ **Pendiente al cierre del hito 6.**
+
 **P5 · La migración es reversible — T1214.** Correr el `down`
 (`npm --prefix apps/api run db:migrate:undo`), verificar con `\di` que ninguno de
 los cuatro está, y volver a correr el `up`.
 *Qué tiene que verse*: los tres comandos terminan sin error y el esquema queda
 como estaba. Es el requisito del proyecto 0: **una migración que no se puede
 revertir no se puede probar**.
+
+⏳ **Pendiente al cierre del hito 6, y leerlo no cuenta**: el `down` puede estar
+bien escrito y fallar igual, y eso se descubre el día que hay que revertir un
+deploy.
 
 **P6 · El índice se usa — T1214.** Con datos suficientes para que el planificador
 no prefiera un `Seq Scan`:
@@ -2215,6 +2301,11 @@ EXPLAIN ANALYZE SELECT supplier_id, type, SUM(amount) FROM supplier_movements
 un `Seq Scan`**. Es el único paso que verifica que el índice sirva para lo que se
 creó, y por eso es el que no se puede saltear.
 
+⏳ **Pendiente al cierre del hito 6.** Que los cuatro existan (P4) y que
+`verificar:esquema` pase no dicen nada sobre si el planificador los elige: una
+consulta con `Seq Scan` devuelve **los mismos datos**, solo que tarda. Un índice
+creado y no usado es una migración que se desplegó, se revisó y no hizo nada.
+
 ### Lo que necesita una persona
 
 **P7 · La columna suma en una planilla de verdad — T1229, T1247.** Exportar la
@@ -2225,6 +2316,10 @@ texto, no muestra nada y **el archivo abre, se ve bien y está mal**. Es el
 criterio de éxito 12 y es lo único de la exportación que el test del tipo de
 celda no puede afirmar. *No baja a prueba de navegador*: un Chromium sin manos no
 abre Excel.
+
+⏳ **Pendiente al cierre del hito 6.** El test afirma que la celda lleva
+`{ t: 'n' }`; lo que no puede es abrir el archivo. Y es de las pocas cosas de este
+hito que le llegan a alguien de afuera del equipo: el contador.
 
 **P8 · Las dos rutas siguen centradas — T1232.** ✔ **Automático.** Después del
 corte 8, que toca `App.jsx`, correr
@@ -2241,19 +2336,39 @@ abrió**. Lo resuelve `ui/sheet.jsx` (Radix) y **no lleva test propio**: afirmar
 en jsdom sería testear la librería, y en el navegador sería una prueba cara para
 algo que ninguna línea de este hito controla. Se mira una vez.
 
+⏳ **Pendiente al cierre del hito 6** — y «se mira una vez» solo vale si esa vez
+ocurre.
+
 **P10 · Copiar el enlace al portapapeles — T1243.** Cargar un documento y tocar
 «Copiar enlace», después pegar en cualquier lado.
 *Qué tiene que verse*: el enlace completo. **No baja a test**:
 `navigator.clipboard` no existe en jsdom sin doblarlo, y un test sobre el doble
 dice que se llamó al doble, no que el portapapeles tenga el texto.
 
-**P11 · Cuánto tarda una recepción con cascada — T1209, riesgo 3.** Recibir una
-orden de veinte insumos que participen en recetas anidadas.
-*Qué tiene que verse*: cuánto tarda, y si choca contra un lock de otra operación
-de costos. **No hay número de corte y no hay tarea**: es una medición, y se
-anota. Una prueba necesita un umbral para poder ponerse en rojo, y acá el
-resultado es algo que alguien tiene que interpretar. *Si aparece*: sacar la
-cascada de la transacción es un cambio de una línea, y está anotado en T1253.
+⏳ **Pendiente al cierre del hito 6.**
+
+**P11 · La recepción con cascada — T1209, riesgo 3.** ⏳ **Pendiente, y pasó a
+ser urgente: ya no es solo una medición.**
+
+⚠ **La verificación del hito 6 reprodujo un fallo de correctitud acá.** Con un
+grafo **en diamante** —un insumo que llega al mismo elaborado por dos caminos:
+Colágeno es insumo de la Premezcla, y el Combo lleva Colágeno **y** Premezcla— la
+cascada de recosteo **se cae**, respondiendo «Dependencia circular detectada»
+sobre un grafo que **no tiene ningún ciclo**. Y era **intermitente**, que es lo
+peor que podía ser: el `findAll` de las recetas dependientes no lleva `ORDER BY`,
+así que el orden en que Postgres devolviera las filas decidía si la misma
+recepción respondía 200 o rompía.
+
+Por eso este paso cambia de pregunta. Eran «cuánto tarda»; ahora son dos:
+
+1. **¿El recosteo llega a todo el grafo?** Recibir sobre un **diamante**, no
+   sobre una cadena: en una cadena el defecto no aparece, y es la forma que
+   cualquiera arma primero cuando prueba a mano.
+2. **¿Cuánto tarda?** Lo de siempre: una orden de veinte insumos en recetas
+   anidadas, y si choca contra un lock de otra operación de costos. **Acá sigue
+   sin haber número de corte**: es una medición y alguien la interpreta. *Si
+   duele*: sacar la cascada de la transacción es un cambio de una línea y está
+   anotado en T1253.
 
 **P12 · Dos personas recibiendo la misma orden — riesgo 7.** Dos pestañas, la
 misma orden, confirmar casi a la vez.
@@ -2262,6 +2377,11 @@ entró**; el stock **no** se duplica. **Está declarado Fuera de alcance en la
 spec y este hito no lo arregla** — lo que sí hace es empeorar la exposición, con
 «Recibir» en cada fila. Se corre una vez para tener el comportamiento
 documentado, no para arreglarlo acá.
+
+⏳ **Pendiente al cierre del hito 6.** Correrlo no cambia el código: cambia que el
+día que alguien reporte «cargué la recepción y falta la mitad» haya una respuesta
+escrita en vez de una investigación desde cero. La mitigación mínima —una línea,
+`lock: t.LOCK.UPDATE` sobre el `SupplierOrder.findOne`— está anotada en T1253.
 
 ---
 
@@ -2286,6 +2406,29 @@ documentado, no para arreglarlo acá.
 | 15 · Navegador y documentos | 15 | T1250–T1254 (5) | Las cuatro medidas automatizadas y lo que cambió, escrito |
 
 **Total: 54 tareas.**
+
+### El registro, revisado contra el código
+
+Las cincuenta y cuatro casillas se recorrieron una por una contra el árbol al
+cerrar el hito 6, y **las cincuenta y cuatro coinciden**: cada archivo que una
+tarea manda crear existe, cada guardia que manda mover tiene el número nuevo, y
+cada pantalla que manda reescribir importa lo que la tarea dice que importe.
+Queda escrito porque una revisión que no deja rastro se vuelve a pedir.
+
+⚠ **Lo que «54 tareas completas» NO dice.** Las casillas cubren lo que se puede
+afirmar con un test. Los **doce pasos manuales** de la sección de arriba son otra
+lista, y de esa se corrió **uno**. Un hito con las 54 marcadas y once pasos sin
+correr no está verificado: está escrito. Las dos listas se leen juntas o no se
+leen.
+
+⚠ **Y una desviación deliberada que no hay que «corregir»:** varias tareas de la
+API piden el test en `apps/api/src/utils/<algo>.test.js` —T1201, T1203, T1213—.
+Están implementados en `apps/api/src/tests/`, que es lo correcto: el `testMatch`
+de `apps/api/jest.config.js` solo levanta `**/__tests__/**` y `**/src/tests/**`,
+así que un `src/utils/algo.test.js` **jest no lo corre nunca** —no falla, no
+avisa, simplemente no existe para la suite—. Está en `CONVENCIONES.md` y lo
+protege `src/tests/todosLosTestsCorren.test.js`. Mover esos archivos «adonde dice
+la tarea» sería apagar tres tests sin que nada se ponga en rojo.
 
 **La primera es T1201**: la conversión a centavos compartida. No es la más
 visible, pero **es la que habilita T1203**, que es donde vive la aritmética de la

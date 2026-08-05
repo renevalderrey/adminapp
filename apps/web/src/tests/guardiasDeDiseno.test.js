@@ -513,6 +513,184 @@ describe('<Can> siempre recibe el permiso en `codigo`', () => {
 //  día que importe.
 // ════════════════════════════════════════════
 
+// ════════════════════════════════════════════
+//  Guardia contra la SEGUNDA implementación de la recepción
+//
+//  FR-034, textual: «la recepción DEBE ser un solo componente usado por las dos
+//  pantallas. **Dos implementaciones es lo que dejó una de ellas rota.**»
+//
+//  Antes de este hito había dos, y no por descuido: cada pantalla resolvió la
+//  recepción cuando le tocó. `PurchaseOrders.jsx` abría su modal y
+//  `Orders.jsx` el suyo, cada uno con su estado, su cuerpo de request y su
+//  forma de decidir QUÉ orden se recibía. Escritas contra el mismo endpoint,
+//  derivaron: la de `Orders.jsx` terminó eligiendo la orden con un `find()` por
+//  estado —recibir la #118 cargaba el stock, la deuda y el cambio de estado en
+//  la #112— y las dos indexaban las cantidades por `product_id`, así que una
+//  orden con dos líneas del mismo producto tenía un solo campo. Nada de eso se
+//  repara después: hay que deshacer a mano el stock, el movimiento de deuda y el
+//  estado de dos órdenes contra un registro que dice que todo salió bien.
+//
+//  Hoy hay UN solo llamador —`components/PanelOrdenDeCompra.jsx`, el panel que
+//  usan las dos pantallas— y no hay nada que lo sostenga. El segundo aparecería
+//  igual que la vez pasada: adentro de una `page`, porque es donde queda a mano
+//  cuando hace falta «un cambio chico» y abrir el componente compartido parece
+//  caro.
+//
+//  ── Lo que NO se marca, a propósito ──
+//
+//  Nombrar una orden, listarla, filtrarla, abrir el panel o pasarle props no es
+//  implementar la recepción: las dos pantallas tienen que poder hacer todo eso y
+//  una guardia que se lo prohibiera sería una que alguien afloja el primer día.
+//  Lo único que se marca es TOCAR el endpoint de recepción, sea por el helper de
+//  `services/api.js` o por la ruta escrita a mano.
+//
+//  ── Sobre pasar en vacío ──
+//
+//  Una guardia que solo cuenta ausencias queda en verde el día que alguien
+//  renombra `receivePurchaseOrder`: dejaría de encontrar el llamador legítimo, y
+//  «ninguna implementación de más» se lee exactamente igual que «una sola, la
+//  correcta». Por eso el ancla afirma primero que la implementación legítima
+//  SIGUE estando y que el helper que la sostiene sigue existiendo en
+//  `services/api.js` — y hay un caso que le renombra las dos cosas en memoria
+//  para comprobar que el ancla se pone en rojo cuando eso pasa.
+// ════════════════════════════════════════════
+
+/**
+ * Qué cuenta como «implementar la recepción», en las dos formas que existen.
+ *
+ * El nombre del helper cubre el camino normal —importarlo o llamarlo— incluso
+ * cuando se importa con alias, porque la línea del `import` nombra igual el
+ * símbolo original. La ruta escrita a mano cubre el atajo: `api.put` contra
+ * `/suppliers/orders/<id>/receive` sin pasar por `services/api.js`, que es
+ * justamente lo que haría alguien apurado.
+ *
+ * `/cancel` NO entra: anular no es recibir y no toca ni stock ni deuda.
+ */
+const IMPLEMENTA_RECEPCION = /\breceivePurchaseOrder\b|\/suppliers\/orders\/.*\/receive/
+
+/** El único que puede hacerlo: el panel que usan las dos pantallas (FR-034). */
+const DUENO_DE_LA_RECEPCION = 'components/PanelOrdenDeCompra.jsx'
+
+function implementacionesDeRecepcion(nombre, contenido) {
+  return lineasQueMatchean(contenido, IMPLEMENTA_RECEPCION)
+    .map(({ n, texto }) => `${nombre}:${n} — ${texto}`)
+}
+
+/**
+ * El estado de la implementación legítima.
+ *
+ * Devuelve los tres pedazos por separado —y no un booleano— para que el fallo
+ * diga cuál se movió: renombrar el helper, cambiar la ruta y borrar el llamador
+ * son tres cosas distintas y solo la última es un archivo que desapareció.
+ */
+function anclaDeLaRecepcion(apiJs, panel) {
+  return {
+    helperEnApiJs: /export const receivePurchaseOrder\s*=/.test(apiJs),
+    rutaEnApiJs: /\/suppliers\/orders\/.*\/receive/.test(apiJs),
+    llamadorEnElPanel: implementacionesDeRecepcion(DUENO_DE_LA_RECEPCION, panel).length > 0,
+  }
+}
+
+// ── Las dos muestras sintéticas ──
+//
+// La mala es la forma que tenía `PurchaseOrders.jsx` antes de T1237: la
+// pantalla con su propio estado de cantidades y su propia llamada. La buena es
+// una pantalla que hace todo lo que una pantalla tiene que poder hacer —listar
+// órdenes, abrir el panel, pasarle props— sin implementar ninguna recepción.
+
+const MUESTRA_RECEPCION_MALA = `
+import { receivePurchaseOrder } from '@/services/api'
+
+export default function OrdenesDeCompra() {
+  const [receiveForm, setReceiveForm] = useState({})
+
+  const handleReceive = async (order) => {
+    await receivePurchaseOrder(order.id, Object.entries(receiveForm))
+    cargarOrdenes()
+  }
+
+  return <Boton onClick={() => handleReceive(orden)}>Confirmar</Boton>
+}
+`
+
+const MUESTRA_RECEPCION_BUENA = `
+import { getPurchaseOrders } from '@/services/api'
+import PanelOrdenDeCompra from '@/components/PanelOrdenDeCompra'
+
+export default function OrdenesDeCompra() {
+  const [ordenAbierta, setOrdenAbierta] = useState(null)
+  const [modo, setModo] = useState('detalle')
+
+  return (
+    <>
+      <Fila onClick={() => { setOrdenAbierta(orden); setModo('detalle') }}>{orden.id}</Fila>
+      <BotonDeFila onClick={() => { setOrdenAbierta(orden); setModo('recepcion') }}>Recibir</BotonDeFila>
+      <PanelOrdenDeCompra orden={ordenAbierta} modo={modo} onRecibida={recargar} />
+    </>
+  )
+}
+`
+
+describe('La recepción es UN solo componente, usado por las dos pantallas', () => {
+  const archivos = ['pages', 'components'].flatMap(jsxDeLaCarpeta)
+  const API_JS = fs.readFileSync(path.join(SRC, 'services/api.js'), 'utf8')
+  const panel = archivos.find((a) => a.nombre === DUENO_DE_LA_RECEPCION)
+
+  it('el detector encuentra la segunda implementación y la nombra con archivo y línea', () => {
+    const hallazgos = implementacionesDeRecepcion('muestra/mala.jsx', MUESTRA_RECEPCION_MALA)
+
+    // Dos: el `import` y la llamada. Las dos son el mismo defecto y las dos
+    // tienen que salir con su número de línea, porque el que arregla busca por
+    // línea y no por archivo.
+    expect(hallazgos).toHaveLength(2)
+    expect(hallazgos[0]).toContain('muestra/mala.jsx:2')
+    expect(hallazgos[1]).toContain('muestra/mala.jsx:8')
+  })
+
+  it('el detector NO se queja de una pantalla que solo abre el panel', () => {
+    // Sin esto, la guardia podría estar prohibiendo que una pantalla nombre una
+    // orden, y la salida barata sería aflojarla. Una pantalla lista órdenes,
+    // filtra, abre el panel en modo recepción y le pasa props: nada de eso es
+    // implementar la recepción.
+    expect(implementacionesDeRecepcion('muestra/buena.jsx', MUESTRA_RECEPCION_BUENA)).toEqual([])
+  })
+
+  it('la implementación legítima sigue estando donde dice estar', () => {
+    // **El ancla.** Lo que sigue abajo cuenta ausencias, y contar ausencias
+    // sobre un archivo que ya no llama a nada da cero igual que sobre uno
+    // impecable.
+    expect(panel).toBeDefined()
+    expect(anclaDeLaRecepcion(API_JS, panel.contenido)).toEqual({
+      helperEnApiJs: true,
+      rutaEnApiJs: true,
+      llamadorEnElPanel: true,
+    })
+  })
+
+  it('el ancla se pone en rojo si mañana renombran receivePurchaseOrder', () => {
+    // La mutación, escrita como caso en vez de dejada en la memoria de quien la
+    // corrió una vez: se renombra el helper en memoria —en `api.js` y en el
+    // panel— y el ancla tiene que dejar de encontrarlo. Si este caso pasara con
+    // el renombre puesto, el ancla no estaría mirando nada y la guardia entera
+    // sería una lista vacía comparada contra otra lista vacía.
+    const renombrado = (texto) => texto.replace(/receivePurchaseOrder/g, 'recibirOrdenDeCompra')
+
+    expect(anclaDeLaRecepcion(renombrado(API_JS), renombrado(panel.contenido))).toEqual({
+      helperEnApiJs: false,
+      rutaEnApiJs: true, // la ruta no cambia de nombre: por eso son tres campos
+      llamadorEnElPanel: false,
+    })
+  })
+
+  it('ninguna page tiene su propia recepción: el panel es el único que la implementa', () => {
+    const otros = archivos
+      .filter((a) => a.nombre !== DUENO_DE_LA_RECEPCION)
+      .flatMap((a) => implementacionesDeRecepcion(a.nombre, a.contenido))
+
+    expect(otros).toEqual([])
+  })
+})
+
 describe('Los componentes del punto de venta no tienen su propio estado global', () => {
   const archivos = jsxDeLaCarpeta('components/pos')
 

@@ -1,9 +1,26 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, within, fireEvent, act } from '@testing-library/react'
 import { toast } from 'sonner'
+import * as XLSX from 'xlsx'
 import api from '@/services/api'
 import useStore from '@/store/useStore'
+import { pesos } from '@/utils/formato'
 import Orders from '@/pages/Orders'
+
+/**
+ * De `xlsx` se reemplaza UNA función: la que toca el disco.
+ *
+ * ⚠ Es un `vi.mock` y no un `vi.spyOn` por una limitación de ESM, no por gusto:
+ * el namespace de un módulo no es configurable y `vi.spyOn(XLSX, 'writeFile')`
+ * termina en «Cannot redefine property». `utils` sigue siendo el de verdad, así
+ * que la hoja que se inspecciona la armó `armarHoja` y la ensambló `xlsx`: lo
+ * único que no pasa es la descarga.
+ */
+vi.mock('xlsx', async (importarOriginal) => {
+  const original = await importarOriginal()
+
+  return { ...original, writeFile: vi.fn() }
+})
 
 // ════════════════════════════════════════════
 //  ADMINAPP · /proveedores, renderizado
@@ -176,6 +193,15 @@ function enriquecer(orden) {
 /** Todo lo que salió por la red, en orden. */
 let pedidos = []
 
+/**
+ * Los detalles cuya respuesta queda en el aire hasta que el caso la suelte.
+ *
+ * Es lo único con lo que se puede reproducir «la respuesta de la orden que ya
+ * cerré llega tarde»: con un doble que resuelve siempre en el acto, la carrera
+ * no existe y el caso pasaría con y sin el arreglo.
+ */
+let soltarDetalle = {}
+
 const respuesta = (data) => Promise.resolve({ data })
 
 async function montar({
@@ -183,6 +209,8 @@ async function montar({
   movimientos = MOVIMIENTOS,
   totalDeMovimientos = movimientos.length,
   ordenes = [],
+  // Los ids cuyo detalle no responde hasta que el caso llame a `soltarDetalle`.
+  detallesDemorados = [],
   documentos = [],
   // Lo que devuelve `GET /suppliers/:id/movimientos/export`. Un objeto con
   // `response` adentro se dobla como RECHAZO, que es la forma en que axios
@@ -205,7 +233,15 @@ async function montar({
     }
 
     const detalle = ordenes.find((o) => url === `/suppliers/orders/${o.id}`)
-    if (detalle) return respuesta({ ok: true, data: enriquecer(detalle) })
+    if (detalle) {
+      const cuerpo = { ok: true, data: enriquecer(detalle) }
+
+      if (detallesDemorados.includes(detalle.id)) {
+        return new Promise((listo) => { soltarDetalle[detalle.id] = () => listo({ data: cuerpo }) })
+      }
+
+      return respuesta(cuerpo)
+    }
 
     if (/^\/suppliers\/\d+\/movimientos\/export$/.test(url)) {
       if (exportacion?.response) return Promise.reject(exportacion)
@@ -256,6 +292,13 @@ async function elegir(nombre) {
 /** El panel lateral de la orden, mientras está abierto. */
 const panel = () => document.querySelector('[data-slot="sheet-content"]')
 
+/** Cierra el panel con su botón de cerrar. */
+async function cerrarPanel() {
+  await act(async () => {
+    fireEvent.click(within(panel()).getByRole('button', { name: 'Close' }))
+  })
+}
+
 /** El diálogo abierto, que base-ui dibuja en un portal. */
 const dialogo = () => document.querySelector('[data-slot="dialog-content"]')
 
@@ -297,7 +340,7 @@ async function enviar(titulo) {
   })
 }
 
-beforeEach(() => { pedidos = [] })
+beforeEach(() => { pedidos = []; soltarDetalle = {} })
 afterEach(() => { vi.restoreAllMocks() })
 
 // ════════════════════════════════════════════
@@ -609,6 +652,63 @@ describe('Las órdenes del proveedor abren el panel compartido (T1242)', () => {
     expect(pedidos.filter((p) => p.url === '/suppliers/orders/118')).toHaveLength(1)
     expect(pedidos.filter((p) => p.url === '/suppliers/orders/112')).toHaveLength(0)
     expect(within(panel()).getByText(/Colágeno 300g/)).toBeInTheDocument()
+  })
+})
+
+// ════════════════════════════════════════════
+//  B3 · Un detalle en vuelo no se apodera del panel
+//
+//  `setOrdenAbierta(res.data.data)` salía sin contador, sin `AbortController` y
+//  sin comparar contra el id vigente, acá y en `pages/PurchaseOrders.jsx`. Abrir
+//  la A, cerrarla y abrir la B dejaba la B dibujada hasta que llegaba la
+//  respuesta de la A —tarde— y el panel se rehacía como A: se pierde lo tipeado,
+//  porque el `useEffect` de reseteo del panel borra las cantidades en el mismo
+//  commit, y se queda mirando una orden que nadie pidió.
+// ════════════════════════════════════════════
+
+describe('La respuesta vieja del detalle no se apodera del panel (B3)', () => {
+  /** Las dos filas del bloque de órdenes, agarradas antes de abrir nada. */
+  function filasDeOrden() {
+    const buscar = (numero) =>
+      within(bloque('Órdenes de compra')).getByText(numero).closest('[style*="grid-template-columns"]')
+
+    return { primera: buscar('#112'), segunda: buscar('#118') }
+  }
+
+  it('abrir la #112, cerrarla y abrir la #118 deja la #118 aunque la #112 conteste tarde', async () => {
+    await montar({ ordenes: [PRIMERA_PENDIENTE, SEGUNDA_PENDIENTE], detallesDemorados: [112] })
+    await elegir('Distribuidora Norte')
+
+    const { primera, segunda } = filasDeOrden()
+
+    await act(async () => { fireEvent.click(primera) })   // la #112 queda en el aire
+    await cerrarPanel()
+    await act(async () => { fireEvent.click(segunda) })    // la #118 contesta en el acto
+
+    expect(within(panel()).getByText('#118')).toBeInTheDocument()
+
+    // Y ahora contesta la #112, tarde.
+    await act(async () => { soltarDetalle[112]() })
+
+    expect(within(panel()).getByText('#118')).toBeInTheDocument()
+    expect(within(panel()).queryByText('#112')).toBeNull()
+  })
+
+  it('la que SÍ se está esperando se dibuja igual que siempre', async () => {
+    // La otra mitad: sin ella, descartar todas las respuestas pasaría el caso de
+    // arriba y el panel no mostraría nunca ninguna orden.
+    await montar({ ordenes: [PRIMERA_PENDIENTE, SEGUNDA_PENDIENTE], detallesDemorados: [112] })
+    await elegir('Distribuidora Norte')
+
+    const { primera } = filasDeOrden()
+
+    await act(async () => { fireEvent.click(primera) })
+
+    expect(within(panel()).queryByText('#112')).toBeNull()
+
+    await act(async () => { soltarDetalle[112]() })
+
+    expect(within(panel()).getByText('#112')).toBeInTheDocument()
   })
 })
 
@@ -1013,5 +1113,133 @@ describe('Exportar la cuenta corriente (T1247)', () => {
     expect(pedido.params).toEqual({})
 
     expect(aviso).toHaveBeenCalledWith('No se pudo exportar la cuenta de Distribuidora Norte.')
+  })
+
+  // ── El archivo que se bajó, y no solo la llamada que salió ──
+  //
+  // Los dos casos de arriba son los caminos de error, así que ninguno llega a
+  // armar la hoja. Lo que faltaba verificar es lo otro: que de la respuesta se
+  // use TODO lo que hace falta. `res.data.data` son las filas y
+  // `res.data.saldo_inicial` es el saldo con el que abre el período; leyendo
+  // solo lo primero, el archivo del contador arrancaba la cuenta en cero y
+  // cerraba en el neto del período —$22.000 sobre una cuenta que debía
+  // $122.000— mientras la pantalla mostraba el saldo entero.
+
+  /**
+   * La cuenta de Distribuidora Norte partida por un rango, tal como la devuelve
+   * `GET /suppliers/:id/movimientos/export?desde=…`.
+   *
+   * ⚠ **`saldo_inicial` no es cero, y es lo único que hace que el caso pueda
+   * ponerse en rojo.** Con un período que arranca en cero —que es como iban las
+   * doce fixtures del export— la hoja sale idéntica se pase el saldo anterior o
+   * se lo tire.
+   *
+   * 10.000 + 6.345,60 − 4.000 = 12.345,60, que es el `saldo` de la ficha y el
+   * número que la pantalla dibuja en grande.
+   */
+  const CON_RANGO = {
+    ok: true,
+    total: 2,
+    saldo_inicial: 10000,
+    saldo_final: 12345.6,
+    data: [
+      {
+        fecha: '2026-07-14',
+        tipo: 'Pedido',
+        descripcion: 'Recepción orden #118',
+        debe: 6345.6,
+        haber: 0,
+        saldo: 16345.6,
+        cuit: '30712345678',
+      },
+      {
+        fecha: '2026-07-28',
+        tipo: 'Pago',
+        descripcion: 'Transferencia',
+        debe: 0,
+        haber: 4000,
+        saldo: 12345.6,
+        cuit: '30712345678',
+      },
+    ],
+  }
+
+  /**
+   * La misma cuenta sin filtro de fechas: el archivo es la cuenta entera, así
+   * que no hay nada anterior y `saldo_inicial` vale cero.
+   */
+  const SIN_RANGO = {
+    ok: true,
+    total: 2,
+    saldo_inicial: 0,
+    saldo_final: 12345.6,
+    data: [
+      { ...CON_RANGO.data[0], debe: 16345.6, saldo: 16345.6 },
+      CON_RANGO.data[1],
+    ],
+  }
+
+  // La descarga no llega al disco (ver el `vi.mock` de arriba), pero el libro
+  // que se le pasó es el que se habría escrito.
+  beforeEach(() => { XLSX.writeFile.mockClear() })
+
+  /** La hoja de la cuenta corriente del libro que la pantalla mandó a bajar. */
+  const hojaBajada = () => XLSX.writeFile.mock.calls.at(-1)[0].Sheets['Cuenta corriente']
+
+  /** La columna, de la primera fila de datos —la 3— al final del `!ref`. */
+  function columna(hoja, letra) {
+    const ultima = XLSX.utils.decode_range(hoja['!ref']).e.r
+    const valores = []
+
+    for (let r = 2; r <= ultima; r += 1) valores.push(hoja[`${letra}${r + 1}`]?.v)
+
+    return valores
+  }
+
+  /** El saldo grande de la cuenta, tal como se lee en pantalla. */
+  const saldoEnPantalla = () =>
+    within(screen.getByText('Saldo pendiente').parentElement).getByText(/^\$/)
+
+  it('con rango, el archivo dice el saldo anterior y cierra en el saldo grande de la pantalla', async () => {
+    // US8 escenario 6. El archivo tiene que cerrar en el mismo número que la
+    // pantalla **y** explicar de dónde arranca: sin la fila de apertura, la
+    // primera muestra un saldo acumulado que no se deduce de su propio debe.
+    await montar({ exportacion: CON_RANGO })
+    await elegir('Distribuidora Norte')
+    await abrirExport()
+
+    await act(async () => {
+      const dialogo = dialogoTitulado('Exportar la cuenta')
+      fireEvent.change(within(dialogo).getByLabelText('Desde'), { target: { value: '2026-07-01' } })
+    })
+    await enviar('Exportar la cuenta')
+
+    const hoja = hojaBajada()
+    const saldos = columna(hoja, 'F')
+
+    // El saldo anterior que calculó la API llegó a la planilla.
+    expect(columna(hoja, 'C')[0]).toBe('Saldo anterior')
+    expect(saldos[0]).toBe(10000)
+
+    // Y la última fila es el saldo grande de la pantalla, escrito igual.
+    expect(saldoEnPantalla()).toHaveTextContent(`$${pesos(saldos.at(-1))}`)
+    expect(saldos.at(-1)).toBe(12345.6)
+  })
+
+  it('sin rango el archivo cierra en el mismo saldo y NO agrega una apertura', async () => {
+    // La otra mitad del escenario 6: la cuenta entera abre con la cuenta, así
+    // que una fila «Saldo anterior» acá sería un renglón inventado. Sin este
+    // caso, una apertura dibujada siempre pasaría el de arriba.
+    await montar({ exportacion: SIN_RANGO })
+    await elegir('Distribuidora Norte')
+    await abrirExport()
+    await enviar('Exportar la cuenta')
+
+    const hoja = hojaBajada()
+    const saldos = columna(hoja, 'F')
+
+    expect(columna(hoja, 'C')).not.toContain('Saldo anterior')
+    expect(saldoEnPantalla()).toHaveTextContent(`$${pesos(saldos.at(-1))}`)
+    expect(saldos.at(-1)).toBe(12345.6)
   })
 })

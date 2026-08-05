@@ -229,8 +229,26 @@ describe('La paginación de /ordenes-compra pide la página que se apretó', () 
     items: [{ product_id: 1, product_name: 'Colágeno 300g', quantity: 12, quantity_received: 0, unit_price: '1000' }],
   }
 
-  /** Las llamadas al listado, en orden. */
-  const listado = () => llamadas.filter((l) => l.url === '/suppliers/orders')
+  /**
+   * Las llamadas al LISTADO, en orden.
+   *
+   * Se filtra por `limit !== 1` porque la pantalla pide dos cosas distintas al
+   * mismo endpoint: el listado (`limit: 50`) y los cuatro contadores del
+   * segmentado (`limit: 1`, uno por segmento, que solo miran el `total`).
+   *
+   * Los contadores salen del servidor desde que se corrigio el defecto que los
+   * hacia contar la PAGINA cargada: un periodo con 40 recibidas repartidas en
+   * tres paginas mostraba «Recibidas 3». Mezclarlos aca haria que este caso
+   * cuente cinco llamadas donde lo que se afirma es una.
+   */
+  const listado = () => llamadas.filter(
+    (l) => l.url === '/suppliers/orders' && l.resto[0]?.params?.limit !== 1
+  )
+
+  /** Las cuatro consultas de conteo, que son las otras. */
+  const contadores = () => llamadas.filter(
+    (l) => l.url === '/suppliers/orders' && l.resto[0]?.params?.limit === 1
+  )
 
   afterEach(() => { vi.restoreAllMocks() })
 
@@ -250,6 +268,24 @@ describe('La paginación de /ordenes-compra pide la página que se apretó', () 
     // apretar «2» volvería a pedir las mismas cincuenta de siempre.
     expect(listado()).toHaveLength(2)
     expect(listado()[1].resto[0]).toEqual({ params: { limit: 50, offset: 50 } })
+  })
+
+  it('cambiar de página NO vuelve a pedir los cuatro contadores', async () => {
+    // Los contadores dependen del período y del segmento, no de la página: la
+    // cantidad de órdenes pendientes es la misma se esté mirando la página 1 o
+    // la 3. Si se recalcularan en cada clic, moverse por una lista de seis
+    // páginas costaría treinta consultas en vez de seis, todas para escribir
+    // los mismos cuatro números.
+    respuestas.set('/suppliers/orders', { ok: true, data: [ORDEN], total: 120 })
+
+    await act(async () => { render(React.createElement(PurchaseOrders)) })
+
+    const alMontar = contadores().length
+    expect(alMontar).toBeGreaterThan(0)
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '2' })) })
+
+    expect(contadores()).toHaveLength(alMontar)
   })
 })
 

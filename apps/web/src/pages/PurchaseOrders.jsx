@@ -1,15 +1,26 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import {
   getPurchaseOrders,
   getPurchaseOrder,
   cancelPurchaseOrder,
+  createSupplierOrder,
   getSuppliers,
+  getProducts,
 } from '@/services/api';
 import { useConfirmDialog } from '@/components/ConfirmDialog';
 import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid';
 import Pagination from '@/components/Pagination';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import PanelOrdenDeCompra, {
   EtiquetaDeEstado,
   BARRA_POR_TONO,
@@ -26,6 +37,7 @@ import {
   ChevronDown,
   ClipboardList,
   FilterX,
+  Plus,
 } from 'lucide-react';
 import {
   ESTADOS,
@@ -33,8 +45,6 @@ import {
   porcentajeRecibido,
   esRecibible,
   esAnulable,
-  filtrarOrdenes,
-  contadoresPorSegmento,
 } from '@/utils/ordenDeCompra';
 import { pesos, fechaCorta } from '@/utils/formato';
 import { mensajeDeError } from '@/utils/erroresDeApi';
@@ -86,18 +96,48 @@ import PageHeader from '@/components/PageHeader'
 //     era además la TERCERA copia de la lista de estados, y ahora es el
 //     segmentado, que sale de `SEGMENTOS`.
 //
-//  ── Qué filtra el servidor y qué filtra la pantalla ──
+//  ── Qué filtra el servidor: todo ──
 //
-//  El servidor pagina y acota por fechas (`limit`, `offset`, `from`, `to`); el
-//  segmento y la búsqueda filtran **la página cargada**, con `filtrarOrdenes`.
-//  No es una omisión: el contador de cada segmento (FR-008) tiene que salir de
-//  la misma función que arma la lista —un contador que dice 12 sobre una lista
-//  de 3 hace concluir que la pantalla se come filas—, y eso solo se puede si
-//  las dos cosas miran el mismo arreglo. La consecuencia, y queda escrita
-//  porque la spec no la decidió: con más de una página, buscar «Norte»
-//  encuentra las órdenes de Norte **de la página que se está mirando**. El día
-//  que moleste, lo que corresponde es una búsqueda del lado del servidor
-//  (`q` en `GET /suppliers/orders`), no contar de un lado y filtrar del otro.
+//  ⚠⚠ **El segmento lo filtra el SERVIDOR.** Hasta la verificación adversarial
+//  del hito 6 no: se mandaban solo `limit`, `offset`, `from` y `to`, y el
+//  segmento se aplicaba con `filtrarOrdenes` sobre las 50 filas cargadas. Con
+//  120 órdenes y 50 por página, elegir «Recibidas» daba contador 0 y lista
+//  vacía **mientras el encabezado decía «Órdenes 120»** y la paginación seguía
+//  ofreciendo «1 · 2 · 3»: `total` y `totalPaginas` salen del servidor y el
+//  servidor no sabía nada del segmento. Es la segunda mitad de FR-022 —«el
+//  total mostrado tiene que ser coherente con lo que se puede alcanzar»— y el
+//  contrato ya ofrecía `status` desde T1212; la pantalla había dejado de usarlo.
+//
+//  El contador de cada segmento (FR-008) sale AHORA del `total` de una consulta
+//  por segmento y no de contar el arreglo cargado. El motivo es el mismo: un
+//  contador que cuenta la página dice «Recibidas 3» cuando hay 40, y con el
+//  segmento del lado del servidor diría directamente 0 para los tres segmentos
+//  que no están elegidos. Son tres consultas más con `limit: 1` y se piden solo
+//  cuando cambia el período o la búsqueda —o cuando algo pudo moverlas—.
+//
+//  ⚠⚠ **Y la búsqueda también viaja**, desde que `GET /suppliers/orders` acepta
+//  `q` (FR-009). Antes no: el endpoint aceptaba `supplier_id`, `status`, `from`,
+//  `to`, `limit` y `offset`, y la búsqueda se aplicaba con `filtrarOrdenes`
+//  sobre las 50 filas cargadas. Con más de una página eso era un **falso
+//  negativo**: buscar «77» —una orden que existe, en la página 2— respondía
+//  «ninguna orden coincide con el filtro» y la red ni se tocaba. Un aviso que
+//  afirma algo que no es cierto hace cerrar la búsqueda y dar la orden por
+//  perdida, que es el peor final posible para un buscador.
+//
+//  El parche anterior fue **decirlo** —un tercer estado vacío, «ninguna de esta
+//  página», y una línea en el encabezado con sobre cuántas se estaba buscando—.
+//  Era honesto y no hacía falta más que eso mientras la API no aceptara `q`;
+//  ahora la acepta, y ese andamio **se sacó**: el `total` del encabezado, las
+//  páginas, los contadores y las filas salen todos de la misma consulta, así que
+//  no hay nada que aclarar. Dejarlo puesto sería una pantalla disculpándose por
+//  algo que ya no pasa, que es como se enseña a ignorar los avisos.
+//
+//  La comparación es **sin acentos**, la misma de `GET /suppliers` (FR-059):
+//  buscar «Norte» y «norté» da lo mismo en las dos pantallas porque las dos
+//  preguntan lo mismo, no porque dos implementaciones coincidan.
+//
+//  Escribir NO dispara una consulta por tecla: hay un rebote de
+//  `ESPERA_DE_BUSQUEDA`, igual que en `pages/Orders.jsx`.
 //
 //  Reglas: docs/REGLAS-DISENO.md. Referencia viva: pages/Comparador.jsx.
 // ════════════════════════════════════════════
@@ -137,6 +177,16 @@ const LIMITE_DE_PROVEEDORES = 200;
 const FILAS_POR_PAGINA = 50;
 
 /**
+ * Cuánto se espera después de la última tecla antes de preguntarle al servidor.
+ *
+ * La búsqueda la resuelve `GET /suppliers/orders?q=` (FR-009), así que sin
+ * rebote escribir «Distribuidora» son trece consultas, y la respuesta que llega
+ * última no tiene por qué ser la de la última tecla. Es el mismo número que
+ * `pages/Orders.jsx`, que resuelve su buscador contra el mismo tipo de endpoint.
+ */
+const ESPERA_DE_BUSQUEDA = 250;
+
+/**
  * Lo que dice el botón de fechas cuando está cerrado (FR-010).
  *
  * El período vigente va escrito ADENTRO del botón y no en un texto al lado: un
@@ -144,6 +194,49 @@ const FILAS_POR_PAGINA = 50;
  * fechas dice «Todo el período», que es la única forma de que el botón afirme
  * algo cuando no filtra nada.
  */
+/**
+ * El `status` que le corresponde a un segmento del lado del servidor.
+ *
+ * Sale de `SEGMENTOS` y no de un `switch` escrito acá: la lista de estados
+ * llegó a estar escrita tres veces en esta pantalla y cada copia se separó de
+ * las otras (FR-107).
+ *
+ * «Todas» devuelve `null`, y eso es FR-020: «todos» es la **ausencia** del
+ * parámetro, nunca un valor centinela. El día que un segmento agrupe dos
+ * estados esta función devuelve `null` en vez de mandar el primero —mostrar de
+ * más es recuperable; mostrar de menos se lee como «faltan órdenes»—.
+ */
+function estadoDelSegmento(clave) {
+  const estados = SEGMENTOS.find((s) => s.clave === clave)?.estados;
+
+  return estados?.length === 1 ? estados[0] : null;
+}
+
+/**
+ * La fecha de hoy como `AAAA-MM-DD`, leída en la zona horaria del usuario.
+ *
+ * **No** es `new Date().toISOString().slice(0, 10)`: eso pasa por UTC, así que
+ * en Argentina (UTC−3) toda la tarde del día 5 se guardaría como día 6 y la
+ * orden aparecería en el día equivocado del período.
+ *
+ * ⚠ Es la MISMA función que `pages/Orders.jsx` tiene al pie, y dos copias de
+ * algo así es cómo una se arregla y la otra no. Su lugar es
+ * `utils/formato.js`, al lado de `fechaCorta`; mudarla es tocar un archivo que
+ * esta corrección no tiene alcance para tocar, y queda anotado.
+ */
+function fechaDeHoy() {
+  const ahora = new Date();
+  const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+  const dia = String(ahora.getDate()).padStart(2, '0');
+
+  return `${ahora.getFullYear()}-${mes}-${dia}`;
+}
+
+/** Una línea vacía del alta de una orden. */
+function lineaVacia() {
+  return { product_id: '', product_name: '', quantity: 1, unit_price: '' };
+}
+
 function etiquetaDelPeriodo(desde, hasta) {
   if (desde && hasta) return `${fechaCorta(desde)} – ${fechaCorta(hasta)}`;
   if (desde) return `Desde ${fechaCorta(desde)}`;
@@ -177,6 +270,14 @@ function CampoDeFecha({ etiqueta, valor, onChange }) {
  * para los dos manda a cargar una orden que ya existe, o hace buscar un filtro
  * que no está puesto. Por eso el segundo además dice **qué sacar** y trae el
  * botón que lo saca: enumerar el problema sin la salida es la mitad del aviso.
+ *
+ * ⚠ **Hubo un tercero y se fue con este corte**, y conviene que quede escrito
+ * para que nadie lo reponga. Decía «Ninguna orden de esta página coincide» y
+ * existía porque `GET /suppliers/orders` no aceptaba `q`: la búsqueda miraba las
+ * 50 filas cargadas, así que «ninguna coincide» era mentira cuando la orden
+ * estaba en otra página. Desde que `q` viaja (FR-009), la lista vacía significa
+ * lo que dice —el servidor no encontró ninguna— y aclarar sobre cuántas se buscó
+ * sería una pantalla disculpándose por algo que ya no pasa.
  */
 function EstadoVacio({ hayFiltro, onLimpiar }) {
   if (hayFiltro) {
@@ -345,16 +446,59 @@ const PurchaseOrders = () => {
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
 
-  // Lo que filtra el SERVIDOR: el período. Los dos campos van juntos en un
-  // objeto porque se mandan juntos y se limpian juntos.
+  // Los tres filtros, y **los tres los resuelve el servidor**: el período, el
+  // segmento y la búsqueda. Los dos campos del período van juntos en un objeto
+  // porque se mandan juntos y se limpian juntos.
   const [periodo, setPeriodo] = useState({ from: '', to: '' });
   const [periodoAbierto, setPeriodoAbierto] = useState(false);
-
-  // Lo que filtra la PANTALLA sobre la página cargada (ver el encabezado).
   const [segmento, setSegmento] = useState('todas');
+
+  /**
+   * Lo que se está tipeando, y lo que ya se le preguntó al servidor.
+   *
+   * Son DOS estados y no uno porque la búsqueda viaja con rebote: `busqueda` es
+   * el campo —se dibuja tecla a tecla— y `filtro` es lo que sale por la red. Con
+   * uno solo, cada tecla es una consulta.
+   */
   const [busqueda, setBusqueda] = useState('');
+  const [filtro, setFiltro] = useState('');
+
+  /**
+   * Cuántas órdenes tiene cada segmento en el período, según el SERVIDOR.
+   *
+   * Vacío mientras no se pudieron traer, y el botón dibuja «—» en vez de un
+   * cero: «Recibidas 0» sobre una empresa que tiene cuarenta suena a dato y es
+   * peor que no decir nada. Es la misma regla que `queSeLleva()` en
+   * `pages/Orders.jsx`.
+   */
+  const [contadores, setContadores] = useState({});
 
   const [pagina, setPagina] = useState(1);
+
+  // ── El alta de una orden (decisión 5 de la spec) ──
+  const [altaAbierta, setAltaAbierta] = useState(false);
+  const [formAlta, setFormAlta] = useState({ supplier_id: '', date: fechaDeHoy(), notes: '' });
+  const [lineasDelAlta, setLineasDelAlta] = useState([lineaVacia()]);
+  const [productos, setProductos] = useState([]);
+  // El candado del envío es estado y no `ref` porque además deshabilita el
+  // botón: acá el `submit` de un formulario no puede dispararse dos veces en el
+  // mismo tick como sí pasaba con los dos clics de la recepción.
+  const [creando, setCreando] = useState(false);
+
+  /**
+   * Cuál fue el último detalle que se pidió.
+   *
+   * ⚠ Sin esto, un `GET /suppliers/orders/:id` en vuelo se apoderaba del panel:
+   * abrir la A, cerrarla y abrir la B dejaba la B dibujada hasta que llegaba la
+   * respuesta de la A —tarde— y el panel se rehacía como A. El daño es doble:
+   * se pierde lo tipeado, porque el `useEffect` de reseteo del panel borra las
+   * cantidades en el mismo commit, y se queda mirando una orden que nadie pidió.
+   *
+   * Es un contador y no un `AbortController` porque lo que hay que descartar es
+   * la RESPUESTA vieja, no ahorrar la consulta: `services/api.js` no expone el
+   * `signal` y agregárselo es tocar el cliente que usan todas las pantallas.
+   */
+  const pedidoDeDetalle = useRef(0);
 
   /** El teléfono con el que se le manda la orden al proveedor por WhatsApp. */
   const telefonoDe = useCallback(
@@ -381,6 +525,19 @@ const PurchaseOrders = () => {
       if (periodo.from) params.from = periodo.from;
       if (periodo.to) params.to = periodo.to;
 
+      // ⚠ El segmento viaja. Filtrarlo acá sobre las 50 filas cargadas dejaba
+      // `total` y `totalPaginas` hablando de otra cosa: «Recibidas» daba lista
+      // vacía con el encabezado en «Órdenes 120» y tres botones de página
+      // ofrecidos (FR-022).
+      const estado = estadoDelSegmento(segmento);
+      if (estado) params.status = estado;
+
+      // ⚠ Y la búsqueda también (FR-009). Filtrarla acá sobre las 50 filas
+      // cargadas era un falso negativo: buscar «77» sobre una orden que existe
+      // en la página 2 respondía «ninguna coincide» sin tocar la red. Por
+      // PRESENCIA, como todo lo demás: sin texto no viaja el parámetro.
+      if (filtro) params.q = filtro;
+
       const res = await getPurchaseOrders(params);
       setOrders(res.data.data || []);
       setTotal(res.data.total || 0);
@@ -393,40 +550,125 @@ const PurchaseOrders = () => {
     } finally {
       setLoading(false);
     }
-  }, [pagina, periodo.from, periodo.to]);
+  }, [pagina, periodo.from, periodo.to, segmento, filtro]);
 
-  // Cambiar de página o de período vuelve a pedir. El segmento y la búsqueda
-  // NO: filtran lo que ya está cargado, así que escribir en el buscador no
-  // dispara una consulta por tecla (US1 escenario 10, «sin recargar»).
+  /**
+   * Los cuatro contadores del segmentado (FR-008), contados por el servidor.
+   *
+   * ⚠ **No se cuentan sobre la página cargada.** Antes sí, y decía «Recibidas 3»
+   * cuando había 40: contaba las que entraban en las 50 filas de la página que
+   * se estaba mirando. Y desde que el segmento viaja al servidor sería peor
+   * todavía —la página trae un solo estado, así que los otros tres darían 0—.
+   *
+   * Son cuatro consultas de `limit: 1`, que es lo mínimo que hace falta para
+   * leer el `total`: el endpoint no devuelve un conteo por estado. No dependen
+   * de la página ni del segmento, así que salen solo cuando cambia el período o
+   * la búsqueda —o cuando algo las pudo mover: recibir, anular o crear—.
+   *
+   * ⚠ **La búsqueda entra en los cuatro.** Es la misma exigencia de FR-022 que
+   * obligó a mandar el segmento: con «Norte» escrito, un contador que dijera
+   * «Pendientes 62» sobre una lista de tres se lee como que la pantalla se come
+   * filas. Los cuatro números y el badge de arriba tienen que contestar la misma
+   * pregunta.
+   */
+  const fetchContadores = useCallback(async () => {
+    const delPeriodo = {
+      ...(periodo.from ? { from: periodo.from } : {}),
+      ...(periodo.to ? { to: periodo.to } : {}),
+      ...(filtro ? { q: filtro } : {}),
+    };
+
+    try {
+      const respuestas = await Promise.all(
+        SEGMENTOS.map((s) => {
+          const estado = estadoDelSegmento(s.clave);
+
+          return getPurchaseOrders({ limit: 1, ...delPeriodo, ...(estado ? { status: estado } : {}) });
+        })
+      );
+
+      setContadores(
+        Object.fromEntries(SEGMENTOS.map((s, i) => [s.clave, respuestas[i].data.total || 0]))
+      );
+    } catch {
+      // El aviso lo da `fetchOrders`, que salió con los mismos filtros y falla
+      // por lo mismo: dos toasts por una sola caída de red enseñan a cerrarlos
+      // sin leerlos. Acá lo único que corresponde es no dejar un número inventado.
+      setContadores({});
+    }
+  }, [periodo.from, periodo.to, filtro]);
+
+  /** Todo lo que hay que volver a pedir cuando una orden cambió de estado. */
+  const recargar = useCallback(() => {
+    fetchOrders();
+    fetchContadores();
+  }, [fetchOrders, fetchContadores]);
+
+  /**
+   * El rebote del buscador: lo tipeado se convierte en filtro cuando la persona
+   * frena (US1 escenario 10, «sin recargar» por tecla).
+   *
+   * Vuelve a la página 1 en el mismo paso. Buscar desde la página 3 y quedarse
+   * en la 3 pide un `offset` de 100 sobre una lista de dos y devuelve cero
+   * filas: se lee como «esa orden no existe», que es el mismo falso negativo que
+   * esta corrección vino a cerrar, por otro camino.
+   */
+  useEffect(() => {
+    // ⚠ Si lo tipeado ya es lo que se le preguntó al servidor no hay rebote que
+    // esperar, y esa salida NO es una optimización: sin ella el montaje deja un
+    // temporizador armado que 250 ms después escribe `setPagina(1)`. Apretar «2»
+    // en ese cuarto de segundo devolvía la lista sola a la página 1, y lo que se
+    // ve es una paginación que se ignora a sí misma cada tanto.
+    if (busqueda.trim() === filtro) return undefined;
+
+    const reloj = setTimeout(() => {
+      setFiltro(busqueda.trim());
+      setPagina(1);
+    }, ESPERA_DE_BUSQUEDA);
+
+    return () => clearTimeout(reloj);
+  }, [busqueda, filtro]);
+
+  // Cambiar de página, de período, de segmento o de búsqueda vuelve a pedir: los
+  // cuatro filtros los resuelve el servidor, así que la lista dibujada es
+  // exactamente lo que él devolvió.
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  useEffect(() => { fetchContadores(); }, [fetchContadores]);
 
   useEffect(() => {
     // ⚠ El límite explícito no es de más. `GET /suppliers` pasó a paginar de a
     // 50 (T1215) y de acá sale el teléfono al que se le manda la orden por
     // WhatsApp: con 60 proveedores cargados, a los últimos 10 se les abría
     // WhatsApp **sin destinatario** y el aviso culpaba a un teléfono que sí
-    // estaba cargado. El `.catch(() => {})` hacía que ni siquiera se notara.
-    getSuppliers({ limit: LIMITE_DE_PROVEEDORES }).then(res => setSuppliers(res.data.data || [])).catch(() => {});
+    // estaba cargado.
+    //
+    // ⚠⚠ Y el `.catch(() => {})` que había acá es lo que hacía que el aviso
+    // acusara al dato equivocado: con un 403, un 500 o la red caída la lista de
+    // proveedores quedaba vacía **en silencio**, `telefonoDe` devolvía `null`
+    // para todos, y lo único que el usuario leía era «el proveedor no tiene
+    // teléfono cargado» sobre proveedores que sí lo tienen. Los interceptores de
+    // `services/api.js` no compensan: los cuatro caminos terminan en un
+    // `Promise.reject` sin toast.
+    getSuppliers({ limit: LIMITE_DE_PROVEEDORES })
+      .then((res) => setSuppliers(res.data.data || []))
+      .catch((err) => {
+        toast.error(mensajeDeError(
+          err,
+          'No se pudo cargar la lista de proveedores: los envíos por WhatsApp pueden salir sin destinatario.'
+        ));
+      });
   }, []);
-
-  // El segmento y la búsqueda, sobre la página cargada. Los contadores salen de
-  // la MISMA función que arma la lista: si se contaran aparte, un contador que
-  // dice 12 sobre una lista de 3 hace concluir que la pantalla se come filas.
-  const visibles = useMemo(
-    () => filtrarOrdenes(orders, { segmento, busqueda }),
-    [orders, segmento, busqueda]
-  );
-
-  const contadores = useMemo(
-    () => contadoresPorSegmento(orders, { busqueda }),
-    [orders, busqueda]
-  );
 
   const totalPaginas = Math.max(1, Math.ceil(total / FILAS_POR_PAGINA));
 
   // Con algo puesto, una lista vacía significa «el filtro no devolvió ninguna»
   // y no «todavía no hay órdenes» (FR-011). Son dos cosas distintas y el texto
   // que las confunde manda a cargar una orden que ya existe.
+  //
+  // Mira `busqueda` y no `filtro`: mientras corre el rebote hay texto escrito en
+  // el campo, y el estado vacío no puede decir «todavía no hay órdenes» sobre
+  // una búsqueda que la persona está viendo tipeada.
   const hayFiltro = busqueda.trim() !== '' || segmento !== 'todas' || !!periodo.from || !!periodo.to;
 
   /** Vuelve a la primera página: filtrar y quedarse en la 3 es una lista vacía. */
@@ -435,8 +677,26 @@ const PurchaseOrders = () => {
     setPagina(1);
   };
 
+  /**
+   * Cambiar de segmento vuelve a la página 1.
+   *
+   * No es cosmético desde que el segmento viaja: estar en la página 3 de
+   * «Todas» y pasar a «Parciales» pediría el `offset` 100 de una lista de 4 y
+   * devolvería cero filas, que se lee como «no hay parciales».
+   */
+  const cambiarSegmento = (clave) => {
+    setSegmento(clave);
+    setPagina(1);
+  };
+
   const limpiarFiltros = () => {
     setBusqueda('');
+    // ⚠ El filtro se limpia **junto con el campo** y no esperando el rebote. Con
+    // solo `setBusqueda('')`, el botón deja la lista filtrada un cuarto de
+    // segundo más: se aprieta «Limpiar filtros», no pasa nada visible, y se
+    // aprieta de nuevo. Y de paso ahorra la consulta intermedia con el filtro
+    // viejo, que es una respuesta que nadie va a mirar.
+    setFiltro('');
     setSegmento('todas');
     setPeriodo({ from: '', to: '' });
     setPagina(1);
@@ -457,6 +717,10 @@ const PurchaseOrders = () => {
    * apretar.
    */
   const abrirOrden = async (id, modo = 'detalle') => {
+    // El número de ESTE pedido. Todo lo que llegue después de que el contador
+    // haya avanzado es una respuesta de una orden que ya no está abierta.
+    const miPedido = ++pedidoDeDetalle.current;
+
     setOrdenAbierta(null);
     setModoDelPanel(modo);
     setPanelAbierto(true);
@@ -464,22 +728,50 @@ const PurchaseOrders = () => {
 
     try {
       const res = await getPurchaseOrder(id);
+
+      // ⚠ Sin esta comparación, abrir la A, cerrarla y abrir la B dejaba el
+      // panel dibujando la B hasta que llegaba la A —tarde— y se rehacía como A,
+      // con las cantidades tipeadas borradas por el reseteo del panel.
+      if (pedidoDeDetalle.current !== miPedido) return;
+
       setOrdenAbierta(res.data.data);
     } catch (err) {
+      // El error de una orden que ya no está abierta tampoco se muestra: el
+      // usuario leería «No se pudo abrir la orden #601» mirando la #602.
+      if (pedidoDeDetalle.current !== miPedido) return;
+
       toast.error(mensajeDeError(err, `No se pudo abrir la orden #${id}.`));
       setPanelAbierto(false);
     } finally {
-      setCargandoDetalle(false);
+      if (pedidoDeDetalle.current === miPedido) setCargandoDetalle(false);
     }
   };
 
+  /**
+   * Abrir y cerrar el panel.
+   *
+   * Cerrar INVALIDA el detalle en vuelo: si no, la respuesta de la orden que se
+   * acaba de cerrar llega después y vuelve a llenar `ordenAbierta`, que es el
+   * estado con el que se reabre el panel la próxima vez.
+   */
+  const cambiarPanel = (abierto) => {
+    if (!abierto) pedidoDeDetalle.current += 1;
+    setPanelAbierto(abierto);
+  };
+
   const handleCancel = async (id) => {
-    const ok = await confirm('¿Anular esta orden de compra?');
+    // ⚠ Dice el número y qué NO se deshace ([PENDIENTE 9]). «¿Anular esta orden
+    // de compra?» no alcanza por dos motivos: se puede llegar acá desde el menú
+    // de una fila cualquiera —así que «esta» no identifica nada— y anular una
+    // orden a medias **deja viva la deuda de lo ya recibido**, porque la
+    // mercadería llegó y se debe. Es la misma frase que `pages/Orders.jsx`, para
+    // que las dos pantallas no expliquen lo mismo de dos maneras.
+    const ok = await confirm(`¿Anular la orden #${id}? Lo que ya se recibió sigue debiéndose.`);
     if (!ok) return;
 
     try {
       await cancelPurchaseOrder(id);
-      fetchOrders();
+      recargar();
       setPanelAbierto(false);
     } catch (err) {
       // «La orden ya fue recibida completa» llega como 409 con su mensaje desde
@@ -489,12 +781,124 @@ const PurchaseOrders = () => {
     }
   };
 
+  /**
+   * Crea una orden desde esta pantalla (decisión 5 de la spec, US1 escenario 1).
+   *
+   * ⚠ El botón «Nueva orden» que dibuja la maqueta (`:640`) **no existía**: la
+   * spec lo resolvió a favor de la maqueta —«es la ubicación natural: crear una
+   * orden de compra en la pantalla de órdenes de compra»— y se perdió entre la
+   * spec y el plan, que no lo tiene en ninguna de las 54 tareas. Hasta acá,
+   * `createSupplierOrder` se llamaba desde UN solo lugar de todo `apps/web`: el
+   * modal de `/proveedores`. Quien entraba a `/ordenes-compra` a cargar un
+   * pedido tenía que descubrir que se hacía en otra pantalla.
+   *
+   * El proveedor es obligatorio y sale del desplegable: la orden se crea contra
+   * `POST /suppliers/:id/orders`, así que sin él no hay a dónde mandarla.
+   */
+  const crearOrden = async (e) => {
+    e.preventDefault();
+    if (creando) return;
+
+    const proveedor = Number(formAlta.supplier_id);
+    if (!Number.isInteger(proveedor) || proveedor <= 0) {
+      toast.error('Elegí a qué proveedor le estás pidiendo la mercadería.');
+      return;
+    }
+
+    // Una línea sin nombre o sin cantidad no es una línea: mandarla escribe un
+    // `detail` con un ítem que después nadie puede recibir.
+    const lineas = lineasDelAlta.filter((l) => l.product_name && parseFloat(l.quantity) > 0);
+    if (lineas.length === 0) {
+      toast.error('Agregá al menos un producto con cantidad.');
+      return;
+    }
+
+    setCreando(true);
+
+    try {
+      await createSupplierOrder(proveedor, {
+        date: formAlta.date,
+        notes: formAlta.notes,
+        items: lineas.map((l) => ({
+          product_id: l.product_id ? parseInt(l.product_id, 10) : null,
+          product_name: l.product_name,
+          quantity: parseFloat(l.quantity),
+          // El total lo calcula el servidor a partir de las líneas: acá no se
+          // manda ningún total, igual que en una venta.
+          unit_price: parseFloat(l.unit_price) || 0,
+        })),
+      });
+
+      setAltaAbierta(false);
+      setFormAlta({ supplier_id: '', date: fechaDeHoy(), notes: '' });
+      setLineasDelAlta([lineaVacia()]);
+      recargar();
+      toast.success('Orden de compra registrada.');
+    } catch (err) {
+      toast.error(mensajeDeError(err, 'No se pudo registrar la orden de compra.'));
+    } finally {
+      setCreando(false);
+    }
+  };
+
+  /** Abre el alta y, recién ahí, pide el catálogo que completa los nombres. */
+  const abrirAlta = async () => {
+    setAltaAbierta(true);
+
+    try {
+      const res = await getProducts({ limit: 500 });
+      setProductos(res.data.data || []);
+    } catch (err) {
+      // El catálogo solo sugiere el nombre y el costo: sin él la orden se puede
+      // escribir igual, así que esto avisa y no interrumpe.
+      toast.error(mensajeDeError(err, 'No se pudo cargar el catálogo para sugerir productos.'));
+    }
+  };
+
+  const cambiarLinea = (indice, campo, valor) => {
+    setLineasDelAlta((previas) => {
+      const copia = previas.map((l, i) => (i === indice ? { ...l, [campo]: valor } : l));
+
+      if (campo === 'product_name') {
+        // El costo cargado se propone como precio unitario: es el número que el
+        // usuario ya tenía y el que más veces es el correcto.
+        const producto = productos.find((p) => p.name === valor);
+        if (producto) {
+          copia[indice].product_id = producto.id;
+          copia[indice].unit_price = producto.cost || '';
+        }
+      }
+
+      return copia;
+    });
+  };
+
+  const totalDelAlta = lineasDelAlta.reduce(
+    (suma, l) => suma + (parseFloat(l.quantity) || 0) * (parseFloat(l.unit_price) || 0),
+    0
+  );
+
   return (
     <div className="space-y-6">
+      {/* ⚠ El botón principal va como `children`: `PageHeader` dibuja la zona de
+          acciones **solo si los hay** (`PageHeader.jsx:27`), así que montarlo sin
+          nada dejaba la pantalla sin su acción principal y sin ninguna señal de
+          que faltara. La regla del sistema es un botón principal por pantalla y
+          éste es el de ésta (decisión 5, maqueta `:640`). */}
       <PageHeader
         titulo="Órdenes de compra"
         descripcion="Lo que le pediste a cada proveedor y en qué estado está. Al recibir una orden se actualiza el stock con lo que llegó de verdad, no con lo que se pidió."
-      />
+      >
+        <button
+          type="button"
+          onClick={abrirAlta}
+          className="inline-flex h-[34px] items-center gap-1.5 rounded-lg bg-brand px-3.5 text-[13px]
+                     font-semibold text-white shadow-nivel-1 transition-colors hover:bg-brand-dark"
+        >
+          <Plus className="h-4 w-4" />
+          Nueva orden
+        </button>
+      </PageHeader>
 
       {/* ── Los controles ── */}
       <div className="flex flex-wrap items-center gap-2.5">
@@ -513,7 +917,7 @@ const PurchaseOrders = () => {
             <button
               key={s.clave}
               type="button"
-              onClick={() => setSegmento(s.clave)}
+              onClick={() => cambiarSegmento(s.clave)}
               aria-pressed={segmento === s.clave}
               className={`inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-[12.5px] transition-colors ${
                 segmento === s.clave
@@ -522,7 +926,9 @@ const PurchaseOrders = () => {
               }`}
             >
               {s.etiqueta}
-              <span className="num text-[11px] text-fg-3">{contadores[s.clave]}</span>
+              {/* «—» y no 0 mientras no se sepa: un cero inventado sobre una
+                  empresa que tiene cuarenta recibidas suena a dato. */}
+              <span className="num text-[11px] text-fg-3">{contadores[s.clave] ?? '—'}</span>
             </button>
           ))}
         </div>
@@ -585,9 +991,19 @@ const PurchaseOrders = () => {
       <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-nivel-1">
         <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-5 py-4">
           <h2>Órdenes</h2>
+          {/* El `total` del servidor, que ahora es el del segmento **y el de la
+              búsqueda**: es el mismo número del que sale `totalPaginas`, así que
+              el badge y los botones de página no pueden contradecirse.
+
+              ⚠ Acá había además una línea que decía «N coinciden con «77», sobre
+              las 4 de esta página». Era el andamio del parche anterior —la
+              búsqueda miraba la página cargada y había que aclarar sobre cuántas
+              buscaba—. Con `q` del lado del servidor este número YA es cuántas
+              coinciden, y repetirlo al lado sería decir dos veces lo mismo. */}
           <span className="num rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-fg-2">
             {total}
           </span>
+
           <div className="flex-1" />
           {loading && <Loader2 className="h-4 w-4 animate-spin text-fg-3" />}
         </div>
@@ -596,7 +1012,7 @@ const PurchaseOrders = () => {
           <div className="py-12 text-center">
             <p className="text-sm text-fg-2">Cargando órdenes…</p>
           </div>
-        ) : visibles.length === 0 ? (
+        ) : orders.length === 0 ? (
           <EstadoVacio hayFiltro={hayFiltro} onLimpiar={limpiarFiltros} />
         ) : (
           <TablaGrid anchoMinimo={ANCHO_MINIMO}>
@@ -610,13 +1026,15 @@ const PurchaseOrders = () => {
               <span className="text-right">Acciones</span>
             </Encabezado>
 
-            {/* `visibles` y NO `orders`: la tabla tiene que dibujar exactamente
-                lo que cuenta el segmento (FR-008, FR-009). Mapear `orders` acá
-                dejaba el segmentado y la búsqueda dibujados y sin efecto —el
-                contador bajaba a 1 y la lista seguía mostrando las cuatro—, que
-                es peor que no tener filtro: el usuario concluye que el número
-                miente. */}
-            {visibles.map(o => {
+            {/* `orders` tal cual, sin volver a filtrar acá. El segmento, el
+                período y la búsqueda ya los aplicó el servidor, y `total` cuenta
+                exactamente estas filas (FR-008, FR-009, FR-022).
+
+                ⚠ Volver a filtrar en el navegador —aunque sea «por las dudas»—
+                haría que sacar `status` o `q` de la consulta no cambiara el
+                dibujo, y el defecto podría volver sin que ningún test se pusiera
+                en rojo. Es exactamente cómo llegó hasta acá. */}
+            {orders.map(o => {
               const recibido = porcentajeRecibido(o);
               // Una orden anulada sigue estando —anularla no la hace
               // desaparecer, o el usuario no tendría cómo comprobar que la
@@ -713,11 +1131,12 @@ const PurchaseOrders = () => {
           </TablaGrid>
         )}
 
-        {/* La paginación va DENTRO de la tarjeta y debajo de la tabla, y se
-            dibuja aunque el filtro de la pantalla haya vaciado la lista: el
-            componente se esconde solo cuando hay una página sola, y con dos o
-            más la salida de una búsqueda sin resultados es cambiar de página.
-            Es 1-indexado, igual que `pagina`. */}
+        {/* La paginación va DENTRO de la tarjeta y debajo de la tabla. Sus
+            páginas salen de `totalPaginas`, y ese número sale del `total` de la
+            MISMA consulta que trajo las filas: con la búsqueda y el segmento del
+            lado del servidor, no puede volver a ofrecer una página 3 de una
+            lista que ya no tiene tres. El componente se esconde solo cuando hay
+            una página sola. Es 1-indexado, igual que `pagina`. */}
         <Pagination page={pagina} totalPages={totalPaginas} onPageChange={setPagina} />
       </section>
 
@@ -730,15 +1149,159 @@ const PurchaseOrders = () => {
           el `PUT` de la recepción no puede salir contra otra. */}
       <PanelOrdenDeCompra
         abierto={panelAbierto}
-        onOpenChange={setPanelAbierto}
+        onOpenChange={cambiarPanel}
         orden={ordenAbierta}
         cargando={cargandoDetalle}
         modo={modoDelPanel}
         onCambiarModo={setModoDelPanel}
         telefonoDelProveedor={telefonoDe(ordenAbierta)}
         onAnular={(orden) => handleCancel(orden.id)}
-        onRecibida={fetchOrders}
+        onRecibida={recargar}
       />
+
+      {/* ── Nueva orden de compra (decisión 5) ──
+          El mismo formulario que `/proveedores` más el desplegable de proveedor,
+          que allá no hace falta porque la pantalla ya tiene uno elegido. */}
+      <Dialog open={altaAbierta} onOpenChange={setAltaAbierta}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Nueva orden de compra</DialogTitle></DialogHeader>
+          <form onSubmit={crearOrden} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="alta-proveedor">Proveedor</Label>
+                {/* Un `<select>` nativo, igual que el método de pago y el
+                    selector de sucursal del panel: ya se opera con teclado y no
+                    arrastra el desplegable de shadcn por una lista corta.
+
+                    La opción vacía dice «Elegí un proveedor» y no está como
+                    valor válido: es el placeholder, y el envío la rechaza. */}
+                <select
+                  id="alta-proveedor"
+                  className="h-9 w-full rounded-lg border border-border bg-surface px-3 text-[13px]
+                             transition-colors focus-visible:border-brand focus-visible:outline-none"
+                  value={formAlta.supplier_id}
+                  onChange={(e) => setFormAlta({ ...formAlta, supplier_id: e.target.value })}
+                >
+                  <option value="">Elegí un proveedor</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={String(s.id)}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="alta-fecha">Fecha</Label>
+                <Input
+                  id="alta-fecha"
+                  type="date"
+                  className="num"
+                  value={formAlta.date}
+                  onChange={(e) => setFormAlta({ ...formAlta, date: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Productos</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setLineasDelAlta((previas) => [...previas, lineaVacia()])}
+                >
+                  <Plus className="mr-1 h-3 w-3" /> Agregar
+                </Button>
+              </div>
+
+              <div className="max-h-60 space-y-2 overflow-y-auto">
+                {lineasDelAlta.map((linea, i) => (
+                  <div key={i} className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <Input
+                        placeholder="Nombre del producto"
+                        aria-label={`Producto de la línea ${i + 1}`}
+                        value={linea.product_name}
+                        onChange={(e) => cambiarLinea(i, 'product_name', e.target.value)}
+                        list={`catalogo-de-orden-${i}`}
+                      />
+                      <datalist id={`catalogo-de-orden-${i}`}>
+                        {productos.map((p) => (
+                          <option key={p.id} value={p.name} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div className="w-20">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="any"
+                        className="num text-right"
+                        placeholder="Cant."
+                        aria-label={`Cantidad de la línea ${i + 1}`}
+                        value={linea.quantity}
+                        onChange={(e) => cambiarLinea(i, 'quantity', e.target.value)}
+                      />
+                    </div>
+                    <div className="w-24">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="num text-right"
+                        placeholder="P/U"
+                        aria-label={`Precio unitario de la línea ${i + 1}`}
+                        value={linea.unit_price}
+                        onChange={(e) => cambiarLinea(i, 'unit_price', e.target.value)}
+                      />
+                    </div>
+                    {lineasDelAlta.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 shrink-0 text-danger"
+                        title={`Quitar la línea ${i + 1}`}
+                        onClick={() => setLineasDelAlta((previas) => previas.filter((_, j) => j !== i))}
+                      >
+                        <XCircle className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-[13px] text-fg-2">
+                {lineasDelAlta.filter((l) => l.product_name).length} productos
+              </span>
+              {/* El total es orientativo y lo dice el pie: el que queda guardado
+                  lo calcula el servidor con las líneas, igual que en una venta. */}
+              <span className="num text-[19px] font-semibold">Total ${pesos(totalDelAlta)}</span>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="alta-notas">Notas</Label>
+              <Input
+                id="alta-notas"
+                value={formAlta.notes}
+                onChange={(e) => setFormAlta({ ...formAlta, notes: e.target.value })}
+                placeholder="Ej: pedido mensual"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" type="button" onClick={() => setAltaAbierta(false)}>
+                Cancelar
+              </Button>
+              <Button className="flex-1" type="submit" disabled={creando}>
+                {creando ? 'Registrando…' : 'Registrar orden'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog />
     </div>

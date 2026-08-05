@@ -1,4 +1,4 @@
-const { Op } = require('sequelize');
+const { Op, fn, col, cast, where: sqlWhere } = require('sequelize');
 const {
   Supplier,
   SupplierOrder,
@@ -13,6 +13,12 @@ const { assertEmpresaId, findScoped } = require('../utils/tenantScope');
 const { ErrorDeNegocio } = require('../utils/errores');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
 const { aplicarRecepcion, errorDeCuerpo } = require('../utils/recepcionDeOrden');
+// El MISMO par de listas de acentos que usa la búsqueda de `GET /suppliers`
+// (FR-059), y por eso se importa en vez de copiarse: normaliza los dos lados
+// —la columna, en SQL, y el texto que escribió el usuario, en JS— y dos listas
+// escritas por separado se separan. Buscar «Norté» encontraría «Norte» en una
+// pantalla y no en la otra, sin que nada falle.
+const { sinAcentos, ACENTOS, SIN_ACENTOS } = require('../utils/cuentaDeProveedor');
 // La fecha de un asiento la decide el SERVIDOR, con la zona de la empresa. Con
 // `new Date().toISOString()` una recepción de las 21:30 del 31 de julio genera
 // un movimiento de deuda fechado el 1 de agosto —Argentina es UTC-3—, que se va
@@ -26,6 +32,10 @@ const {
   registrarCambioDeCosto,
   MOTIVOS,
 } = require('../utils/historialDeCostos');
+// El motivo real de un recosteo que se cae no puede quedarse solo en el aviso
+// del usuario: «revisá esa receta» no dice cuál de las dos cosas pasó, y el
+// aviso es lo único que quedaba si el error se traga en silencio.
+const logger = require('../utils/logger');
 
 /**
  * Propaga el costo nuevo de un insumo a los elaborados que lo usan.
@@ -42,30 +52,128 @@ const {
  * `costService` se requiere adentro para no cerrar el ciclo de imports en la
  * carga del módulo, igual que ahí.
  *
- * @returns {Promise<number>} Cuántos elaborados se recostearon.
+ * ── Por qué el `visited` se clona por rama ──
+ *
+ * Hasta este corte había **un solo Set** para todas las ramas, y encima se le
+ * agregaba cada elaborado ya recosteado. Con un grafo en diamante —Colágeno es
+ * insumo de la Premezcla, y el Combo lleva Colágeno **y** Premezcla— la segunda
+ * rama se encontraba el Combo ya marcado por la primera, y `costService`
+ * respondía «Dependencia circular detectada» sobre un grafo **que no tiene
+ * ningún ciclo**.
+ *
+ * El Set contesta «por dónde vine», que es una pregunta por camino. Compartirlo
+ * entre ramas hermanas lo convierte en «quién pasó antes», que es otra cosa y
+ * no corta ciclos: los inventa. `costService.js` ya clonaba por rama; acá no, y
+ * esa era toda la diferencia.
+ *
+ * Y era intermitente, que es lo peor que podía ser: el `findAll` no llevaba
+ * `ORDER BY`, así que con la fila de la Premezcla primero la misma recepción
+ * respondía 200.
+ *
+ * ── Qué pasa si el recosteo falla de verdad ──
+ *
+ * **La recepción vale igual, y el recosteo se informa como aviso.** Es una
+ * decisión de producto y no el resultado accidental de dónde cayó el `try`:
+ *
+ *  - la mercadería entró y la deuda existe: son hechos del mundo, no
+ *    conclusiones del sistema, y una receta mal cargada hace meses no los borra;
+ *  - abortar revierte la transacción **entera** —stock, costo, historial y
+ *    deuda—, o sea que deja al depósito sin poder registrar el camión hasta que
+ *    alguien arregle una receta que quien recibe mercadería casi nunca puede
+ *    tocar, y con un 500 que no nombra ni el producto ni la receta;
+ *  - y lo que se revertía incluía el costo del insumo, que es justamente lo que
+ *    la decisión 1 de la spec vino a resolver.
+ *
+ * Lo que **no** se hace es callarlo: el aviso nombra el elaborado y viaja en
+ * `avisos`, la misma lista que la pantalla ya dibuja, y el motivo real queda en
+ * el log del servidor.
+ *
+ * ⚠ Lo que queda afuera: la cascada pudo haber escrito algunos costos antes de
+ * fallar y eso **no** se deshace —haría falta un SAVEPOINT—. Sobre un grafo con
+ * un ciclo real esos costos ya eran indefendibles antes de esta recepción; el
+ * aviso es lo que hace que alguien vaya a mirarlos.
+ *
+ * @param {number} productId El insumo cuyo costo acaba de cambiar.
+ * @param {object} transaction La MISMA de la recepción.
+ * @param {{empresaId?: number, avisos?: string[]}} [contexto] `avisos` se muta:
+ *   es la lista que se le devuelve al usuario.
+ * @returns {Promise<number>} Cuántos elaborados **distintos** se recostearon.
  */
-async function recostearDependientes(productId, transaction) {
+async function recostearDependientes(productId, transaction, { empresaId = null, avisos = [] } = {}) {
   const costService = require('./costService');
-
-  const visited = new Set([productId]);
 
   const dependientes = await RecipeItem.findAll({
     where: { ingredient_product_id: productId },
     include: [{ model: Recipe, as: 'recipe', attributes: ['product_id'] }],
+    // Sin `ORDER BY`, el orden de las filas lo elige Postgres, y con él cambiaba
+    // el resultado de la recepción: la misma orden respondía 200 o 500 según qué
+    // rama del diamante saliera primero. Hoy ya no cambia el resultado, pero sí
+    // el orden de los avisos, y un aviso que aparece en distinto lugar en cada
+    // recepción es un aviso que nadie termina de leer.
+    order: [['id', 'ASC']],
     transaction,
   });
 
   let recosteos = 0;
 
+  // Una misma receta puede listar el mismo insumo dos veces: `recipe_items` no
+  // tiene índice único por (recipe_id, ingredient_product_id). Recostear dos
+  // veces el mismo elaborado da exactamente el mismo número y lo contaba doble.
+  const yaRecosteados = new Set();
+
   for (const dep of dependientes) {
     if (!dep.recipe || !dep.recipe.product_id) continue;
 
-    await costService.recalculateCascadingCosts(dep.recipe.product_id, visited, transaction);
-    visited.add(dep.recipe.product_id);
-    recosteos += 1;
+    const elaborado = dep.recipe.product_id;
+
+    if (yaRecosteados.has(elaborado)) continue;
+    yaRecosteados.add(elaborado);
+
+    try {
+      // Un Set NUEVO por rama, con el insumo adentro para cortar los ciclos que
+      // sí existen. Ver arriba por qué no puede ser el mismo de la rama anterior.
+      await costService.recalculateCascadingCosts(
+        elaborado,
+        new Set([productId]),
+        transaction
+      );
+      recosteos += 1;
+    } catch (err) {
+      logger.warn(
+        { err, insumo: productId, elaborado, empresaId },
+        'No se pudo recostear un elaborado durante una recepción de compra'
+      );
+
+      avisos.push(await avisoDeRecosteoFallido(elaborado, empresaId, transaction));
+    }
   }
 
   return recosteos;
+}
+
+/**
+ * El aviso de un elaborado que no se pudo recostear.
+ *
+ * **Nombra el producto.** Lo que había antes era un 500 «Error al recibir la
+ * orden de compra»: no decía ni qué producto ni qué receta, así que ni siquiera
+ * se sabía qué abrir para arreglarlo.
+ *
+ * `findScoped` y no `findByPk`: el id sale del grafo de recetas y no del
+ * cliente, pero `recipe_items` no tiene `empresa_id`, así que una fila cruzada
+ * entre empresas pondría el nombre de un producto ajeno en la respuesta.
+ */
+async function avisoDeRecosteoFallido(productId, empresaId, transaction) {
+  const elaborado = empresaId
+    ? await findScoped(Product, productId, empresaId, { transaction })
+    : null;
+
+  const nombre = elaborado && elaborado.name
+    ? `«${elaborado.name}»`
+    : `el producto #${productId}`;
+
+  return `No se pudo recalcular el costo de ${nombre}: su receta tiene una `
+    + 'dependencia circular o un rendimiento que no deja producto terminado. '
+    + 'La mercadería y la deuda se registraron igual; revisá esa receta.';
 }
 
 /**
@@ -443,7 +551,11 @@ class PurchaseService {
           aplicado: true,
           // Está en la respuesta para que **se vea que pasó**: recostear tres
           // elaborados sin decirlo es un cambio de márgenes invisible.
-          recosteos: await recostearDependientes(producto.id, t),
+          //
+          // `avisos` se pasa por referencia a propósito: si una receta rota
+          // impide recostear un elaborado, la recepción no se cae y el motivo
+          // aparece en la misma lista que la pantalla ya dibuja.
+          recosteos: await recostearDependientes(producto.id, t, { empresaId, avisos }),
         });
       }
 
@@ -522,7 +634,7 @@ class PurchaseService {
   }
 
   async getOrders(filters = {}) {
-    const { supplier_id, status, from, to, limit, offset, empresa_id } = filters;
+    const { supplier_id, status, from, to, q, limit, offset, empresa_id } = filters;
 
     // El filtro por empresa es obligatorio, no condicional. Con
     // `if (empresa_id) where.empresa_id = empresa_id` una llamada sin empresa
@@ -539,6 +651,50 @@ class PurchaseService {
       where.date = {};
       if (from) where.date[Op.gte] = from;
       if (to) where.date[Op.lte] = to;
+    }
+
+    // ── La búsqueda, por nombre de proveedor Y por número de orden (FR-009) ──
+    //
+    // Hasta este corte el endpoint no aceptaba `q`, así que la pantalla buscaba
+    // sobre las 50 filas que tenía cargadas: la orden 77 —que existe, en la
+    // página 2— salía como «ninguna orden coincide». Con la búsqueda acá, la
+    // lista, el `total`, la cantidad de páginas y los contadores de los
+    // segmentos salen todos de la misma consulta y no pueden contradecirse.
+    //
+    // ⚠⚠ **Se SUMA al `where`, no lo reemplaza.** `empresa_id` sigue arriba y la
+    // condición entra en un `Op.and` al lado: un filtro nuevo escrito como
+    // `const where = { [Op.and]: [...] }` es exactamente la fuga que la
+    // auditoría encontró en veinte endpoints.
+    //
+    // ⚠ El criterio sin acentos es **el mismo** que el de `GET /suppliers`
+    // (`routes/suppliers.js`, `condicionDeNombre`): `translate()` del núcleo de
+    // Postgres sobre la columna, y `sinAcentos` sobre el texto, con el mismo par
+    // de listas. La extensión `unaccent` queda descartada por lo de siempre:
+    // pide superusuario en una base administrada, que es la razón por la que la
+    // búsqueda de ventas quedó sensible a acentos (`utils/filtroVentas.js:152`).
+    //
+    // El `#` inicial se saca porque la pantalla escribe «#118» y quien copia el
+    // número se lo lleva puesto.
+    const texto = sinAcentos(q).trim().replace(/^#/, '').trim();
+
+    if (texto !== '') {
+      where[Op.and] = [{
+        [Op.or]: [
+          // `supplier.name` es el alias del include de abajo, y por eso esta
+          // condición vive acá y no en la ruta: escrita en otro archivo, el día
+          // que ese alias cambie la consulta se rompería desde lejos.
+          sqlWhere(
+            fn('translate', fn('lower', col('supplier.name')), ACENTOS, SIN_ACENTOS),
+            { [Op.like]: `%${texto}%` }
+          ),
+          // El número se compara como TEXTO y no con `id = 77`: escribir «11»
+          // tiene que seguir encontrando la #112, que es lo que hacía la
+          // pantalla con `String(id).includes(texto)`. Y con un `Number(texto)`
+          // una búsqueda por nombre mandaría NaN a una columna INTEGER, que es
+          // el 500 de Postgres que este mismo listado ya cerró una vez.
+          sqlWhere(cast(col('SupplierOrder.id'), 'text'), { [Op.like]: `%${texto}%` }),
+        ],
+      }];
     }
 
     // El `limit` se recorta, no se rechaza: un valor fuera de rango es de la

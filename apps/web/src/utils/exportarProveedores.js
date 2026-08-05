@@ -40,6 +40,20 @@ import * as XLSX from 'xlsx'
 //  Lo que este archivo NO puede garantizar es que la columna **sume** al
 //  abrirla en una planilla de verdad. Eso es el paso manual P7 de las tareas y
 //  es lo único de la exportación que no baja a un test.
+//
+//  ── Dónde queda cada cosa en la hoja ──
+//
+//  Fila 1  CUIT del proveedor
+//  Fila 2  el encabezado de la tabla — **siempre acá**, con o sin saldo anterior
+//  Fila 3  «Saldo anterior», SOLO si el período arranca con uno
+//  Fila 3 o 4  el primer movimiento, según si hubo saldo anterior
+//
+//  La fila de apertura va **debajo** del encabezado y no arriba, y eso es una
+//  decisión, no una casualidad. Arriba correría el encabezado una fila según el
+//  contenido —el mismo archivo tendría la tabla en dos lugares distintos según
+//  si se pidió un rango o no— y dejaría el importe de apertura **afuera** de la
+//  columna Saldo: seleccionar la columna en la planilla no lo agarraría, que es
+//  justo lo contrario de lo que la fila viene a hacer.
 // ════════════════════════════════════════════
 
 /**
@@ -79,6 +93,15 @@ const ANCHOS = [11, 22, 42, 14, 14, 14]
 const FILA_DEL_ENCABEZADO = 1
 
 /**
+ * Lo que dice la fila de apertura cuando el período no empieza en cero.
+ *
+ * Va en la columna **Descripción** y no en Tipo: no es un movimiento de la
+ * cuenta —no tiene fecha, ni debe, ni haber— sino la explicación del número con
+ * el que abre la columna Saldo.
+ */
+const SALDO_ANTERIOR = 'Saldo anterior'
+
+/**
  * Una celda con su tipo forzado.
  *
  * `t: 's'` es texto y `t: 'n'` es número; `z: '@'` es el formato «Texto» de
@@ -106,16 +129,47 @@ function celda(clave, valor) {
 /**
  * Filas → hoja de cálculo.
  *
+ * ⚠ **`saldoInicial` no es un adorno.** Con `?desde=`, el archivo arrancaba la
+ * cuenta en cero y cerraba en el NETO DEL PERÍODO: $22.000 sobre una cuenta que
+ * debía $122.000, mientras la pantalla mostraba el saldo entero. La API ya
+ * devuelve el `saldo_inicial` del período (`suppliers.js:651`), pero mientras
+ * `armarHoja` recibiera solo las filas, la planilla seguía **abriendo en un
+ * número que sus propias columnas no explican**: la primera fila mostraba un
+ * saldo acumulado que no se deduce de su debe ni de su haber, y el contador no
+ * tenía de dónde sacar por qué. Con la fila de apertura, la columna Saldo se
+ * lee de arriba abajo y cada número sale del anterior.
+ *
  * @param {Array<object>} filas Las de `GET /api/suppliers/:id/movimientos/export`.
+ * @param {{saldoInicial?: number}} opciones El `saldo_inicial` de esa respuesta.
  * @returns {object} La hoja, lista para `XLSX.utils.book_append_sheet`.
  */
-export function armarHoja(filas = []) {
+export function armarHoja(filas = [], { saldoInicial = 0 } = {}) {
   const hoja = {}
   const lista = Array.isArray(filas) ? filas : []
 
-  // El CUIT sale de la primera fila. Un proveedor sin movimientos no tiene
-  // ninguna, y la celda queda vacía en vez de romper la exportación: sin
-  // movimientos el archivo igual sale, con encabezados y sin filas.
+  // Mismo criterio que `celda`: un inicial ilegible entra como 0 y no como NaN,
+  // porque un NaN en la primera celda de la columna rompe la suma de todas.
+  const numeroInicial = Number(saldoInicial)
+  const inicial = Number.isFinite(numeroInicial) ? numeroInicial : 0
+
+  // Solo cuando hay algo que explicar. Sin rango de fechas el período empieza
+  // con la cuenta, y una fila «Saldo anterior $0,00» arriba de todo es ruido
+  // que hace dudar de si falta algo antes.
+  const apertura = inicial !== 0
+    ? [{ fecha: '', tipo: '', descripcion: SALDO_ANTERIOR, debe: 0, haber: 0, saldo: inicial }]
+    : []
+
+  // La apertura se escribe **por el mismo camino que los movimientos** y no con
+  // celdas sueltas: así el importe cae en la columna Saldo por construcción y
+  // pasa por `celda`, que es lo que le pone `{ t: 'n' }`. Si saliera como texto,
+  // la planilla abre, se ve bien, y la columna deja de sumar — el paso manual P7.
+  const cuerpo = [...apertura, ...lista]
+
+  // El CUIT sale de la primera fila QUE VINO DE LA API: la de apertura la
+  // fabrica esta función y no pertenece a ningún proveedor. Un proveedor sin
+  // movimientos no tiene ninguna, y la celda queda vacía en vez de romper la
+  // exportación: sin movimientos el archivo igual sale, con encabezados y sin
+  // filas.
   hoja[XLSX.utils.encode_cell({ r: 0, c: 0 })] = { t: 's', v: 'CUIT' }
   hoja[XLSX.utils.encode_cell({ r: 0, c: 1 })] = celda('cuit', lista[0] && lista[0].cuit)
 
@@ -123,7 +177,7 @@ export function armarHoja(filas = []) {
     hoja[XLSX.utils.encode_cell({ r: FILA_DEL_ENCABEZADO, c })] = { t: 's', v: columna.titulo }
   })
 
-  lista.forEach((fila, i) => {
+  cuerpo.forEach((fila, i) => {
     COLUMNAS.forEach((columna, c) => {
       const destino = { r: FILA_DEL_ENCABEZADO + 1 + i, c }
       hoja[XLSX.utils.encode_cell(destino)] = celda(columna.clave, fila && fila[columna.clave])
@@ -132,7 +186,7 @@ export function armarHoja(filas = []) {
 
   hoja['!ref'] = XLSX.utils.encode_range({
     s: { r: 0, c: 0 },
-    e: { r: FILA_DEL_ENCABEZADO + lista.length, c: COLUMNAS.length - 1 },
+    e: { r: FILA_DEL_ENCABEZADO + cuerpo.length, c: COLUMNAS.length - 1 },
   })
   hoja['!cols'] = ANCHOS.map((wch) => ({ wch }))
 

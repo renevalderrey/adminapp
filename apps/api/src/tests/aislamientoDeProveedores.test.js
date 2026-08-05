@@ -26,7 +26,8 @@
 
 const express = require('express');
 const request = require('supertest');
-const { crearModelo, coincide } = require('./helpers/modelosFalsos');
+const { crearModelo, coincide, validarWhere } = require('./helpers/modelosFalsos');
+const { normalizarId } = require('../utils/tenantScope');
 
 const PROPIA = 7;
 const AJENA = 9;
@@ -92,6 +93,63 @@ for (const doble of [mockSupplier, mockSupplierMovement, mockSupplierDocument, m
   doble.rawAttributes = { id: { type: { key: 'INTEGER' } } };
 }
 
+/**
+ * El `Model.destroy({ where })` de CLASE, que es el que usan las dos rutas
+ * DELETE de movimientos y documentos. `modelosFalsos` solo trae el destroy de
+ * instancia, asi que sin esto esas rutas tiran un TypeError, `fallo` lo
+ * convierte en un 500 y una prueba que espera «no se borro nada» pasaria sin
+ * haber ejercitado el filtro.
+ *
+ * ⚠ El id se normaliza al tipo de la clave primaria, igual que hace Postgres
+ * con una columna INTEGER: en la URL viaja como texto. Un doble que comparara
+ * `'42' === 42` devolveria 404 SIEMPRE —con el `empresa_id` en el where y sin
+ * el—, y esa es exactamente la fixture que no puede distinguir la fuga.
+ *
+ * Devuelve CUANTAS filas borro, que es de donde sale el 404 de las rutas.
+ */
+function darDestroyDeClase(modelo) {
+  modelo.destroy = async (opciones = {}) => {
+    modelo.llamadas.push({ metodo: 'destroy', ...opciones });
+    validarWhere(opciones.where);
+
+    const where = { ...(opciones.where || {}) };
+    if ('id' in where) where.id = normalizarId(modelo, where.id);
+
+    const sobreviven = modelo.filas.filter((f) => !coincide(f, where));
+    const borradas = modelo.filas.length - sobreviven.length;
+    modelo.filas.splice(0, modelo.filas.length, ...sobreviven);
+
+    return borradas;
+  };
+}
+
+darDestroyDeClase(mockSupplierMovement);
+darDestroyDeClase(mockSupplierDocument);
+
+/**
+ * Sequelize devuelve instancias con `save()`; el doble no lo implementa.
+ *
+ * Hace falta para que la fuga de `cancelOrder` se pueda VER: sin `save`, la
+ * version sin `empresa_id` en el where encuentra la orden ajena y explota con un
+ * TypeError antes de anularla. La prueba igual se pondria en rojo, pero por el
+ * motivo equivocado, y la mitad que importa —que la orden del otro cliente quede
+ * intacta— no se estaria verificando nunca.
+ */
+const findOneDeOrden = mockSupplierOrder.findOne.bind(mockSupplierOrder);
+mockSupplierOrder.findOne = async (opciones = {}) => {
+  const instancia = await findOneDeOrden(opciones);
+  if (!instancia) return null;
+
+  const fila = mockSupplierOrder.filas.find((f) => f.id === instancia.id);
+  instancia.save = async () => {
+    const { update, destroy, toJSON, save, ...datos } = instancia;
+    Object.assign(fila, datos);
+    return instancia;
+  };
+
+  return instancia;
+};
+
 jest.mock('../models', () => ({
   Supplier: mockSupplier,
   SupplierMovement: mockSupplierMovement,
@@ -103,6 +161,7 @@ jest.mock('../models', () => ({
 }));
 
 const purchaseService = require('../services/purchaseService');
+const { ErrorDeNegocio } = require('../utils/errores');
 
 function levantarApi(empresaId) {
   const api = express();
@@ -409,6 +468,172 @@ describe('purchaseService no contesta sin saber de que empresa', () => {
       .rejects.toThrow(/Scoping por empresa invalido/);
 
     expect(mockSupplierOrder.llamadas).toEqual([]);
+  });
+});
+
+// ════════════════════════════════════════════
+//  El id de un recurso que EXISTE y es de otra empresa
+//
+//  Los cuatro `empresa_id` que cubren estos casos —purchaseService.cancelOrder,
+//  purchaseService.getOrderDetail y los dos `destroy` de routes/suppliers.js— se
+//  podian borrar y la suite entera quedaba en verde. Lo que habia cerca no
+//  alcanzaba, y no por poco:
+//
+//   · `assertEmpresaId` cubre «no llego la empresa». La fuga es «llego la
+//     empresa EQUIVOCADA», que es otra cosa: el middleware esta puesto y el
+//     scoping igual no se aplica.
+//   · Un id que no existe en NINGUNA empresa da 404 con el filtro y sin el, asi
+//     que no distingue nada. Es la fixture que dejo pasar el defecto.
+//   · Las dos rutas DELETE no las llamaba ninguna prueba —las siete llamadas
+//     DELETE de la suite iban todas a `/api/suppliers/:id`— y la forma
+//     `where: { id: req.params.id }` es ciega para la guardia estatica, que
+//     busca findByPk.
+//
+//  El unico caso que se pone en rojo al sacar el filtro es este: **el id de una
+//  fila que existe y es del otro cliente**. Y hay que mirar las dos mitades,
+//  porque son defectos distintos:
+//
+//   1. La respuesta es 404, y no 403: un 403 confirmaria que ese id existe en
+//      otra empresa, que es justo lo que permite enumerar ids ajenos.
+//   2. La fila ajena sigue ahi. Un 404 que igual anulo la orden o borro el pago
+//      del otro cliente es peor que un 200 honesto, porque no deja rastro.
+// ════════════════════════════════════════════
+
+const ORDEN_PROPIA = 301;
+const ORDEN_AJENA = 302;
+
+describe('purchaseService con el id de una orden de OTRA empresa', () => {
+  beforeEach(() => {
+    mockSupplierOrder.filas = [
+      {
+        id: ORDEN_PROPIA, supplier_id: 10, empresa_id: PROPIA, status: 'pending',
+        total: 1200.5, date: '2026-07-20',
+        detail: [{ product_name: 'Harina 000', quantity: 3, unit_price: 400.17 }],
+      },
+      // La orden ajena esta en `pending` a proposito. Si estuviera `received` o
+      // `cancelled`, cancelOrder sin el filtro caeria en uno de los dos 409 y la
+      // prueba pasaria sin que nadie hubiera comprobado nada: el caso tiene que
+      // poder tocar la fila para que verificar que no la toco signifique algo.
+      {
+        id: ORDEN_AJENA, supplier_id: 20, empresa_id: AJENA, status: 'pending',
+        total: 88000.75, date: '2026-07-22',
+        detail: [{ product_name: 'Insumo del otro cliente', quantity: 1, unit_price: 88000.75 }],
+      },
+    ];
+  });
+
+  it('cancelOrder NO anula la orden de otra empresa, y la deja como estaba', async () => {
+    await expect(purchaseService.cancelOrder(ORDEN_AJENA, PROPIA))
+      .rejects.toThrow('Orden no encontrada');
+
+    // La segunda mitad: anular la orden del otro cliente y contestarle 404 a
+    // quien lo pidio es el peor de los dos resultados posibles.
+    expect(mockSupplierOrder.filas.find((o) => o.id === ORDEN_AJENA).status).toBe('pending');
+  });
+
+  it('el 404 de cancelOrder sobre una orden ajena no se distingue del de una que no existe', async () => {
+    const ajena = await purchaseService.cancelOrder(ORDEN_AJENA, PROPIA).catch((e) => e);
+    const inexistente = await purchaseService.cancelOrder(999999, PROPIA).catch((e) => e);
+
+    expect(ajena).toBeInstanceOf(ErrorDeNegocio);
+    expect(ajena.status).toBe(404);
+    // Ni 403 ni un mensaje propio: las dos cosas confirmarian que ese id existe.
+    expect(ajena.status).not.toBe(403);
+    expect(ajena.message).toBe(inexistente.message);
+  });
+
+  it('cancelOrder sigue anulando la orden propia', async () => {
+    // Sin este caso, un `findOne` que devolviera null siempre pasaria las dos
+    // pruebas de arriba y dejaria la anulacion rota para todo el mundo.
+    const orden = await purchaseService.cancelOrder(ORDEN_PROPIA, PROPIA);
+
+    expect(orden.status).toBe('cancelled');
+    expect(mockSupplierOrder.filas.find((o) => o.id === ORDEN_PROPIA).status).toBe('cancelled');
+  });
+
+  it('getOrderDetail NO devuelve la orden de otra empresa', async () => {
+    const resultado = await purchaseService.getOrderDetail(ORDEN_AJENA, PROPIA)
+      .then((data) => ({ devuelto: data }), (err) => ({ error: err }));
+
+    // Que no haya devuelto NADA, y no solo que el error sea el correcto: lo que
+    // se filtraba era el total, las lineas y el nombre del proveedor del otro
+    // cliente, en un endpoint que la pantalla llama con el id de la URL.
+    expect(resultado.devuelto).toBeUndefined();
+    expect(resultado.error).toBeInstanceOf(ErrorDeNegocio);
+    expect(resultado.error.status).toBe(404);
+    expect(resultado.error.status).not.toBe(403);
+  });
+
+  it('getOrderDetail sigue devolviendo la orden propia con su detalle', async () => {
+    const orden = await purchaseService.getOrderDetail(ORDEN_PROPIA, PROPIA);
+
+    expect(orden.id).toBe(ORDEN_PROPIA);
+    expect(orden.total).toBe(1200.5);
+    expect(orden.items).toHaveLength(1);
+    expect(orden.items[0].product_name).toBe('Harina 000');
+  });
+});
+
+describe('Las dos rutas DELETE de la ficha, con un id ajeno', () => {
+  // Ids distintos entre los dos modelos a proposito: con `41` y `41` en los dos,
+  // una ruta que borrara del modelo equivocado seguiria pasando.
+  const MOV_PROPIO = 41;
+  const MOV_AJENO = 42;
+  const DOC_PROPIO = 61;
+  const DOC_AJENO = 62;
+
+  beforeEach(() => {
+    mockSupplierMovement.filas = [
+      { id: MOV_PROPIO, supplier_id: 10, empresa_id: PROPIA, type: 'pago', amount: 1500, date: '2026-07-05' },
+      { id: MOV_AJENO, supplier_id: 20, empresa_id: AJENA, type: 'pago', amount: 7300, date: '2026-07-06' },
+    ];
+    mockSupplierDocument.filas = [
+      { id: DOC_PROPIO, supplier_id: 10, empresa_id: PROPIA, name: 'factura-propia.pdf' },
+      { id: DOC_AJENO, supplier_id: 20, empresa_id: AJENA, name: 'factura-ajena.pdf' },
+    ];
+  });
+
+  it('DELETE /movements/:id NO borra el movimiento de otra empresa', async () => {
+    const res = await request(levantarApi(PROPIA)).delete(`/api/suppliers/movements/${MOV_AJENO}`);
+
+    expect(res.status).toBe(404);
+    expect(res.status).not.toBe(403);
+
+    // La otra mitad: la fila ajena sigue ahi. Borrar el pago de otro cliente le
+    // mueve el saldo de su cuenta corriente y no queda rastro de quien lo hizo.
+    expect(mockSupplierMovement.filas.map((m) => m.id)).toEqual([MOV_PROPIO, MOV_AJENO]);
+
+    // Y el mensaje es el mismo que el de un id que no existe en ningun lado.
+    const inexistente = await request(levantarApi(PROPIA)).delete('/api/suppliers/movements/99999');
+    expect(inexistente.body.error).toBe(res.body.error);
+  });
+
+  it('DELETE /movements/:id sigue borrando el movimiento propio', async () => {
+    const res = await request(levantarApi(PROPIA)).delete(`/api/suppliers/movements/${MOV_PROPIO}`);
+
+    expect(res.status).toBe(200);
+    expect(mockSupplierMovement.filas.map((m) => m.id)).toEqual([MOV_AJENO]);
+  });
+
+  it('DELETE /documents/:id NO borra el documento de otra empresa', async () => {
+    const res = await request(levantarApi(PROPIA)).delete(`/api/suppliers/documents/${DOC_AJENO}`);
+
+    expect(res.status).toBe(404);
+    expect(res.status).not.toBe(403);
+
+    // El archivo sigue en la nube del otro cliente, pero el enlace es lo unico
+    // que AdminApp guarda: borrarlo es perder el respaldo de su factura.
+    expect(mockSupplierDocument.filas.map((d) => d.id)).toEqual([DOC_PROPIO, DOC_AJENO]);
+
+    const inexistente = await request(levantarApi(PROPIA)).delete('/api/suppliers/documents/99999');
+    expect(inexistente.body.error).toBe(res.body.error);
+  });
+
+  it('DELETE /documents/:id sigue borrando el documento propio', async () => {
+    const res = await request(levantarApi(PROPIA)).delete(`/api/suppliers/documents/${DOC_PROPIO}`);
+
+    expect(res.status).toBe(200);
+    expect(mockSupplierDocument.filas.map((d) => d.id)).toEqual([DOC_AJENO]);
   });
 });
 

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import * as XLSX from 'xlsx'
 import { armarHoja, nombreDelArchivo, COLUMNAS } from './exportarProveedores'
 
 /**
@@ -107,6 +108,158 @@ describe('armarHoja', () => {
 
     expect(hoja.C3.v).toBe('')
     expect(hoja.D3.v).toBe(72000)
+  })
+})
+
+// ════════════════════════════════════════════
+//  El período que arranca con saldo anterior
+//
+//  ⚠ **Las fixtures de arriba no podían encontrar este defecto**, y por eso
+//  pasaron doce casos sin encontrarlo: van todas sin rango de fechas, así que su
+//  primera fila abre en su propio debe y la cuenta empieza en cero. Con `?desde=`
+//  no: el archivo arrancaba la cuenta en cero igual y cerraba en el NETO DEL
+//  PERÍODO —$22.000 sobre una cuenta que debía $122.000—, mientras la pantalla
+//  mostraba el saldo entero.
+// ════════════════════════════════════════════
+
+/** El `saldo_inicial` que devuelve la API para un rango con historia atrás. */
+const SALDO_PREVIO = 100000
+
+/**
+ * Un `?desde=2026-07-01` sobre una cuenta que ya venía debiendo $100.000.
+ *
+ * Ascendente —del más viejo al más nuevo—, como las manda la API. 100.000 +
+ * 72.000 − 50.000 = 122.000, que es el saldo grande de la pantalla y el número
+ * con el que la planilla tiene que cerrar (US8 escenario 6).
+ */
+const CON_RANGO = [
+  {
+    fecha: '2026-07-14',
+    tipo: 'Pedido',
+    descripcion: 'Recepción orden #118',
+    debe: 72000,
+    haber: 0,
+    saldo: 172000,
+    cuit: '30123456789',
+  },
+  {
+    fecha: '2026-07-28',
+    tipo: 'Pago',
+    descripcion: 'Transferencia',
+    debe: 0,
+    haber: 50000,
+    saldo: 122000,
+    cuit: '30123456789',
+  },
+]
+
+/**
+ * Una columna de la hoja, de la primera fila de datos al final del `!ref`.
+ *
+ * Se lee de las CELDAS y no de la fixture que entró: lo que hay que verificar es
+ * el archivo que abre el contador. Un test que vuelva a mirar sus propios datos
+ * de entrada pasa con y sin el defecto.
+ */
+function columna(hoja, letra) {
+  const ultima = XLSX.utils.decode_range(hoja['!ref']).e.r
+  const valores = []
+
+  // La fila 1 es el CUIT y la 2 el encabezado, así que los datos empiezan en la
+  // 3 —índice 2, y las direcciones de celda son base 1—.
+  for (let r = 2; r <= ultima; r += 1) {
+    valores.push(hoja[`${letra}${r + 1}`]?.v)
+  }
+
+  return valores
+}
+
+const suma = (valores) => valores.reduce((total, v) => total + (Number(v) || 0), 0)
+
+describe('armarHoja · el saldo con el que abre el período', () => {
+  it('con rango, la planilla dice de dónde sale el saldo con el que arranca', () => {
+    // Sin esta fila, la primera del archivo muestra un saldo acumulado que no se
+    // deduce de sus propias columnas —$172.000 con un debe de $72.000— y el
+    // contador no tiene cómo saber de dónde salió.
+    const hoja = armarHoja(CON_RANGO, { saldoInicial: SALDO_PREVIO })
+
+    expect(hoja.C3.v).toBe('Saldo anterior')
+    expect(hoja.F3.v).toBe(100000)
+  })
+
+  it('el «Saldo anterior» NO se escribe como texto, que dejaría la columna sin sumar', () => {
+    // El paso manual P7 en la parte que un test sí puede afirmar: un importe de
+    // apertura escrito como texto abre bien, se ve bien, y rompe la suma de toda
+    // la columna Saldo. Debe y Haber van en cero por lo mismo: una celda de texto
+    // en el medio arruina las otras dos columnas igual.
+    const hoja = armarHoja(CON_RANGO, { saldoInicial: SALDO_PREVIO })
+
+    // La fila 3 es la de apertura y no el primer movimiento: sin esta línea, el
+    // caso miraría los importes de un movimiento cualquiera y pasaría aunque la
+    // apertura no existiera.
+    expect(hoja.C3.v).toBe('Saldo anterior')
+
+    for (const celda of ['D3', 'E3', 'F3']) {
+      expect(hoja[celda].t).toBe('n')
+      expect(typeof hoja[celda].v).toBe('number')
+    }
+  })
+
+  it('el archivo cierra en el saldo de la cuenta y ese cierre sale de sus propias columnas', () => {
+    // US8 escenario 6. La cuenta del contador: saldo de apertura + todo el debe −
+    // todo el haber = el saldo con el que cierra, que es el saldo grande de la
+    // pantalla. Sin la fila de apertura los dos primeros sumandos se pisan y el
+    // archivo no cuadra ni consigo mismo.
+    const hoja = armarHoja(CON_RANGO, { saldoInicial: SALDO_PREVIO })
+
+    const saldos = columna(hoja, 'F')
+
+    expect(saldos[0] + suma(columna(hoja, 'D')) - suma(columna(hoja, 'E'))).toBe(122000)
+    expect(saldos.at(-1)).toBe(122000)
+  })
+
+  it('la fila de apertura va DEBAJO del encabezado y no lo corre de la fila 2', () => {
+    // La tabla tiene que estar en el mismo lugar se haya pedido un rango o no, y
+    // el importe de apertura tiene que caer DENTRO de la columna Saldo: arriba
+    // del encabezado quedaría afuera, y seleccionar la columna en la planilla no
+    // lo agarraría.
+    const hoja = armarHoja(CON_RANGO, { saldoInicial: SALDO_PREVIO })
+
+    expect(hoja.A2.v).toBe('Fecha')
+    expect(hoja.F2.v).toBe('Saldo')
+    // Y el CUIT sigue saliendo de una fila de la API: la de apertura la fabrica
+    // `armarHoja` y no pertenece a ningún proveedor.
+    expect(hoja.B1.v).toBe('30123456789')
+    // CUIT + encabezado + apertura + dos movimientos.
+    expect(hoja['!ref']).toBe('A1:F5')
+  })
+
+  it('sin saldo anterior NO se agrega la fila: el período empieza con la cuenta', () => {
+    // La otra mitad. Una fila «Saldo anterior $0,00» arriba de todo es ruido que
+    // hace dudar de si falta algo antes, y sin esta afirmación una apertura
+    // dibujada siempre pasaría los casos de arriba.
+    const hoja = armarHoja([FILA, PAGO])
+
+    expect(hoja.C3.v).toBe('Recepción orden #103')
+    expect(hoja['!ref']).toBe('A1:F4')
+  })
+
+  it('un rango sin movimientos igual dice el saldo anterior, y no que la cuenta está en cero', () => {
+    // Un archivo vacío sobre una cuenta que debe $122.000 se lee como «no debe
+    // nada»: es el mismo criterio que el 200 con la lista vacía de la API.
+    const hoja = armarHoja([], { saldoInicial: 122000 })
+
+    expect(hoja.C3.v).toBe('Saldo anterior')
+    expect(hoja.F3.v).toBe(122000)
+    expect(hoja['!ref']).toBe('A1:F3')
+  })
+
+  it('un saldo inicial ilegible NO inventa una apertura en cero', () => {
+    // Si la API cambiara el campo o llegara basura, lo que corresponde es el
+    // archivo de siempre y no una fila de apertura que afirma un saldo que nadie
+    // calculó.
+    const hoja = armarHoja(CON_RANGO, { saldoInicial: 'no es un número' })
+
+    expect(hoja.C3.v).toBe('Recepción orden #118')
   })
 })
 

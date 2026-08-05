@@ -64,7 +64,7 @@ const ESTADOS_DE_ORDEN = ['pending', 'partial', 'received', 'cancelled'];
  * @throws {Error & {codigo: string, status: number}}
  */
 function filtrosDeOrdenes(query = {}) {
-  const { supplier_id, status, from, to, limit, offset } = query;
+  const { supplier_id, status, from, to, limit, offset, q } = query;
 
   const invalido = (detalle) => {
     const err = new ErrorDeNegocio(detalle, 400);
@@ -96,6 +96,31 @@ function filtrosDeOrdenes(query = {}) {
     }
     filtros[nombre] = valor;
   }
+
+  // ── La búsqueda, que hasta este corte NO viajaba (FR-009) ──
+  //
+  // El endpoint aceptaba `supplier_id`, `status`, `from`, `to`, `limit` y
+  // `offset`, y nada más, así que el buscador de `/ordenes-compra` filtraba
+  // **solo la página cargada** mientras el servidor paginaba de a 50: buscar la
+  // orden 77 —que existe, en la página 2— respondía «ninguna orden coincide con
+  // el filtro» y la red ni se tocaba. Es un falso negativo, y un aviso que
+  // afirma algo que no es cierto hace cerrar la búsqueda y dar la orden por
+  // perdida.
+  //
+  // `q` viaja **tal cual**, y acá no se valida nada: a diferencia de los otros
+  // cuatro, cualquier texto es un patrón legítimo —no hay forma de un `q` que
+  // haga fallar la consulta— así que no hay nada que rechazar. Lo único que
+  // hacía falta es que figure en este destructuring, que es una lista blanca: un
+  // parámetro que no está acá no llega nunca al servicio, y por eso la búsqueda
+  // no viajaba.
+  //
+  // ⚠ **Que un `q` vacío o de puros espacios no sea un filtro se decide en
+  // `getOrders`**, y no acá, a propósito: es el que normaliza el texto, así que
+  // es el único que puede saber si después de normalizarlo queda algo. Un
+  // `if (q.trim())` de este lado sería una segunda red que **ningún test puede
+  // poner en rojo** —sacarla no cambia una sola respuesta—, y este repositorio
+  // ya juntó veinte tests que pasaban con y sin el código que decían proteger.
+  if (q !== undefined) filtros.q = q;
 
   return filtros;
 }
@@ -172,7 +197,19 @@ router.put('/orders/:id/cancel', checkPermission('ordenes_compra.anular'), async
 // scoping correcto no impide sacarla de la empresa despues. Es el mismo
 // agujero que se cerro en PUT /api/products/:id.
 const CAMPOS_DE_PROVEEDOR = ['name', 'phone', 'email', 'address', 'cuit'];
-const CAMPOS_DE_MOVIMIENTO = ['type', 'date', 'amount', 'payment_method', 'notes', 'due_date'];
+
+// ⚠ **`type` NO está en la lista, y es una decisión, no un olvido.** Hasta este
+// corte se podía convertir una deuda en un pago editando el movimiento: el saldo
+// se movía por el DOBLE del importe y la fila quedaba mintiendo —sus `notes`
+// siguen diciendo «Recepción orden #118» mientras cuenta como pago—.
+//
+// El tipo no es un dato que se corrija: es **de dónde salió la fila**. Una deuda
+// la escribe `purchaseService.receiveOrder` cuando llega la mercadería y un pago
+// lo escribe `POST /:id/payments`; ninguna pantalla manda `type` en la edición
+// (`Orders.jsx`, `guardarMovimiento`). Si alguien cargó el movimiento
+// equivocado, se borra y se vuelve a cargar: eso deja una cuenta coherente, y
+// una conversión silenciosa deja un asiento que no se corresponde con nada.
+const CAMPOS_DE_MOVIMIENTO = ['date', 'amount', 'payment_method', 'notes', 'due_date'];
 
 /** Se queda con las claves permitidas que efectivamente vinieron. */
 function soloCampos(cuerpo = {}, permitidos) {
@@ -574,25 +611,70 @@ router.get('/:id/movimientos/export', checkPermission('proveedores.ver'), async 
       raw: true,
     });
 
+    // ── El saldo con el que arranca el período ──
+    //
+    // **Acá había un `0` literal.** Con `?desde=`, el archivo del contador
+    // arrancaba la cuenta en cero y cerraba en el NETO DEL PERÍODO: $22.000
+    // sobre una cuenta que debe $122.000, mientras la pantalla mostraba el saldo
+    // entero. Los dos números salían de este mismo hito y no coincidían, que es
+    // exactamente lo que prohíben FR-101, el escenario 6 de US8 y
+    // `contracts/api-endpoints.md:229` («`saldo_final` es **el mismo número**
+    // que el `saldo` del listado»).
+    //
+    // El endpoint hermano ya lo resolvía así (`:494-517`): los movimientos
+    // anteriores al rango existen, y son el «saldo anterior» de la cuenta.
+    //
+    // Sin `desde` no hay nada más viejo que consultar y el inicial es cero: una
+    // consulta menos en el caso común, igual que en el historial paginado.
+    let saldoInicial = 0;
+
+    if (rango.desde) {
+      const anteriores = await SupplierMovement.findAll({
+        attributes: ['type', [fn('SUM', col('amount')), 'total']],
+        where: {
+          empresa_id: req.empresaId,
+          supplier_id: supplier.id,
+          // Sin desempate por id: el corte es una fecha, no una fila. Todo lo
+          // anterior al primer día del rango queda del lado del saldo anterior.
+          date: { [Op.lt]: rango.desde },
+        },
+        group: ['type'],
+        raw: true,
+      });
+
+      saldoInicial = resumenDeCuenta(anteriores).saldo;
+    }
+
     // ⚠ `conSaldoAcumulado` recibe DESCENDENTE y devuelve descendente, que es lo
     // que necesita la pantalla. Acá se le da vuelta el arreglo dos veces en vez
     // de escribir una segunda acumulación: dos acumulaciones son dos redondeos
     // que se separan, y entonces la última fila del archivo dejaría de coincidir
     // con el saldo grande de la pantalla.
     const descendentes = [...ascendentes].reverse();
-    const conSaldo = [...conSaldoAcumulado(descendentes, 0)].reverse();
+    const conSaldo = [...conSaldoAcumulado(descendentes, saldoInicial)].reverse();
 
-    // `saldo_final` sale de la MISMA función que el saldo del listado y el de la
-    // ficha (FR-101), no de un segundo `reduce` sobre las filas del archivo. Sin
-    // rango es exactamente el saldo de la cuenta; con rango es el neto del
-    // período, que es el número con el que cierra la última fila del archivo.
-    const { saldo } = resumenDeCuenta(ascendentes);
+    // `saldo_final` es el acumulado de la **última fila del archivo**, salido de
+    // la misma acumulación en centavos que las demás filas: no es un segundo
+    // `reduce` y, por construcción, no puede separarse del número con el que
+    // cierra la planilla (US8 escenario 6).
+    //
+    // Sin rango es **el mismo número que el `saldo` del listado y el de la
+    // ficha** (FR-101): las dos cuentas suman lo mismo en centavos enteros. Con
+    // `hasta` es el saldo **a esa fecha**, que es lo que significa cortar un
+    // período: un archivo que cerrara en el saldo de hoy sobre filas que llegan
+    // hasta julio no cuadraría con sus propias filas.
+    const saldoFinal = conSaldo.length ? conSaldo[conSaldo.length - 1].saldo : saldoInicial;
 
     res.json({
       ok: true,
       total,
       proveedor: { name: supplier.name, cuit: supplier.cuit || '' },
-      saldo_final: saldo,
+      // El período puede arrancar con un saldo anterior, y la planilla tiene que
+      // decirlo: sin este número, la primera fila del archivo parece el
+      // principio de la cuenta y no lo es. Es el mismo campo que ya devuelve
+      // `GET /:id/movimientos` (`:523`).
+      saldo_inicial: saldoInicial,
+      saldo_final: saldoFinal,
       data: conSaldo.map((m) => filaDeCuentaParaExport(m, m.saldo, supplier)),
     });
   } catch (err) {
@@ -759,13 +841,24 @@ router.post('/:id/orders', checkPermission('ordenes_compra.crear'), async (req, 
 // ── Pagos ──
 
 /**
- * El importe de un pago, validado antes de que llegue a la base (FR-088).
+ * Un importe de plata, validado antes de que llegue a la base (FR-088).
  *
  * **Qué pasaba hasta este corte**: `Orders.jsx:125` mandaba
  * `parseFloat(payData.amount)` sin mirar nada, así que un formulario vacío
  * escribía **NaN en una columna DECIMAL(14,2)**. Nada fallaba: la fila entraba,
  * y a partir de ahí el saldo del proveedor, el badge de la lista, el saldo
  * grande de la cuenta y el archivo del contador decían todos «NaN».
+ *
+ * ── Y por qué la usa también la EDICIÓN de un movimiento ──
+ *
+ * `PUT /movements/:id` escribía `amount` sin mirarlo: un `-50000` sobre un pago
+ * respondía **200 ok:true** y le sumaba $50.000 al saldo del proveedor, y un
+ * `0` dejaba una fila que no dice nada. Es el único camino que **escribe un
+ * número falso y lo deja escrito**: no revierte, no avisa, y el saldo corrupto
+ * se propaga al listado, al badge, al bloqueo del borrado y al archivo del
+ * contador, porque los cuatro salen de `resumenDeCuenta`. La regla ya estaba
+ * escrita acá y aplicada en el endpoint hermano; lo único que faltaba era
+ * llamarla desde el otro.
  *
  * ⚠ **Un importe mayor que el saldo SÍ se acepta** (FR-089): pagar por
  * adelantado es legítimo y deja el saldo negativo, que es la forma correcta de
@@ -776,15 +869,19 @@ router.post('/:id/orders', checkPermission('ordenes_compra.crear'), async (req, 
  * La validación va en los **dos** lados —navegador y servidor— porque el
  * requisito lo dice y porque el navegador no es una barrera.
  *
+ * @param {number|string|null|undefined} valor
+ * @param {string} [queEs] Cómo se nombra el importe en el mensaje: «del pago»,
+ *   «del movimiento». El texto lo lee una persona, así que no puede decir
+ *   «pago» cuando lo que está corrigiendo es una deuda.
  * @throws {ErrorDeNegocio} 400 con el mensaje que lee el usuario.
  */
-function importeDePago(valor) {
+function importePositivo(valor, queEs = 'del pago') {
   // `Number('')` es 0 y `Number(null)` también: los dos tienen que quedar
   // afuera por el `<= 0`, no por el `isFinite`.
   const monto = Number(valor);
 
   if (!Number.isFinite(monto) || monto <= 0) {
-    throw new ErrorDeNegocio('El monto del pago tiene que ser un número mayor que cero', 400);
+    throw new ErrorDeNegocio(`El monto ${queEs} tiene que ser un número mayor que cero`, 400);
   }
 
   return monto;
@@ -809,7 +906,7 @@ router.post('/:id/payments', checkPermission('proveedores.crear'), async (req, r
     // moverlo —o interponerle un return— es la clase de reordenamiento que pone
     // una guardia en rojo sin que se entienda por qué.
     const { date, amount, payment_method, notes } = req.body;
-    const monto = importeDePago(amount);
+    const monto = importePositivo(amount, 'del pago');
 
     const movement = await SupplierMovement.create({
       supplier_id: supplier.id,
@@ -836,7 +933,25 @@ router.put('/movements/:id', checkPermission('proveedores.editar'), async (req, 
     // Sin lista blanca, `supplier_id` y `empresa_id` viajaban en el cuerpo: un
     // pago propio se podia reasignar al proveedor de otro cliente sin crear
     // nada, solo editando.
-    await movement.update(soloCampos(req.body, CAMPOS_DE_MOVIMIENTO));
+    const cambios = soloCampos(req.body, CAMPOS_DE_MOVIMIENTO);
+
+    // ── El importe, validado antes de escribirlo (FR-088) ──
+    //
+    // Entre el findScoped y este update no había NADA, y `SupplierMovement.amount`
+    // es DECIMAL(14,2) sin `validate`: un `{amount: -50000}` respondía 200 y
+    // dejaba el saldo del proveedor escrito mal, para siempre y en silencio.
+    //
+    // Se valida **solo si vino**: la edición es parcial —corregir la nota de un
+    // movimiento no puede obligar a remandar el importe— y `soloCampos` ya dejó
+    // afuera lo que no llegó.
+    //
+    // Y va DESPUÉS del findScoped por el mismo motivo que en el pago: un 400
+    // delante del 404 confirmaría que ese movimiento existe en otra empresa.
+    if (cambios.amount !== undefined) {
+      cambios.amount = importePositivo(cambios.amount, 'del movimiento');
+    }
+
+    await movement.update(cambios);
     res.json({ ok: true, data: movement });
   } catch (err) {
     fallo(req, res, err, 'Error al editar el movimiento del proveedor');

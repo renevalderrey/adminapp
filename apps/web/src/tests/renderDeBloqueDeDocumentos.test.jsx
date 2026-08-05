@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, within, waitFor } from '@testing-library/react'
+import { render, screen, within, waitFor, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import useStore from '@/store/useStore'
 import api from '@/services/api'
 import BloqueDeDocumentos from '@/components/BloqueDeDocumentos'
@@ -281,5 +282,99 @@ describe('Sin permiso el bloque se lee, no se edita', () => {
     expect(
       screen.queryByText(/Necesitás el permiso «proveedores.editar» para cargar documentos/)
     ).not.toBeInTheDocument()
+  })
+})
+
+// ════════════════════════════════════════════
+//  «Documento eliminado.» sin haber eliminado nada
+//
+//  Borrando la línea `await deleteDocument(documento.id)` del cuerpo de
+//  `eliminar`, el `toast.success('Documento eliminado.')` sale igual y `onCambio`
+//  vuelve a pedir la ficha: el usuario ve el aviso de que se borró y la fila
+//  intacta al lado, y lo lee como que la pantalla va lenta. Vuelve mañana y el
+//  documento sigue ahí. **Con esa línea borrada, este archivo y los demás que
+//  tocan el bloque quedaban enteros en verde.**
+//
+//  Es textualmente el bug de `sendEmail` que CONVENCIONES.md pone como uno de los
+//  tres motivos por los que existe este método: `ok: true` sin haber hecho nada,
+//  y quien invitaba veía «enviada». Por eso lo que se afirma no es que el toast
+//  aparezca, sino que **la llamada se haya hecho** y que el toast dependa de su
+//  resultado —las dos mitades, porque son defectos distintos: no llamar, y
+//  llamar sin mirar qué contestó—.
+//
+//  ⚠ Los clics del diálogo van por `fireEvent` dentro de `act` y no por
+//  `user-event`. El diálogo de `@base-ui/react` es modal y apaga los
+//  `pointer-events` del resto del documento, que es justo lo que `user-event`
+//  comprueba antes de clickear. Es el mismo camino que usa
+//  `renderDeProveedores.test.jsx` para sus cinco diálogos.
+// ════════════════════════════════════════════
+
+describe('El aviso de «eliminado» no sale si no se eliminó nada', () => {
+  const botonDeBorrar = (nombre) =>
+    within(filaDe(nombre)).getByTitle('Eliminar el documento')
+
+  /** El «Confirmar» de `useConfirmDialog`, que se dibuja en un portal colgado del
+   *  `<body>`: `screen` lo encuentra, el `container` del render no. */
+  const confirmar = () => screen.getByRole('button', { name: 'Confirmar' })
+
+  it('el aviso de «Documento eliminado» no sale si el DELETE no se llamó', async () => {
+    const exito = vi.spyOn(toast, 'success').mockImplementation(() => {})
+    const onCambio = vi.fn()
+
+    montar({ onCambio })
+
+    await act(async () => { fireEvent.click(botonDeBorrar('Remito 0001-00099')) })
+
+    // Antes de confirmar no pasó nada: ni la llamada ni el aviso.
+    expect(api.delete).not.toHaveBeenCalled()
+    expect(exito).not.toHaveBeenCalled()
+
+    await act(async () => { fireEvent.click(confirmar()) })
+
+    // El id del REMITO —12— y no el de la factura: con el de la primera fila
+    // fijo, la prueba pasaría igual si el bloque borrara siempre la de arriba.
+    expect(api.delete).toHaveBeenCalledWith('/suppliers/documents/12')
+    expect(api.delete).toHaveBeenCalledTimes(1)
+    expect(exito).toHaveBeenCalledWith('Documento eliminado.')
+    expect(onCambio).toHaveBeenCalled()
+  })
+
+  it('si el DELETE falla, NO dice que el documento se eliminó', async () => {
+    // La otra mitad del mismo defecto: un aviso de éxito que no depende de lo
+    // que contestó el servidor. Sin este caso, un `catch` vacío —o un `await`
+    // sobre una promesa que nadie mira— pasaría la prueba de arriba entera.
+    api.delete.mockRejectedValue({
+      response: { status: 500, data: { error: 'Error al eliminar el documento del proveedor' } },
+    })
+    const exito = vi.spyOn(toast, 'success').mockImplementation(() => {})
+    const aviso = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    const onCambio = vi.fn()
+
+    montar({ onCambio })
+
+    await act(async () => { fireEvent.click(botonDeBorrar('Factura 0001-00043212')) })
+    await act(async () => { fireEvent.click(confirmar()) })
+
+    expect(api.delete).toHaveBeenCalledWith('/suppliers/documents/11')
+    expect(exito).not.toHaveBeenCalled()
+    expect(aviso).toHaveBeenCalled()
+    // Y la ficha no se vuelve a pedir: refrescar después de un error redibuja la
+    // lista igual que estaba y deja al usuario sin saber qué pasó.
+    expect(onCambio).not.toHaveBeenCalled()
+  })
+
+  it('cancelar la confirmación no llama a nadie ni avisa nada', async () => {
+    // Lo que separa «pide confirmación» de «avisa y borra igual».
+    const exito = vi.spyOn(toast, 'success').mockImplementation(() => {})
+
+    montar()
+
+    await act(async () => { fireEvent.click(botonDeBorrar('Remito 0001-00099')) })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+    })
+
+    expect(api.delete).not.toHaveBeenCalled()
+    expect(exito).not.toHaveBeenCalled()
   })
 })

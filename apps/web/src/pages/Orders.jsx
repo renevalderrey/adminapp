@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import * as XLSX from 'xlsx'
 import {
@@ -347,6 +347,18 @@ const Orders = () => {
   const [modoDelPanel, setModoDelPanel] = useState('detalle')
   const [cargandoDetalle, setCargandoDetalle] = useState(false)
 
+  /**
+   * Cuál fue el último detalle que se pidió.
+   *
+   * ⚠ Sin esto, un `GET /suppliers/orders/:id` en vuelo se apoderaba del panel:
+   * abrir la A, cerrarla y abrir la B dejaba la B dibujada hasta que llegaba la
+   * respuesta de la A —tarde— y el panel se rehacía como A. Se pierde lo tipeado
+   * —el reseteo del panel borra las cantidades en el mismo commit— y se queda
+   * mirando una orden que nadie pidió. Es el mismo arreglo, y por el mismo
+   * motivo, que en `pages/PurchaseOrders.jsx`.
+   */
+  const pedidoDeDetalle = useRef(0)
+
   // ── Los formularios ──
   const [altaAbierta, setAltaAbierta] = useState(false)
   const [edicionAbierta, setEdicionAbierta] = useState(false)
@@ -522,6 +534,10 @@ const Orders = () => {
    * clic sin efecto visible y el usuario vuelve a apretar.
    */
   const abrirOrden = async (id, modo = 'detalle') => {
+    // El número de ESTE pedido. Todo lo que llegue después de que el contador
+    // haya avanzado es la respuesta de una orden que ya no está abierta.
+    const miPedido = ++pedidoDeDetalle.current
+
     setOrdenAbierta(null)
     setModoDelPanel(modo)
     setPanelAbierto(true)
@@ -529,13 +545,32 @@ const Orders = () => {
 
     try {
       const res = await getPurchaseOrder(id)
+
+      if (pedidoDeDetalle.current !== miPedido) return
+
       setOrdenAbierta(res.data.data)
     } catch (err) {
+      // El error de una orden que ya no está abierta tampoco se muestra: el
+      // usuario leería «No se pudo abrir la orden #112» mirando la #118.
+      if (pedidoDeDetalle.current !== miPedido) return
+
       toast.error(mensajeDeError(err, `No se pudo abrir la orden #${id}.`))
       setPanelAbierto(false)
     } finally {
-      setCargandoDetalle(false)
+      if (pedidoDeDetalle.current === miPedido) setCargandoDetalle(false)
     }
+  }
+
+  /**
+   * Abrir y cerrar el panel.
+   *
+   * Cerrar INVALIDA el detalle en vuelo: si no, la respuesta de la orden que se
+   * acaba de cerrar llega después y vuelve a llenar `ordenAbierta`, que es el
+   * estado con el que se reabre el panel la próxima vez.
+   */
+  const cambiarPanel = (abierto) => {
+    if (!abierto) pedidoDeDetalle.current += 1
+    setPanelAbierto(abierto)
   }
 
   const anularOrden = async (orden) => {
@@ -782,6 +817,14 @@ const Orders = () => {
    *
    * `book_new` + `book_append_sheet` + `writeFile` son la parte impura y viven
    * acá: `utils/exportarProveedores.js` es todo testeable a propósito.
+   *
+   * ⚠ **De la respuesta se usan DOS campos, no uno.** Acá se leía solo `data` y
+   * se tiraba el resto: con un rango de fechas, el archivo abría la cuenta en un
+   * número que sus propias columnas no explicaban —la primera fila mostraba un
+   * saldo acumulado que no sale de su debe ni de su haber— y el contador no
+   * tenía de dónde sacar por qué. `saldo_inicial` es lo que la API calcula con
+   * los movimientos anteriores al rango, y sin pasarlo la corrección del
+   * servidor no llegaba a la planilla.
    */
   const exportar = async (e) => {
     e.preventDefault()
@@ -795,9 +838,14 @@ const Orders = () => {
       // servidor tiene que validar para descartar.
       const res = await exportarCuenta(proveedor.id, rangoDeExport)
       const filas = res.data.data || []
+      const saldoInicial = res.data.saldo_inicial
 
       const libro = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(libro, armarHoja(filas), 'Cuenta corriente')
+      XLSX.utils.book_append_sheet(
+        libro,
+        armarHoja(filas, { saldoInicial }),
+        'Cuenta corriente'
+      )
       XLSX.writeFile(
         libro,
         nombreDelArchivo({ proveedor: proveedor.name, desde: rangoDeExport.desde, hasta: rangoDeExport.hasta })
@@ -1365,7 +1413,7 @@ const Orders = () => {
           solo tiene `ordenes_compra.ver`. */}
       <PanelOrdenDeCompra
         abierto={panelAbierto}
-        onOpenChange={setPanelAbierto}
+        onOpenChange={cambiarPanel}
         orden={ordenAbierta}
         cargando={cargandoDetalle}
         modo={modoDelPanel}

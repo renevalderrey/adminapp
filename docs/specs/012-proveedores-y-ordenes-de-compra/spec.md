@@ -1519,6 +1519,89 @@ archivo?** El legacy tenía una solapa que lo mostraba (`legacy:8268`).
 
 ---
 
+## Lo que se decidió construyendo
+
+Tres decisiones que no estaban en el pedido, ni en el plan, ni en la maqueta:
+salieron de implementar el hito y de la verificación adversarial que lo siguió, y
+**hasta acá vivían solo en el código**. Se escriben por el mismo motivo que las
+de arriba: una decisión que vive en un docstring es una decisión que el próximo
+ciclo va a volver a tomar, y quizá distinto.
+
+### 13 · Si el recosteo en cascada falla, la recepción vale y el fallo se avisa
+
+Recibir mercadería recostea los elaborados que usan el insumo comprado
+—`purchaseService.recostearDependientes` → `costService.recalculateCascadingCosts`—,
+que es la decisión 1 propagada un nivel. **Si ese recosteo falla, la recepción se
+guarda igual y el fallo viaja como aviso**, nombrando el elaborado que quedó sin
+recostear, por la misma lista de `avisos` que la pantalla ya dibuja.
+
+Se eligió sobre abortar la recepción, y es una decisión de producto, no el
+resultado accidental de dónde cayó el `try`:
+
+- **La mercadería entró y la deuda existe.** Son hechos del mundo, no
+  conclusiones del sistema, y una receta mal cargada hace meses no los borra.
+- **Abortar revierte la transacción entera** —stock, costo, historial y deuda—:
+  deja al depósito sin poder registrar el camión hasta que alguien arregle una
+  receta que quien recibe mercadería casi nunca puede tocar, y con un 500 que no
+  nombra ni el producto ni la receta.
+- **Lo que se revertía incluía el costo del insumo**, que es justamente lo que la
+  decisión 1 vino a resolver. O sea: abortar dejaba el costo viejo, que es el
+  defecto 3 de vuelta, y encima sin la mercadería cargada.
+
+Lo que **no** se hace es callarlo —eso sería un `catch` vacío—: el aviso nombra
+el elaborado y dice qué revisar, y el motivo real queda en el log del servidor.
+
+⚠ **Lo que esta decisión deja abierto**: la cascada pudo haber escrito algunos
+costos antes de fallar y eso **no se deshace**. Haría falta un SAVEPOINT, y está
+anotado como **11e** en `docs/PROXIMOS-PROYECTOS.md` —con la trampa de que el
+test que lo verificara pasaría con y sin él, porque el doble de `modelosFalsos`
+no soporta `rollback`—.
+
+### 14 · `type` no es un campo editable de un movimiento
+
+La lista blanca de `PUT /api/suppliers/movements/:id` (`CAMPOS_DE_MOVIMIENTO`)
+lleva `date`, `amount`, `payment_method`, `notes` y `due_date`. **`type` quedó
+afuera, y es una decisión, no un olvido.**
+
+Convertir una deuda en un pago editando el movimiento mueve el saldo por **el
+doble** del importe —la fila deja de sumar y pasa a restar— y deja una fila que
+miente: sus `notes` siguen diciendo «Recepción orden #118» mientras cuenta como
+pago. Con FR-101 —el saldo del listado, el de la ficha, el que bloquea el borrado
+y el `saldo_final` del archivo salen todos de la misma función— ese número mal
+escrito se propaga a los cuatro lados a la vez.
+
+El tipo no es un dato que se corrija: es **de dónde salió la fila**. Una deuda la
+escribe `receiveOrder` cuando llega la mercadería; un pago lo escribe
+`POST /:id/payments`. Ninguna pantalla manda `type` en la edición. Si alguien
+cargó el movimiento equivocado, **el camino es borrarlo y volver a cargarlo**:
+eso deja una cuenta coherente, y una conversión silenciosa deja un asiento que no
+se corresponde con nada.
+
+### 15 · La decisión 5 no era un botón: era mudar el formulario
+
+La decisión 5 dice «sí, se crean órdenes desde la pantalla de Órdenes de compra»
+y la maqueta dibuja el botón (`AdminApp-Rediseno.dc.html:640`). **Lo que costó
+fue otra cosa.** Hasta este hito `createSupplierOrder` se llamaba desde **un solo
+lugar de todo `apps/web`**: el modal de `/proveedores`. Cumplir la decisión no
+fue agregar un botón, fue **mudar el formulario entero** a `/ordenes-compra` y
+sumarle el desplegable de proveedor, que en Proveedores no hace falta porque la
+pantalla ya tiene uno elegido.
+
+**Y lo que importa que quede escrito es cómo se perdió, no que se hizo.** La
+decisión está en la tabla de arriba desde que se escribió esta spec, y **el plan
+no la bajó a ninguna de sus 54 tareas**. No la salteó nadie: la tarea no existía.
+Apareció recién en la verificación adversarial del hito, y el síntoma era casi
+invisible —`PageHeader` no dibuja el bloque de acciones cuando no le pasan
+ninguna (`PageHeader.jsx:27`), así que `/ordenes-compra` no se veía rota, se veía
+sin botón—.
+
+Deja una regla para el próximo ciclo: **una decisión de la tabla que no aparece
+en ninguna tarea es una decisión que no se va a construir**, y hoy nada lo
+verifica. El plan se cruza contra la tabla de decisiones, una por una, antes de
+empezar.
+
+---
+
 ## Assumptions
 
 1. **Las dos pantallas entran en el marco de 1320px** y ninguna necesita la

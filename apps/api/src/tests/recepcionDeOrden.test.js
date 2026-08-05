@@ -37,7 +37,22 @@ const mockStock = crearModelo([]);
 const mockProduct = crearModelo([]);
 const mockPuntoDeVenta = crearModelo([]);
 const mockEmpresa = crearModelo([]);
-const mockRecipe = crearModelo([]);
+const mockRecipe = crearModelo([], {
+  // `costService.calculateProductCost` pide la receta con sus ítems y, dentro
+  // de cada ítem, el costo del insumo. `crearModelo` resuelve un nivel por
+  // alias, así que el anidado se arma acá.
+  //
+  // ⚠ `ingredient` apunta a la fila VIVA de `mockProduct`, no a una copia. Con
+  // una copia la cascada leería siempre el costo anterior al UPDATE —que es
+  // exactamente el defecto de MVCC que documenta costService— y el diamante
+  // daría el mismo número con y sin la corrección.
+  items: (fila) => mockRecipeItem.filas
+    .filter((i) => i.recipe_id === fila.id)
+    .map((i) => ({
+      ...i,
+      ingredient: mockProduct.filas.find((p) => p.id === i.ingredient_product_id) || null,
+    })),
+});
 const mockRecipeItem = crearModelo([], {
   recipe: (fila) => mockRecipe.filas.find((r) => r.id === fila.recipe_id) || null,
 });
@@ -45,16 +60,50 @@ const mockProductCostHistory = crearModelo([]);
 const mockSupplierDocument = crearModelo([]);
 
 // `costService.recalculateCascadingCosts` recorre recetas de verdad y no es lo
-// que este archivo verifica: lo que se verifica es que **se llame**, con la
-// transacción y el `visited` que corta ciclos. El doble anota las llamadas y
-// mueve el costo del elaborado, que es el efecto observable.
+// que la mayoría de este archivo verifica: lo que se verifica es que **se
+// llame**, con la transacción y el `visited` que corta ciclos. El doble anota
+// las llamadas y mueve el costo del elaborado, que es el efecto observable.
 const recosteosPedidos = [];
+
+// ⚠ **El doble se puede apagar, y eso no es un lujo.**
+//
+// Con el doble puesto siempre, el defecto de la cascada —`recostearDependientes`
+// pasaba el MISMO Set en cada vuelta del bucle— era estructuralmente invisible
+// para este archivo: el doble anota el Set y no recorre nada, así que un grafo
+// en diamante jamás llegaba al `visited.has()` de costService que tira
+// «Dependencia circular detectada». Diez casos en verde sobre un endpoint que
+// respondía 500 y no recibía la mercadería.
+//
+// Los bloques del diamante y del ciclo lo apagan y hacen correr el algoritmo de
+// verdad contra los modelos falsos. El resto sigue con el doble: recorrer
+// recetas no es lo que esos casos afirman.
+let mockCascadaDeVerdad = false;
 
 jest.mock('../services/costService', () => ({
   recalculateCascadingCosts: jest.fn(async (productId, visited, transaction) => {
-    recosteosPedidos.push({ productId, visited, transaction });
+    // Se anota SIEMPRE, también con el algoritmo real: lo que llega acá son las
+    // llamadas de nivel superior, una por rama, y el Set que recibió cada una es
+    // justamente lo que el defecto compartía.
+    //
+    // `visitadosAlRecibir` es una copia y hace falta: `recalculateCascadingCosts`
+    // le agrega el producto al Set que recibe, así que mirar la referencia viva
+    // después del request no dice con qué llegó, dice cómo terminó.
+    recosteosPedidos.push({
+      productId,
+      visited,
+      visitadosAlRecibir: new Set(visited),
+      transaction,
+    });
+
+    if (mockCascadaDeVerdad) {
+      return jest.requireActual('../services/costService')
+        .recalculateCascadingCosts(productId, visited, transaction);
+    }
+
     const elaborado = mockProduct.filas.find((p) => p.id === productId);
     if (elaborado) elaborado.cost = Number(elaborado.cost) + 300;
+
+    return undefined;
   }),
 }));
 
@@ -150,6 +199,9 @@ beforeEach(() => {
   mockRecipe.filas = [];
   mockProductCostHistory.filas = [];
   recosteosPedidos.length = 0;
+  // Por defecto la cascada es el doble. Los bloques que la necesitan de verdad
+  // la encienden en su propio beforeEach, que corre después de este.
+  mockCascadaDeVerdad = false;
   mockProduct.filas = [
     { id: 41, empresa_id: PROPIA, name: 'Colágeno 300g', cost: 900 },
     { id: 55, empresa_id: PROPIA, name: 'Creatina 500g', cost: 7000 },
@@ -762,7 +814,7 @@ describe('El costo se actualiza confirmando, y se propaga a las recetas', () => 
 
     expect(bloque).toMatch(/producto\.update\(\{ cost: costoNuevo \}, \{ transaction: t \}\)/);
     expect(bloque).toMatch(/registrarCambioDeCosto\(\{[\s\S]*?transaction: t,[\s\S]*?\}\)/);
-    expect(fuente).toMatch(/recostearDependientes\(producto\.id, t\)/);
+    expect(fuente).toMatch(/recostearDependientes\(producto\.id, t,/);
   });
 
   it('la cascada recibe la transacción y no abre una conexión aparte', async () => {
@@ -789,6 +841,242 @@ describe('El costo se actualiza confirmando, y se propaga a las recetas', () => 
     expect(res.status).toBe(200);
     expect(res.body.data.costos).toEqual([]);
     expect(mockProductCostHistory.filas).toEqual([]);
+  });
+});
+
+// ════════════════════════════════════════════
+//  Un diamante NO es un ciclo
+//
+//  El grafo: el Colágeno es insumo de la Premezcla, y el Combo lleva Colágeno
+//  **y** Premezcla. Dos caminos distintos llegan al Combo desde el Colágeno, y
+//  ninguno vuelve para atrás: no hay ciclo por ningún lado.
+//
+//  `recostearDependientes` pasaba el MISMO Set `visited` en cada vuelta del
+//  bucle —y encima le agregaba cada elaborado ya recosteado—, así que la segunda
+//  rama se encontraba el Combo marcado por la primera y costService respondía
+//  «Dependencia circular detectada». El error es un `Error` pelado y la llamada
+//  está adentro de la transacción: subía como 500 genérico y revertía stock,
+//  deuda, costo e historial. La casilla que lo dispara viene marcada por
+//  defecto, así que alcanzaba con confirmar la recepción como viene.
+//
+//  ⚠ Estos casos corren el algoritmo DE VERDAD (`mockCascadaDeVerdad`). Con el
+//  doble no se puede: no recorre recetas, así que el defecto no existe para él.
+//  Ese es el motivo por el que diez casos de este mismo archivo estaban en verde
+//  sobre un endpoint que no recibía la mercadería.
+// ════════════════════════════════════════════
+
+describe('Un grafo en diamante no es una dependencia circular', () => {
+  const COLAGENO = 41;
+  const PREMEZCLA = 60;
+  const COMBO = 80;
+
+  beforeEach(() => {
+    mockCascadaDeVerdad = true;
+
+    mockProduct.filas.push(
+      { id: PREMEZCLA, empresa_id: PROPIA, name: 'Premezcla base', cost: 1800 },
+      { id: COMBO, empresa_id: PROPIA, name: 'Combo proteico', cost: 2700 }
+    );
+
+    // Rendimiento 1 y merma 0: lo que se afirma acá es el recorrido del grafo,
+    // no la fórmula del costo, que tiene sus propios tests.
+    mockRecipe.filas = [
+      { id: 2, product_id: PREMEZCLA, yield: 1, loss_percentage: 0 },
+      { id: 3, product_id: COMBO, yield: 1, loss_percentage: 0 },
+    ];
+
+    // ⚠ El orden de estas filas no es casual: la del Combo va PRIMERO.
+    //
+    // El `findAll` no llevaba `ORDER BY`, así que el resultado dependía de lo
+    // que devolviera Postgres: con la fila de la Premezcla primero, la misma
+    // recepción respondía 200 **con el defecto puesto**. Con la del Combo
+    // primero el 500 es determinístico, y un test que reproduce el defecto una
+    // de cada dos veces es un test que termina borrado por intermitente.
+    mockRecipeItem.filas = [
+      { id: 11, recipe_id: 3, ingredient_product_id: COLAGENO, quantity: 1 },
+      { id: 10, recipe_id: 2, ingredient_product_id: COLAGENO, quantity: 2 },
+      { id: 12, recipe_id: 3, ingredient_product_id: PREMEZCLA, quantity: 1 },
+    ];
+
+    mockSupplierOrder.filas = [{
+      id: 1002, empresa_id: PROPIA, supplier_id: 10, status: 'pending', date: '2026-07-20',
+      detail: [
+        { product_id: COLAGENO, product_name: 'Colágeno 300g', quantity: 10, unit_price: 1200, quantity_received: 0 },
+      ],
+    }];
+  });
+
+  const recibir = () => request(levantarApi())
+    .put('/api/suppliers/orders/1002/receive')
+    .send({ items: [{ linea: 0, cantidad: 10, actualizar_costo: true }] });
+
+  it('recibir un insumo que dos recetas comparten NO responde 500', async () => {
+    const res = await recibir();
+
+    expect(res.status).toBe(200);
+    expect(res.body.error).toBeUndefined();
+  });
+
+  it('la mercadería, la deuda y el estado de la orden entran igual', async () => {
+    // Lo que el 500 se llevaba puesto: la transacción revertía limpio, así que
+    // no quedaba dato corrupto, quedaba la recepción bloqueada.
+    await recibir();
+
+    expect(mockStock.filas).toEqual([
+      expect.objectContaining({ product_id: COLAGENO, quantity: 10, available: 10 }),
+    ]);
+    expect(mockSupplierMovement.filas).toHaveLength(1);
+    expect(mockSupplierMovement.filas[0].amount).toBe(12000);
+    expect(mockSupplierOrder.filas[0].status).toBe('received');
+  });
+
+  it('los dos elaborados quedan costeados con el insumo nuevo, y el Combo por el camino largo', async () => {
+    const res = await recibir();
+
+    expect(mockProduct.filas.find((p) => p.id === COLAGENO).cost).toBe(1200);
+    // Premezcla = 2 × 1200.
+    expect(mockProduct.filas.find((p) => p.id === PREMEZCLA).cost).toBe(2400);
+    // Combo = 1 × Colágeno + 1 × Premezcla = 1200 + 2400. El 3600 es lo que
+    // prueba que la rama que pasa POR la Premezcla se recorrió entera: si se
+    // cortara ahí, el Combo quedaría en 1200 + 1800 = 3000, con el costo viejo
+    // de la premezcla adentro y nada avisando.
+    expect(mockProduct.filas.find((p) => p.id === COMBO).cost).toBe(3600);
+    expect(res.body.data.costos[0].recosteos).toBe(2);
+  });
+
+  it('cada rama arranca con su propio visited y no con el de la rama anterior', async () => {
+    await recibir();
+
+    const [primera, segunda] = recosteosPedidos;
+
+    expect(recosteosPedidos).toHaveLength(2);
+    // Con un solo Set compartido las dos ramas reciben el MISMO objeto.
+    expect(primera.visited).not.toBe(segunda.visited);
+    // Y lo puntual: la segunda rama no puede llegar con el Combo ya marcado por
+    // la primera. Eso, y nada más que eso, es lo que costService tomaba por un
+    // ciclo. El Colágeno sí tiene que estar: es lo que corta los ciclos reales.
+    expect(segunda.visitadosAlRecibir.has(COMBO)).toBe(false);
+    expect(segunda.visitadosAlRecibir.has(COLAGENO)).toBe(true);
+  });
+
+  it('no aparece ningún aviso de receta rota: este grafo no tiene ciclos', async () => {
+    const res = await recibir();
+
+    expect(res.body.data.avisos.join(' ')).not.toMatch(/no se pudo recalcular/i);
+  });
+
+  it('una receta que lista el mismo insumo dos veces se recostea UNA vez y no falla', async () => {
+    // `recipe_items` no tiene índice único por (recipe_id, ingredient_product_id),
+    // así que dos filas del Colágeno en la MISMA receta son posibles. Ahí el 500
+    // ni siquiera dependía del orden de las filas: era determinístico.
+    mockRecipeItem.filas = [
+      { id: 20, recipe_id: 2, ingredient_product_id: COLAGENO, quantity: 1 },
+      { id: 21, recipe_id: 2, ingredient_product_id: COLAGENO, quantity: 1 },
+    ];
+
+    const res = await recibir();
+
+    expect(res.status).toBe(200);
+    // Premezcla = (1 + 1) × 1200. Un solo elaborado, contado una sola vez:
+    // recostearlo dos veces da el mismo número y lo informaba como dos.
+    expect(mockProduct.filas.find((p) => p.id === PREMEZCLA).cost).toBe(2400);
+    expect(res.body.data.costos[0].recosteos).toBe(1);
+  });
+});
+
+// ════════════════════════════════════════════
+//  Un ciclo real avisa, no bloquea la recepción
+//
+//  **Decisión de producto, escrita a propósito y no heredada del `try`.** Si la
+//  cascada se cae de verdad —una receta con un ciclo, o una merma que no deja
+//  producto terminado— la recepción vale igual y el recosteo se informa como
+//  aviso:
+//
+//   - la mercadería entró y la deuda existe: son hechos, y una receta cargada
+//     mal hace meses no los borra;
+//   - abortar revertía la transacción entera y dejaba al depósito sin poder
+//     registrar el camión hasta que alguien arregle una receta que quien recibe
+//     mercadería casi nunca puede tocar;
+//   - y se llevaba puesto el costo del insumo, que es lo que la decisión 1 de
+//     la spec vino a resolver.
+//
+//  Lo que no se hace es callarlo: el aviso NOMBRA el elaborado.
+// ════════════════════════════════════════════
+
+describe('Una receta con un ciclo real avisa y no bloquea la recepción', () => {
+  const COLAGENO = 41;
+  const PREMEZCLA = 60;
+  const COMBO = 80;
+
+  beforeEach(() => {
+    mockCascadaDeVerdad = true;
+
+    mockProduct.filas.push(
+      { id: PREMEZCLA, empresa_id: PROPIA, name: 'Premezcla base', cost: 1800 },
+      { id: COMBO, empresa_id: PROPIA, name: 'Combo proteico', cost: 2700 }
+    );
+
+    mockRecipe.filas = [
+      { id: 2, product_id: PREMEZCLA, yield: 1, loss_percentage: 0 },
+      { id: 3, product_id: COMBO, yield: 1, loss_percentage: 0 },
+    ];
+
+    // El ciclo de verdad: la Premezcla lleva Combo y el Combo lleva Premezcla.
+    // Se puede cargar —`checkCircularDependency` es de este año y las recetas
+    // viejas no pasaron por ahí— y no hay forma de recostearlo.
+    mockRecipeItem.filas = [
+      { id: 30, recipe_id: 2, ingredient_product_id: COLAGENO, quantity: 2 },
+      { id: 31, recipe_id: 2, ingredient_product_id: COMBO, quantity: 1 },
+      { id: 32, recipe_id: 3, ingredient_product_id: PREMEZCLA, quantity: 1 },
+    ];
+
+    mockSupplierOrder.filas = [{
+      id: 1003, empresa_id: PROPIA, supplier_id: 10, status: 'pending', date: '2026-07-20',
+      detail: [
+        { product_id: COLAGENO, product_name: 'Colágeno 300g', quantity: 10, unit_price: 1200, quantity_received: 0 },
+      ],
+    }];
+  });
+
+  const recibir = () => request(levantarApi())
+    .put('/api/suppliers/orders/1003/receive')
+    .send({ items: [{ linea: 0, cantidad: 10, actualizar_costo: true }] });
+
+  it('la recepción se registra: stock, deuda y estado, y no un 500', async () => {
+    const res = await recibir();
+
+    expect(res.status).toBe(200);
+    expect(mockStock.filas).toEqual([
+      expect.objectContaining({ product_id: COLAGENO, quantity: 10 }),
+    ]);
+    expect(mockSupplierMovement.filas[0].amount).toBe(12000);
+    expect(mockSupplierOrder.filas[0].status).toBe('received');
+  });
+
+  it('el costo del insumo se actualiza igual, con su fila de historial', async () => {
+    // Es lo que el rollback se llevaba: el motivo entero de la decisión 1.
+    const res = await recibir();
+
+    expect(mockProduct.filas.find((p) => p.id === COLAGENO).cost).toBe(1200);
+    expect(res.body.data.costos[0]).toMatchObject({
+      product_id: COLAGENO, costo_anterior: 900, costo_nuevo: 1200, aplicado: true,
+    });
+    expect(mockProductCostHistory.filas.some(
+      (f) => f.product_id === COLAGENO && f.reason === 'Actualización por recepción de compra'
+    )).toBe(true);
+  });
+
+  it('el aviso NOMBRA el elaborado que no se pudo recostear', async () => {
+    // El 500 decía «Error al recibir la orden de compra» y nada más: no nombraba
+    // ni el producto ni la receta, así que no había qué abrir para arreglarlo.
+    const res = await recibir();
+
+    const avisos = res.body.data.avisos.join(' ');
+
+    expect(avisos).toContain('Premezcla base');
+    expect(avisos).toContain('revisá esa receta');
+    // Y no se informa como si se hubiera recosteado.
+    expect(res.body.data.costos[0].recosteos).toBe(0);
   });
 });
 
@@ -925,6 +1213,7 @@ describe('La sucursal donde entra la mercadería', () => {
 
     mockSupplierOrder.filas = [
       ordenPendiente(1300), ordenPendiente(1301), ordenPendiente(1302), ordenPendiente(1303),
+      ordenPendiente(1304),
     ];
   });
 
@@ -989,6 +1278,29 @@ describe('La sucursal donde entra la mercadería', () => {
 
     expect(mockStock.filas).toEqual([
       expect.objectContaining({ product_id: 41, punto_de_venta_id: 1, quantity: 10 }),
+    ]);
+  });
+
+  it('el desplegable de la recepción gana sobre la sucursal en la que está parado el usuario', async () => {
+    // ⚠ **Este es el único caso que manda cabecera Y cuerpo con valores
+    // DISTINTOS**, y por eso es el único que ve la precedencia.
+    //
+    // En producción el navegador manda la cabecera SIEMPRE, con la sucursal
+    // vigente del panel. El cuerpo lo manda el desplegable de la pantalla de
+    // recepción. Invertir el orden —cabecera primero— deja la suite entera en
+    // verde y hace que el desplegable no gane nunca: quien recibe el camión en
+    // el depósito estando parado en el local carga el stock en el local, y la
+    // pantalla le dice que salió bien.
+    const res = await request(levantarApi())
+      .put('/api/suppliers/orders/1304/receive')
+      .set('X-Punto-De-Venta-Id', '1')
+      .send({ items: [{ linea: 0, cantidad: 10 }], punto_de_venta_id: 2 });
+
+    expect(res.status).toBe(200);
+    expect(mockStock.filas).toEqual([
+      expect.objectContaining({
+        product_id: 41, punto_de_venta_id: 2, location: 'ortiz', quantity: 10,
+      }),
     ]);
   });
 
