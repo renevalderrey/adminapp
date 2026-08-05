@@ -56,10 +56,15 @@ Monorepo:
 ### Comandos
 
 ```
-npm run test:api          # jest
+npm run test:api          # jest — NO levanta los tests de integración
 npm run test:web          # vitest
 npm run build             # web + landing
 npm --prefix apps/api run db:migrate
+
+# Tests de integración contra un Postgres real (proyecto 5c)
+npm --prefix apps/api run test:db:levantar   # una vez: contenedor + migraciones
+npm --prefix apps/api run test:integracion   # migra lo que falte y corre
+npm --prefix apps/api run test:db:bajar
 ```
 
 ---
@@ -155,6 +160,10 @@ Los ejemplos a copiar son `src/tests/renderDeInventario.test.jsx` y
 ### Los tres niveles: función pura, render, navegador
 
 La pregunta es **qué se está afirmando**:
+
+> Estos tres son los de `apps/web`. En `apps/api` la escalera es otra y tiene un
+> escalón más: [El cuarto nivel](#el-cuarto-nivel-tests-de-integración-contra-postgres-appsapi),
+> los tests de integración contra un Postgres real.
 
 > ⚠ **Esta tabla es de `apps/web`.** En `apps/api` los tests van **siempre** en
 > `src/tests/`, aunque prueben una función pura de `src/utils/`: el `testMatch`
@@ -301,6 +310,96 @@ esté**, y hay tres guardias que lo verifican
 
 ---
 
+## El cuarto nivel: tests de integración contra Postgres (`apps/api`)
+
+Los tres niveles de arriba son de `apps/web`. En `apps/api` la pregunta es la
+misma —**qué se está afirmando**— y las respuestas son tres:
+
+| Se afirma… | Dónde va |
+|---|---|
+| Una regla o una cuenta: cuánto da un total, qué etiqueta lleva un estado, cómo se normaliza un item | Función pura en `utils/`, test en **`src/tests/`** (nunca `utils/*.test.js`: jest no lo levanta) |
+| Que el código tenga una forma: que ninguna ruta use `findByPk` con un id del cliente, que ningún `catch` responda con `err.message` | **Guardia estática** — `aislamientoEmpresas.test.js`, `observabilidad.test.js` |
+| Que la **base** conteste lo que el código supone: un `GROUP BY`, un `lock`, dos requests a la vez, un DECIMAL que vuelve como string | **Test de integración** en `src/tests/integracion/*.integracion.test.js` |
+
+### Cuándo va uno, y cuándo no
+
+Va un test de integración cuando la afirmación **depende del motor**, y no del
+código:
+
+- **`group`, `lock`, transacciones, restricciones únicas, `Op.*`, `order` con
+  `limit`, `translate()`.** Los dobles de `tests/helpers/modelosFalsos.js` no
+  entienden nada de eso: lo dice su propio encabezado. Un test escrito sobre
+  ellos prueba el doble.
+- **Concurrencia.** Dos requests al mismo tiempo no se pueden simular con un
+  doble: no hay dos transacciones que puedan chocar. La idempotencia de
+  `POST /api/sales` tiene dos mitades y la que sostiene la garantía —el
+  `SequelizeUniqueConstraintError`— **un test secuencial no la toca nunca**.
+- **Tipos que el driver cambia.** `DECIMAL` vuelve como string, `SUM` también,
+  y `'0.00' <= 0` es `true` mientras `'0.00' === 0` es `false`.
+- **El aislamiento entre empresas ejecutado**, sobre todo en endpoints que
+  escriben: una guardia estática ve que se llamó a `findScoped`, no que la fila
+  ajena haya quedado como estaba.
+- **Cuando un comentario del código dice «esto se verifica en un paso
+  manual».** Ahí ya está escrito que falta este nivel.
+
+**No va** —y esto importa más, porque son lentos—:
+
+- Aritmética, formato, validación: eso es una función pura y su test en
+  `src/tests/`. Un test de integración que verifica una cuenta cuesta cien veces
+  más y se rompe cuando alguien renombra un campo de la respuesta.
+- La forma del código: eso es una guardia estática, que además revisa **todos**
+  los archivos y no solo el que alguien se acordó de probar.
+- Lo que un doble ya alcanza: una ruta que arma un `where` y devuelve filas.
+
+Los dos niveles conviven y **los 1400 tests con dobles no se reescriben**: son
+rápidos y sirven. Los de integración son otra cosa.
+
+### Cómo se escribe uno acá
+
+1. **`baseDePruebas` va primero de todo**, antes que `supertest` y que
+   cualquier modelo. `config/database.js` construye la conexión al importarse:
+   si algo lo carga antes, queda armada contra la base de desarrollo. El arnés
+   lo verifica y corta con un mensaje que lo dice.
+2. **`beforeAll(conectarOFallar)`**, y en el `beforeEach`, `limpiarLaBase()` y
+   `sembrarDosEmpresas()`. En el `afterAll`, `cerrar()`.
+3. **La sesión es siempre la empresa A, que es la id 1.** Con `BYPASS_AUTH`,
+   `server.js` clava `req.empresaId = 1` y busca el usuario `test-user-id`; no
+   hay cabecera que lo mueva. Alcanza para preguntar «con la sesión de A, ¿puedo
+   tocar algo de B?», que es la pregunta que importa.
+4. **El nombre del archivo termina en `.integracion.test.js`.** Es lo único que
+   separa las dos suites: `npm test` ignora ese sufijo y `npm run
+   test:integracion` selecciona exactamente ese sufijo.
+5. **La fixture tiene que poder distinguir el defecto.** Es donde este proyecto
+   más se equivocó: importes redondos que cierran igual con y sin redondeo,
+   listas de una sola página, fechas todas distintas que hacen innecesario el
+   desempate, filtros opcionales probados siempre sin filtro. `fixtures.js`
+   explica, caso por caso, por qué cada dato es como es.
+
+### Las dos decisiones, y por qué
+
+**Se trunca entre test y test; no se envuelve cada uno en una transacción.** La
+transacción del test no alcanza a `supertest` —el request entra por la
+aplicación real, que pide su propia conexión al pool— así que las escrituras del
+handler quedarían afuera y el rollback no las borraría: aislamiento aparente. Y
+sobre todo, **el commit real es lo que se quiere probar**: la carrera de la
+idempotencia necesita dos transacciones de verdad, y adentro de una sola
+desaparece.
+
+**Si no hay Postgres, fallan. No se saltean.** Un test que se saltea en silencio
+es un test que deja de correr y nadie se entera, que es el modo de falla que
+este repositorio viene juntando. Lo que evita que eso moleste no es saltear sino
+que **no estén en la corrida rápida**: cuando se corren es porque alguien los
+pidió, y entonces no hay razón honesta para pasar en verde sin base. El mensaje
+del fallo trae el comando que levanta el contenedor.
+
+Que la suite siga corriendo lo verifica `guardiaDelArnes.test.js`, que **sí va
+en la suite rápida**: mira que `npm test` la excluya, que `test:integracion` la
+seleccione con el mismo patrón, que CI la ejecute y que el job tenga su
+Postgres. Una suite que corre aparte es una suite que puede apagarse sin que
+nadie lo note.
+
+---
+
 ## Definición de terminado
 
 Una tarea está terminada cuando:
@@ -308,8 +407,11 @@ Una tarea está terminada cuando:
 1. El código hace lo que dice el criterio de aceptación de la spec.
 2. Tiene tests, y esos tests **fallan** si se revierte el cambio.
 3. `npm run test:api` y `npm run test:web` pasan.
-4. `npm run build` pasa.
-5. Nada nuevo aparece en las guardias estáticas.
+4. Si el cambio toca rutas, modelos o consultas de la API,
+   `npm --prefix apps/api run test:integracion` también pasa. **`npm run
+   test:api` no los levanta**: es otra suite y hay que pedirla.
+5. `npm run build` pasa.
+6. Nada nuevo aparece en las guardias estáticas.
 
 Una funcionalidad está terminada cuando **`sdd-verify` no encontró forma de
 romper ningún criterio de aceptación**.

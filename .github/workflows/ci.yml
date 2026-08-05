@@ -19,6 +19,33 @@ jobs:
     name: API — tests
     runs-on: ubuntu-latest
 
+    # ════════════════════════════════════════════
+    #  Postgres real, para los tests de integración (proyecto 5c)
+    #
+    #  Es el mismo servicio que ya tenían los jobs `contenedor` y `navegador`:
+    #  se replica acá porque este es el job donde corren los tests, y hasta
+    #  ahora la suite de la API no podía tocar una base. Los 1400 tests con
+    #  dobles siguen corriendo sin él —arrancan igual, sin esperar a nada— y
+    #  los de integración corren después, en su propio paso.
+    #
+    #  La base se llama `adminapp_integracion` a propósito: el arnés se niega
+    #  a truncar una base cuyo nombre no diga que es de prueba.
+    # ════════════════════════════════════════════
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: adminapp
+          POSTGRES_PASSWORD: adminapp
+          POSTGRES_DB: adminapp_integracion
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -31,11 +58,24 @@ jobs:
       - run: npm ci
         working-directory: apps/api
 
+      # Los rápidos primero: son un minuto y medio y cubren casi todo. Si algo
+      # se rompió acá, no tiene sentido esperar a que migre una base.
       - name: Tests
         run: npm test
         working-directory: apps/api
         env:
           NODE_ENV: test
+
+      # `test:integracion` aplica las migraciones y recién después corre jest.
+      # Si Postgres no estuviera, FALLA con el comando que hay que correr — no
+      # se saltea: un test que se saltea en silencio es un test que deja de
+      # correr y nadie se entera.
+      - name: Tests de integración contra Postgres
+        run: npm run test:integracion
+        working-directory: apps/api
+        env:
+          NODE_ENV: test
+          DATABASE_URL_TEST: postgresql://adminapp:adminapp@localhost:5432/adminapp_integracion
 
   web:
     name: Web — tests y build
@@ -155,13 +195,25 @@ jobs:
         run: npx playwright install-deps chromium
         working-directory: apps/web
 
-      # ⚠ La base arranca VACÍA y el esquema lo crea el `sequelize.sync` del
-      # arranque en desarrollo, que además siembra permisos, la empresa 1, sus
-      # sucursales y el usuario `test-user-id`. NO se corren las migraciones
-      # acá: con el esquema ya migrado, ese mismo sync se cae porque
-      # `products.unit_type` es `STRING(20)` en la migración y `ENUM` en el
-      # modelo. El camino migrado lo verifica el job `contenedor`, que corre con
-      # `NODE_ENV=production` y por eso no sincroniza.
+      # Las migraciones PRIMERO, y despues el arranque en desarrollo.
+      #
+      # Antes este paso no existia: la base arrancaba vacia y el esquema lo
+      # creaba el `sequelize.sync({ alter: true })` del arranque, porque sobre
+      # una base migrada ese mismo sync se caia — ocho columnas eran `ENUM` en
+      # los modelos y `VARCHAR` en las migraciones, y convertirlas mata el
+      # proceso. Ese era el sintoma del proyecto 0.
+      #
+      # Con el esquema convergido, correr las dos cosas seguidas deja de ser
+      # posible y pasa a ser LA VERIFICACION: si alguien vuelve a agregar una
+      # columna al modelo sin su migracion, el sync la encuentra distinta y este
+      # job se cae. Sin este paso, esa divergencia solo se descubre el dia que
+      # alguien intenta levantar una base nueva.
+      - name: Migrar la base del navegador
+        run: node scripts/migrar.js
+        working-directory: apps/api
+
+      # El arranque en desarrollo siembra permisos, la empresa 1, sus sucursales
+      # y el usuario `test-user-id`, que es lo que las pruebas necesitan.
       - name: Levantar la API con BYPASS_AUTH
         run: |
           # Los dos AUTH0_* van aunque BYPASS_AUTH este activo, y no porque

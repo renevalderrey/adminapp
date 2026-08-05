@@ -161,16 +161,22 @@ export function filtrarOrdenes(ordenes, { segmento = 'todas', busqueda = '' } = 
   })
 }
 
-/**
- * Cuántas órdenes muestra cada segmento, con la búsqueda vigente aplicada.
- *
- * Se calcula **con `filtrarOrdenes`** y no con un `reduce` propio: un contador
- * que dice 12 sobre una lista de 3 es peor que no tener contador —el usuario
- * concluye que la pantalla se está comiendo filas— y la única forma de que no
- * pase es que el número salga de la misma función que dibuja la lista.
- */
-export function contadoresPorSegmento(ordenes, { busqueda = '' } = {}) {
-  return Object.fromEntries(
-    SEGMENTOS.map((s) => [s.clave, filtrarOrdenes(ordenes, { segmento: s.clave, busqueda }).length])
-  )
-}
+// ── Acá vivía `contadoresPorSegmento`, y se borró el 5/8/2026 ──
+//
+// Contaba cuántas órdenes muestra cada segmento aplicando `filtrarOrdenes` una
+// vez por clave. Dejó de tener sentido cuando el listado pasó a paginarse en el
+// servidor: **los cuatro contadores los cuenta la API** y `PurchaseOrders.jsx`
+// los lee de la respuesta (`:583-591`, estado `contadores`). Contar en el
+// navegador sobre la página cargada diría «3» arriba de un segmento con 300.
+//
+// Se borró **junto con sus dos tests**, y ese es el punto: seguía verde, así que
+// la suite daba la impresión de estar cubriendo el contador del segmentado
+// cuando el número que se dibuja sale de otro lado. Es el problema que persigue
+// `apps/api/src/tests/todosLosTestsCorren.test.js` visto por el otro lado —allá
+// un test que nunca corre, acá uno que corre sobre algo que ya no se dibuja—.
+//
+// ⚠ `filtrarOrdenes` quedó en la misma situación y NO se borró acá: su único
+// llamador de producción era esta función, y hoy la búsqueda y el filtro por
+// estado también los hace el servidor (`PurchaseOrders.jsx:103` y `:120` lo
+// cuentan en pasado). Sus dos tests son los que quedan abajo. Está anotado para
+// que se decida de una vez: o vuelve a usarse, o se va con ellos.

@@ -4,6 +4,7 @@ const {
   esCambioSignificativo,
   MOTIVOS,
 } = require('../utils/historialDeCostos');
+const { ErrorDeNegocio } = require('../utils/errores');
 
 /**
  * Servicio para gestionar cálculos de costos e integridad de recetas
@@ -76,15 +77,62 @@ class CostService {
   /**
    * Recalcula el costo de un producto y propaga los cambios en cascada
    * a todos los productos terminados que lo utilicen como ingrediente.
+   *
+   * ── El Set `visited` contesta «por dónde vine», y lo clona ESTA función ──
+   *
+   * `visited` son los productos que hay en el camino que va desde la raíz de la
+   * propagación hasta esta llamada. Es una pregunta **por camino**: dos ramas
+   * hermanas del mismo bucle tienen caminos distintos y no pueden compartirlo.
+   * Compartido pasa a contestar «quién pasó antes», que es otra cosa y no corta
+   * ciclos: los inventa. Un grafo en **diamante** —dos caminos que llegan al
+   * mismo elaborado sin volver nunca para atrás— se leía como circular.
+   *
+   * Hasta este corte el clon estaba solo hacia adentro, en la recursión, y esta
+   * función **mutaba el Set del llamador** con `visited.add`. O sea que la
+   * protección dependía de que cada llamador se acordara de clonar: cinco
+   * caminos la llaman y **dos se olvidaron** —`purchaseService.recostearDependientes`
+   * y `productionService`—. Los dos se cayeron con el mismo 500 y se corrigieron
+   * por separado, cada uno del lado del llamador. Una API que se rompe si el
+   * llamador se olvida de algo se va a romper el día que aparezca el sexto: por
+   * eso el clon pasó acá adentro, donde no hay quien se lo olvide. Que el
+   * llamador siga clonando además es inofensivo —clonar dos veces da lo mismo—,
+   * así que los tres caminos que sí lo hacían no cambian de comportamiento.
+   *
+   * ⚠ **Lo que sigue siendo un ciclo, sigue fallando.** Si el camino vuelve a un
+   * producto por el que ya pasó, esa receta se usa a sí misma como insumo y no
+   * hay costo que calcular. Dejar pasar eso sería peor que el defecto original:
+   * la recursión no terminaría nunca.
    */
   async recalculateCascadingCosts(productId, visited = new Set(), transaction = null) {
-    if (visited.has(productId)) {
-      throw new Error(`Dependencia circular detectada para el producto ID ${productId}`);
-    }
-    visited.add(productId);
+    // El camino es propio de esta llamada. El `add` de más abajo escribe sobre
+    // la copia y no sobre el Set que trajo el llamador.
+    const camino = new Set(visited);
 
-    // Obtener el producto
+    // El producto se lee ANTES del chequeo de ciclo porque el mensaje lo
+    // necesita: «Dependencia circular detectada para el producto ID 70» no le
+    // dice a nadie qué receta abrir. Es la misma consulta que ya se hacía; solo
+    // se movió tres líneas más arriba.
     const product = await Product.findByPk(productId, { transaction });
+
+    if (camino.has(productId)) {
+      // `ErrorDeNegocio` y no un `Error` pelado: el `fallo` de `utils/errores`
+      // lo devuelve con su status y su texto —mira la marca `publico`— en vez
+      // de taparlo con un 500 genérico. Lo que veía el usuario era «Error al
+      // crear la orden de producción», que no nombra ni el producto ni la
+      // receta, así que no había qué abrir para arreglarlo. El molde es el de
+      // `purchaseService.avisoDeRecosteoFallido`.
+      const nombre = product && product.name
+        ? `«${product.name}»`
+        : `el producto #${productId}`;
+
+      throw new ErrorDeNegocio(
+        `No se pudo recalcular el costo de ${nombre}: su receta termina usándolo `
+        + 'como insumo de sí mismo (dependencia circular). Revisá esa receta.'
+      );
+    }
+
+    camino.add(productId);
+
     if (!product) return;
 
     // Calcular el nuevo costo (si tiene receta, o el manual si no)
@@ -137,9 +185,11 @@ class CostService {
     // Recursión en cascada sobre los productos dependientes
     for (const item of dependentItems) {
       if (item.recipe && item.recipe.product_id) {
-        // Clonar el set visitado para cada rama independiente de propagación
-        const branchVisited = new Set(visited);
-        await this.recalculateCascadingCosts(item.recipe.product_id, branchVisited, transaction);
+        // Sin `new Set(camino)` acá: la llamada clona lo que recibe, así que
+        // cada rama arranca igual con su propia copia. El clon explícito que
+        // había en este punto era la mitad correcta de la protección; la que
+        // faltaba —la de los llamadores de afuera— es la de arriba.
+        await this.recalculateCascadingCosts(item.recipe.product_id, camino, transaction);
       }
     }
   }

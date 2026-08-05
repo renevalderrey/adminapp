@@ -215,28 +215,64 @@ construirlo.**
 
 ---
 
-## 5c · Tests de integración contra una base real
+## ~~5c · Tests de integración contra una base real~~ · hecho
 
-**Apareció** escribiendo el plan del historial de ventas (1/8/2026).
+Hecho el 5/8/2026, sin ciclo SDD porque no cambia el comportamiento de la
+aplicación: **no se tocó una línea de código de producción**. Se desbloqueó
+cuando el esquema migrado convergió con el de producción — antes, una base
+creada solo con migraciones no levantaba.
 
-No existe forma de probar una ruta contra Postgres. `src/tests/` cubre
-utilidades y guardias estáticas, y `server.test.js` llega hasta `/ping`,
-`/health` y CORS. Los dobles de `tests/helpers/modelosFalsos.js` lo dicen en su
-propio encabezado: *«un bug que solo aparece contra Postgres real —por ejemplo,
-DECIMAL devuelto como string— NO lo atrapan»*.
+**Qué quedó.** `apps/api/src/tests/integracion/`: el arnés (`baseDePruebas.js`),
+las fixtures de dos empresas (`fixtures.js`), el preparador de la base
+(`prepararBase.js`) y **43 tests** en cuatro archivos `*.integracion.test.js`,
+con `supertest` contra la aplicación real de `server.js`. Cómo se escribe uno
+—y cuándo corresponde uno en vez de un doble— está en
+[CONVENCIONES.md](specs/CONVENCIONES.md#el-cuarto-nivel-tests-de-integración-contra-postgres-appsapi).
 
-Ese ejemplo dejó de ser hipotético: es exactamente el motivo por el que la
-columna Total del export no sumaría.
+```
+npm --prefix apps/api run test:db:levantar   # una vez: contenedor + migraciones
+npm --prefix apps/api run test:integracion   # migra lo que falte y corre
+npm --prefix apps/api run test:db:bajar
+```
 
-Lo mismo pasa con el orden estable de la paginación, los locks, y el
-aislamiento entre empresas — que hoy se verifica con guardias que leen el
-código fuente, no ejecutándolo.
+**Las dos decisiones que había que tomar, y por qué:**
 
-**Qué implica**: un Postgres de test (el CI ya levanta uno), fixtures mínimas
-—dos empresas con datos— y `supertest` contra la app real. Es la pieza que
-convierte a `sdd-verify` de lector de código en verificador de verdad.
+- **Se trunca entre test y test, no se envuelve cada uno en una transacción.**
+  La transacción del test no alcanza a `supertest` —el request entra por la
+  aplicación, que pide su propia conexión— y, sobre todo, el commit real es
+  justo lo que se quiere probar: sin dos transacciones de verdad, la carrera de
+  la idempotencia no existe.
+- **Sin Postgres, FALLAN.** No se saltean. Lo que evita que eso moleste es que
+  `npm test` no los levanta: se corren cuando alguien los pide, y entonces no
+  hay razón honesta para pasar en verde sin base. El mensaje dice el comando
+  exacto. Que sigan corriendo lo verifica `guardiaDelArnes.test.js`, que sí va
+  en la suite rápida y mira el `package.json` y el `ci.yml`.
 
-**Es la deuda técnica con mejor relación entre lo que cuesta y lo que evita.**
+**Los cuatro primeros casos, que son los que faltaban:**
+
+| Archivo | Lo que ningún doble podía ejercitar |
+|---|---|
+| `idempotenciaDeVentas` | Seis `POST /api/sales` **en paralelo** con el mismo id. La rama del `SequelizeUniqueConstraintError` —«la que de verdad sostiene la garantía»— **no la toca un test secuencial**, y se comprueba que corrió. |
+| `saldoDeProveedores` | El `GROUP BY` del saldo, el `COUNT` agrupado, el `translate()` de la búsqueda sin acentos, y el saldo inicial de la página 2 con su desempate por id — el paso manual P1 del riesgo 9. |
+| `aislamientoEntreEmpresas` | Pedir un recurso de la empresa B con la sesión de la A: 404, **y la fila de B intacta** en los dos que escriben (anular y borrar). |
+| `importesConDecimales` | DECIMAL que vuelve como string, el total del período que sin convertir se concatena, y el centavo cerrando exacto. |
+
+**Lo que NO quedó hecho:**
+
+- **Solo cubre cuatro endpoints.** Ventas, proveedores, productos y el listado.
+  Stock, producción, caja, AFIP y TiendaNube siguen sin un solo test de
+  integración.
+- **No cubre el orden estable de la paginación de ventas** —el `ORDER BY` con
+  desempate—, que era uno de los motivos originales. Sí quedó cubierto el de la
+  cuenta corriente de proveedores.
+- **La sesión es siempre la empresa 1.** Con `BYPASS_AUTH`, `server.js` clava
+  `req.empresaId = 1`, así que se puede preguntar «¿A alcanza lo de B?» pero no
+  «¿qué ve B?». Cubrir el segundo lado pide entrar con un token, y eso es otro
+  proyecto.
+- **Es lento contra Docker Desktop en Windows**: ~1,5 s por test, casi todo en
+  el `TRUNCATE`. Medido: truncar 39 tablas y truncar 1 tardan lo mismo, así que
+  el costo es el viaje de ida y vuelta y no hay nada barato que optimizar. En
+  CI (Linux) no se nota.
 
 ---
 
@@ -250,10 +286,11 @@ en verde. Cómo se escribe uno —y cuándo corresponde uno en vez de una funci�
 pura— está en
 [CONVENCIONES.md](specs/CONVENCIONES.md#tests-de-render-en-la-web).
 
-Queda **5c** —los tests de integración de la API contra Postgres— como la otra
-mitad de lo que convierte a `sdd-verify` de lector de código en verificador de
-verdad. Y queda sin cubrir Historial de ventas: el entorno ya está, los tests
-de esa pantalla no se escribieron.
+La otra mitad —**5c**, los tests de integración de la API contra Postgres— se
+hizo el 5/8/2026 y está arriba. Las dos juntas son lo que convierte a
+`sdd-verify` de lector de código en verificador de verdad. Y queda sin cubrir
+Historial de ventas: el entorno ya está, los tests de esa pantalla no se
+escribieron.
 
 ---
 

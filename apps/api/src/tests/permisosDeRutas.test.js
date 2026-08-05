@@ -40,9 +40,16 @@
 //     se va a enterar. Por eso lo que se afirma es una **regla** —toda ruta
 //     montada detrás de una cadena autenticada declara un `checkPermission`— y
 //     lo único escrito a mano es la lista corta de excepciones, cada una con su
-//     motivo. La única tabla ruta→permiso de este archivo es la de
+//     motivo. La única tabla ruta→permiso completa de este archivo es la de
 //     `routes/suppliers.js`, el archivo del hito, y está atada por igualdad
 //     exacta: una ruta nueva ahí **obliga** a agregarle su fila.
+//
+//     Fuera de esa tabla se fija el código exacto de **tres** rutas sueltas: las
+//     de `routes/empresas.js` que leen la empresa. Ahí no alcanza con «declara
+//     algún permiso», porque degradar `config.ver` a `dashboard.ver` —que lo
+//     tienen los cinco roles— dejaría la regla en verde con el dato igual de
+//     abierto. Medido: esa mutación pone en rojo **una sola** prueba, la
+//     específica.
 // ════════════════════════════════════════════
 
 const fs = require('fs');
@@ -110,14 +117,20 @@ const SIN_PERMISO_A_PROPOSITO = {
  * alguien las arregle, la prueba de más abajo se pone en rojo pidiendo que se
  * borre la entrada. Una lista de deuda que sobrevive a la deuda es peor que no
  * tenerla — pasa a ser una excepción permanente que nadie recuerda por qué está.
+ *
+ * ── Está vacía, y eso es el resultado, no un olvido ──
+ *
+ * La única entrada era `routes/empresas.js GET /:id/suscripcion`, y el
+ * mecanismo funcionó como se esperaba: al ponerle su `checkPermission`, la
+ * prueba de más abajo se puso en rojo pidiendo que se borrara la entrada. Se
+ * borró el 5/8/2026.
+ *
+ * La lista vacía **no deja la prueba en verde por vacío**: lo que se afirma es
+ * la igualdad exacta contra `SIN_PERMISO_A_PROPOSITO`, así que una ruta
+ * autenticada sin permiso que aparezca mañana pone la guardia en rojo aunque
+ * nadie escriba nada acá.
  */
-const DEUDA_DE_PERMISOS = {
-  'routes/empresas.js GET /:id/suscripcion':
-    'Va detrás de requireEmpresa + requireEmpresaPropia(), así que ya no cruza ' +
-    'empresas; pero cualquier miembro —un cajero— puede leer el plan, el estado y ' +
-    'las fechas de vencimiento de la suscripción. Le correspondería config.ver, ' +
-    'que es lo que piden GET /api/empresas y GET /api/empresas/:id.',
-};
+const DEUDA_DE_PERMISOS = {};
 
 /**
  * Rutas declaradas directo sobre `app` en server.js, sin pasar por ningún
@@ -610,6 +623,23 @@ describe('toda ruta detrás de una cadena autenticada declara su permiso', () =>
     for (const clave of Object.keys(DEUDA_DE_PERMISOS)) {
       expect(sinPermiso).toContain(clave);
     }
+
+    // ── El ancla de la lista vacía ──
+    //
+    // Con `DEUDA_DE_PERMISOS` en cero, el `for` de arriba no recorre nada y esta
+    // prueba pasaría en verde sin haber mirado un solo endpoint: es la primera
+    // de las dos formas de morir que describe el encabezado de este archivo.
+    //
+    // Lo que sostiene la afirmación es la igualdad exacta: las únicas rutas
+    // autenticadas que pueden no declarar permiso son las **tres del
+    // onboarding**. Sacarle el `checkPermission` a `GET /:id/suscripcion` —o a
+    // cualquier otra— agrega una clave acá y pone esto en rojo con su nombre.
+    const autenticadasSinPermiso = RUTAS_AUTENTICADAS
+      .filter((r) => !r.permiso)
+      .map(claveDe)
+      .sort();
+
+    expect(autenticadasSinPermiso).toEqual(Object.keys(SIN_PERMISO_A_PROPOSITO).sort());
   });
 
   it('las rutas que server.js declara sin router son solo los health checks y el cron', () => {
@@ -708,6 +738,218 @@ describe('routes/suppliers.js · cada ruta con el permiso que le corresponde', (
 
     expect(exportar).toBeDefined();
     expect(exportar.permiso).toBe('proveedores.ver');
+  });
+});
+
+// ════════════════════════════════════════════
+//  Quién tiene cada permiso, leído de seedPermissions.js
+//
+//  Hace falta para poder afirmar algo sobre las CONSECUENCIAS de un
+//  `checkPermission`. La regla de más arriba dice que la ruta pide un permiso;
+//  lo que no dice —y es lo único que le importa a un cliente— es **quién queda
+//  afuera** cuando se lo ponemos.
+//
+//  Se lee del texto por el mismo motivo que todo lo demás de este archivo:
+//  `seedPermissions.js` exporta solo la función, y el mapa `ROLE_PERMISOS` es
+//  una constante privada. Requerir el módulo tampoco serviría: `seedPermissions`
+//  escribe en la base.
+// ════════════════════════════════════════════
+
+const SEED = fs.readFileSync(path.join(SRC, 'seedPermissions.js'), 'utf8');
+
+/** Los códigos del catálogo, en el orden en que están escritos. */
+const CATALOGO = [...SEED.matchAll(/codigo:\s*'([^']+)'/g)].map((m) => m[1]);
+
+/**
+ * `rol → códigos de permiso`, leído del texto de `seedPermissions.js`.
+ *
+ * `admin: PERMISOS.map(p => p.codigo)` se resuelve al catálogo completo: es
+ * literalmente lo que hace el archivo, y escribirlo de otra forma acá haría que
+ * el día que admin deje de tener todo esto siguiera diciendo que sí.
+ */
+function permisosPorRol(seed) {
+  const inicio = seed.indexOf('const ROLE_PERMISOS = {');
+  const abre = seed.indexOf('{', inicio);
+  const bloque = seed.slice(abre, cierreDe(seed, abre, '{', '}') + 1);
+
+  const salida = {};
+
+  for (const m of bloque.matchAll(/(\w+):\s*(PERMISOS\.map\([^)]*\)[^,]*|\[[^\]]*\])/g)) {
+    salida[m[1]] = m[2].startsWith('PERMISOS')
+      ? [...CATALOGO]
+      : [...m[2].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+  }
+
+  return salida;
+}
+
+const POR_ROL = permisosPorRol(SEED);
+
+/** Los roles del sistema que tienen un permiso, en orden alfabético. */
+const rolesCon = (codigo) =>
+  Object.keys(POR_ROL).filter((rol) => POR_ROL[rol].includes(codigo)).sort();
+
+describe('el lector de roles leyó los cinco roles y no una lista vacía', () => {
+  it('los cinco roles del sistema, con sus permisos', () => {
+    // Sin este ancla, un cambio de forma en `seedPermissions.js` dejaría a
+    // `POR_ROL` vacío y **todas** las afirmaciones de abajo pasarían por
+    // vacuidad: `[].includes(...)` es false y `rolesCon()` devolvería `[]`, que
+    // es exactamente lo que varias de ellas esperan.
+    expect(Object.keys(POR_ROL).sort()).toEqual(
+      ['admin', 'compras', 'gerente', 'produccion', 'vendedor']
+    );
+
+    // admin es el catálogo entero; el resto, listas propias y más cortas.
+    expect(POR_ROL.admin).toEqual(CATALOGO);
+    expect(CATALOGO.length).toBeGreaterThan(40);
+    expect(POR_ROL.gerente.length).toBeGreaterThan(20);
+    expect(POR_ROL.gerente.length).toBeLessThan(CATALOGO.length);
+    expect(POR_ROL.compras).toContain('ordenes_compra.recibir');
+    expect(POR_ROL.vendedor).not.toContain('config.ver');
+  });
+});
+
+// ════════════════════════════════════════════
+//  routes/empresas.js · los tres endpoints que leen la empresa piden lo mismo
+//
+//  El 5/8/2026 `GET /:id/suscripcion` no pedía nada: iba detrás de
+//  `requireEmpresa` + `requireEmpresaPropia()` —así que no cruzaba empresas—
+//  pero cualquier miembro, un cajero incluido, leía el plan, el estado y las
+//  fechas de vencimiento de la suscripción del cliente.
+//
+//  Igual que con `routes/suppliers.js`, acá se fija el **código exacto** y no la
+//  mera presencia: degradar `config.ver` a `dashboard.ver` —que lo tienen los
+//  cinco roles— dejaría la regla de más arriba en verde y el dato igual de
+//  abierto.
+// ════════════════════════════════════════════
+
+describe('routes/empresas.js · la suscripción se lee con config.ver', () => {
+  const DEL_ARCHIVO = TODAS_LAS_RUTAS.filter((r) => r.archivo === 'routes/empresas.js');
+
+  const rutaDe = (metodo, ruta) =>
+    DEL_ARCHIVO.find((r) => r.metodo === metodo && r.ruta === ruta);
+
+  it('GET /:id/suscripcion exige config.ver, igual que sus dos hermanas', () => {
+    // Las tres devuelven la misma información de la empresa —la primera y la
+    // segunda incluyen la suscripción entera en el `include`—, así que pedir
+    // cosas distintas es una puerta de atrás para el mismo dato.
+    expect(rutaDe('GET', '/:id/suscripcion')).toBeDefined();
+    expect(rutaDe('GET', '/:id/suscripcion').permiso).toBe('config.ver');
+    expect(rutaDe('GET', '/').permiso).toBe('config.ver');
+    expect(rutaDe('GET', '/:id').permiso).toBe('config.ver');
+  });
+
+  it('config.ver lo tienen el dueño y el gerente, y NO el cajero', () => {
+    // Es la pregunta que había que contestar antes de tocar el endpoint: a quién
+    // deja afuera. `POST /onboarding` crea al dueño con el rol `admin`
+    // (`routes/empresas.js:120`), así que el dueño lo tiene por definición.
+    //
+    // Si mañana alguien le saca `config.ver` a gerente, el gerente pierde la
+    // pantalla de suscripción **en silencio** —el `catch { }` vacío de
+    // `SubscriptionSettings.jsx:28` muestra «No hay información de suscripción»
+    // en vez de «no tenés permiso»—. Esto se pone en rojo antes.
+    expect(rolesCon('config.ver')).toEqual(['admin', 'gerente']);
+
+    // Se afirma la lista y no rol por rol: `expect` de jest no acepta el
+    // mensaje que sí acepta el de vitest, y un `for` con tres `not.toContain`
+    // sueltos no dice cuál falló.
+    const sinConfigVer = Object.keys(POR_ROL).filter((rol) => !POR_ROL[rol].includes('config.ver'));
+    expect(sinConfigVer.sort()).toEqual(['compras', 'produccion', 'vendedor']);
+
+    // Y un superadmin entra igual sin ser miembro: `PUT /cambiar-empresa/:id` le
+    // carga el catálogo completo (`routes/empresas.js:334`).
+    expect(SEED).toMatch(/config\.ver/);
+  });
+});
+
+// ════════════════════════════════════════════
+//  ⚠ El mismo pago pide dos permisos distintos según a quién se le pague
+//
+//  **Esto es un análisis escrito, no una corrección.** Mover un permiso cambia
+//  lo que puede hacer un rol que ya existe en producción, y eso se decide con el
+//  catálogo a la vista. Lo que sigue es el catálogo a la vista, para que la
+//  próxima persona decida en dos minutos en vez de investigarlo de nuevo.
+//
+//  ── Los dos endpoints ──
+//
+//  · `POST /api/suppliers/:id/payments` → `proveedores.crear`
+//    (`routes/suppliers.js:891`). Escribe un `SupplierMovement` de tipo `pago`.
+//  · `POST /api/customers/:id/payments` → `caja.crear`
+//    (`routes/customers.js:108`). Llama a `customerService.registerPayment`.
+//
+//  Es la misma operación: registrar un movimiento de plata en una cuenta
+//  corriente. La única diferencia es de qué lado del mostrador está la cuenta.
+//
+//  ── Quién queda de cada lado HOY ──
+//
+//  | permiso              | admin | gerente | vendedor | produccion | compras |
+//  |----------------------|-------|---------|----------|------------|---------|
+//  | `caja.crear`         |  sí   |   sí    |    no    |     no     |   NO    |
+//  | `proveedores.crear`  |  sí   |   sí    |    no    |     no     |   SÍ    |
+//
+//  **El desvío es un solo rol: `compras`.** Puede registrarle pagos a un
+//  proveedor —y editarlos, porque `PUT /movements/:id` pide `proveedores.editar`
+//  y también lo tiene— y no tiene **ningún** permiso de caja: no puede registrar
+//  un movimiento de caja (`POST /api/cashflow/entries`, `caja.crear`) ni
+//  siquiera **verlos** (`caja.ver`). Quien armó ese rol estaba pensando «que
+//  pueda comprar y recibir», no «que pueda pagar», y el nombre del permiso no se
+//  lo dijo.
+//
+//  ── Cuál de los dos criterios es el correcto ──
+//
+//  El de `customers.js`: **`caja.crear`**. Con las dos familias definidas
+//  —`caja.*` es «mueve plata», `proveedores.*` es «administra la ficha del
+//  proveedor»— un pago es un movimiento de plata, y que el destinatario sea un
+//  proveedor no lo convierte en un dato de su ficha. El nombre y la dirección
+//  del proveedor son la ficha; lo que se le pagó, no.
+//
+//  ── Qué cuesta moverlo, que es por lo que no se movió acá ──
+//
+//  `compras` **pierde** el alta de pagos el día que se aplique. Las tres salidas,
+//  en orden de menor a mayor sorpresa para el cliente:
+//
+//   1. sumarle `caja.crear` al rol `compras` en `seedPermissions.js` **en el
+//      mismo cambio** —queda igual que hoy, con el permiso que lo nombra bien, y
+//      de paso gana el alta de movimientos de caja, que es lo que hay que
+//      decidir de verdad—;
+//   2. dejarlo perder el permiso, que es lo correcto si «compras» no paga;
+//   3. resolverlo por usuario con `usuario_permisos`, que ya existe y admite
+//      excepciones por persona sin tocar el rol.
+//
+//  Lo que **no** es una salida es dejarlo como está: los dos endpoints hermanos
+//  de edición y borrado —`PUT`/`DELETE /movements/:id`— también cuelgan de
+//  `proveedores.*`, así que la familia entera de la plata del proveedor está del
+//  lado equivocado y va a arrastrar al próximo endpoint que se escriba ahí.
+// ════════════════════════════════════════════
+
+describe('el pago a un proveedor y el de un cliente piden permisos distintos', () => {
+  const permisoDe = (archivo, metodo, ruta) =>
+    TODAS_LAS_RUTAS.find((r) => r.archivo === archivo && r.metodo === metodo && r.ruta === ruta)
+      ?.permiso;
+
+  it('la inconsistencia sigue ahí: proveedores.crear contra caja.crear', () => {
+    // Esta prueba se pone en rojo el día que alguien unifique el criterio. Es a
+    // propósito, igual que DEUDA_DE_PERMISOS: el mensaje que hay que leer es
+    // «actualizá el análisis de acá arriba y borralo», no «volvé a romperlo».
+    expect(permisoDe('routes/suppliers.js', 'POST', '/:id/payments')).toBe('proveedores.crear');
+    expect(permisoDe('routes/customers.js', 'POST', '/:id/payments')).toBe('caja.crear');
+  });
+
+  it('el rol que queda del lado equivocado es «compras», y sigue siendo el único', () => {
+    // El número concreto que hace falta para decidir. Si mañana otro rol gana
+    // `proveedores.crear` sin `caja.crear`, o si `compras` gana `caja.crear`, la
+    // tabla del comentario de arriba dejó de ser cierta y esto lo dice.
+    const puedenPagarProveedores = rolesCon('proveedores.crear');
+    const puedenMoverCaja = rolesCon('caja.crear');
+
+    expect(puedenPagarProveedores).toEqual(['admin', 'compras', 'gerente']);
+    expect(puedenMoverCaja).toEqual(['admin', 'gerente']);
+
+    const soloProveedores = puedenPagarProveedores.filter((r) => !puedenMoverCaja.includes(r));
+    expect(soloProveedores).toEqual(['compras']);
+
+    // Y no es que «compras» tenga caja por otro lado: no tiene ninguno.
+    expect(POR_ROL.compras.filter((c) => c.startsWith('caja.'))).toEqual([]);
   });
 });
 

@@ -535,7 +535,29 @@ router.delete('/:id', checkPermission('config.editar'), requireEmpresa, requireE
 // No tenia ni checkPermission ni validacion del :id: cualquier usuario
 // autenticado podia leer el estado de suscripcion, el plan y las fechas de
 // vencimiento de cualquier otra empresa cliente enumerando ids.
-router.get('/:id/suscripcion', requireEmpresa, requireEmpresaPropia(), async (req, res) => {
+//
+// ── Por que `config.ver`, y a quien deja afuera ──
+//
+// `requireEmpresaPropia()` cerro el cruce entre empresas, pero adentro de la
+// empresa seguia abierto: cualquier miembro —un cajero— leia el plan, el estado
+// y las fechas de vencimiento. Es el MISMO dato que devuelven
+// `GET /api/empresas` y `GET /api/empresas/:id`, que ya piden `config.ver`
+// (`:412`, `:424`): tres endpoints sobre la misma informacion no pueden pedir
+// cosas distintas.
+//
+// Quien lo tiene hoy, segun `seedPermissions.js`: **admin** (que es el rol con
+// el que `POST /onboarding` crea al dueño, `:120`) y **gerente**. Quedan afuera
+// **vendedor**, **produccion** y **compras** —ninguno de los tres tiene por que
+// saber cuando vence la suscripcion del cliente—. Un superadmin entra igual:
+// sin membresia se le cargan todos los permisos del catalogo (`:334`).
+//
+// ⚠ **Faltan los otros dos lados.** El item de menu ya declara `config.ver`
+// (`web/components/navegacion.js:51`), pero la ruta `/suscripcion` se monta sin
+// `RouteGuard` (`web/App.jsx:292`) y el unico llamador
+// —`web/pages/SubscriptionSettings.jsx:28`— tiene el `catch { }` vacio, asi que
+// este 403 se va a ver como «No hay informacion de suscripcion» en vez de «no
+// tenes permiso». Los dos archivos son de la web y quedan pendientes.
+router.get('/:id/suscripcion', checkPermission('config.ver'), requireEmpresa, requireEmpresaPropia(), async (req, res) => {
   try {
     const suscripcion = await Suscripcion.findOne({ where: { empresa_id: req.empresaId } });
     if (!suscripcion) return res.status(404).json({ ok: false, error: 'Suscripción no encontrada' });

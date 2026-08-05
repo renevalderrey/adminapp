@@ -1,21 +1,32 @@
 import { describe, it, expect } from 'vitest'
 import {
   ESTADOS,
-  SEGMENTOS,
   porcentajeRecibido,
   esRecibible,
   esAnulable,
   filtrarOrdenes,
-  contadoresPorSegmento,
 } from './ordenDeCompra'
 
 // ════════════════════════════════════════════
 //  Lo que se decide a partir del estado de una orden de compra
 //
-//  Cada test nombra el defecto que evita. Los tres que más caro salen:
-//  una orden vacía dibujada como «recibida», una búsqueda que solo mira el
-//  nombre del proveedor cuando lo que se tiene a mano es el número, y un
-//  contador que no coincide con la lista que está abajo.
+//  Cada test nombra el defecto que evita. Los dos que más caro salen: una orden
+//  vacía dibujada como «recibida» y una etiqueta de estado que falta y se dibuja
+//  con el código crudo, como pasó con `tc3`.
+//
+//  ── Se fueron los dos tests de `contadoresPorSegmento` (5/8/2026) ──
+//
+//  Con la función, que era código muerto: los contadores del segmentado los
+//  cuenta el servidor desde que el listado se pagina, y `PurchaseOrders.jsx` los
+//  lee de la respuesta. Los dos tests pasaban, así que la suite mostraba dos
+//  casos verdes sobre un número que la pantalla ya no calcula. **Un test verde
+//  sobre código que nadie usa infla la cuenta y no protege nada.**
+//
+//  ⚠ Los dos de `filtrarOrdenes` que quedan abajo están a un paso de lo mismo:
+//  esa función tampoco tiene llamador de producción desde que el filtro y la
+//  búsqueda bajaron al servidor. Se dejan porque borrar la función es una
+//  decisión aparte —ver la nota en `ordenDeCompra.js`—, no porque cubran algo
+//  que hoy se dibuje.
 // ════════════════════════════════════════════
 
 /** Una orden mínima; cada test le pisa lo que le importa. */
@@ -154,33 +165,6 @@ describe('La lista que muestra cada segmento', () => {
     expect(filtrarOrdenes(ORDENES, { segmento: 'todas' })).toHaveLength(4)
   })
 
-  it('el contador de cada segmento cuenta lo que el segmento muestra', () => {
-    // Con una búsqueda puesta: un contador calculado sobre la lista entera dice
-    // 4 arriba de una lista de 2, y el usuario concluye que la pantalla se está
-    // comiendo filas.
-    const busqueda = 'Nutrifit'
-    const contadores = contadoresPorSegmento(ORDENES, { busqueda })
-
-    for (const segmento of SEGMENTOS) {
-      const visibles = filtrarOrdenes(ORDENES, { segmento: segmento.clave, busqueda })
-      expect(contadores[segmento.clave]).toBe(visibles.length)
-    }
-
-    // Y el contador tiene que estar mirando la búsqueda de verdad: sin este
-    // ancla, un contador que ignora el filtro y una lista vacía también
-    // «coinciden» si la comparación se hace contra la lista sin filtrar.
-    expect(contadores.todas).toBe(2)
-    expect(contadores.recibidas).toBe(1)
-  })
-
-  it('una lista vacía o ausente NO rompe los contadores', () => {
-    expect(contadoresPorSegmento(undefined)).toEqual({
-      todas: 0,
-      pendientes: 0,
-      parciales: 0,
-      recibidas: 0,
-    })
-  })
 })
 
 describe('Los cuatro estados dicen cómo se leen', () => {
