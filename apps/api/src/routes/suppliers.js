@@ -4,17 +4,99 @@ const { Supplier, SupplierOrder, SupplierMovement, SupplierDocument } = require(
 const sequelize = require('../config/database');
 const purchaseService = require('../services/purchaseService');
 const checkPermission = require('../middleware/checkPermission');
-const { fallo } = require('../utils/errores');
+const { fallo, ErrorDeNegocio } = require('../utils/errores');
 const { findScoped } = require('../utils/tenantScope');
+
+/**
+ * Responde con SU codigo los errores que lo llevan, para que la pantalla
+ * distinga «esa linea no existe» de «esa linea no es de ese producto» sin
+ * parsear un texto en castellano.
+ *
+ * Se separa de fallo() por el mismo motivo que `respondioErrorDeFiltro` en
+ * routes/sales.js: fallo() manda solo el mensaje. Un aviso con el nombre del
+ * producto adentro de una frase no se puede usar para decidir nada.
+ *
+ * @returns {boolean} true si el error tenia codigo y ya se respondio.
+ */
+function respondioConCodigo(res, err) {
+  if (!err || !err.codigo) return false;
+
+  res.status(err.status || 400).json({
+    ok: false,
+    error: err.codigo,
+    message: err.message,
+  });
+  return true;
+}
+
+/** Los cuatro estados del ENUM de supplier_orders. */
+const ESTADOS_DE_ORDEN = ['pending', 'partial', 'received', 'cancelled'];
+
+/**
+ * Valida los filtros del listado de órdenes antes de que lleguen a la base.
+ *
+ * `if (supplier_id) where.supplier_id = supplier_id` mandaba `' '` —un espacio,
+ * que es el valor centinela con el que la pantalla dice «todos»— a una columna
+ * INTEGER. Postgres respondia `invalid input syntax for type integer`, subia
+ * como 500, y el catch de la pantalla hacia console.error: **la lista quedaba
+ * con lo anterior y sin ningun aviso**. Volver a «Todos» despues de filtrar por
+ * un proveedor no volvia a «Todos»: rompia.
+ *
+ * La correccion de fondo es de la pantalla —«todos» tiene que producir la
+ * AUSENCIA del parametro— y esta validacion va igual, porque un valor del tipo
+ * equivocado no puede subir como 500 y porque el navegador no es una barrera.
+ *
+ * @throws {Error & {codigo: string, status: number}}
+ */
+function filtrosDeOrdenes(query = {}) {
+  const { supplier_id, status, from, to, limit, offset } = query;
+
+  const invalido = (detalle) => {
+    const err = new ErrorDeNegocio(detalle, 400);
+    err.codigo = 'FILTRO_INVALIDO';
+    return err;
+  };
+
+  const filtros = { limit, offset };
+
+  if (supplier_id !== undefined && supplier_id !== '') {
+    const n = Number(supplier_id);
+    if (!Number.isInteger(n) || n <= 0) {
+      throw invalido('El filtro de proveedor tiene que ser un número. Elegí «Todos» para no filtrar.');
+    }
+    filtros.supplier_id = n;
+  }
+
+  if (status !== undefined && status !== '') {
+    if (!ESTADOS_DE_ORDEN.includes(status)) {
+      throw invalido(`El estado «${status}» no existe. Los estados son: ${ESTADOS_DE_ORDEN.join(', ')}.`);
+    }
+    filtros.status = status;
+  }
+
+  for (const [nombre, valor] of [['from', from], ['to', to]]) {
+    if (valor === undefined || valor === '') continue;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+      throw invalido(`La fecha «${valor}» no tiene la forma AAAA-MM-DD.`);
+    }
+    filtros[nombre] = valor;
+  }
+
+  return filtros;
+}
 
 // ── Órdenes de Compra (deben ir ANTES de /:id) ──
 
 // GET /api/suppliers/orders — Lista global de órdenes
 router.get('/orders', checkPermission('ordenes_compra.ver'), async (req, res) => {
   try {
-    const result = await purchaseService.getOrders({ ...req.query, empresa_id: req.empresaId });
+    const result = await purchaseService.getOrders({
+      ...filtrosDeOrdenes(req.query),
+      empresa_id: req.empresaId,
+    });
     res.json({ ok: true, ...result });
   } catch (err) {
+    if (respondioConCodigo(res, err)) return;
     fallo(req, res, err, 'Error al listar las órdenes de compra');
   }
 });
@@ -32,10 +114,25 @@ router.get('/orders/:id', checkPermission('ordenes_compra.ver'), async (req, res
 // PUT /api/suppliers/orders/:id/receive — Recibir orden
 router.put('/orders/:id/receive', checkPermission('ordenes_compra.recibir'), async (req, res) => {
   try {
-    const pvId = req.puntoDeVentaId || null;
-    const order = await purchaseService.receiveOrder(req.params.id, req.body.items, req.body.location, pvId, req.empresaId);
-    res.json({ ok: true, data: { id: order.id, status: order.status } });
+    const cuerpo = {
+      ...req.body,
+      // El id del cuerpo manda (FR-103); si no vino, cae a la cabecera
+      // X-Punto-De-Venta-Id y despues a la sucursal por defecto, adentro de
+      // resolverSucursal.
+      punto_de_venta_id: req.body?.punto_de_venta_id ?? req.puntoDeVentaId ?? null,
+    };
+
+    // El autor del cambio de costo sale de la sesion, nunca del cuerpo: una
+    // fila de historial firmada por quien diga el cliente no sirve de nada.
+    const data = await purchaseService.receiveOrder(
+      req.params.id,
+      cuerpo,
+      req.empresaId,
+      req.usuario ? req.usuario.id : null
+    );
+    res.json({ ok: true, data });
   } catch (err) {
+    if (respondioConCodigo(res, err)) return;
     fallo(req, res, err, 'Error al recibir la orden de compra');
   }
 });

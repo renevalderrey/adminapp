@@ -216,8 +216,16 @@ describe('los motivos son tipados y los cuatro viejos no cambiaron', () => {
     expect(MOTIVOS.CARGA_MASIVA).toBe('Carga masiva de productos');
   });
 
-  it('estan los siete origenes, ni uno menos', () => {
-    // Si mañana aparece un sexto camino que cambia costos y escribe un texto
+  it('el motivo de la recepción de compra existe en MOTIVOS y no es una cadena escrita a mano', () => {
+    // La recepción de una orden de compra es el sexto camino que cambia un
+    // costo. Sin la constante, el motivo entra como texto libre y el día que
+    // alguien quiera contar «cuántos costos cambiaron por compras» le alcanza
+    // una falta de acento para que la mitad de las filas desaparezca del conteo.
+    expect(MOTIVOS.RECEPCION_DE_COMPRA).toBe('Actualización por recepción de compra');
+  });
+
+  it('estan los ocho origenes, ni uno menos', () => {
+    // Si mañana aparece un camino nuevo que cambia costos y escribe un texto
     // suelto, la pregunta «cuántos costos cambiaron por importación» empieza a
     // dar un número que no es.
     expect(Object.keys(MOTIVOS).sort()).toEqual([
@@ -227,11 +235,12 @@ describe('los motivos son tipados y los cuatro viejos no cambiaron', () => {
       'EDICION_MANUAL',
       'IMPORTACION',
       'ORDEN_DE_PRODUCCION',
+      'RECEPCION_DE_COMPRA',
       'RECOSTEO_DE_RECETA',
     ]);
   });
 
-  it('los siete son distinguibles entre si', () => {
+  it('los ocho son distinguibles entre si', () => {
     const textos = Object.values(MOTIVOS);
 
     expect(new Set(textos).size).toBe(textos.length);

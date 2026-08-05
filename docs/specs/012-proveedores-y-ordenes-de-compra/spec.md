@@ -1334,12 +1334,31 @@ Explícito, para que no se discuta después si estaba incluido.
 
 ---
 
-## Lo que falta decidir
+## Lo que faltaba decidir · **resuelto**
 
-Marcado tal cual se pide: lo que **cambia el resultado** y no está claro en el
-pedido, en el plan ni en la maqueta. **Ninguno tiene una respuesta inventada.**
+Marcado tal cual se pide: lo que **cambia el resultado** y no estaba claro en el
+pedido, en el plan ni en la maqueta. **Ninguno tuvo una respuesta inventada.**
 
-### Bloquean
+Se conserva abajo el planteo completo de cada pregunta —con las opciones
+descartadas— porque el motivo sigue valiendo cuando alguien pregunte, dentro de
+un año, por qué el costo pide confirmación en vez de pisarse solo.
+
+| # | Decisión | Quién decidió |
+|---|---|---|
+| 1 | **Sí, actualiza el costo, pero confirmando** (opción D). Al recibir, la pantalla muestra «Colágeno pasa de $900 a $1.200» y se puede aceptar o rechazar **línea por línea**. Se eligió sobre pisar el costo directo porque a veces se compra más caro por urgencia y eso no tiene que mover los precios de venta. Lo aceptado queda en `ProductCostHistory` con su motivo, igual que producción | Usuario |
+| 2 | **La deuda es la mercadería recibida** (opción B, como AdminApp hoy). Una orden emitida y no entregada no genera deuda: si el proveedor nunca manda, no se debe nada. Difiere del sistema viejo, que contaba la orden al emitirse, así que la pantalla muestra **aparte** «pedido pendiente de recibir» para que el número que Comprafit venía leyendo siga estando a la vista | Usuario |
+| 3 | **El saldo lo calcula el servidor.** No es una preferencia: hoy la pantalla suma `DECIMAL` que Sequelize devuelve como texto, en punto flotante, sobre todos los movimientos que le llegaron — y `GET /suppliers` no pagina. El cliente sumando plata es el mismo error que ya apareció en el total de una venta | Por defecto |
+| 4 | **Exportación de movimientos, con la forma de la de ventas**: fecha, tipo, descripción, debe, haber y saldo, en xlsx. Reusa `filaDeExport`/`armarHoja`, incluido su manejo de importes argentinos. **No es un asiento contable formal** —eso necesita un plan de cuentas que el sistema no tiene—; si el contador de Comprafit pide otro formato, se ajusta entonces | Usuario |
+| 5 | **Sí, se crean órdenes desde la pantalla.** El plan dice «solo diseño» pero la maqueta dibuja el botón «Nueva orden», y manda la maqueta — mismo criterio que en la funcionalidad 011 con `Enter` | Por defecto |
+
+**Y una decisión de nombre**: la pantalla **sigue llamándose «Órdenes de compra»**,
+aunque en Argentina ese término suele nombrar lo que manda un *cliente* para
+comprarte, no lo que vos le pedís a un proveedor. Se conserva porque es el
+término del sistema viejo y el que Comprafit ya conoce. Queda escrito porque la
+ambigüedad es real —hizo tropezar a quien conoce el sistema— y si alguna vez se
+renombra, éste es el motivo por el que hoy no se hizo.
+
+### Bloqueaban
 
 **[PENDIENTE DE DEFINIR 1] — ¿Recibir una orden actualiza el costo del
 producto?**
@@ -1456,7 +1475,7 @@ de Proveedores (`Orders.jsx:513-580`), en un modal.
 **Bloquea** porque es el botón principal de una de las dos pantallas y la regla
 del sistema es **un botón principal por pantalla**.
 
-### No bloquean
+### No bloqueaban
 
 Tienen un valor por defecto propuesto. Si nadie dice lo contrario, se toma ese.
 

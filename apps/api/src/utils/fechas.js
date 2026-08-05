@@ -70,9 +70,33 @@ function fechaParaAfip(zona = ZONA_POR_DEFECTO, momento = new Date()) {
   return fechaDelNegocio(zona, momento).replace(/-/g, '');
 }
 
+/**
+ * El «hoy» del negocio de una empresa, leyendo su zona horaria de la base.
+ *
+ * Vivía adentro de `routes/sales.js`, donde solo la podía usar el listado de
+ * ventas. La recepción de una orden de compra necesita exactamente lo mismo
+ * —la fecha del movimiento de deuda la decide el servidor, no el navegador— y
+ * dejarla en la ruta obligaba a repetir la consulta de la empresa.
+ *
+ * El modelo se requiere adentro de la función, como en `sucursalDeStock.js`:
+ * así este módulo se sigue pudiendo cargar sin base de datos, que es lo que
+ * necesitan las funciones puras que lo consumen.
+ *
+ * @param {number} empresaId
+ * @returns {Promise<string>} YYYY-MM-DD en la zona de la empresa.
+ */
+async function hoyDelNegocio(empresaId) {
+  const { Empresa } = require('../models');
+
+  const empresa = await Empresa.findByPk(empresaId, { attributes: ['timezone'] });
+
+  return fechaDelNegocio(empresa && empresa.timezone);
+}
+
 module.exports = {
   ZONA_POR_DEFECTO,
   fechaDelNegocio,
   horaDelNegocio,
   fechaParaAfip,
+  hoyDelNegocio,
 };

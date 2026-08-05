@@ -7,7 +7,10 @@ const checkPermission = require('../middleware/checkPermission');
 const { findScoped, scoped } = require('../utils/tenantScope');
 const { verificarTotal, normalizarItem, metodoDePago, esPagoMixto, normalizarNombreDeCliente } = require('../utils/calculosVenta');
 const logger = require('../utils/logger');
-const { fechaDelNegocio, horaDelNegocio } = require('../utils/fechas');
+// `hoyDelNegocio` se declaraba acá y ahora vive en utils/fechas.js: la
+// recepción de una orden de compra necesita la misma fecha del negocio, y
+// tenerla adentro de una ruta obligaba a repetir la consulta de la empresa.
+const { fechaDelNegocio, horaDelNegocio, hoyDelNegocio } = require('../utils/fechas');
 const afipService = require('../services/afipService');
 const { fallo, ErrorDeNegocio } = require('../utils/errores');
 const { estadoVenta } = require('../utils/estadoVenta');
@@ -44,19 +47,6 @@ async function sucursalDeAnulacion(sale, transaction) {
   }
 
   return sucursalPorDefecto(sale.empresa_id, { transaction });
-}
-
-/**
- * El «hoy» del negocio, para completar el rango cuando no viene.
- *
- * Se calcula en el servidor con la zona horaria de la empresa. Hacerlo en el
- * navegador con toISOString() devuelve UTC: en Argentina (UTC-3), despues de
- * las 21:00 «hoy» pasa a ser mañana y una venta recien cobrada no aparece en
- * su propio listado.
- */
-async function hoyDelNegocio(empresaId) {
-  const empresa = await Empresa.findByPk(empresaId, { attributes: ['timezone'] });
-  return fechaDelNegocio(empresa && empresa.timezone);
 }
 
 /**

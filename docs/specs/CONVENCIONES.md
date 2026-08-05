@@ -156,6 +156,14 @@ Los ejemplos a copiar son `src/tests/renderDeInventario.test.jsx` y
 
 La pregunta es **qué se está afirmando**:
 
+> ⚠ **Esta tabla es de `apps/web`.** En `apps/api` los tests van **siempre** en
+> `src/tests/`, aunque prueben una función pura de `src/utils/`: el `testMatch`
+> de `jest.config.js` solo levanta `src/tests/**` y `__tests__/**`, así que un
+> `src/utils/algo.test.js` **jest no lo corre nunca** — no falla, no avisa,
+> simplemente no existe para la suite, y alguien lee el nombre del archivo y da
+> por cubierto lo que jamás se ejecutó. Lo protege
+> `src/tests/todosLosTestsCorren.test.js`.
+
 | Se afirma… | Dónde va |
 |---|---|
 | Una regla: de qué color va el badge, qué filas entran, cuánto suma un indicador | Función pura en `utils/`, test en `utils/*.test.js` |

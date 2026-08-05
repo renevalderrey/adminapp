@@ -6,7 +6,21 @@
 //  se asentaban al dia siguiente.
 // ════════════════════════════════════════════
 
-const { fechaDelNegocio, horaDelNegocio, fechaParaAfip, ZONA_POR_DEFECTO } = require('../utils/fechas');
+const fs = require('fs');
+const path = require('path');
+
+// `hoyDelNegocio` lee la empresa de la base. El modelo se requiere adentro de
+// la función, así que alcanza con doblar `../models` antes de cargar el módulo.
+const mockEmpresa = { findByPk: jest.fn() };
+jest.mock('../models', () => ({ Empresa: mockEmpresa }));
+
+const {
+  fechaDelNegocio,
+  horaDelNegocio,
+  fechaParaAfip,
+  hoyDelNegocio,
+  ZONA_POR_DEFECTO,
+} = require('../utils/fechas');
 
 const AR = 'America/Argentina/Buenos_Aires';
 
@@ -89,5 +103,59 @@ describe('fechaParaAfip', () => {
     const momento = new Date('2026-08-01T00:30:00Z');
 
     expect(fechaParaAfip(AR, momento)).toBe('20260731');
+  });
+});
+
+describe('hoyDelNegocio', () => {
+  // Vivia dentro de routes/sales.js. Se subio a utils porque la recepcion de
+  // una orden de compra necesita exactamente la misma fecha: el movimiento de
+  // deuda de una recepcion de las 21:30 del 31 de julio se fechaba el 1 de
+  // agosto y se iba al mes siguiente del estado de cuenta.
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockEmpresa.findByPk.mockReset();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('hoyDelNegocio NO devuelve mañana a las 21:30 de Argentina', async () => {
+    // ⚠ El instante importa. Las 21:30 ART del 31/07 son las 00:30 UTC del
+    // 01/08: recien ahi UTC esta en el dia siguiente y la linea vieja se
+    // equivoca. Congelar el reloj en 2026-07-31T23:30:00Z serian las 20:30 ART
+    // y el test pasaria con y sin la correccion, que es no probar nada.
+    jest.setSystemTime(new Date('2026-08-01T00:30:00Z')); // 31/07 21:30 ART
+    mockEmpresa.findByPk.mockResolvedValue({ timezone: AR });
+
+    expect(await hoyDelNegocio(7)).toBe('2026-07-31');
+    // Lo que devolvia —y todavia devuelve purchaseService— la linea vieja:
+    expect(new Date().toISOString().split('T')[0]).toBe('2026-08-01');
+  });
+
+  it('una empresa sin timezone cae a la zona por defecto y no a UTC', async () => {
+    jest.setSystemTime(new Date('2026-08-01T00:30:00Z'));
+    mockEmpresa.findByPk.mockResolvedValue({ timezone: null });
+
+    expect(await hoyDelNegocio(7)).toBe('2026-07-31');
+  });
+
+  it('una empresa que no existe tampoco cae a UTC', async () => {
+    jest.setSystemTime(new Date('2026-08-01T00:30:00Z'));
+    mockEmpresa.findByPk.mockResolvedValue(null);
+
+    expect(await hoyDelNegocio(7)).toBe('2026-07-31');
+  });
+
+  it('sales.js ya no declara su propia hoyDelNegocio', () => {
+    // Dos declaraciones de la misma fecha del negocio son dos que se pueden
+    // separar: alcanza con que alguien corrija una.
+    const fuente = fs.readFileSync(
+      path.join(__dirname, '..', 'routes', 'sales.js'),
+      'utf8'
+    );
+
+    expect(fuente).toMatch(/require\('\.\.\/utils\/fechas'\)/);
+    expect(fuente).not.toMatch(/function\s+hoyDelNegocio\s*\(/);
   });
 });

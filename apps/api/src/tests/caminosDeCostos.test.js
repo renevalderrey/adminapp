@@ -31,6 +31,11 @@ const IMPORT = leer('routes', 'import.js');
 const PRECIOS = leer('services', 'preciosService.js');
 const PRODUCTION = leer('services', 'productionService.js');
 const COST = leer('services', 'costService.js');
+// El sexto camino. Entra a la guardia ANTES de que el servicio escriba un
+// costo: agregarla despues significa descubrir el texto libre cuando ya esta
+// escrito, y este archivo existe justamente porque dos de los cinco caminos
+// originales escribian el motivo a mano.
+const PURCHASE = leer('services', 'purchaseService.js');
 const RUTA_PRECIOS = leer('routes', 'precios.js');
 const RUTA_PRODUCTION = leer('routes', 'production.js');
 
@@ -281,6 +286,12 @@ describe('el umbral del centavo, en los cinco caminos', () => {
   it.each([
     ['services/costService.js', () => COST],
     ['services/productionService.js', () => PRODUCTION],
+    // La recepción de una orden de compra compara el costo cargado contra el
+    // precio de esta compra, en dos lugares: la propuesta que devuelve el
+    // detalle y la reevaluación que hace el servidor antes de escribir. Sin
+    // esta entrada, la guardia no miraba el camino nuevo y una comparación
+    // escrita a mano ahí no la veía nadie.
+    ['services/purchaseService.js', () => PURCHASE],
   ])('%s ya no compara con Math.abs(a - b) >= 0.01', (_, obtener) => {
     // Esa resta en punto flotante da 0.009999999999999787 para 1200 → 1200.01:
     // el cambio no se registraba. En estos dos archivos era peor todavía,
@@ -294,14 +305,16 @@ describe('el umbral del centavo, en los cinco caminos', () => {
 describe('nadie más escribe en product_cost_history', () => {
   // La regla que hace que el motivo tipado sirva: si un camino nuevo abre su
   // propio `create`, vuelve el texto libre y el conteo por origen deja de
-  // cerrar sin que nada falle. Son los cinco caminos del checkpoint de la
-  // fase 4.
+  // cerrar sin que nada falle. Eran los cinco caminos del checkpoint de la
+  // fase 4; la recepcion de una orden de compra es el SEXTO, y entra con el
+  // mismo criterio.
   const ARCHIVOS = [
     ['routes/products.js', PRODUCTS],
     ['routes/import.js', IMPORT],
     ['services/preciosService.js', PRECIOS],
     ['services/productionService.js', PRODUCTION],
     ['services/costService.js', COST],
+    ['services/purchaseService.js', PURCHASE],
   ];
 
   it.each(ARCHIVOS)('%s no llama a ProductCostHistory.create', (_, contenido) => {

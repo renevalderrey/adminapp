@@ -32,6 +32,10 @@
 // ════════════════════════════════════════════
 
 const { assertEmpresaId } = require('./tenantScope');
+// La conversión a centavos vive en utils/centavos.js y no acá: el saldo de un
+// proveedor la necesita igual (FR-050), y dos definiciones de "cuántos centavos
+// es esto" son dos redondeos que se pueden separar sin que nada falle.
+const { aCentavos } = require('./centavos');
 
 /**
  * Cuanto tiene que moverse un costo para que cuente como cambio.
@@ -72,6 +76,16 @@ const MOTIVOS = {
   CARGA_MASIVA: 'Carga masiva de productos',
   /** `costService.recalculateCascadingCosts`, la propagacion a las recetas. */
   RECOSTEO_DE_RECETA: 'Recosteo por cambio de un insumo',
+  /**
+   * Nuevo (FR-072). `purchaseService.receiveOrder`.
+   *
+   * Recibir una orden de compra no tocaba el costo del producto: comprar a
+   * $1.200 lo costeado a $900 dejaba el costo en $900, y el margen del POS y el
+   * punto de equilibrio del panel se calculaban sobre un numero que ya no era
+   * cierto. La recepcion de una orden de PRODUCCION si lo hacia, y esa asimetria
+   * no se podia defender: los dos son mercaderia que entra con un costo nuevo.
+   */
+  RECEPCION_DE_COMPRA: 'Actualización por recepción de compra',
 };
 
 /**
@@ -98,11 +112,6 @@ function motivoActualizacionMasiva({ descripcion, porcentaje } = {}) {
  */
 function motivoDeshacerMasiva(idActualizacion) {
   return `${MOTIVOS.DESHACER_MASIVA} #${idActualizacion}`;
-}
-
-/** Un importe llevado a centavos enteros, que es como lo guarda la columna. */
-function aCentavos(n) {
-  return Math.round((Number(n) || 0) * 100);
 }
 
 /**

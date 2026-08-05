@@ -124,6 +124,10 @@ beforeEach(() => {
   mockSupplierMovement.filas = [];
   mockSupplierDocument.filas = [];
   mockSupplierOrder.filas = [];
+  mockProduct.filas = [
+    { id: 501, empresa_id: PROPIA, name: 'Harina propia', cost: 100 },
+    { id: 900, empresa_id: AJENA, name: 'Insumo de otro cliente', cost: 50 },
+  ];
 
   for (const doble of [mockSupplier, mockSupplierMovement, mockSupplierDocument, mockSupplierOrder]) {
     doble.llamadas = [];
@@ -190,6 +194,73 @@ describe('POST /api/suppliers/:id/orders', () => {
     expect(res.status).toBe(201);
     expect(mockSupplierOrder.filas).toHaveLength(1);
     expect(mockSupplierOrder.filas[0]).toMatchObject({ supplier_id: 10, empresa_id: PROPIA, total: 200 });
+  });
+
+  // ── FR-062: los productos del detalle también son de la empresa ──
+  //
+  // `dfd7009` cerró el proveedor; el detalle quedó abierto. Se guardaba
+  // `item.product_id || null` sin mirar nada, así que una empresa podía dejar en
+  // su propio `detail` una línea que apunta al producto de otro cliente. La
+  // consecuencia se ve al recibir: el `Stock.findOne` lleva empresa_id, así que
+  // no encuentra la fila del otro, pero el `Stock.create` **crea una fila de
+  // stock propia para un producto ajeno**.
+  it('NO crea una orden con el producto de otra empresa en el detalle', async () => {
+    const res = await request(levantarApi(PROPIA))
+      .post('/api/suppliers/10/orders')
+      .send({
+        date: '2026-07-31',
+        items: [
+          { product_id: 501, product_name: 'Harina propia', quantity: 2, unit_price: 100 },
+          { product_id: 900, product_name: 'Insumo de otro cliente', quantity: 1, unit_price: 50 },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Insumo de otro cliente');
+    // Y no quedó ninguna orden: un error que llega DESPUÉS del create es una
+    // orden fantasma con una línea ajena adentro.
+    expect(mockSupplierOrder.filas).toEqual([]);
+  });
+
+  it('el mensaje nombra los productos ajenos y no los propios', async () => {
+    const res = await request(levantarApi(PROPIA))
+      .post('/api/suppliers/10/orders')
+      .send({
+        date: '2026-07-31',
+        items: [
+          { product_id: 501, product_name: 'Harina propia', quantity: 2, unit_price: 100 },
+          { product_id: 900, product_name: 'Insumo de otro cliente', quantity: 1, unit_price: 50 },
+        ],
+      });
+
+    expect(res.body.error).not.toContain('Harina propia');
+  });
+
+  it('sigue creando la orden cuando todos los productos son propios', async () => {
+    // Sin esto la validación podría estar fallando siempre, que es tan inútil
+    // como no validar nada.
+    const res = await request(levantarApi(PROPIA))
+      .post('/api/suppliers/10/orders')
+      .send({
+        date: '2026-07-31',
+        items: [{ product_id: 501, product_name: 'Harina propia', quantity: 2, unit_price: 100 }],
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockSupplierOrder.filas).toHaveLength(1);
+    expect(mockSupplierOrder.filas[0].detail[0].product_id).toBe(501);
+  });
+
+  it('una línea sin producto —un flete— sigue siendo válida', async () => {
+    const res = await request(levantarApi(PROPIA))
+      .post('/api/suppliers/10/orders')
+      .send({
+        date: '2026-07-31',
+        items: [{ product_name: 'Flete', quantity: 1, unit_price: 9000 }],
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockSupplierOrder.filas[0].detail[0].product_id).toBeNull();
   });
 });
 
@@ -283,6 +354,35 @@ describe('purchaseService no contesta sin saber de que empresa', () => {
     expect(mockSupplierOrder.llamadas[0].where).toMatchObject({ empresa_id: PROPIA });
   });
 
+  it('el nombre del proveedor del listado sale de un include acotado a la empresa', async () => {
+    // FR-067. El include unia por supplier_id y nada mas: `supplier_name` podia
+    // venir del proveedor de otro cliente.
+    mockSupplierOrder.findAndCountAll = async (opciones = {}) => {
+      mockSupplierOrder.llamadas.push({ metodo: 'findAndCountAll', ...opciones });
+      return { count: 0, rows: [] };
+    };
+
+    await purchaseService.getOrders({ empresa_id: PROPIA });
+
+    const include = mockSupplierOrder.llamadas[0].include[0];
+    expect(include.where).toMatchObject({ empresa_id: PROPIA });
+  });
+
+  it('el listado sigue mostrando órdenes de un proveedor que ya no está', async () => {
+    // Lo que protege el `required: false`. Sequelize convierte el include en
+    // INNER JOIN apenas ve un `where`: sin él, las órdenes cuyo proveedor se
+    // borró desaparecen del listado, el total las sigue contando, y la pantalla
+    // muestra menos filas de las que dice tener.
+    mockSupplierOrder.findAndCountAll = async (opciones = {}) => {
+      mockSupplierOrder.llamadas.push({ metodo: 'findAndCountAll', ...opciones });
+      return { count: 0, rows: [] };
+    };
+
+    await purchaseService.getOrders({ empresa_id: PROPIA });
+
+    expect(mockSupplierOrder.llamadas[0].include[0].required).toBe(false);
+  });
+
   it('cancelOrder sin empresa resuelta falla antes de tocar la orden', async () => {
     await expect(purchaseService.cancelOrder(1, undefined))
       .rejects.toThrow(/Scoping por empresa invalido/);
@@ -295,6 +395,81 @@ describe('purchaseService no contesta sin saber de que empresa', () => {
       .rejects.toThrow(/Scoping por empresa invalido/);
 
     expect(mockSupplierOrder.llamadas).toEqual([]);
+  });
+});
+
+describe('Los filtros del listado no rompen el listado en silencio', () => {
+  // `<SelectItem value=" ">` —un espacio— es el valor centinela con el que la
+  // pantalla dice «Todos». `if (supplier_id)` lo daba por verdadero, salía
+  // `?supplier_id=%20`, y ese espacio llegaba a una columna INTEGER: Postgres
+  // respondía `invalid input syntax for type integer`, subía como 500, y el
+  // catch de la pantalla hacía console.error. **La lista quedaba con lo anterior
+  // y sin ningún aviso**: volver a «Todos» después de filtrar no volvía a
+  // «Todos», rompía.
+  beforeEach(() => {
+    mockSupplierOrder.findAndCountAll = async (opciones = {}) => {
+      mockSupplierOrder.llamadas.push({ metodo: 'findAndCountAll', ...opciones });
+      return { count: 0, rows: [] };
+    };
+  });
+
+  it('getOrders con supplier_id de un espacio responde 400 y no un 500 de Postgres', async () => {
+    const res = await request(levantarApi(PROPIA)).get('/api/suppliers/orders?supplier_id=%20');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('FILTRO_INVALIDO');
+    // Y ni siquiera se consultó: el valor malo no llegó a la base.
+    expect(mockSupplierOrder.llamadas).toEqual([]);
+  });
+
+  it('un status inventado responde 400 y no devuelve la lista entera', async () => {
+    const res = await request(levantarApi(PROPIA)).get('/api/suppliers/orders?status=recibida');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('FILTRO_INVALIDO');
+    expect(res.body.message).toContain('pending');
+    expect(mockSupplierOrder.llamadas).toEqual([]);
+  });
+
+  it('una fecha con forma inválida responde 400', async () => {
+    const res = await request(levantarApi(PROPIA)).get('/api/suppliers/orders?from=31/07/2026');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('FILTRO_INVALIDO');
+  });
+
+  it('la ausencia del parámetro es «todos», y no falla', async () => {
+    // Es la corrección de fondo del lado del servidor: sin el parámetro no hay
+    // filtro. Sin este caso, la validación podría estar rechazando siempre.
+    const res = await request(levantarApi(PROPIA)).get('/api/suppliers/orders');
+
+    expect(res.status).toBe(200);
+    expect(mockSupplierOrder.llamadas[0].where).toEqual({ empresa_id: PROPIA });
+  });
+
+  it('los filtros válidos siguen filtrando', async () => {
+    const res = await request(levantarApi(PROPIA))
+      .get('/api/suppliers/orders?supplier_id=10&status=pending&from=2026-07-01&to=2026-07-31');
+
+    expect(res.status).toBe(200);
+    expect(mockSupplierOrder.llamadas[0].where).toMatchObject({
+      empresa_id: PROPIA, supplier_id: 10, status: 'pending',
+    });
+  });
+
+  it('limit=999999 NO pide la tabla entera', async () => {
+    await request(levantarApi(PROPIA)).get('/api/suppliers/orders?limit=999999');
+
+    expect(mockSupplierOrder.llamadas[0].limit).toBe(200);
+  });
+
+  it('un limit razonable se respeta, y uno absurdo no da cero', async () => {
+    await request(levantarApi(PROPIA)).get('/api/suppliers/orders?limit=25');
+    expect(mockSupplierOrder.llamadas[0].limit).toBe(25);
+
+    mockSupplierOrder.llamadas = [];
+    await request(levantarApi(PROPIA)).get('/api/suppliers/orders?limit=-5');
+    expect(mockSupplierOrder.llamadas[0].limit).toBe(50);
   });
 });
 
