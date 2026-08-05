@@ -1,4 +1,5 @@
 const express = require('express');
+const { Op, fn, col, where: sqlWhere } = require('sequelize');
 const router = express.Router();
 const { Supplier, SupplierOrder, SupplierMovement, SupplierDocument } = require('../models');
 const sequelize = require('../config/database');
@@ -6,6 +7,20 @@ const purchaseService = require('../services/purchaseService');
 const checkPermission = require('../middleware/checkPermission');
 const { fallo, ErrorDeNegocio } = require('../utils/errores');
 const { findScoped } = require('../utils/tenantScope');
+// El saldo lo calcula el servidor (decisión 4 del plan). La aritmética vive en
+// utils/ y no acá porque el GROUP BY no lo pueden ejecutar los dobles de
+// modelosFalsos: una suma escrita adentro del handler no la alcanza ningún test.
+const {
+  resumenDeCuenta,
+  pendienteDeRecibir,
+  conSaldoAcumulado,
+  filaDeCuentaParaExport,
+  agruparPorProveedor,
+  conteoAgrupado,
+  sinAcentos,
+  ACENTOS,
+  SIN_ACENTOS,
+} = require('../utils/cuentaDeProveedor');
 
 /**
  * Responde con SU codigo los errores que lo llevan, para que la pantalla
@@ -168,52 +183,421 @@ function soloCampos(cuerpo = {}, permitidos) {
   return salida;
 }
 
-// GET /api/suppliers — Listar todos
+/** El tope de una página del listado de proveedores. */
+const TOPE_DE_PAGINA = 200;
+const POR_PAGINA_POR_DEFECTO = 50;
+
+/**
+ * `page` y `limit` normalizados.
+ *
+ * Un valor fuera de rango **se recorta, no se rechaza**: el parámetro lo arma la
+ * pantalla, no el usuario, y dejar a alguien sin ver a sus proveedores por eso
+ * es peor que darle una página más chica.
+ */
+function paginacion(query = {}) {
+  const pedido = parseInt(query.limit, 10);
+  const limit = Number.isInteger(pedido) && pedido > 0
+    ? Math.min(pedido, TOPE_DE_PAGINA)
+    : POR_PAGINA_POR_DEFECTO;
+
+  // 1-indexado, como `components/Pagination.jsx`.
+  const pagina = Math.max(parseInt(query.page, 10) || 1, 1);
+
+  return { limit, offset: (pagina - 1) * limit };
+}
+
+/**
+ * La condición de búsqueda por nombre, sin distinguir mayúsculas ni acentos
+ * (FR-059).
+ *
+ * ⚠ **`translate()` y no la extensión `unaccent`**: `unaccent` necesita
+ * permisos de superusuario en una base administrada, que es la razón por la que
+ * la búsqueda de ventas quedó sensible a acentos (`utils/filtroVentas.js:152`).
+ * `translate` es del núcleo de Postgres y no pide nada.
+ *
+ * La misma lista de acentos normaliza los dos lados —la columna en SQL y el
+ * texto que escribió el usuario en JS—, así que no pueden separarse.
+ */
+function condicionDeNombre(q) {
+  const texto = sinAcentos(q).trim();
+  if (!texto) return null;
+
+  return sqlWhere(
+    fn('translate', fn('lower', col('name')), ACENTOS, SIN_ACENTOS),
+    { [Op.like]: `%${texto}%` }
+  );
+}
+
+// GET /api/suppliers — Listar con el saldo ya calculado
+//
+// ── Lo que desaparece: `movements` y `documents` ──
+//
+// Es el hallazgo 7 de la spec. El endpoint traía TODOS los proveedores con
+// TODOS sus movimientos y TODOS sus documentos, sin paginar: con tres años de
+// operación son decenas de miles de filas en cada carga de pantalla. Y el único
+// uso que tenían esos arreglos era que el navegador los sumara para mostrar un
+// número —en punto flotante, sobre DECIMAL que el driver devuelve como texto—.
+//
+// Ahora son cuatro consultas planas, **ninguna con `include`**, y la aritmética
+// la hacen las funciones puras de `utils/cuentaDeProveedor.js`. El saldo de acá
+// y el de la ficha salen de la MISMA función: no pueden decir números distintos
+// (FR-101).
+//
+// ⚠ Los índices que sostienen las tres consultas agregadas los crea
+// `migrations/20260808-indices-de-empresa-en-proveedores.js`. Sin ellos, filtrar
+// por empresa en estas tablas es un barrido secuencial de los movimientos de
+// todas las empresas cliente.
 router.get('/', checkPermission('proveedores.ver'), async (req, res) => {
   try {
+    const empresaId = req.empresaId;
+    const { limit, offset } = paginacion(req.query);
+
+    const filtroDeNombre = condicionDeNombre(req.query.q);
+    const where = { empresa_id: empresaId };
+    if (filtroDeNombre) where[Op.and] = [filtroDeNombre];
+
+    // El total es el de la búsqueda, no el de la página: sin él la paginación no
+    // sabe cuántas páginas hay.
+    const total = await Supplier.count({ where });
+
     const suppliers = await Supplier.findAll({
-      where: { empresa_id: req.empresaId },
-      // ── Por que cada include lleva su propio where ──
-      //
-      // Sequelize une el hijo SOLO por supplier_id. Filtrar el padre por
-      // empresa no filtra a los hijos: un movimiento creado desde otra empresa
-      // cliente contra este mismo proveedor entraba igual en la cuenta
-      // corriente y le cambiaba el saldo. La otra mitad del agujero —poder
-      // crear ese movimiento— se cierra validando el proveedor antes de
-      // escribir, mas abajo en este archivo.
-      //
-      // `required: false` no es decorativo: Sequelize convierte el include en
-      // INNER JOIN apenas ve un `where`, y sin el los proveedores sin
-      // movimientos ni documentos desaparecerian del listado.
-      include: [
-        { model: SupplierMovement, as: 'movements', where: { empresa_id: req.empresaId }, required: false },
-        { model: SupplierDocument, as: 'documents', where: { empresa_id: req.empresaId }, required: false },
-      ],
+      where,
       order: [['name', 'ASC']],
+      limit,
+      offset,
     });
-    res.json({ ok: true, data: suppliers });
+
+    // ── Las tres consultas agregadas ──
+    //
+    // Van por la empresa entera y no por la página: son tres consultas fijas
+    // contra las N que saldrían de preguntar proveedor por proveedor, que es el
+    // problema que este corte viene a cerrar.
+    //
+    // `status` va en los `attributes` de las órdenes aunque no se muestre:
+    // `pendienteDeRecibir` vuelve a filtrar por estado —es pura y no puede
+    // suponer que el `where` ya filtró— y sin la columna descartaría todas las
+    // filas devolviendo cero, en silencio.
+    const movimientos = await SupplierMovement.findAll({
+      attributes: ['supplier_id', 'type', [fn('SUM', col('amount')), 'total'], [fn('COUNT', col('id')), 'n']],
+      where: { empresa_id: empresaId },
+      group: ['supplier_id', 'type'],
+      raw: true,
+    });
+
+    const documentos = await SupplierDocument.findAll({
+      attributes: ['supplier_id', [fn('COUNT', col('id')), 'n']],
+      where: { empresa_id: empresaId },
+      group: ['supplier_id'],
+      raw: true,
+    });
+
+    const ordenesAbiertas = await SupplierOrder.findAll({
+      attributes: ['supplier_id', 'status', 'detail'],
+      where: { empresa_id: empresaId, status: ['pending', 'partial'] },
+      raw: true,
+    });
+
+    const movimientosPorProveedor = agruparPorProveedor(movimientos);
+    const documentosPorProveedor = agruparPorProveedor(documentos);
+    const ordenesPorProveedor = agruparPorProveedor(ordenesAbiertas);
+
+    const data = suppliers.map((s) => {
+      const filas = movimientosPorProveedor.get(s.id) || [];
+
+      return {
+        id: s.id,
+        name: s.name,
+        phone: s.phone,
+        email: s.email,
+        address: s.address,
+        cuit: s.cuit,
+        ...resumenDeCuenta(filas),
+        pendiente_de_recibir: pendienteDeRecibir(ordenesPorProveedor.get(s.id) || []),
+        // Conteos, no arreglos: alcanzan para el estado vacío y para el aviso
+        // «sin factura» (FR-086), y no traen la contabilidad entera.
+        movimientos: conteoAgrupado(filas),
+        documentos: conteoAgrupado(documentosPorProveedor.get(s.id) || []),
+      };
+    });
+
+    res.json({ ok: true, total, data });
   } catch (err) {
     fallo(req, res, err, 'Error al listar los proveedores');
   }
 });
 
-// GET /api/suppliers/:id — Detalle
+/**
+ * Los cuatro números de la cuenta de UN proveedor.
+ *
+ * Los calcula **la misma función** que el listado: ni la lista ni la ficha
+ * pueden decir números distintos (FR-101). Por eso vive acá arriba y no adentro
+ * de cada handler.
+ */
+async function cuentaDelProveedor(supplierId, empresaId) {
+  const movimientos = await SupplierMovement.findAll({
+    attributes: ['type', [fn('SUM', col('amount')), 'total']],
+    where: { empresa_id: empresaId, supplier_id: supplierId },
+    group: ['type'],
+    raw: true,
+  });
+
+  // `status` va en los `attributes` aunque no se muestre: `pendienteDeRecibir`
+  // vuelve a filtrar por estado —es pura y no puede suponer que el `where` ya
+  // filtró— y sin la columna descartaría todas las filas devolviendo cero.
+  const ordenesAbiertas = await SupplierOrder.findAll({
+    attributes: ['status', 'detail'],
+    where: { empresa_id: empresaId, supplier_id: supplierId, status: ['pending', 'partial'] },
+    raw: true,
+  });
+
+  return {
+    ...resumenDeCuenta(movimientos),
+    pendiente_de_recibir: pendienteDeRecibir(ordenesAbiertas),
+  };
+}
+
+// GET /api/suppliers/:id — La ficha, con los cuatro números y sus documentos
+//
+// ── Lo que se fue, y adónde ──
+//
+// `movements` pagina por `GET /api/suppliers/:id/movimientos`, que además trae
+// el saldo acumulado ya calculado. `orders` sale de
+// `GET /api/suppliers/orders?supplier_id=`, que ya existe, ya pagina y ya exige
+// `ordenes_compra.ver`.
+//
+// ⚠ **Ese cambio de permiso es buscado, y es el riesgo 12 del plan**: un usuario
+// con `proveedores.ver` y sin `ordenes_compra.ver` hasta hoy veía las órdenes del
+// proveedor —porque venían en el include, que solo miraba `proveedores.ver`— y a
+// partir de acá no. Es lo que la spec pide en su caso de borde, pero es una
+// función que alguien puede estar usando: la mitigación es de la pantalla
+// (T1242), que dice «No tenés permiso para ver las órdenes de compra» y **no**
+// «Sin órdenes», que son cosas distintas.
+//
+// `documents` se queda —son pocos, no paginan y el bloque los muestra
+// completos— y **es el único include de hijo que sobrevive en el archivo**. Su
+// `where: { empresa_id }` no es decorativo: Sequelize une el hijo solo por
+// `supplier_id`, así que sin él un documento cargado desde otra empresa cliente
+// contra este mismo proveedor aparecería en esta ficha.
 router.get('/:id', checkPermission('proveedores.ver'), async (req, res) => {
   try {
     const supplier = await findScoped(Supplier, req.params.id, req.empresaId, {
-      // Mismo motivo que en el listado: el include une por supplier_id y nada
-      // mas. Esta es la pantalla de cuenta corriente, asi que un movimiento
-      // ajeno que se colara aca cambia un saldo que el usuario cree.
       include: [
-        { model: SupplierOrder, as: 'orders', where: { empresa_id: req.empresaId }, required: false, order: [['date', 'DESC']] },
-        { model: SupplierMovement, as: 'movements', where: { empresa_id: req.empresaId }, required: false, order: [['date', 'DESC']] },
         { model: SupplierDocument, as: 'documents', where: { empresa_id: req.empresaId }, required: false },
       ],
     });
     if (!supplier) return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
-    res.json({ ok: true, data: supplier });
+
+    const cuenta = await cuentaDelProveedor(supplier.id, req.empresaId);
+
+    res.json({
+      ok: true,
+      data: {
+        id: supplier.id,
+        name: supplier.name,
+        phone: supplier.phone,
+        email: supplier.email,
+        address: supplier.address,
+        cuit: supplier.cuit,
+        ...cuenta,
+        documents: supplier.documents || [],
+      },
+    });
   } catch (err) {
     fallo(req, res, err, 'Error al obtener el proveedor');
+  }
+});
+
+/**
+ * El rango de fechas de la cuenta, validado antes de llegar a la base.
+ *
+ * Mismo criterio que los filtros del listado de órdenes: un valor con la forma
+ * equivocada no puede subir como 500 de Postgres.
+ */
+function rangoDeFechas(query = {}) {
+  const rango = {};
+
+  for (const [nombre, valor] of [['desde', query.desde], ['hasta', query.hasta]]) {
+    if (valor === undefined || valor === '') continue;
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+      const err = new ErrorDeNegocio(`La fecha «${valor}» no tiene la forma AAAA-MM-DD.`, 400);
+      err.codigo = 'FILTRO_INVALIDO';
+      throw err;
+    }
+
+    rango[nombre] = valor;
+  }
+
+  return rango;
+}
+
+/** El `where` de fecha de un rango, o `null` si no hay rango. */
+function condicionDeFecha({ desde, hasta }) {
+  if (!desde && !hasta) return null;
+
+  const cond = {};
+  if (desde) cond[Op.gte] = desde;
+  if (hasta) cond[Op.lte] = hasta;
+  return cond;
+}
+
+// GET /api/suppliers/:id/movimientos — El historial de cuenta, paginado
+//
+// ⚠ **Cuelga de `/:id/…` a propósito.** `router.get('/:id')` está declarado más
+// arriba y se come cualquier palabra literal que se declare después: un
+// `GET /api/suppliers/export` iría a parar a `GET /:id` con `id = 'export'`. Es
+// la misma trampa documentada en `routes/sales.js:226-230`. Una ruta de dos
+// segmentos no tiene ese problema.
+router.get('/:id/movimientos', checkPermission('proveedores.ver'), async (req, res) => {
+  try {
+    const supplier = await findScoped(Supplier, req.params.id, req.empresaId);
+    if (!supplier) return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
+
+    const rango = rangoDeFechas(req.query);
+    const { limit, offset } = paginacion(req.query);
+
+    const where = { empresa_id: req.empresaId, supplier_id: supplier.id };
+    const porFecha = condicionDeFecha(rango);
+    if (porFecha) where.date = porFecha;
+
+    const total = await SupplierMovement.count({ where });
+
+    // Descendente por fecha, **desempatando por id**. Sin el desempate, dos
+    // movimientos del mismo día pueden salir en orden distinto en dos llamadas y
+    // el saldo acumulado de la página cambiaría entre una y otra.
+    const movimientos = await SupplierMovement.findAll({
+      where,
+      order: [['date', 'DESC'], ['id', 'DESC']],
+      limit,
+      offset,
+      raw: true,
+    });
+
+    // ── El saldo con el que arranca esta página ──
+    //
+    // Sin él, el acumulado de la página 2 sería la suma de un subconjunto y la
+    // última fila no coincidiría con el saldo grande de la pantalla (FR-101).
+    //
+    // Solo se consulta cuando puede haber algo más viejo: en la última página
+    // sin filtro de fecha no hay nada abajo y el saldo inicial es cero.
+    //
+    // ⚠ El `desde` obliga a consultar igual aunque la página sea la última: los
+    // movimientos anteriores al rango existen y son justamente el «saldo
+    // anterior» del período.
+    //
+    // ⚠ **Este camino no lo puede ejercitar ningún test unitario** (riesgo 9):
+    // los dobles de `modelosFalsos` no entienden `Op.or` ni `Op.lt`, así que
+    // devolverían todas las filas y la cuenta daría cualquier cosa. Lo que sí
+    // está testeado es la aritmética, en `conSaldoAcumulado`. Que la consulta
+    // traiga las filas correctas es el paso manual P1.
+    const masViejo = movimientos[movimientos.length - 1];
+    const puedeHaberMasViejos = Boolean(masViejo)
+      && (offset + movimientos.length < total || Boolean(rango.desde));
+
+    let saldoInicial = 0;
+
+    if (puedeHaberMasViejos) {
+      const anteriores = await SupplierMovement.findAll({
+        attributes: ['type', [fn('SUM', col('amount')), 'total']],
+        where: {
+          empresa_id: req.empresaId,
+          supplier_id: supplier.id,
+          // «Más viejo» con el MISMO desempate que el orden de la página: sin el
+          // segundo término, dos movimientos de la misma fecha se contarían dos
+          // veces o ninguna según de qué lado del corte caigan.
+          [Op.or]: [
+            { date: { [Op.lt]: masViejo.date } },
+            { date: masViejo.date, id: { [Op.lt]: masViejo.id } },
+          ],
+        },
+        group: ['type'],
+        raw: true,
+      });
+
+      saldoInicial = resumenDeCuenta(anteriores).saldo;
+    }
+
+    res.json({
+      ok: true,
+      total,
+      saldo_inicial: saldoInicial,
+      data: conSaldoAcumulado(movimientos, saldoInicial),
+    });
+  } catch (err) {
+    if (respondioConCodigo(res, err)) return;
+    fallo(req, res, err, 'Error al obtener los movimientos del proveedor');
+  }
+});
+
+// El mismo tope que el historial de ventas (`routes/sales.js:209`). Un archivo
+// de cuenta corriente más grande que esto no lo abre nadie, y armarlo en memoria
+// tampoco es gratis.
+const LIMITE_EXPORT = 5000;
+
+// GET /api/suppliers/:id/movimientos/export — Las filas del archivo del contador
+//
+// Mismo molde que `GET /api/sales/export`: **el servidor arma las filas, el
+// navegador arma la hoja** (FR-097). La API no sabe cómo se llama la descarga ni
+// qué tipo tiene cada celda; eso es de `utils/exportarProveedores.js`.
+//
+// ⚠ **Ascendente, al revés que la pantalla, y a propósito**: un saldo acumulado
+// que crece hacia abajo es como se lee una cuenta en una planilla.
+router.get('/:id/movimientos/export', checkPermission('proveedores.ver'), async (req, res) => {
+  try {
+    const supplier = await findScoped(Supplier, req.params.id, req.empresaId);
+    if (!supplier) return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
+
+    const rango = rangoDeFechas(req.query);
+
+    const where = { empresa_id: req.empresaId, supplier_id: supplier.id };
+    const porFecha = condicionDeFecha(rango);
+    if (porFecha) where.date = porFecha;
+
+    // El COUNT va primero para no cargar 5.001 filas en memoria y después
+    // descartarlas.
+    const total = await SupplierMovement.count({ where });
+
+    if (total > LIMITE_EXPORT) {
+      return res.status(400).json({
+        ok: false,
+        error: 'LIMITE_EXPORT_SUPERADO',
+        message: `La cuenta tiene ${total} movimientos y el máximo por archivo es ${LIMITE_EXPORT}. Acotá el rango de fechas.`,
+        total,
+        limite: LIMITE_EXPORT,
+      });
+    }
+
+    // Sin paginar: el archivo es todo el resultado del filtro.
+    const ascendentes = await SupplierMovement.findAll({
+      where,
+      order: [['date', 'ASC'], ['id', 'ASC']],
+      raw: true,
+    });
+
+    // ⚠ `conSaldoAcumulado` recibe DESCENDENTE y devuelve descendente, que es lo
+    // que necesita la pantalla. Acá se le da vuelta el arreglo dos veces en vez
+    // de escribir una segunda acumulación: dos acumulaciones son dos redondeos
+    // que se separan, y entonces la última fila del archivo dejaría de coincidir
+    // con el saldo grande de la pantalla.
+    const descendentes = [...ascendentes].reverse();
+    const conSaldo = [...conSaldoAcumulado(descendentes, 0)].reverse();
+
+    // `saldo_final` sale de la MISMA función que el saldo del listado y el de la
+    // ficha (FR-101), no de un segundo `reduce` sobre las filas del archivo. Sin
+    // rango es exactamente el saldo de la cuenta; con rango es el neto del
+    // período, que es el número con el que cierra la última fila del archivo.
+    const { saldo } = resumenDeCuenta(ascendentes);
+
+    res.json({
+      ok: true,
+      total,
+      proveedor: { name: supplier.name, cuit: supplier.cuit || '' },
+      saldo_final: saldo,
+      data: conSaldo.map((m) => filaDeCuentaParaExport(m, m.saldo, supplier)),
+    });
+  } catch (err) {
+    if (respondioConCodigo(res, err)) return;
+    fallo(req, res, err, 'Error al preparar la exportación de la cuenta del proveedor');
   }
 });
 
@@ -242,7 +626,26 @@ router.put('/:id', checkPermission('proveedores.editar'), async (req, res) => {
   }
 });
 
+/**
+ * Un importe como lo escribe una persona en Argentina: `$64.000,00`.
+ *
+ * Los dos extremos de decimales van fijos. Sin el máximo, el valor por defecto
+ * es 3 y `1234.567` sale «1.234,567»; sin el mínimo, `1234` sale «1.234» y la
+ * misma columna termina con tres formatos distintos.
+ */
+function enPesos(n) {
+  return `$${(Number(n) || 0).toLocaleString('es-AR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 // DELETE /api/suppliers/:id — Eliminar proveedor
+//
+// ⚠⚠ **Las tres líneas de `destroy` NO se reformatean.** Están en la lista de
+// excepciones de `observabilidad.test.js:186-190` como **match exacto sobre la
+// línea recortada**: un cambio de espaciado rompe la exención y aparece como un
+// hallazgo de aislamiento que no lo es. El chequeo del saldo va ANTES de ellas.
 router.delete('/:id', checkPermission('proveedores.eliminar'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -253,6 +656,38 @@ router.delete('/:id', checkPermission('proveedores.eliminar'), async (req, res) 
       await t.rollback();
       return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
     }
+
+    // ── Con saldo distinto de cero, no se borra ──
+    //
+    // Hasta este corte el DELETE se llevaba la cuenta entera —órdenes,
+    // movimientos y documentos— con una confirmación genérica. **Es borrar el
+    // respaldo de una deuda**: después de eso no hay forma de saber cuánto se le
+    // debía a ese proveedor ni por qué.
+    //
+    // El saldo sale de `resumenDeCuenta`, la misma función que el listado y la
+    // ficha: si acá se escribiera una segunda suma, el día que difieran en un
+    // centavo el borrado se bloquearía sobre un número que la pantalla no
+    // muestra.
+    const movimientos = await SupplierMovement.findAll({
+      attributes: ['type', [fn('SUM', col('amount')), 'total']],
+      where: { empresa_id: req.empresaId, supplier_id: supplier.id },
+      group: ['type'],
+      transaction: t,
+      raw: true,
+    });
+
+    const { saldo } = resumenDeCuenta(movimientos);
+
+    if (saldo !== 0) {
+      // El número va adentro del mensaje: «no se puede» sin decir cuánto obliga
+      // a ir a buscarlo a otra pantalla.
+      throw new ErrorDeNegocio(
+        `${supplier.name} tiene un saldo de ${enPesos(saldo)}. `
+        + 'Saldá la cuenta antes de eliminarlo.',
+        400
+      );
+    }
+
     await SupplierDocument.destroy({ where: { supplier_id: req.params.id }, transaction: t });
     await SupplierMovement.destroy({ where: { supplier_id: req.params.id }, transaction: t });
     await SupplierOrder.destroy({ where: { supplier_id: req.params.id }, transaction: t });

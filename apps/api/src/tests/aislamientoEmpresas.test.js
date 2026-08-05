@@ -646,15 +646,47 @@ describe('Ningun include de un hijo con empresa_id se trae sin filtrar', () => {
     expect(analizarIncludes('muestra/buena.js', MUESTRA_INCLUDE_BUENA).sinFiltrar).toEqual([]);
   });
 
-  it('encuentra los ocho includes de hijos con empresa_id que tiene que mirar', () => {
-    // **El ancla.** Si este numero baja, algun include dejo de existir o dejo
-    // de reconocerse y la guardia estaria recorriendo menos de lo que cree. Si
-    // sube, hay un include nuevo de un hijo con empresa_id y **hay que
+  it('encuentra los cuatro includes de hijos con empresa_id que tiene que mirar', () => {
+    // **El ancla, y se lee en las DOS direcciones.**
+    //
+    // Si SUBE, hay un include nuevo de un hijo con empresa_id y **hay que
     // leerlo**, no ajustar el numero.
+    //
+    // Si BAJA es igual de sospechoso: o algun include dejo de existir —y
+    // entonces hay que saber cual y por que— o el detector dejo de reconocer la
+    // forma, y la guardia estaria recorriendo menos de lo que cree, en verde. El
+    // comentario anterior solo advertia sobre subir; bajar merece la misma
+    // lectura.
+    //
+    // ── Por que bajo de 8 a 4 (hito 012, corte 4) ──
+    //
+    // Los cuatro que se fueron son los del listado y la ficha de proveedores. El
+    // saldo lo calcula ahora el servidor con consultas agregadas planas, asi que
+    // no hay hijo que traer:
+    //
+    //   1. SupplierMovement as 'movements' — routes/suppliers.js, listado.
+    //      Los saldos salen del GROUP BY de T1215.
+    //   2. SupplierDocument as 'documents' — routes/suppliers.js, listado.
+    //      La lista solo necesita el conteo.
+    //   3. SupplierOrder    as 'orders'    — routes/suppliers.js, ficha.
+    //      Salen de GET /api/suppliers/orders?supplier_id= (T1216).
+    //   4. SupplierMovement as 'movements' — routes/suppliers.js, ficha.
+    //      Paginan por GET /api/suppliers/:id/movimientos (T1217).
+    //
+    // El SupplierDocument as 'documents' de la ficha **se queda**, con su where:
+    // es el unico include de hijo que sobrevive en ese archivo.
+    //
+    // Si el numero bajara MAS de cuatro, se saco un include que este plan no
+    // nombra y hay que leerlo.
+    //
+    // ⚠ El include de Supplier que T1211 le agrego a getOrders **no entra en
+    // esta cuenta**: es un belongsTo, y el detector solo clasifica HasMany y
+    // HasOne. Queda escrito porque es lo primero que alguien va a mirar cuando
+    // el numero no le cierre.
     const deHijos = analisis.flatMap((a) => a.deHijos);
 
     expect(deHijos.length).toBeGreaterThan(0);
-    expect(deHijos.length).toBe(8);
+    expect(deHijos.length).toBe(4);
   });
 
   it.each(archivos)('$nombre', ({ nombre, contenido }) => {

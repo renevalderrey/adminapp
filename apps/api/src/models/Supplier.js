@@ -85,9 +85,19 @@ const SupplierOrder = sequelize.define('SupplierOrder', {
   },
 }, {
   tableName: 'supplier_orders',
+  // Los dos compuestos por empresa los crea
+  // `migrations/20260808-indices-de-empresa-en-proveedores.js`, y llevan `name`
+  // explicito por eso: sin el, Sequelize los llamaria
+  // `supplier_orders_empresa_id_status` y un `sync({ alter: true })` sobre una
+  // base migrada intentaria crear un SEGUNDO indice sobre las mismas columnas.
+  //
+  // Los dos de una sola columna se quedan: las consultas por proveedor y por
+  // fecha sueltas siguen existiendo.
   indexes: [
     { fields: ['supplier_id'] },
     { fields: ['date'] },
+    { name: 'idx_supplier_orders_empresa_status', fields: ['empresa_id', 'status'] },
+    { name: 'idx_supplier_orders_empresa_date', fields: ['empresa_id', 'date'] },
   ],
 });
 
@@ -133,9 +143,13 @@ const SupplierMovement = sequelize.define('SupplierMovement', {
   },
 }, {
   tableName: 'supplier_movements',
+  // El compuesto es el que sostiene el `GROUP BY supplier_id, type` con el que
+  // se calculan deuda, pagado y saldo de todos los proveedores de la empresa.
+  // Sin el, ese agregado barre los movimientos de todas las empresas cliente.
   indexes: [
     { fields: ['supplier_id'] },
     { fields: ['date'] },
+    { name: 'idx_supplier_movements_empresa_supplier', fields: ['empresa_id', 'supplier_id'] },
   ],
 });
 
@@ -176,6 +190,7 @@ const SupplierDocument = sequelize.define('SupplierDocument', {
   tableName: 'supplier_documents',
   indexes: [
     { fields: ['supplier_id'] },
+    { name: 'idx_supplier_documents_empresa_supplier', fields: ['empresa_id', 'supplier_id'] },
   ],
 });
 

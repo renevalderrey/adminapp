@@ -224,8 +224,17 @@ export const deleteExpense = (id) => api.delete(`/expenses/${id}`);
 
 // ═══════ PROVEEDORES ═══════
 
-export const getSuppliers = () => api.get('/suppliers');
+// ⚠ `GET /suppliers` pasó a paginar de a 50 (hito 012, T1215) y a devolver el
+// saldo ya calculado en vez del arreglo de movimientos. Los dos llamadores que
+// la usan para llenar una lista completa —`Orders.jsx` y el desplegable de
+// proveedores del filtro de `PurchaseOrders.jsx`— tienen que pedir un límite
+// explícito: sin él, una empresa con 60 proveedores perdía 10 opciones del
+// filtro **sin que nada avisara**.
+export const getSuppliers = (params) => api.get('/suppliers', { params });
 export const getSupplier = (id) => api.get(`/suppliers/${id}`);
+// El historial de cuenta, paginado y con el saldo acumulado ya calculado. Antes
+// venía adentro de `GET /suppliers/:id` sin paginar.
+export const getSupplierMovements = (id, params) => api.get(`/suppliers/${id}/movimientos`, { params });
 export const createSupplier = (data) => api.post('/suppliers', data);
 export const deleteSupplier = (id) => api.delete(`/suppliers/${id}`);
 export const createSupplierOrder = (id, data) => api.post(`/suppliers/${id}/orders`, data);

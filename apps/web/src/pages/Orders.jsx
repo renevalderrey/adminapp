@@ -3,6 +3,9 @@ import { toast } from 'sonner'
 import api from '@/services/api'
 import {
   getSuppliers,
+  getSupplier,
+  getSupplierMovements,
+  getPurchaseOrders,
   getProducts,
   updateSupplier,
   receivePurchaseOrder,
@@ -48,6 +51,13 @@ const STATUS_LABELS = {
   cancelled: 'Anulado',
 }
 
+// Los tres endpoints paginan desde el hito 012 y esta pantalla los dibuja
+// enteros. Los límites son explícitos para que se vea que son una decisión y no
+// el default de nadie: 200 es el tope que acepta el servidor.
+const LIMITE_DE_PROVEEDORES = 200
+const LIMITE_DE_MOVIMIENTOS = 200
+const LIMITE_DE_ORDENES = 200
+
 const Orders = () => {
   const [suppliers, setSuppliers] = useState([])
   const [selectedSupplier, setSelectedSupplier] = useState(null)
@@ -72,7 +82,9 @@ const Orders = () => {
   const fetchSuppliers = async () => {
     setLoading(true)
     try {
-      const res = await getSuppliers()
+      // El límite explícito no es decorativo: el nuevo por defecto del servidor
+      // es 50, y esta lista se dibuja entera.
+      const res = await getSuppliers({ limit: LIMITE_DE_PROVEEDORES })
       setSuppliers(res.data.data)
     } catch (err) {
       console.error(err)
@@ -90,11 +102,37 @@ const Orders = () => {
     } catch (err) { console.error(err) }
   }
 
-  const calculateBalance = (supplier) => {
-    if (!supplier || !supplier.movements) return 0
-    return supplier.movements.reduce((sum, m) => {
-      return m.type === 'deuda' ? sum + parseFloat(m.amount) : sum - parseFloat(m.amount)
-    }, 0)
+  /**
+   * ⚠ EL PUENTE — lo borra T1240, y hasta entonces esta pantalla depende de él.
+   *
+   * `GET /suppliers/:id` dejó de traer `movements` y `orders` (T1216): los dos
+   * pasaron a tener su propio endpoint paginado. Esta pantalla los lee en cinco
+   * lugares y **no falla si faltan**: muestra el historial vacío, ningún pedido
+   * y $0 de saldo, en silencio, durante los siete cortes que separan este
+   * despliegue de la reescritura.
+   *
+   * Por eso se rearman acá con la forma vieja. Son unas veinte líneas en un
+   * archivo que **T1240 reescribe entero**, y se escriben igual porque la
+   * alternativa es dejar una pantalla de plata mintiendo, y porque este corte
+   * tiene que poder desplegarse solo.
+   */
+  const cargarProveedor = async (id) => {
+    const [ficha, movimientos, ordenes] = await Promise.all([
+      getSupplier(id),
+      getSupplierMovements(id, { limit: LIMITE_DE_MOVIMIENTOS }),
+      // Un usuario con `proveedores.ver` y sin `ordenes_compra.ver` ahora recibe
+      // 403 acá, y eso es lo que la spec pide: la lista queda vacía y T1242 le
+      // pone el mensaje que distingue «no tenés permiso» de «no hay órdenes».
+      getPurchaseOrders({ supplier_id: id, limit: LIMITE_DE_ORDENES }).catch(() => ({ data: { data: [] } })),
+    ])
+
+    setSelectedSupplier({
+      ...ficha.data.data,
+      movements: movimientos.data.data || [],
+      // El listado devuelve las líneas como `items`; esta pantalla las lee como
+      // `detail`, que es como venían en el include.
+      orders: (ordenes.data.data || []).map((o) => ({ ...o, detail: o.items || [] })),
+    })
   }
 
   const handleCreateSupplier = async (e) => {
@@ -112,8 +150,7 @@ const Orders = () => {
     try {
       await updateSupplier(selectedSupplier.id, editForm)
       setIsEditingSupplier(false)
-      const res = await api.get(`/suppliers/${selectedSupplier.id}`)
-      setSelectedSupplier(res.data.data)
+      await cargarProveedor(selectedSupplier.id)
       fetchSuppliers()
     } catch (err) { toast.error(err.message) }
   }
@@ -127,8 +164,7 @@ const Orders = () => {
       })
       setIsAddingPayment(false)
       setPayData({ amount: '', method: 'ef', date: new Date().toISOString().split('T')[0], notes: '' })
-      const res = await api.get(`/suppliers/${selectedSupplier.id}`)
-      setSelectedSupplier(res.data.data)
+      await cargarProveedor(selectedSupplier.id)
       fetchSuppliers()
     } catch (err) { toast.error(err.message) }
   }
@@ -178,8 +214,7 @@ const Orders = () => {
       setIsAddingOrder(false)
       setOrderItems([{ product_id: '', product_name: '', quantity: 1, unit_price: '' }])
       setOrderNotes('')
-      const res = await api.get(`/suppliers/${selectedSupplier.id}`)
-      setSelectedSupplier(res.data.data)
+      await cargarProveedor(selectedSupplier.id)
       fetchSuppliers()
       toast.success('Pedido registrado')
     } catch (err) { toast.error(err.message) }
@@ -200,8 +235,7 @@ const Orders = () => {
       await receivePurchaseOrder(order.id, items, 'general')
       setIsReceive(false)
       setReceiveItems({})
-      const res = await api.get(`/suppliers/${selectedSupplier.id}`)
-      setSelectedSupplier(res.data.data)
+      await cargarProveedor(selectedSupplier.id)
       fetchSuppliers()
       toast.success('Mercadería recibida')
     } catch (err) { toast.error(err.message) }
@@ -212,16 +246,14 @@ const Orders = () => {
     if (!ok) return
     try {
       await cancelPurchaseOrder(orderId)
-      const res = await api.get(`/suppliers/${selectedSupplier.id}`)
-      setSelectedSupplier(res.data.data)
+      await cargarProveedor(selectedSupplier.id)
       fetchSuppliers()
       toast.success('Orden anulada')
     } catch (err) { toast.error(err.message) }
   }
 
   const selectSupplier = async (s) => {
-    const res = await api.get(`/suppliers/${s.id}`)
-    setSelectedSupplier(res.data.data)
+    await cargarProveedor(s.id)
     loadProducts()
   }
 
@@ -251,7 +283,9 @@ const Orders = () => {
           </CardHeader>
           <ScrollArea className="max-h-[70vh]">
             {suppliers.map(s => {
-              const balance = calculateBalance(s)
+              // El saldo lo calcula el servidor (T1215): la pantalla ya no suma
+              // plata en punto flotante sobre DECIMAL que llegó como texto.
+              const balance = Number(s.saldo) || 0
               const isActive = selectedSupplier?.id === s.id
               return (
                 <div
@@ -262,7 +296,7 @@ const Orders = () => {
                 >
                   <div>
                     <p className="font-bold text-sm">{s.name}</p>
-                    <p className="text-[11px] text-muted-foreground">{s.movements?.length || 0} movimientos</p>
+                    <p className="text-[11px] text-muted-foreground">{s.movimientos || 0} movimientos</p>
                   </div>
                   <span className={`font-black font-mono text-sm ${balance > 0 ? 'text-destructive' : 'text-ok'}`}>
                     ${balance.toLocaleString()}
@@ -308,8 +342,8 @@ const Orders = () => {
                     </div>
                     <div className="text-right">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Saldo Pendiente</p>
-                      <p className={`num text-[26px] font-semibold ${calculateBalance(selectedSupplier) > 0 ? 'text-destructive' : 'text-ok'}`}>
-                        ${calculateBalance(selectedSupplier).toLocaleString()}
+                      <p className={`num text-[26px] font-semibold ${(Number(selectedSupplier.saldo) || 0) > 0 ? 'text-destructive' : 'text-ok'}`}>
+                        ${(Number(selectedSupplier.saldo) || 0).toLocaleString()}
                       </p>
                     </div>
                   </div>

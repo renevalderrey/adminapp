@@ -62,6 +62,10 @@ const STATUS_VARIANTS = {
   cancelled: 'outline',
 };
 
+// El tope que acepta `GET /suppliers`. El desplegable del filtro los dibuja
+// todos, así que el límite tiene que ser explícito: el por defecto es 50.
+const LIMITE_DE_PROVEEDORES = 200;
+
 const PurchaseOrders = () => {
   const { confirm, ConfirmDialog } = useConfirmDialog();
   const [orders, setOrders] = useState([]);
@@ -139,7 +143,12 @@ const PurchaseOrders = () => {
 
   useEffect(() => {
     fetchOrders();
-    getSuppliers().then(res => setSuppliers(res.data.data || [])).catch(() => {});
+    // ⚠ El límite explícito es lo que impide perder opciones del filtro.
+    // `GET /suppliers` pasó a paginar de a 50 (T1215) y esta llamada llena el
+    // desplegable de proveedores: una empresa con 60 proveedores se quedaba con
+    // 50 en la lista y los otros 10 **no se podían elegir**, sin ningún aviso.
+    // El `.catch(() => {})` de acá abajo hacía que ni siquiera se notara.
+    getSuppliers({ limit: LIMITE_DE_PROVEEDORES }).then(res => setSuppliers(res.data.data || [])).catch(() => {});
   }, []);
 
   const formatCurrency = (val) => {

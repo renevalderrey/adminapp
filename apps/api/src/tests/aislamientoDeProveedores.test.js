@@ -282,33 +282,46 @@ describe('La cuenta corriente no muestra movimientos de otra empresa', () => {
     ];
   });
 
-  it('GET /api/suppliers/:id NO trae el pago inyectado desde otra empresa', async () => {
+  it('GET /api/suppliers/:id NO cuenta el pago inyectado desde otra empresa', async () => {
+    // Desde T1216 la ficha ya no devuelve los movimientos: devuelve el saldo. La
+    // fuga es la misma —con el pago ajeno adentro, la deuda de 5000 pasaba a
+    // 1000 y el proveedor parecia casi cancelado— y lo que la cierra ahora es el
+    // `empresa_id` del `where` de la consulta agregada.
     const res = await request(levantarApi(PROPIA)).get('/api/suppliers/10');
 
     expect(res.status).toBe(200);
-    expect(res.body.data.movements.map((m) => m.id)).toEqual([1]);
-    // El saldo se calcula con estos movimientos: con el ajeno adentro, la deuda
-    // de 5000 pasaba a 1000 y el proveedor parecia casi cancelado.
-    const saldo = res.body.data.movements.reduce(
-      (acc, m) => acc + (m.type === 'deuda' ? m.amount : -m.amount), 0
-    );
-    expect(saldo).toBe(5000);
+    expect(res.body.data.saldo).toBe(5000);
+    expect(res.body.data).not.toHaveProperty('movements');
   });
 
-  it('GET /api/suppliers/:id NO trae documentos ni ordenes de otra empresa', async () => {
+  it('GET /api/suppliers/:id NO trae documentos de otra empresa', async () => {
+    // El de documentos es el unico include de hijo que sobrevive en el archivo,
+    // asi que su `where` es el unico que sigue sosteniendo esta prueba.
     const res = await request(levantarApi(PROPIA)).get('/api/suppliers/10');
 
     expect(res.body.data.documents).toEqual([]);
-    expect(res.body.data.orders).toEqual([]);
+    // Las ordenes salen de GET /api/suppliers/orders?supplier_id=, que ya exige
+    // ordenes_compra.ver: la ficha no las devuelve mas.
+    expect(res.body.data).not.toHaveProperty('orders');
   });
 
-  it('GET /api/suppliers tampoco los trae en el listado', async () => {
+  it('GET /api/suppliers tampoco los cuenta en el saldo del listado', async () => {
+    // Desde T1215 el listado ya no devuelve los movimientos: devuelve el saldo
+    // hecho. La fuga que había que cerrar es la misma —un pago de la empresa
+    // AJENA colgado de un proveedor PROPIO no puede mover ese saldo— pero lo
+    // que la cierra cambió de lugar: antes era el `where` del include, ahora es
+    // el `where` de la consulta agregada.
     const res = await request(levantarApi(PROPIA)).get('/api/suppliers');
 
     expect(res.status).toBe(200);
     const propio = res.body.data.find((s) => s.id === 10);
-    expect(propio.movements.map((m) => m.id)).toEqual([1]);
-    expect(propio.documents).toEqual([]);
+
+    // Con el pago ajeno adentro, la deuda de 5000 pasaba a 1000 y el proveedor
+    // parecia casi cancelado.
+    expect(propio.saldo).toBe(5000);
+    expect(propio.movimientos).toBe(1);
+    expect(propio.documentos).toBe(0);
+    expect(propio).not.toHaveProperty('movements');
   });
 
   it('el listado sigue mostrando a los proveedores sin movimientos', async () => {
@@ -329,7 +342,8 @@ describe('La cuenta corriente no muestra movimientos de otra empresa', () => {
     const res = await request(levantarApi(PROPIA)).get('/api/suppliers/11');
 
     expect(res.status).toBe(200);
-    expect(res.body.data.movements).toEqual([]);
+    expect(res.body.data.saldo).toBe(0);
+    expect(res.body.data.documents).toEqual([]);
   });
 });
 

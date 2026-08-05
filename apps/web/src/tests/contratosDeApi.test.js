@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import React from 'react'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { render, screen, fireEvent, act } from '@testing-library/react'
+
+/** `src/pages`, resuelto desde este archivo y no desde el cwd de vitest. */
+const PAGINAS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'pages')
 
 // ════════════════════════════════════════════
 //  Lo que la pantalla de Inventario le pide al servidor
@@ -48,6 +54,8 @@ const {
   getStockTransfers,
   importProducts,
   nuevoIdDeVenta,
+  getSuppliers,
+  getSupplierMovements,
 } = await import('../services/api.js')
 
 const { default: useStore } = await import('../store/useStore.js')
@@ -107,6 +115,54 @@ describe('transferStock y getStockTransfers', () => {
 
     expect(ultima().url).toBe('/stock/transfers')
     expect(ultima().resto[0]).toEqual({ params: { limit: 20, offset: 0 } })
+  })
+})
+
+describe('getSuppliers después de que el listado pasó a paginar', () => {
+  it('getSuppliers pide más de los 50 por defecto', async () => {
+    // `GET /suppliers` pasa a paginar de a 50 (T1215). Las dos pantallas que la
+    // usan dibujan la lista entera: la de Proveedores en la columna izquierda y
+    // la de Órdenes de compra en el desplegable del filtro. Sin un límite
+    // explícito, una empresa con 60 proveedores perdía 10 opciones del filtro
+    // **y nada avisaba**.
+    await getSuppliers({ limit: 200 })
+
+    expect(ultima()).toMatchObject({ metodo: 'get', url: '/suppliers' })
+    expect(ultima().resto[0]).toEqual({ params: { limit: 200 } })
+  })
+
+  it('las dos pantallas que la llaman le pasan un límite', async () => {
+    // Guardia estática: la función acepta parámetros, pero lo que importa es que
+    // los llamadores los manden. Si alguien agrega una tercera pantalla sin
+    // límite, se queda con 50 proveedores y no lo va a notar nadie.
+    const raiz = path.join(PAGINAS)
+
+    for (const archivo of ['Orders.jsx', 'PurchaseOrders.jsx']) {
+      const texto = fs.readFileSync(path.join(raiz, archivo), 'utf8')
+      const llamadas = texto.match(/getSuppliers\(([^)]*)\)/g) || []
+
+      expect(llamadas.length).toBeGreaterThan(0)
+      for (const llamada of llamadas) {
+        expect(llamada).toContain('limit')
+      }
+    }
+  })
+
+  it('getSupplierMovements pega al endpoint nuevo y no al viejo include', async () => {
+    await getSupplierMovements(7, { limit: 200 })
+
+    expect(ultima()).toMatchObject({ metodo: 'get', url: '/suppliers/7/movimientos' })
+  })
+
+  it('la pantalla vieja NO suma movimientos que ya no vienen', async () => {
+    // El puente de T1219: `GET /suppliers` dejó de devolver `movements`, así que
+    // `calculateBalance` sumaría siempre cero. Un saldo de $0 para todos los
+    // proveedores no falla, no avisa, y se ve exactamente igual que una empresa
+    // que no le debe nada a nadie.
+    const texto = fs.readFileSync(path.join(PAGINAS, 'Orders.jsx'), 'utf8')
+
+    expect(texto).not.toContain('calculateBalance')
+    expect(texto).not.toContain('movements.reduce')
   })
 })
 

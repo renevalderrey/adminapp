@@ -629,7 +629,7 @@ contabilidad entera en cada carga. El historial pagina con su saldo inicial.
 
 Corte 4 del plan. **Es el corte con migración y va solo.**
 
-- [ ] **T1213** [P] Crear `apps/api/src/utils/cuentaDeProveedor.js` con cuatro
+- [x] **T1213** [P] Crear `apps/api/src/utils/cuentaDeProveedor.js` con cuatro
       funciones **puras**, todas sumando en centavos con `sumaEnCentavos` de
       T1201:
       **`resumenDeCuenta(filasAgregadas)`** → `{ deuda, pagado, saldo }` a partir
@@ -672,7 +672,7 @@ Corte 4 del plan. **Es el corte con migración y va solo.**
       empieza a contar; se saca `saldoInicial` de `conSaldoAcumulado` y la página
       del medio arranca en cero, que es exactamente lo que FR-101 prohíbe.
 
-- [ ] **T1214** [P] La migración y el modelo, **en el mismo commit**. Crear
+- [x] **T1214** [P] La migración y el modelo, **en el mismo commit**. Crear
       `apps/api/src/migrations/20260808-indices-de-empresa-en-proveedores.js` con
       los cuatro índices compuestos de `data-model.md`
       —`supplier_movements(empresa_id, supplier_id)`,
@@ -721,7 +721,7 @@ Corte 4 del plan. **Es el corte con migración y va solo.**
       Aprovechar el viaje para convertirlas exige contemplar los dos estados
       posibles del esquema, y eso es el proyecto 0, no este hito.
 
-- [ ] **T1215** En `apps/api/src/routes/suppliers.js`, `GET /` (`:75-101`) se
+- [x] **T1215** En `apps/api/src/routes/suppliers.js`, `GET /` (`:75-101`) se
       reescribe: **tres consultas, ninguna con `include`**, más las funciones de
       T1213.
       **(1)** `Supplier.findAll({ where: { empresa_id } })` con `q` —filtra por
@@ -762,7 +762,7 @@ Corte 4 del plan. **Es el corte con migración y va solo.**
       **P1**. *Por qué se acepta*: la alternativa —traer todos los movimientos y
       sumar en JS— es testeable y es exactamente el hallazgo 7.
 
-- [ ] **T1216** En `apps/api/src/routes/suppliers.js`, `GET /:id` (`:104-121`):
+- [x] **T1216** En `apps/api/src/routes/suppliers.js`, `GET /:id` (`:104-121`):
       **se van los `include` de `orders` y de `movements`**, se queda el de
       `documents` con su `where: { empresa_id }`, y la respuesta gana los cuatro
       números —`deuda`, `pagado`, `saldo`, `pendiente_de_recibir`— calculados por
@@ -789,7 +789,7 @@ Corte 4 del plan. **Es el corte con migración y va solo.**
       `include` y el primero se pone en rojo; se le saca el `where` al de
       documentos y el tercero.
 
-- [ ] **T1217** Crear `GET /api/suppliers/:id/movimientos` en
+- [x] **T1217** Crear `GET /api/suppliers/:id/movimientos` en
       `apps/api/src/routes/suppliers.js`, con `proveedores.ver`. Paginado
       —`page`, `limit`, `desde`, `hasta`—, **orden descendente por `date`
       desempatando por `id`**, y con el **`saldo` acumulado ya calculado** por
@@ -815,7 +815,7 @@ Corte 4 del plan. **Es el corte con migración y va solo.**
       **Cómo se comprueba que el test sirve**: se saca `saldo_inicial` del
       cálculo y el primero se pone en rojo.
 
-- [ ] **T1218** ⚠ **El ancla de `analizarIncludes`: `toBe(8)` → `toBe(4)`.** En
+- [x] **T1218** ⚠ **El ancla de `analizarIncludes`: `toBe(8)` → `toBe(4)`.** En
       `apps/api/src/tests/aislamientoEmpresas.test.js:649-658`, cambiar el número
       **y el título del caso**, y escribir la cuenta en el comentario, con
       archivo y línea de cada uno de los cuatro que se van:
@@ -849,7 +849,7 @@ Corte 4 del plan. **Es el corte con migración y va solo.**
       comentario del test**; y si el número bajara **más** de cuatro, se sacó un
       include que este plan no nombra.
 
-- [ ] **T1219** ⚠ **El puente, y el plan no lo vio.** `GET /api/suppliers` y
+- [x] **T1219** ⚠ **El puente, y el plan no lo vio.** `GET /api/suppliers` y
       `GET /api/suppliers/:id` cambian de forma en T1215 y T1216, y
       `pages/Orders.jsx` los lee en **cinco** lugares: `calculateBalance`
       (`:93-98`, sobre `s.movements`), el contador de la lista (`:265`), el bloque
