@@ -92,6 +92,15 @@ describe('Asociaciones que el codigo da por sentadas', () => {
     ['Product', 'stock'],
     ['ProductionOrder', 'items'],
     ['Empresa', 'puntosDeVenta'],
+    // Estas tres estaban declaradas sin `as`, con lo cual quedaban registradas
+    // como 'Supplier' (el nombre del modelo) y purchaseService las pedia como
+    // 'supplier'. Las tres rutas de ordenes de compra respondian 500 con un
+    // SequelizeEagerLoadingError: es el mismo error que dejo caidos
+    // /api/reports/sales y /api/reports/profit. La comprobacion laxa de mas
+    // arriba no lo veia porque el alias 'supplier' SI existe... en Product.
+    ['SupplierOrder', 'supplier'],
+    ['SupplierMovement', 'supplier'],
+    ['SupplierDocument', 'supplier'],
   ])('%s.%s existe', (modelo, alias) => {
     expect(Object.keys(models[modelo].associations)).toContain(alias);
   });

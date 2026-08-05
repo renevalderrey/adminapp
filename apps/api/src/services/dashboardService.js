@@ -123,6 +123,10 @@ class DashboardService {
           model: Sale,
           as: 'sales',
           attributes: [],
+          // El include une por customer_id nada mas: sin este where, una venta
+          // de otra empresa cliente contra el mismo cliente hacia que el
+          // cliente contara como "con movimientos" en el tablero de esta.
+          where: { empresa_id: empresaId },
           required: true,
         },
       ],

@@ -97,7 +97,13 @@ router.get('/', checkPermission('products.ver'), async (req, res) => {
       include: [
         { model: Brand, as: 'brand', attributes: ['id', 'name', 'color'] },
         { model: Supplier, as: 'supplier', attributes: ['id', 'name'] },
-        { model: Stock, as: 'stock', attributes: ['id', 'location', 'punto_de_venta_id', 'quantity', 'available', 'min_stock'] },
+        // El include de un hijo une SOLO por product_id: filtrar el producto
+        // por empresa no filtra su stock. Una fila de stock de otra empresa
+        // apuntando a este producto entraba en el listado y sumaba mercaderia
+        // que no existe. `required: false` porque Sequelize pasa a INNER JOIN
+        // apenas ve un `where`, y un producto sin stock tiene que seguir
+        // apareciendo.
+        { model: Stock, as: 'stock', where: { empresa_id: req.empresaId }, required: false, attributes: ['id', 'location', 'punto_de_venta_id', 'quantity', 'available', 'min_stock'] },
       ],
       order: [['name', 'ASC']],
     };
@@ -128,7 +134,8 @@ router.get('/:id', checkPermission('products.ver'), async (req, res) => {
       include: [
         { model: Brand, as: 'brand' },
         { model: Supplier, as: 'supplier', attributes: ['id', 'name'] },
-        { model: Stock, as: 'stock' },
+        // Mismo motivo que en el listado: el join es por product_id y nada mas.
+        { model: Stock, as: 'stock', where: { empresa_id: req.empresaId }, required: false },
       ],
     });
     if (!product) return res.status(404).json({ ok: false, error: 'Producto no encontrado' });

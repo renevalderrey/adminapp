@@ -5,6 +5,7 @@ const sequelize = require('../config/database');
 const purchaseService = require('../services/purchaseService');
 const checkPermission = require('../middleware/checkPermission');
 const { fallo } = require('../utils/errores');
+const { findScoped } = require('../utils/tenantScope');
 
 // ── Órdenes de Compra (deben ir ANTES de /:id) ──
 
@@ -51,14 +52,45 @@ router.put('/orders/:id/cancel', checkPermission('ordenes_compra.anular'), async
 
 // ── Proveedores ──
 
+// Las columnas que el cliente puede escribir, por modelo.
+//
+// El patron `update(req.body)` no solo escribe de mas: escribe `empresa_id` si
+// viene en el cuerpo, y con eso el proveedor —con sus movimientos, sus ordenes
+// y sus documentos— pasa a ser de otro cliente. Encontrar la fila con el
+// scoping correcto no impide sacarla de la empresa despues. Es el mismo
+// agujero que se cerro en PUT /api/products/:id.
+const CAMPOS_DE_PROVEEDOR = ['name', 'phone', 'email', 'address', 'cuit'];
+const CAMPOS_DE_MOVIMIENTO = ['type', 'date', 'amount', 'payment_method', 'notes', 'due_date'];
+
+/** Se queda con las claves permitidas que efectivamente vinieron. */
+function soloCampos(cuerpo = {}, permitidos) {
+  const salida = {};
+  for (const campo of permitidos) {
+    if (cuerpo[campo] !== undefined) salida[campo] = cuerpo[campo];
+  }
+  return salida;
+}
+
 // GET /api/suppliers — Listar todos
 router.get('/', checkPermission('proveedores.ver'), async (req, res) => {
   try {
     const suppliers = await Supplier.findAll({
       where: { empresa_id: req.empresaId },
+      // ── Por que cada include lleva su propio where ──
+      //
+      // Sequelize une el hijo SOLO por supplier_id. Filtrar el padre por
+      // empresa no filtra a los hijos: un movimiento creado desde otra empresa
+      // cliente contra este mismo proveedor entraba igual en la cuenta
+      // corriente y le cambiaba el saldo. La otra mitad del agujero —poder
+      // crear ese movimiento— se cierra validando el proveedor antes de
+      // escribir, mas abajo en este archivo.
+      //
+      // `required: false` no es decorativo: Sequelize convierte el include en
+      // INNER JOIN apenas ve un `where`, y sin el los proveedores sin
+      // movimientos ni documentos desaparecerian del listado.
       include: [
-        { model: SupplierMovement, as: 'movements' },
-        { model: SupplierDocument, as: 'documents' },
+        { model: SupplierMovement, as: 'movements', where: { empresa_id: req.empresaId }, required: false },
+        { model: SupplierDocument, as: 'documents', where: { empresa_id: req.empresaId }, required: false },
       ],
       order: [['name', 'ASC']],
     });
@@ -71,12 +103,14 @@ router.get('/', checkPermission('proveedores.ver'), async (req, res) => {
 // GET /api/suppliers/:id — Detalle
 router.get('/:id', checkPermission('proveedores.ver'), async (req, res) => {
   try {
-    const supplier = await Supplier.findOne({
-      where: { id: req.params.id, empresa_id: req.empresaId },
+    const supplier = await findScoped(Supplier, req.params.id, req.empresaId, {
+      // Mismo motivo que en el listado: el include une por supplier_id y nada
+      // mas. Esta es la pantalla de cuenta corriente, asi que un movimiento
+      // ajeno que se colara aca cambia un saldo que el usuario cree.
       include: [
-        { model: SupplierOrder, as: 'orders', order: [['date', 'DESC']] },
-        { model: SupplierMovement, as: 'movements', order: [['date', 'DESC']] },
-        { model: SupplierDocument, as: 'documents' },
+        { model: SupplierOrder, as: 'orders', where: { empresa_id: req.empresaId }, required: false, order: [['date', 'DESC']] },
+        { model: SupplierMovement, as: 'movements', where: { empresa_id: req.empresaId }, required: false, order: [['date', 'DESC']] },
+        { model: SupplierDocument, as: 'documents', where: { empresa_id: req.empresaId }, required: false },
       ],
     });
     if (!supplier) return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
@@ -89,7 +123,10 @@ router.get('/:id', checkPermission('proveedores.ver'), async (req, res) => {
 // POST /api/suppliers — Crear proveedor
 router.post('/', checkPermission('proveedores.crear'), async (req, res) => {
   try {
-    const supplier = await Supplier.create({ ...req.body, empresa_id: req.empresaId });
+    const supplier = await Supplier.create({
+      ...soloCampos(req.body, CAMPOS_DE_PROVEEDOR),
+      empresa_id: req.empresaId,
+    });
     res.status(201).json({ ok: true, data: supplier });
   } catch (err) {
     fallo(req, res, err, 'Error al crear el proveedor');
@@ -99,9 +136,9 @@ router.post('/', checkPermission('proveedores.crear'), async (req, res) => {
 // PUT /api/suppliers/:id — Actualizar proveedor
 router.put('/:id', checkPermission('proveedores.editar'), async (req, res) => {
   try {
-    const supplier = await Supplier.findOne({ where: { id: req.params.id, empresa_id: req.empresaId } });
+    const supplier = await findScoped(Supplier, req.params.id, req.empresaId);
     if (!supplier) return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
-    await supplier.update(req.body);
+    await supplier.update(soloCampos(req.body, CAMPOS_DE_PROVEEDOR));
     res.json({ ok: true, data: supplier });
   } catch (err) {
     fallo(req, res, err, 'Error al actualizar el proveedor');
@@ -148,9 +185,20 @@ router.post('/:id/orders', checkPermission('ordenes_compra.crear'), async (req, 
 // POST /api/suppliers/:id/payments — Registrar pago
 router.post('/:id/payments', checkPermission('proveedores.crear'), async (req, res) => {
   try {
+    // El proveedor se valida ANTES de escribir. La fila se creaba con el
+    // empresa_id de quien mandaba el pago, asi que parecia inocua; el problema
+    // era del otro lado: colgada de un proveedor ajeno, el include de
+    // GET /:id la mostraba en la cuenta corriente del otro cliente y le movia
+    // el saldo. Escribir en la empresa propia no alcanza si el padre es ajeno.
+    //
+    // 404 y no 403: un 403 confirmaria que ese proveedor existe en otra
+    // empresa, que es justo lo que permite enumerar ids ajenos.
+    const supplier = await findScoped(Supplier, req.params.id, req.empresaId);
+    if (!supplier) return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
+
     const { date, amount, payment_method, notes } = req.body;
     const movement = await SupplierMovement.create({
-      supplier_id: req.params.id,
+      supplier_id: supplier.id,
       empresa_id: req.empresaId,
       type: 'pago',
       date,
@@ -169,9 +217,12 @@ router.post('/:id/payments', checkPermission('proveedores.crear'), async (req, r
 // PUT /api/suppliers/movements/:id — Editar movimiento
 router.put('/movements/:id', checkPermission('proveedores.editar'), async (req, res) => {
   try {
-    const movement = await SupplierMovement.findOne({ where: { id: req.params.id, empresa_id: req.empresaId } });
+    const movement = await findScoped(SupplierMovement, req.params.id, req.empresaId);
     if (!movement) return res.status(404).json({ ok: false, error: 'Movimiento no encontrado' });
-    await movement.update(req.body);
+    // Sin lista blanca, `supplier_id` y `empresa_id` viajaban en el cuerpo: un
+    // pago propio se podia reasignar al proveedor de otro cliente sin crear
+    // nada, solo editando.
+    await movement.update(soloCampos(req.body, CAMPOS_DE_MOVIMIENTO));
     res.json({ ok: true, data: movement });
   } catch (err) {
     fallo(req, res, err, 'Error al editar el movimiento del proveedor');
@@ -194,9 +245,22 @@ router.delete('/movements/:id', checkPermission('proveedores.eliminar'), async (
 // POST /api/suppliers/:id/documents
 router.post('/:id/documents', checkPermission('proveedores.editar'), async (req, res) => {
   try {
-    const supplier = await Supplier.findOne({ where: { id: req.params.id, empresa_id: req.empresaId } });
+    // Este endpoint ya validaba el proveedor y es el modelo que siguen los
+    // demas. Pasa por findScoped por lo mismo que el resto del repositorio:
+    // normaliza el id al tipo de la clave primaria, asi que un id que no es un
+    // numero da 404 en vez de un 500 de Postgres.
+    const supplier = await findScoped(Supplier, req.params.id, req.empresaId);
     if (!supplier) return res.status(404).json({ ok: false, error: 'Proveedor no encontrado' });
-    const doc = await SupplierDocument.create({ supplier_id: req.params.id, empresa_id: req.empresaId, ...req.body });
+    // Lista blanca en vez de `...req.body`. El spread iba DESPUES de las dos
+    // claves de scoping, con lo cual mandar `empresa_id` o `supplier_id` en el
+    // cuerpo las pisaba: el documento terminaba en la empresa que dijera el
+    // cliente. Es el mismo agujero que se cerro en PUT /api/products/:id.
+    const { name, type, url, date } = req.body;
+    const doc = await SupplierDocument.create({
+      supplier_id: supplier.id,
+      empresa_id: req.empresaId,
+      name, type, url, date,
+    });
     res.status(201).json({ ok: true, data: doc });
   } catch (err) {
     fallo(req, res, err, 'Error al adjuntar el documento del proveedor');

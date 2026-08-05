@@ -184,8 +184,14 @@ Supplier.hasMany(SupplierOrder, { foreignKey: 'supplier_id', as: 'orders' });
 Supplier.hasMany(SupplierMovement, { foreignKey: 'supplier_id', as: 'movements' });
 Supplier.hasMany(SupplierDocument, { foreignKey: 'supplier_id', as: 'documents' });
 
-SupplierOrder.belongsTo(Supplier, { foreignKey: 'supplier_id' });
-SupplierMovement.belongsTo(Supplier, { foreignKey: 'supplier_id' });
-SupplierDocument.belongsTo(Supplier, { foreignKey: 'supplier_id' });
+// El `as` no es cosmetico. Sin el, Sequelize registra la asociacion bajo el
+// nombre del modelo —'Supplier', con mayuscula— y `purchaseService` la pide
+// como `as: 'supplier'`. Eso no falla al arrancar ni al cargar el modulo:
+// falla con un SequelizeEagerLoadingError la primera vez que alguien abre
+// Ordenes de Compra. Es exactamente lo que ya paso con SaleItem.belongsTo(Sale)
+// y dejo caidos /api/reports/sales y /api/reports/profit.
+SupplierOrder.belongsTo(Supplier, { foreignKey: 'supplier_id', as: 'supplier' });
+SupplierMovement.belongsTo(Supplier, { foreignKey: 'supplier_id', as: 'supplier' });
+SupplierDocument.belongsTo(Supplier, { foreignKey: 'supplier_id', as: 'supplier' });
 
 module.exports = { Supplier, SupplierOrder, SupplierMovement, SupplierDocument };

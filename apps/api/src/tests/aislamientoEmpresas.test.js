@@ -253,3 +253,446 @@ describe('requireEmpresa esta conectado en la cadena de middlewares', () => {
     expect(lineaEmpresas).toContain('authSinEmpresa');
   });
 });
+
+// ════════════════════════════════════════════
+//  El padre ajeno: escribir y leer colgado de una fila de otra empresa
+//
+//  Forma nueva. Ninguna de las guardias de arriba la ve: no hay findByPk, no
+//  hay `where: { x_id: req.params.id }`, y la fila que se crea lleva el
+//  empresa_id correcto. Aun asi cruza empresas, y hace falta mirar las dos
+//  mitades juntas porque cerrar una sola deja el camino abierto:
+//
+//   1. Un `create` que pone `<algo>_id` con un id que mando el cliente sin
+//      haber comprobado que ese padre sea de la empresa. La fila queda con el
+//      empresa_id de quien la mando: no parece una fuga.
+//   2. Un `include` de un hijo que tiene empresa_id, sin `where`. Sequelize une
+//      SOLO por la clave foranea, asi que la fila del punto 1 aparece en la
+//      pantalla del otro cliente. Ahi si se ve, y ya con el saldo cambiado.
+//
+//  Asi entraba un pago en la cuenta corriente de un proveedor de otra empresa:
+//  POST /api/suppliers/:id/payments no validaba el proveedor, y los include de
+//  GET /api/suppliers no filtraban los movimientos.
+//
+//  ── Sobre pasar en vacio ──
+//
+//  Este repositorio ya tuvo dos guardias que pasaban sin verificar nada: una
+//  comparaba la posicion de un token que tambien aparecia en un comentario, y
+//  otra leia un directorio sin recursion y dejaba afuera media carpeta. Por eso
+//  cada detector de aca se ejercita ademas contra una MUESTRA sintetica que
+//  contiene el defecto, y se exige que lo encuentre y lo nombre con archivo y
+//  linea. Si un refactor hace desaparecer el patron del repositorio, esa prueba
+//  sigue afirmando que el detector funciona; y las pruebas de poblacion
+//  afirman que ademas leyo los archivos que dice leer.
+// ════════════════════════════════════════════
+
+const models = require('../models');
+
+/** Indice del cierre que corresponde a la apertura en `inicio`. */
+function cierreDe(texto, inicio, abre, cierra) {
+  let nivel = 0;
+  for (let i = inicio; i < texto.length; i++) {
+    if (texto[i] === abre) nivel++;
+    else if (texto[i] === cierra) {
+      nivel--;
+      if (nivel === 0) return i;
+    }
+  }
+  return texto.length - 1;
+}
+
+const numeroDeLinea = (contenido, i) => contenido.slice(0, i).split('\n').length;
+
+/** true si el modelo existe y su tabla tiene columna empresa_id. */
+function esDeEmpresa(nombreDeModelo) {
+  const Modelo = models[nombreDeModelo];
+  return !!(Modelo && Modelo.rawAttributes && Modelo.rawAttributes.empresa_id);
+}
+
+/**
+ * Los ambitos donde puede vivir una consulta: handlers de ruta y funciones
+ * async de los services.
+ *
+ * Hace falta el ambito, y no «las N lineas de arriba», por dos motivos: para
+ * saber que parametros recibe la funcion (de ahi sale si el id lo eligio el
+ * cliente) y para poder mirar TODO lo que pasa antes del create dentro de esa
+ * misma funcion (de ahi sale si el padre se valido). Contar lineas fue lo que
+ * hizo fragil a mas de una guardia vieja.
+ */
+function ambitos(contenido) {
+  const encontrados = [];
+
+  for (const m of contenido.matchAll(/router\.(get|post|put|delete|patch)\s*\(/g)) {
+    const abre = contenido.indexOf('(', m.index + m[0].length - 1);
+    encontrados.push({
+      ini: m.index,
+      fin: cierreDe(contenido, abre, '(', ')'),
+      nombre: `router.${m[1]}`,
+      parametros: ['req', 'res'],
+    });
+  }
+
+  for (const m of contenido.matchAll(/\basync\s+(\w+)\s*\(/g)) {
+    const abre = contenido.indexOf('(', m.index + m[0].length - 1);
+    const cierra = cierreDe(contenido, abre, '(', ')');
+    const llave = contenido.indexOf('{', cierra);
+    if (llave === -1) continue;
+
+    encontrados.push({
+      ini: m.index,
+      fin: cierreDe(contenido, llave, '{', '}'),
+      nombre: m[1],
+      parametros: contenido
+        .slice(abre + 1, cierra)
+        .split(',')
+        .map((p) => p.trim().split('=')[0].trim())
+        .filter(Boolean),
+    });
+  }
+
+  return encontrados;
+}
+
+const queEnvuelve = (lista, ini, fin) =>
+  lista.filter((a) => a.ini < ini && a.fin > fin).sort((a, b) => b.ini - a.ini)[0];
+
+// ── Detector 1: creates colgados de un padre que nadie valido ──
+
+/**
+ * @returns {{ conClaveForanea: object[], delCliente: object[], sinValidar: object[] }}
+ *   `conClaveForanea` es la poblacion que el detector reviso —sirve de ancla—;
+ *   `sinValidar` es lo que hay que arreglar.
+ */
+function analizarCreates(nombre, contenido) {
+  const conClaveForanea = [];
+  const delCliente = [];
+  const sinValidar = [];
+  const scopes = ambitos(contenido);
+
+  for (const m of contenido.matchAll(/\b([A-Z]\w*)\s*\.\s*(create|bulkCreate|findOrCreate)\s*\(/g)) {
+    if (!esDeEmpresa(m[1])) continue;
+
+    const abre = contenido.indexOf('(', m.index + m[0].length - 1);
+    const fin = cierreDe(contenido, abre, '(', ')');
+    const argumentos = contenido.slice(abre, fin + 1);
+
+    const claves = [...argumentos.matchAll(/(\w+_id)\s*:\s*([^,\n}]+)/g)]
+      .filter(([, clave]) => clave !== 'empresa_id')
+      .map(([, clave, valor]) => ({ clave, valor: valor.trim() }));
+    if (claves.length === 0) continue;
+
+    const hallazgo = {
+      archivo: nombre,
+      linea: numeroDeLinea(contenido, m.index),
+      escritura: `${m[1]}.${m[2]}`,
+    };
+    conClaveForanea.push(hallazgo);
+
+    const scope = queEnvuelve(scopes, m.index, fin);
+    const parametros = scope ? scope.parametros : [];
+    const esConsciente = parametros.some((p) => /^empresa_?[Ii]d$/.test(p));
+
+    const sospechosas = claves.filter(({ valor }) => {
+      // `puntoDeVentaId` y `req.puntoDeVentaId` quedan afuera a proposito:
+      // middleware/auth.js resuelve la cabecera X-Punto-De-Venta-Id contra la
+      // empresa activa y descarta la que no pertenece, asi que para cuando
+      // llega aca ya es un id validado. La prueba de mas abajo se encarga de
+      // que esa validacion siga existiendo: sin ella, esta excepcion seria un
+      // agujero silencioso.
+      const base = valor.replace(/\s*\|\|[\s\S]*$/, '').trim();
+      if (base === 'puntoDeVentaId' || base === 'req.puntoDeVentaId') return false;
+
+      if (/^req\.(params|body|query)\./.test(valor)) return true;
+      return esConsciente && parametros.includes(base);
+    });
+    if (sospechosas.length === 0) continue;
+
+    const detalle = {
+      ...hallazgo,
+      claves: sospechosas.map(({ clave, valor }) => `${clave}: ${valor}`).join(', '),
+    };
+    delCliente.push(detalle);
+
+    // Se acepta como validacion cualquier busqueda del padre acotada a la
+    // empresa, hecha antes del create y dentro de la misma funcion.
+    const antes = scope ? contenido.slice(scope.ini, m.index) : '';
+    const validado = /findScoped(OrFail)?\(/.test(antes) ||
+      /find(One|All)\(\s*\{[^;]*?empresa_id/.test(antes);
+
+    if (!validado) {
+      sinValidar.push(`${detalle.archivo}:${detalle.linea} — ${detalle.escritura} cuelga de ${detalle.claves} sin validar el padre`);
+    }
+  }
+
+  return { conClaveForanea, delCliente, sinValidar };
+}
+
+// ── Detector 2: includes de hijos con empresa_id sin filtrar ──
+
+/** Valor de una clave del objeto, ignorando lo que este anidado adentro. */
+function valorDeClave(bloque, clave) {
+  let nivel = 0;
+
+  for (let i = 0; i < bloque.length; i++) {
+    const c = bloque[i];
+    if (c === '{' || c === '[' || c === '(') { nivel++; continue; }
+    if (c === '}' || c === ']' || c === ')') { nivel--; continue; }
+    if (nivel !== 1) continue;
+    if (!bloque.startsWith(`${clave}:`, i)) continue;
+    if (/[\w$]/.test(bloque[i - 1] || ' ')) continue;
+
+    let j = i + clave.length + 1;
+    while (j < bloque.length && /\s/.test(bloque[j])) j++;
+    if (bloque[j] === '{') return bloque.slice(j, cierreDe(bloque, j, '{', '}') + 1);
+    if (bloque[j] === '[') return bloque.slice(j, cierreDe(bloque, j, '[', ']') + 1);
+    const coma = bloque.indexOf(',', j);
+    return bloque.slice(j, coma === -1 ? bloque.length : coma);
+  }
+
+  return null;
+}
+
+/**
+ * Las asociaciones que pueden estar detras de un `{ model: X, as: 'y' }`.
+ *
+ * Primero se intenta resolver por el modelo de la consulta —o del include—
+ * que lo envuelve, que es la respuesta exacta. Cuando eso no se puede
+ * —el include vive en una variable suelta o lo arma un helper— se devuelven
+ * TODAS las asociaciones que coinciden en destino y alias: ante la duda se
+ * revisa de mas, que es el lado seguro para equivocarse.
+ */
+function asociacionesPosibles(origen, modelo, alias) {
+  if (origen && models[origen] && models[origen].associations && models[origen].associations[alias]) {
+    return [models[origen].associations[alias]];
+  }
+
+  const candidatas = [];
+  for (const M of Object.values(models)) {
+    if (!M || !M.associations) continue;
+    for (const [as, asoc] of Object.entries(M.associations)) {
+      if (as === alias && asoc.target && asoc.target.name === modelo) candidatas.push(asoc);
+    }
+  }
+  return candidatas;
+}
+
+/**
+ * Un include es «de un hijo con empresa_id» cuando la union la hace la clave
+ * foranea del hijo (hasMany / hasOne) y ese hijo tiene columna empresa_id.
+ *
+ * Queda afuera el caso en que la clave de union ES empresa_id —Empresa
+ * hasMany PuntoDeVenta, por ejemplo—: ahi el join ya es el filtro.
+ */
+const esHijoConEmpresa = (asoc) =>
+  (asoc.associationType === 'HasMany' || asoc.associationType === 'HasOne') &&
+  asoc.foreignKey !== 'empresa_id' &&
+  !!(asoc.target.rawAttributes && asoc.target.rawAttributes.empresa_id);
+
+function analizarIncludes(nombre, contenido) {
+  const entradas = [...contenido.matchAll(/\{\s*model:\s*(\w+)\s*,\s*(?:[^{}]*?\s)?as:\s*'([^']+)'/g)]
+    .map((m) => ({
+      modelo: m[1],
+      alias: m[2],
+      ini: m.index,
+      fin: cierreDe(contenido, m.index, '{', '}'),
+    }));
+
+  const consultas = [...contenido.matchAll(/\b([A-Z]\w*)\s*\.\s*(findAll|findOne|findAndCountAll|count|sum)\s*\(/g)]
+    .map((m) => {
+      const abre = contenido.indexOf('(', m.index + m[0].length - 1);
+      return { modelo: m[1], ini: m.index, fin: cierreDe(contenido, abre, '(', ')') };
+    });
+
+  const deHijos = [];
+  const sinFiltrar = [];
+
+  for (const entrada of entradas) {
+    const padre = entradas.filter((o) => o !== entrada && o.ini < entrada.ini && o.fin > entrada.fin);
+    const consulta = consultas.filter((c) => c.ini < entrada.ini && c.fin > entrada.fin);
+    const envolvente = [...padre, ...consulta].sort((a, b) => b.ini - a.ini)[0];
+
+    const asociaciones = asociacionesPosibles(
+      envolvente ? envolvente.modelo : null,
+      entrada.modelo,
+      entrada.alias
+    );
+    if (!asociaciones.some(esHijoConEmpresa)) continue;
+
+    const linea = numeroDeLinea(contenido, entrada.ini);
+    deHijos.push(`${nombre}:${linea} ${entrada.modelo} as '${entrada.alias}'`);
+
+    const where = valorDeClave(contenido.slice(entrada.ini, entrada.fin + 1), 'where');
+    if (!where || !/empresa_id/.test(where)) {
+      sinFiltrar.push(`${nombre}:${linea} — include de ${entrada.modelo} as '${entrada.alias}' sin where de empresa_id`);
+    }
+  }
+
+  return { deHijos, sinFiltrar };
+}
+
+// ── Las muestras sinteticas ──
+//
+// No son documentacion: son lo que sostiene a las dos guardias cuando el
+// repositorio deja de tener el defecto. Si alguien afloja un detector, estas
+// pruebas se ponen en rojo aunque el codigo real este impecable.
+
+const MUESTRA_CREATE_MALA = `
+router.post('/:id/payments', checkPermission('x'), async (req, res) => {
+  const movement = await SupplierMovement.create({
+    supplier_id: req.params.id,
+    empresa_id: req.empresaId,
+    amount: req.body.amount,
+  });
+  res.json({ ok: true, data: movement });
+});
+`;
+
+const MUESTRA_CREATE_BUENA = `
+router.post('/:id/payments', checkPermission('x'), async (req, res) => {
+  const supplier = await findScoped(Supplier, req.params.id, req.empresaId);
+  if (!supplier) return res.status(404).json({ ok: false });
+  const movement = await SupplierMovement.create({
+    supplier_id: supplier.id,
+    empresa_id: req.empresaId,
+    amount: req.body.amount,
+  });
+  res.json({ ok: true, data: movement });
+});
+`;
+
+const MUESTRA_INCLUDE_MALA = `
+const suppliers = await Supplier.findAll({
+  where: { empresa_id: req.empresaId },
+  include: [
+    { model: SupplierMovement, as: 'movements' },
+  ],
+});
+`;
+
+const MUESTRA_INCLUDE_BUENA = `
+const suppliers = await Supplier.findAll({
+  where: { empresa_id: req.empresaId },
+  include: [
+    { model: SupplierMovement, as: 'movements', where: { empresa_id: req.empresaId }, required: false },
+  ],
+});
+`;
+
+describe('Un create no cuelga una fila de un padre que no se valido', () => {
+  const archivos = [...leerArchivos('routes'), ...leerArchivos('services')];
+  const analisis = archivos.map(({ nombre, contenido }) => analizarCreates(nombre, contenido));
+
+  it('el detector encuentra la forma y la nombra con archivo y linea', () => {
+    const { sinValidar } = analizarCreates('muestra/mala.js', MUESTRA_CREATE_MALA);
+
+    expect(sinValidar).toHaveLength(1);
+    expect(sinValidar[0]).toContain('muestra/mala.js:3');
+    expect(sinValidar[0]).toContain('supplier_id: req.params.id');
+  });
+
+  it('el detector NO se queja cuando el padre se valido antes', () => {
+    // Sin esto la guardia podria estar fallando siempre, que es tan inutil
+    // como no fallar nunca: nadie convive con una guardia que no se puede
+    // poner en verde.
+    expect(analizarCreates('muestra/buena.js', MUESTRA_CREATE_BUENA).sinValidar).toEqual([]);
+  });
+
+  it('leyo los archivos que dice leer', () => {
+    // **El ancla.** Sin esto, mover estos creates a otro lado —o cambiar la
+    // forma de escribirlos— dejaria a la guardia recorriendo una lista vacia y
+    // pasando en verde sin haber mirado nada.
+    const conClaveForanea = analisis.flatMap((a) => a.conClaveForanea);
+    const porArchivo = [...new Set(conClaveForanea.map((h) => h.archivo))];
+
+    expect(conClaveForanea.length).toBeGreaterThan(10);
+    expect(porArchivo).toEqual(expect.arrayContaining([
+      'routes/suppliers.js',
+      'services/purchaseService.js',
+    ]));
+  });
+
+  it.each(archivos)('$nombre', ({ nombre, contenido }) => {
+    expect(analizarCreates(nombre, contenido).sinValidar).toEqual([]);
+  });
+});
+
+describe('La excepcion de puntoDeVentaId sigue estando justificada', () => {
+  // El detector de arriba deja pasar `punto_de_venta_id: puntoDeVentaId`
+  // porque el middleware valida la cabecera contra la empresa activa. Si esa
+  // validacion desapareciera, la excepcion pasaria a tapar una fuga real y
+  // nadie se enteraria. Esta prueba es la que ata las dos cosas.
+  const auth = fs.readFileSync(path.join(SRC, 'middleware', 'auth.js'), 'utf8');
+
+  it('auth.js resuelve X-Punto-De-Venta-Id contra la empresa activa', () => {
+    expect(auth).toMatch(/x-punto-de-venta-id/);
+
+    const consulta = auth.slice(auth.indexOf('PuntoDeVenta.findOne'));
+    expect(consulta).toMatch(/empresa_id:\s*req\.empresaId/);
+  });
+});
+
+describe('Ningun include de un hijo con empresa_id se trae sin filtrar', () => {
+  const archivos = [...leerArchivos('routes'), ...leerArchivos('services'), ...leerArchivos('utils')];
+  const analisis = archivos.map(({ nombre, contenido }) => analizarIncludes(nombre, contenido));
+
+  it('el detector encuentra la forma y la nombra con archivo y linea', () => {
+    const { sinFiltrar } = analizarIncludes('muestra/mala.js', MUESTRA_INCLUDE_MALA);
+
+    expect(sinFiltrar).toHaveLength(1);
+    expect(sinFiltrar[0]).toContain('muestra/mala.js:5');
+    expect(sinFiltrar[0]).toContain("SupplierMovement as 'movements'");
+  });
+
+  it('el detector NO se queja cuando el include filtra por empresa', () => {
+    expect(analizarIncludes('muestra/buena.js', MUESTRA_INCLUDE_BUENA).sinFiltrar).toEqual([]);
+  });
+
+  it('encuentra los ocho includes de hijos con empresa_id que tiene que mirar', () => {
+    // **El ancla.** Si este numero baja, algun include dejo de existir o dejo
+    // de reconocerse y la guardia estaria recorriendo menos de lo que cree. Si
+    // sube, hay un include nuevo de un hijo con empresa_id y **hay que
+    // leerlo**, no ajustar el numero.
+    const deHijos = analisis.flatMap((a) => a.deHijos);
+
+    expect(deHijos.length).toBeGreaterThan(0);
+    expect(deHijos.length).toBe(8);
+  });
+
+  it.each(archivos)('$nombre', ({ nombre, contenido }) => {
+    expect(analizarIncludes(nombre, contenido).sinFiltrar).toEqual([]);
+  });
+});
+
+describe('Nadie pide include: [{ all: true }]', () => {
+  // `{ all: true }` trae todas las asociaciones del modelo y no deja lugar
+  // donde poner un where: las que apuntan a tablas con empresa_id se unen solo
+  // por su clave foranea. Ademas cambia sola cuando alguien agrega una
+  // asociacion nueva, asi que lo que devuelve el endpoint deja de estar escrito
+  // en ningun lado.
+  const PATRON = /\ball:\s*true\b/;
+
+  it.each([...leerArchivos('routes'), ...leerArchivos('services')])(
+    '$nombre',
+    ({ contenido }) => {
+      const hallazgos = lineasQueMatchean(contenido, PATRON).map((h) => `L${h.n}: ${h.texto}`);
+      expect(hallazgos).toEqual([]);
+    }
+  );
+});
+
+describe('Todo archivo que llama a fallo() lo importa', () => {
+  // `routes/customers.js` usaba fallo() en sus once catch sin haberlo
+  // importado, y `routes/afip.js` en dos. El unico momento en que eso se nota
+  // es cuando algo falla: el catch tira ReferenceError, tapa el error original
+  // y el usuario no recibe ni el mensaje ni el requestId. Es un error que solo
+  // aparece cuando ya hay otro error, que es cuando menos se lo quiere.
+  const archivos = [...leerArchivos('routes'), ...leerArchivos('services'), ...leerArchivos('utils')]
+    .filter(({ nombre, contenido }) => nombre !== 'utils/errores.js' && /\bfallo\(/.test(contenido));
+
+  it('hay archivos que usan fallo() (si no, esta guardia no verifica nada)', () => {
+    expect(archivos.length).toBeGreaterThan(5);
+  });
+
+  it.each(archivos)('$nombre', ({ contenido }) => {
+    expect(contenido).toMatch(/\{[^}]*\bfallo\b[^}]*\}\s*=\s*require\('[^']*errores'\)/);
+  });
+});

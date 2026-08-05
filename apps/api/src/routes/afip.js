@@ -5,6 +5,7 @@ const afipService = require('../services/afipService');
 const afipAuth = require('../services/afipAuth');
 const { Setting, Empresa, sequelize } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
+const { fallo } = require('../utils/errores');
 const logger = require('../utils/logger');
 
 // Toda la configuracion de AFIP es POR EMPRESA: cada empresa cliente factura

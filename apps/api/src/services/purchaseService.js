@@ -7,11 +7,26 @@ const {
   Product,
   sequelize,
 } = require('../models');
-const { assertEmpresaId } = require('../utils/tenantScope');
+const { assertEmpresaId, findScoped } = require('../utils/tenantScope');
+const { ErrorDeNegocio } = require('../utils/errores');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
 
 class PurchaseService {
   async createOrder(supplierId, data, empresaId) {
+    assertEmpresaId(empresaId);
+
+    // El proveedor se valida contra la empresa ANTES de crear la orden.
+    //
+    // La orden se creaba con el empresa_id de quien la mandaba, asi que a
+    // primera vista no se escapaba nada. El problema estaba del otro lado: el
+    // include de GET /api/suppliers/:id une por supplier_id y nada mas, con lo
+    // cual la orden aparecia colgada de un proveedor de otra empresa cliente.
+    //
+    // 404 y no 403: un 403 confirmaria que ese proveedor existe en otra
+    // empresa, y con eso se enumeran ids ajenos.
+    const supplier = await findScoped(Supplier, supplierId, empresaId);
+    if (!supplier) throw new ErrorDeNegocio('Proveedor no encontrado', 404);
+
     const { date, notes, items } = data;
 
     let total = 0;
@@ -31,7 +46,7 @@ class PurchaseService {
     }
 
     const order = await SupplierOrder.create({
-      supplier_id: supplierId,
+      supplier_id: supplier.id,
       empresa_id: empresaId,
       date: date || new Date().toISOString().split('T')[0],
       total: Math.round(total * 100) / 100,
@@ -175,6 +190,12 @@ class PurchaseService {
   }
 
   async cancelOrder(orderId, empresaId) {
+    // Sin esto, una llamada con empresaId undefined arma
+    // `where: { empresa_id: undefined }`. Sequelize lo rechaza, pero como un
+    // error de parametro que termina en un 500 sin explicacion; assertEmpresaId
+    // dice que falta el middleware requireEmpresa, que es el problema real.
+    assertEmpresaId(empresaId);
+
     const order = await SupplierOrder.findOne({ where: { id: orderId, empresa_id: empresaId } });
     if (!order) throw new Error('Orden no encontrada');
     if (order.status === 'received') throw new Error('No se puede anular una orden ya recibida');
@@ -187,8 +208,15 @@ class PurchaseService {
 
   async getOrders(filters = {}) {
     const { supplier_id, status, from, to, limit, offset, empresa_id } = filters;
-    const where = {};
-    if (empresa_id) where.empresa_id = empresa_id;
+
+    // El filtro por empresa es obligatorio, no condicional. Con
+    // `if (empresa_id) where.empresa_id = empresa_id` una llamada sin empresa
+    // resuelta no fallaba ni avisaba: devolvia las ordenes de compra de TODAS
+    // las empresas cliente en la misma respuesta, paginadas y con el nombre del
+    // proveedor. El resto de los filtros —proveedor, estado, fechas— si son
+    // opcionales; este no.
+    assertEmpresaId(empresa_id);
+    const where = { empresa_id };
 
     if (supplier_id) where.supplier_id = supplier_id;
     if (status) where.status = status;
@@ -225,6 +253,8 @@ class PurchaseService {
   }
 
   async getOrderDetail(orderId, empresaId) {
+    assertEmpresaId(empresaId);
+
     const order = await SupplierOrder.findOne({
       where: { id: orderId, empresa_id: empresaId },
       include: [{ model: Supplier, as: 'supplier', attributes: ['id', 'name'] }],

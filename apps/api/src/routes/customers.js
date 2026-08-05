@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const { Customer, Sale, CustomerPayment } = require('../models');
+const { Customer, Sale, SaleItem, CustomerPayment } = require('../models');
 const customerService = require('../services/customerService');
 const checkPermission = require('../middleware/checkPermission');
 const { findScoped, scoped } = require('../utils/tenantScope');
+const { fallo } = require('../utils/errores');
 const logger = require('../utils/logger');
 
 // Todas las consultas de este router se filtran por req.empresaId.
@@ -145,7 +146,13 @@ router.get('/:id/sales', checkPermission('clientes.ver'), async (req, res) => {
 
     const sales = await Sale.findAll({
       where: scoped({ customer_id: customer.id }, req.empresaId),
-      include: [{ all: true }],
+      // `include: [{ all: true }]` trae TODAS las asociaciones de Sale sin
+      // forma de filtrar ninguna: no hay donde poner un `where`, y las que
+      // apuntan a tablas con empresa_id se unen solo por su clave foranea. Se
+      // enumeran las que esta pantalla usa. `items` no lleva filtro de empresa
+      // porque sale_items no tiene la columna: cuelga de una venta que ya se
+      // busco con scoping.
+      include: [{ model: SaleItem, as: 'items' }],
       order: [['date', 'DESC']],
     });
 
