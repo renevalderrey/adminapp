@@ -31,6 +31,7 @@ import Team from '@/pages/Team'
 import SubscriptionSettings from '@/pages/SubscriptionSettings'
 import Faltantes from '@/pages/Faltantes'
 import Comparador from '@/pages/Comparador'
+import Tiendanube from '@/pages/Tiendanube'
 
 function RouteGuard({ children, requiredModule, soloSuperadmin }) {
   const usuario = useStore(s => s.usuario)
@@ -288,6 +289,10 @@ function App() {
               <Route path="/gastos" element={<MarcoDePantalla><Expenses /></MarcoDePantalla>} />
               <Route path="/panel" element={<MarcoDePantalla><Dashboard /></MarcoDePantalla>} />
               <Route path="/facturacion" element={<MarcoDePantalla><Settings /></MarcoDePantalla>} />
+              {/* NO lleva `soloSuperadmin` (FR-069): el plan lista TiendaNube entre
+                  lo que ve el cliente. El gate es el módulo, y hoy ninguna empresa
+                  lo tiene: sin el paso manual P4 esta ruta redirige a `/pos`. */}
+              <Route path="/tiendanube" element={<MarcoDePantalla><RouteGuard requiredModule="tiendanube"><Tiendanube /></RouteGuard></MarcoDePantalla>} />
               <Route path="/team" element={<MarcoDePantalla><Team /></MarcoDePantalla>} />
               <Route path="/suscripcion" element={<MarcoDePantalla><SubscriptionSettings /></MarcoDePantalla>} />
               <Route path="/calculator" element={<Navigate to="/panel" replace />} />

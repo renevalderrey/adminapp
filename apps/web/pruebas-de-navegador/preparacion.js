@@ -30,7 +30,19 @@
 //  **producto**, y este archivo no creaba ningún `Supplier` ni ninguna
 //  `SupplierOrder`. Sin la siembra de abajo, dos de las cuatro pruebas de
 //  `proveedoresYOrdenes.navegador.js` no tienen contra qué correr.
+//
+//  ⚠⚠ **Y el hito 013 encontró la otra mitad del mismo problema**: una pantalla
+//  puede estar escrita, tener datos y **seguir siendo inalcanzable**.
+//  `/tiendanube` cuelga de `RouteGuard requiredModule="tiendanube"` en
+//  `App.jsx`, y ninguna empresa tiene ese módulo en `enabled_modules`, así
+//  que el navegador termina en `/pos` y la prueba falla diciendo que no
+//  encuentra lo que busca — sin decir por qué. Lo resuelve `habilitarLosModulos`,
+//  acá abajo. En producción eso es el paso manual P4 y no se arregla sacando el
+//  guard.
 // ════════════════════════════════════════════
+
+import { readFile } from 'node:fs/promises'
+import { sembrarLaTienda, TIENDA_DE_PRUEBA, VARIANTES, variante } from './siembraDeTiendanube.js'
 
 const API = process.env.ADMINAPP_API_DE_PRUEBAS || 'http://localhost:5099/api'
 
@@ -68,7 +80,8 @@ const COMO_LEVANTAR_LA_API =
   + '    -p 55432:5432 postgres:16-alpine\n\n'
   + '  cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55432/adminapp_e2e \\\n'
   + '    DB_SSL=false NODE_ENV=development BYPASS_AUTH=true PORT=5099 \\\n'
-  + '    ALLOWED_ORIGINS=http://localhost:5199 node src/server.js\n\n'
+  + '    ALLOWED_ORIGINS=http://localhost:5199 TIENDANUBE_CLIENT_ID=maquetado \\\n'
+  + '    node src/server.js\n\n'
   // ⚠ `ALLOWED_ORIGINS` NO es opcional y no estaba escrito en ninguna parte.
   // La lista blanca de CORS de `server.js:112-119` trae 5173, 5174 y 3000, y el
   // servidor de estas pruebas corre en el **5199** (`playwright.config.js`).
@@ -77,7 +90,26 @@ const COMO_LEVANTAR_LA_API =
   // sesión…» y **las diecisiete pruebas fallan diciendo que no encuentran
   // `<main>`** — que es exactamente el síntoma que no permite adivinar la causa.
   // El único rastro es un `WARN CORS: origen rechazado` en el log de la API.
-  + 'Los detalles están en el encabezado de apps/web/playwright.config.js.'
+  //
+  // ⚠ `TIENDANUBE_CLIENT_ID` tampoco es opcional, y por un motivo distinto del
+  // de CORS: sin esa variable `GET /api/tiendanube/status` corta en el primer
+  // `if` y responde `estado: 'sin_configurar'` con `tienda: null`, o sea que la
+  // pantalla dibuja el estado vacío de «la integración no está configurada en el
+  // servidor» **por más filas que haya en la base**, y las dos medidas de
+  // `tiendanube.navegador.js` no tienen ninguna tabla que medir. El valor da
+  // igual: nada sale hacia TiendaNube en estas pruebas y lo único que se hace
+  // con él es armar la URL de autorización.
+  //
+  // ⚠ El comando de arriba es el que manda. El encabezado de
+  // `playwright.config.js` explica POR QUÉ existe cada pieza —la base vacía, el
+  // servidor de desarrollo en vez de `vite preview`, el bypass de la sesión— pero
+  // su comando quedó corto: le faltan `ALLOWED_ORIGINS` y `TIENDANUBE_CLIENT_ID`,
+  // y las dos se agregaron acá porque acá es donde se lee cuando algo falla.
+  + 'El porqué de cada pieza está en el encabezado de apps/web/playwright.config.js; '
+  + 'el comando completo es el de arriba.\n\n'
+  + 'Si la base descartable no está en el 55432 —el arnés de integración usa ese mismo '
+  + 'puerto y los dos no pueden estar arriba a la vez—, pasá la cadena en '
+  + 'ADMINAPP_DB_DE_PRUEBAS al correr las pruebas.'
 
 async function pedir(ruta, opciones = {}) {
   const respuesta = await fetch(`${API}${ruta}`, {
@@ -279,6 +311,135 @@ async function sembrarProveedores(productos, hoy) {
   }
 }
 
+// ════════════════════════════════════════════
+//  Los módulos habilitados, que es lo que decide qué pantallas existen
+// ════════════════════════════════════════════
+
+/**
+ * Pone en `empresa.settings.enabled_modules` todos los módulos que las rutas de
+ * `App.jsx` exigen.
+ *
+ * ── Por qué la lista se DERIVA de `App.jsx` en vez de escribirse ──
+ *
+ * Es lo contrario de la regla de `CON_MARCO`, que se escribe a mano justamente
+ * para no derivarla del código que verifica, y la diferencia es qué papel juega
+ * cada lista. `CON_MARCO` **afirma** algo sobre `App.jsx`; ésta no afirma nada:
+ * **configura el entorno** para que las pantallas sean alcanzables, igual que
+ * `superadmin.js` o `ALLOWED_ORIGINS`. Una lista escrita a mano acá no detecta
+ * ningún defecto: lo único que produce es que el día que alguien agregue una
+ * ruta con módulo, dieciocho pruebas fallen diciendo «el navegador terminó en
+ * /pos» por un olvido del arnés.
+ *
+ * ⚠ `tiendanube` se agrega **además** y no se depende de que esté en `App.jsx`.
+ * Si la `<Route>` todavía no existe —o perdió su guard—, esto no falla acá: lo
+ * dice `marcoDeLasPantallas.navegador.js`, que distingue «la pantalla no se
+ * escribió» de «el navegador terminó en otra».
+ *
+ * ⚠⚠ **El `PUT` manda el `settings` ENTERO** (`routes/empresas.js:501-511`). Se
+ * lee el JSON actual, se le agrega la clave y se manda completo: armarlo de
+ * memoria pisa el resto de la configuración de la empresa. Es la misma
+ * precaución que el paso manual P4 deja escrita para producción.
+ */
+async function habilitarLosModulos(empresaId) {
+  const fuenteDeApp = await readFile(new URL('../src/App.jsx', import.meta.url), 'utf8')
+  const delAppJsx = [...fuenteDeApp.matchAll(/requiredModule="([\w-]+)"/g)].map((m) => m[1])
+
+  const modulos = [...new Set([...delAppJsx, 'tiendanube'])].sort()
+
+  const { data: empresa } = await pedir(`/empresas/${empresaId}`)
+  const ajustes = { ...(empresa.settings || {}) }
+
+  const yaEstaban = Array.isArray(ajustes.enabled_modules) ? ajustes.enabled_modules : []
+  if (modulos.every((m) => yaEstaban.includes(m))) return modulos
+
+  ajustes.enabled_modules = [...new Set([...yaEstaban, ...modulos])].sort()
+
+  await pedir(`/empresas/${empresaId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ settings: ajustes }),
+  })
+
+  return modulos
+}
+
+// ════════════════════════════════════════════
+//  La tienda de TiendaNube y su catálogo
+// ════════════════════════════════════════════
+
+/**
+ * Deja `/tiendanube` con una tienda vinculada, cuatro variantes y un mapeo.
+ *
+ * Las filas las escribe `siembraDeTiendanube.js` por SQL —su encabezado explica
+ * por qué no hay ninguna otra forma sin una cuenta real de TiendaNube—, y acá se
+ * hacen las dos mitades que **sí** pasan por la API de verdad: crear el mapeo y
+ * comprobar que la pantalla va a recibir lo que se sembró.
+ */
+async function sembrarTiendanube(empresaId, puntoDeVentaId, productos) {
+  // La empresa según la API, para que la siembra pueda comprobar —ANTES de
+  // escribir— que la base a la que se conecta es la que la API está usando.
+  const { data: empresaSegunLaApi } = await pedir(`/empresas/${empresaId}`)
+
+  await sembrarLaTienda(empresaId, puntoDeVentaId, empresaSegunLaApi)
+
+  // El mapeo se crea por HTTP y no por SQL, y es deliberado: `POST /mapeos`
+  // valida el producto con `findScoped`, exige que la variante esté en la
+  // instantánea y traduce el choque del índice único. Si la instantánea sembrada
+  // no tuviera la forma que el sistema espera, esto responde 400 **acá**, y no
+  // dos pruebas más tarde con una pantalla vacía.
+  const productoAMapear = productos[0]
+  const laNormal = variante('normal')
+
+  const respuesta = await fetch(`${API}/tiendanube/mapeos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      product_id: productoAMapear.id,
+      tiendanube_variant_id: laNormal.tiendanube_variant_id,
+      tiendanube_product_id: laNormal.tiendanube_product_id,
+    }),
+  })
+
+  // 409 es «ya estaba mapeado», que es lo que devuelve la segunda corrida contra
+  // la misma base. No es un fallo: la siembra es idempotente por diseño.
+  if (!respuesta.ok && respuesta.status !== 409) {
+    const cuerpo = await respuesta.text()
+    throw new Error(
+      `POST /tiendanube/mapeos respondió ${respuesta.status}: ${cuerpo.slice(0, 300)}\n\n`
+      + 'La instantánea sembrada no la acepta el handler real. Antes de tocar la prueba, '
+      + 'mirar si cambió el contrato de POST /mapeos.'
+    )
+  }
+
+  // ── Y la comprobación que hace que sembrar contra la base equivocada se vea ──
+  //
+  // Sin esto, apuntar ADMINAPP_DB_DE_PRUEBAS a una base que no es la de la API
+  // deja todo en verde acá y las pruebas fallan después diciendo que no
+  // encuentran ninguna fila, que es el síntoma que no permite adivinar la causa.
+  const estado = await pedir('/tiendanube/status')
+
+  if (estado.estado !== 'vinculada' || String(estado.tienda?.tiendanube_user_id) !== String(TIENDA_DE_PRUEBA)) {
+    throw new Error(
+      'Se sembró la tienda de TiendaNube pero GET /tiendanube/status no la ve: '
+      + `devolvió estado «${estado.estado}» y tienda ${JSON.stringify(estado.tienda)}.\n\n`
+      + 'La causa, casi siempre, es que falta TIENDANUBE_CLIENT_ID en el arranque de la API: '
+      + 'sin esa variable GET /status corta en el primer if y responde «sin_configurar».\n\n'
+      + '  · A mano: está en el comando de acá abajo.\n'
+      + '  · En CI: va en el paso «Levantar la API con BYPASS_AUTH» de\n'
+      + '    .github/workflows/ci.yml, al lado de ALLOWED_ORIGINS.\n\n'
+      + '(La otra causa posible ya está descartada acá: si la base fuera otra, la siembra '
+      + 'habría fallado antes de escribir nada.)\n\n'
+      + COMO_LEVANTAR_LA_API
+    )
+  }
+
+  if (Number(estado.variantes?.total) < VARIANTES.length) {
+    throw new Error(
+      `La tienda está vinculada pero GET /status cuenta ${estado.variantes?.total} variantes `
+      + `y se sembraron ${VARIANTES.length}. La instantánea quedó a medias.`
+    )
+  }
+}
+
 export default async function preparar() {
   // ── La API tiene que estar arriba, y decir CÓMO levantarla si no lo está ──
   try {
@@ -415,6 +576,16 @@ export default async function preparar() {
       + `${COMO_LEVANTAR_LA_API}\n\nMotivo: ${err.message}`
     )
   }
+
+  // ── Los módulos, ANTES de cualquier pantalla nueva ──
+  //
+  // Va acá abajo y no arriba porque no lo necesita nada de lo anterior; y va
+  // antes de la tienda porque sin el módulo `/tiendanube` no se puede abrir ni
+  // con la tienda sembrada.
+  await habilitarLosModulos(empresa.id)
+
+  // ── La tienda de TiendaNube ──
+  await sembrarTiendanube(empresa.id, sucursal, comunes)
 }
 
 export { NOMBRE_LARGO, PREFIJO, CUANTOS, PROVEEDORES }

@@ -413,6 +413,66 @@ export const getInviteInfo = (token) => api.get(`/auth/invite/${token}`);
 
 export const getSubscription = (empresaId) => api.get(`/empresas/${empresaId}/suscripcion`);
 
+// ═══════ TIENDANUBE ═══════
+//
+// Los DOCE endpoints privados de `routes/tiendanube.js`. El contrato tiene
+// catorce y los otros dos —`GET /callback` y `POST /webhook`— **no pueden tener
+// helper**: viven en el router `publico`, que `server.js` monta sin sesión y
+// arriba del `express.json()` global, y quien los llama es TiendaNube. Al
+// callback lo trae el navegador de vuelta del OAuth, con la redirección que
+// arma el servidor; un helper que lo llamara desde acá no completaria ningun
+// flujo, mandaria un `code` sin `state` valido y consumiria el unico uso que ese
+// `state` tiene.
+//
+// ⚠ `GET /tiendanube/auth` **escribe**: crea la fila de `tiendanube_estados_oauth`
+// que el callback consume. Por eso exige `config.editar` y no `config.ver`, y por
+// eso la pantalla no lo llama al montar sino cuando alguien aprieta «Conectar».
+
+/** El estado de la conexion, los contadores y las fechas. Nunca trae el token. */
+export const getTiendanubeStatus = () => api.get('/tiendanube/status');
+
+/** La URL de autorizacion, con su `state` de un solo uso ya creado. */
+export const getTiendanubeAuthUrl = () => api.get('/tiendanube/auth');
+
+/**
+ * La sucursal designada: de ahi sale lo que se publica y ahi se descuenta el pedido.
+ *
+ * Devuelve `encoladas`, que **es parte del contrato y no un dato informativo**:
+ * cambiar la sucursal mueve todos los numeros publicados, y la pantalla lo dice
+ * en la confirmacion ANTES de que alguien acepte.
+ */
+export const setTiendanubeSucursal = (puntoDeVentaId) =>
+  api.put('/tiendanube/sucursal', { punto_de_venta_id: puntoDeVentaId });
+
+/** Borra el token y la instantanea. Los mapeos NO se borran, y lo dice en `mapeos_conservados`. */
+export const desvincularTiendanube = () => api.delete('/tiendanube/vinculacion');
+
+/**
+ * La instantanea local del catalogo, paginada y filtrada POR EL SERVIDOR.
+ *
+ * ⚠ `q` y `sin_mapear` van como parametros y no se resuelven en el navegador:
+ * la lista esta paginada de a cincuenta, asi que filtrar la pagina cargada
+ * responderia «no hay resultados» sobre una variante que existe en la pagina 3.
+ * Es el mismo defecto que la 012 encontro en el buscador de ordenes.
+ */
+export const getTiendanubeVariantes = (params) => api.get('/tiendanube/variantes', { params });
+
+/** Trae TODAS las paginas de TiendaNube y reescribe la instantanea. */
+export const refrescarTiendanubeCatalogo = () => api.post('/tiendanube/variantes/refrescar');
+
+export const getTiendanubeMapeos = (params) => api.get('/tiendanube/mapeos', { params });
+export const crearTiendanubeMapeo = (data) => api.post('/tiendanube/mapeos', data);
+export const borrarTiendanubeMapeo = (id) => api.delete(`/tiendanube/mapeos/${id}`);
+
+/** Un PUT por variante mapeada. Responde 200 **incluso con fallas**: el resumen dice cuantas. */
+export const sincronizarTiendanube = () => api.post('/tiendanube/sincronizar');
+
+/** El resultado de la ultima corrida y la cola. `corrida: null` = nunca corrio ninguna. */
+export const getTiendanubeUltimaCorrida = () => api.get('/tiendanube/corridas/ultima');
+
+/** Los pedidos que entraron por el webhook, y que items NO descontaron. */
+export const getTiendanubePedidos = (params) => api.get('/tiendanube/pedidos', { params });
+
 // ═══════ IMPORTACIÓN ═══════
 
 export const downloadTemplate = (type = 'products') =>

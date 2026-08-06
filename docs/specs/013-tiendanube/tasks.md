@@ -1620,7 +1620,7 @@ vino de dónde.
 Es el riesgo 8 del plan de la 010 y la decisión 11 del de la 011, textual.
 **Queda en rojo a propósito hasta la fase 12.**
 
-- [ ] **T1337** [P] En `apps/web/src/tests/guardiasDeDiseno.test.js`, agregar los
+- [x] **T1337** [P] En `apps/web/src/tests/guardiasDeDiseno.test.js`, agregar los
       **tres** archivos nuevos a `NOMBRES` (`:103`) —`pages/Tiendanube.jsx`,
       `components/PanelDeMapeo.jsx`, `components/EstadoDeTiendanube.jsx`— y mover
       el ancla de `toHaveLength(16)` (`:220`) a **`toHaveLength(19)`**, con la
@@ -1639,7 +1639,7 @@ Es el riesgo 8 del plan de la 010 y la decisión 11 del de la 011, textual.
       hallazgo correspondiente desaparece; **si alguien mete un hex, aparece uno
       distinto y se lee distinto**.
 
-- [ ] **T1338** [P] En `apps/web/pruebas-de-navegador/marcoDeLasPantallas.navegador.js:40`,
+- [x] **T1338** [P] En `apps/web/pruebas-de-navegador/marcoDeLasPantallas.navegador.js:40`,
       `/tiendanube` entra a `CON_MARCO`: **de diecisiete rutas a dieciocho**, y
       los tres comentarios que dicen «las diecisiete» se actualizan.
       ⚠ **`apps/web/src/tests/marcoDePantalla.test.js` NO se toca, y hay que
@@ -1677,7 +1677,7 @@ US1, US3, US7 y US8 del lado de la pantalla. Criterios 16, 18 y 21.
 empresa tiene deja la pantalla **invisible para todas**: `App.jsx:58-62` redirige
 a `/pos`. Es el riesgo 2.
 
-- [ ] **T1339** El gateo en los tres lados y los helpers de la API, en un commit:
+- [x] **T1339** El gateo en los tres lados y los helpers de la API, en un commit:
       **(1)** en `apps/web/src/services/api.js`, los helpers de los catorce
       endpoints, con el estilo de los que ya están (`:139-145`);
       **(2)** en `apps/web/src/App.jsx`, la ruta
@@ -1698,7 +1698,7 @@ a `/pos`. Es el riesgo 2.
       `marcoDePantalla.test.js` lo nombra; se le pone otro módulo al ítem y el
       caso nuevo.
 
-- [ ] **T1340** Crear `apps/web/src/components/EstadoDeTiendanube.jsx`: el bloque
+- [x] **T1340** Crear `apps/web/src/components/EstadoDeTiendanube.jsx`: el bloque
       de conexión con los **cuatro estados** de FR-006 más el quinto de la
       pantalla, el nombre y el id de la tienda, desde cuándo, la sucursal
       designada, **cuándo fue la última reconciliación**, «Conectar» /
@@ -1731,7 +1731,7 @@ a `/pos`. Es el riesgo 2.
       primero se pone en rojo; se oculta el botón en vez de deshabilitarlo y el
       segundo; se saca `encoladas` del `ConfirmDialog` y el cuarto.
 
-- [ ] **T1341** Crear `apps/web/src/components/PanelDeMapeo.jsx`: el panel lateral
+- [x] **T1341** Crear `apps/web/src/components/PanelDeMapeo.jsx`: el panel lateral
       de mapeo, con `Sheet`/`SheetContent` de `apps/web/src/components/ui/sheet.jsx`
       y `style={{ width: '520px', maxWidth: '92vw' }}` **en estilo, no en clases**.
       **Panel y no modal** (FR-053): se elige el producto del sistema **mirando**
@@ -1753,7 +1753,7 @@ a `/pos`. Es el riesgo 2.
       primero se pone en rojo; se cierra el panel ante el error y el tercero se
       pone en rojo con lo escrito perdido.
 
-- [ ] **T1342** Crear `apps/web/src/pages/Tiendanube.jsx`: `PageHeader` con la
+- [x] **T1342** Crear `apps/web/src/pages/Tiendanube.jsx`: `PageHeader` con la
       acción principal —«Sincronizar stock» con tienda vinculada, «Conectar con
       TiendaNube» sin ella—, el bloque de estado, la tabla de variantes y los
       cuatro estados vacíos.
@@ -1815,7 +1815,7 @@ comportamiento real**. `guardiasDeDiseno` en verde con diecinueve archivos.
 
 US5 y US6 del lado de la pantalla, criterios 11 y 12.
 
-- [ ] **T1343** En `apps/web/src/pages/Tiendanube.jsx` y
+- [x] **T1343** En `apps/web/src/pages/Tiendanube.jsx` y
       `components/EstadoDeTiendanube.jsx`, el botón de sincronizar y el bloque de
       la última corrida: cuándo empezó, cuánto tardó, quién la disparó, cuántas se
       mandaron, cuántas fallaron y **cuáles**, con su motivo; más el bloque `cola`
@@ -1843,7 +1843,7 @@ US5 y US6 del lado de la pantalla, criterios 11 y 12.
       el primero se pone en rojo con dos llamadas; se muestra solo el conteo sin
       nombrar la variante y el tercero.
 
-- [ ] **T1344** El bloque de **pedidos con ítems sin descontar**, en
+- [x] **T1344** El bloque de **pedidos con ítems sin descontar**, en
       `apps/web/src/pages/Tiendanube.jsx`, sobre `GET /api/tiendanube/pedidos`.
       Una fila por pedido, con su número, cuándo entró, cuántos ítems descontaron
       y cuántos no, y el detalle con los **cuatro motivos**: `sin_mapeo`,
@@ -1873,7 +1873,7 @@ escenario 5, [PENDIENTE N11].
 Va última porque toca una pantalla que este hito **no** rediseña —eso es el hito
 8—.
 
-- [ ] **T1345** En `apps/web/src/pages/Settings.jsx`, la tarjeta de TiendaNube
+- [x] **T1345** En `apps/web/src/pages/Settings.jsx`, la tarjeta de TiendaNube
       (`:372-403`) se saca y en su lugar queda un enlace a `/tiendanube`. Se van
       con ella `tiendanubeLinked` (`:25`), `checkTiendaNubeStatus` (`:74-79`),
       `handleConnectTiendaNube` (`:81-90`) y la lectura de
@@ -1901,7 +1901,7 @@ Va última porque toca una pantalla que este hito **no** rediseña —eso es el 
 **Purpose**: lo que solo un motor de maquetado puede contestar, contestado; y lo
 que cambió, escrito para quien opera.
 
-- [ ] **T1346** [P] Las **tres** medidas que bajan al navegador, en
+- [x] **T1346** [P] Las **tres** medidas que bajan al navegador, en
       `apps/web/pruebas-de-navegador/`. Solo tres, porque el listón de
       `CONVENCIONES.md` es alto y acá se respeta:
       **(1)** `/tiendanube` está adentro del contenedor de 1320px y el `<body>`
@@ -1926,7 +1926,7 @@ que cambió, escrito para quien opera.
       de nombre y la (2) se pone en rojo con la caja invadiendo la de acciones; se
       cambia el ancho del panel a 640px y la (3).
 
-- [ ] **T1347** [P] `docs/OPERACION.md`: **(a)** cómo habilitar el módulo
+- [x] **T1347** [P] `docs/OPERACION.md`: **(a)** cómo habilitar el módulo
       `tiendanube` por empresa —`PUT /api/empresas/:id` con el `settings`
       **entero** (`routes/empresas.js:503-511`), armado con cuidado para no pisar
       el resto del JSON—; **(b)** las tres variables de entorno de TiendaNube y
@@ -1938,7 +1938,7 @@ que cambió, escrito para quien opera.
       **Verificación**: se lee y se sigue. Es documentación y no tiene test; lo
       que sí tiene test es todo lo que describe.
 
-- [ ] **T1348** [P] `docs/PROXIMOS-PROYECTOS.md`, cinco entradas con su primer
+- [x] **T1348** [P] `docs/PROXIMOS-PROYECTOS.md`, cinco entradas con su primer
       paso escrito:
       **(1)** **no hay reservas de stock**, y tres escritores
       —`productionService.js:378` y `:508`, `import.js:438`, `products.js:329`—

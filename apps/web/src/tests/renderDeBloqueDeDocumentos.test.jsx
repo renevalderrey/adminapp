@@ -88,9 +88,23 @@ afterEach(() => {
 //  tener el aviso.
 // ════════════════════════════════════════════
 
+/**
+ * `userEvent` con el retardo apagado.
+ *
+ * Por defecto `setup()` espera entre tecla y tecla para parecerse a una persona
+ * escribiendo. Estos casos tipean enlaces de sesenta caracteres, asi que ese
+ * retardo era casi todo el tiempo del test: solo tardaba 1,98 s, y dentro de la
+ * suite completa —bajo carga— se pasaba de los 5 s de vitest y se ponia en rojo.
+ *
+ * Un test que falla segun que mas se este corriendo es un test que alguien
+ * termina marcando como inestable y borrando. Lo que estos casos afirman no
+ * depende del ritmo del tecleo: es que un enlace sin http NO salga por la red.
+ */
+const tecleoInstantaneo = () => userEvent.setup({ delay: null })
+
 describe('Un enlace que no es un enlace no llega al servidor', () => {
   it('un enlace sin http NO dispara ninguna llamada', async () => {
-    const usuario = userEvent.setup()
+    const usuario = tecleoInstantaneo()
     montar({ documentos: [] })
 
     await usuario.type(campoNombre(), 'Factura de marzo')
@@ -115,7 +129,7 @@ describe('Un enlace que no es un enlace no llega al servidor', () => {
   })
 
   it('un enlace con un espacio EN EL MEDIO tampoco: es un enlace que el chat cortó', async () => {
-    const usuario = userEvent.setup()
+    const usuario = tecleoInstantaneo()
     montar({ documentos: [] })
 
     await usuario.type(campoNombre(), 'Factura de marzo')
@@ -126,7 +140,7 @@ describe('Un enlace que no es un enlace no llega al servidor', () => {
   })
 
   it('el enlace se guarda sin los espacios que arrastra pegar desde WhatsApp', async () => {
-    const usuario = userEvent.setup()
+    const usuario = tecleoInstantaneo()
     montar({ documentos: [] })
 
     await usuario.type(campoNombre(), '  Factura de marzo  ')

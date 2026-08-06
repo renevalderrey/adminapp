@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El marco de las diecisiete pantallas
+//  ADMINAPP · El marco de las dieciocho pantallas
 //
 //  Es el paso manual **5** de `docs/specs/011-punto-de-venta/tasks.md`, que
 //  pedía abrir tres pantallas a ojo, más la pregunta que quedó abierta cuando
 //  el hito 5 introdujo `MarcoDePantalla` (commit `10b5e60`): el contenedor de
-//  scroll cambió de lugar en las diecisiete y nadie lo había mirado.
+//  scroll cambió de lugar en todas y nadie lo había mirado.
 //
 //  ── Qué se rompió y cómo se ve ──
 //
@@ -22,39 +22,96 @@ import { test, expect } from '@playwright/test'
 //  solo puede afirmar que la ruta *aplica* el marco, no qué forma tiene. Es
 //  exactamente el caso para el que existe una prueba de navegador.
 //
-//  ── Por qué las diecisiete y no tres ──
+//  ── Por qué todas y no tres ──
 //
 //  Porque lo que hay que verificar es que no falte **ninguna**, y el error
-//  típico al mirar a ojo es dejar bien la primera. Diecisiete `goto` cuestan
+//  típico al mirar a ojo es dejar bien la primera. Dieciocho `goto` cuestan
 //  veinte segundos; la alternativa es no verificarlo nunca.
 // ════════════════════════════════════════════
 
 /**
- * Las diecisiete rutas que van adentro de `MarcoDePantalla`.
+ * Las dieciocho rutas que van adentro de `MarcoDePantalla`.
  *
  * Escritas a mano y NO extraídas de `App.jsx`: una lista derivada del código
  * que se está verificando pasa igual cuando el código se equivoca. Que falte
  * una acá lo detecta `tests/marcoDePantalla.test.js`, que sí lee `App.jsx` y
  * exige que toda ruta que no sea `/pos` esté envuelta.
+ *
+ * ⚠ `/tiendanube` entra ANTES de que la ruta exista, por el mismo motivo por el
+ * que los tres archivos de TiendaNube entran a `guardiasDeDiseno.test.js` antes
+ * de escribirse: una guardia que se agrega después se escribe para el código
+ * que ya está, y entonces no es una guardia sino una descripción. **Esta prueba
+ * queda EN ROJO hasta T1339**, que monta la `<Route>`, y el rojo dice
+ * literalmente «`<main>` quedó VACÍO — ninguna `<Route>` de App.jsx matchea
+ * esta ruta»: es una pantalla que todavía no se escribió y NO un defecto del
+ * marco. Los dos rojos se leen distinto a propósito; ver `abrir()`.
+ *
+ * Las rutas nuevas se agregan al final y no en el medio: `abrir()` corta el
+ * bucle con una excepción, así que lo que va antes se mide igual y el informe
+ * conserva las diecisiete que ya funcionaban.
  */
 const CON_MARCO = [
   '/ventas', '/inventario', '/recetas', '/produccion', '/clientes', '/caja',
   '/impuestos', '/proveedores', '/ordenes-compra', '/faltantes', '/comparador',
   '/reportes', '/gastos', '/panel', '/facturacion', '/team', '/suscripcion',
+  '/tiendanube',
 ]
 
 /** El tope del marco, tal cual `MarcoDePantalla.jsx`. */
 const ANCHO_DEL_MARCO = 1320
 
-/** Deja la pantalla montada y con sus pedidos al servidor terminados. */
+/**
+ * Deja la pantalla montada y con sus pedidos al servidor terminados.
+ *
+ * ── Los tres rojos que esta función tiene que saber distinguir ──
+ *
+ * Antes había uno solo —el timeout de `main > *`— y adentro entraban tres cosas
+ * que no se arreglan igual:
+ *
+ *  1. **El arnés está roto**: `App.jsx` devuelve pantallas enteras —«Validando
+ *     sesión…», «Redirigiendo…»— **sin `<main>`** cuando la sesión o el
+ *     contexto fallan. Sin esta espera, lo que se mide abajo es el cero de un
+ *     DOM que no es el de ninguna pantalla.
+ *  2. **La pantalla todavía no existe**: adentro del shell no hay ninguna ruta
+ *     catch-all (`App.jsx:273-300`), así que una ruta sin `<Route>` deja el
+ *     `<main>` con **cero hijos**. Es el estado de `/tiendanube` hasta T1339 y
+ *     no es un defecto del marco.
+ *  3. **La pantalla existe pero el navegador terminó en otra**: `RouteGuard`
+ *     redirige a `/pos` cuando el módulo no está habilitado
+ *     (`App.jsx:47-62`), que es el riesgo 2 del hito.
+ *
+ * El tercero es el que puede pasar **en verde**: hoy redirige a `/pos`, que no
+ * tiene marco y por eso se ve el rojo, pero el día que alguien cambie ese
+ * destino por una pantalla que sí lo tiene, las mediciones darían bien sobre la
+ * pantalla equivocada y la prueba diría que `/tiendanube` está impecable sin
+ * haberla abierto nunca. Por eso el `pathname` se devuelve y se compara.
+ *
+ * @returns {Promise<string>} el `pathname` donde terminó el navegador.
+ */
 async function abrir(page, ruta) {
   await page.goto(ruta)
   await page.waitForLoadState('networkidle')
-  // El shell tiene que estar montado: `App.jsx` devuelve pantallas enteras
-  // —«Validando sesión…», «Redirigiendo…»— sin `<main>` cuando la sesión o el
-  // contexto fallan. Sin esta espera, lo que se mide abajo es el cero de un DOM
-  // que no es el de ninguna pantalla, y la prueba pasa sin haber mirado nada.
+
+  await expect(
+    page.locator('main'),
+    `${ruta}: no llegó a haber <main> — el shell no se montó (sesión o contexto), `
+    + 'así que no se midió ninguna pantalla'
+  ).toBeAttached()
+
+  const shell = await page.evaluate(() => ({
+    hijos: document.querySelector('main').children.length,
+    ruta: location.pathname,
+  }))
+
+  expect(
+    shell.hijos,
+    `${ruta}: <main> quedó VACÍO — ninguna <Route> de App.jsx matchea esta ruta, `
+    + 'o sea que la pantalla todavía no se escribió. NO es un defecto del marco.'
+  ).toBeGreaterThan(0)
+
   await expect(page.locator('main > *').first()).toBeVisible()
+
+  return shell.ruta
 }
 
 /** Las medidas del shell: `<main>` y su hijo, que es el contenedor de scroll. */
@@ -87,24 +144,29 @@ function medirElMarco(page) {
   })
 }
 
-test.describe('Ninguna de las diecisiete pantallas scrollea el cuerpo de la página', () => {
+test.describe('Ninguna de las dieciocho pantallas scrollea el cuerpo de la página', () => {
   // Los dos anchos del paso 1: el mínimo de la maqueta y el monitor del
   // mostrador. Una barra horizontal en el `<body>` significa que la barra
   // lateral o la miga de pan se van de pantalla al scrollear, que es el defecto
   // que esto protege.
   //
-  // Los dos anchos van en UN solo caso: a 1920px ninguna de las diecisiete
+  // Los dos anchos van en UN solo caso: a 1920px ninguna de las dieciocho
   // tiene contenido más ancho que la ventana, así que ese ancho por sí solo no
   // se puede poner en rojo con ninguna reversión —es red de contención para
   // cuando alguien agregue una tabla ancha—. El que muerde hoy es el de 1080px.
-  test('a 1080px y a 1920px, ninguna de las diecisiete scrollea el <body> a lo ancho', async ({ page }) => {
+  test('a 1080px y a 1920px, ninguna de las dieciocho scrollea el <body> a lo ancho', async ({ page }) => {
     const conBarra = []
 
     for (const ancho of [1080, 1920]) {
       await page.setViewportSize({ width: ancho, height: 900 })
 
       for (const ruta of CON_MARCO) {
-        await abrir(page, ruta)
+        const llego = await abrir(page, ruta)
+        if (llego !== ruta) {
+          conBarra.push(`${ruta} a ${ancho}px: el navegador terminó en ${llego} — no se midió esta pantalla`)
+          continue
+        }
+
         const m = await medirElMarco(page)
         if (m.documento.desbordeHorizontal > 0) {
           conBarra.push(`${ruta} a ${ancho}px: sobran ${m.documento.desbordeHorizontal}px`)
@@ -116,12 +178,20 @@ test.describe('Ninguna de las diecisiete pantallas scrollea el cuerpo de la pág
   })
 })
 
-test.describe('El contenedor de scroll de las diecisiete llega hasta el borde de la ventana', () => {
+test.describe('El contenedor de scroll de las dieciocho llega hasta el borde de la ventana', () => {
   test('ninguna deja franjas muertas donde la rueda del mouse no hace nada', async ({ page }) => {
     const malas = []
 
     for (const ruta of CON_MARCO) {
-      await abrir(page, ruta)
+      const llego = await abrir(page, ruta)
+
+      // La medición de una pantalla que no es la que se pidió no dice nada de
+      // la que se pidió, y en verde se leería como que dijo todo. Ver `abrir()`.
+      if (llego !== ruta) {
+        malas.push(`${ruta}: el navegador terminó en ${llego} — no se midió esta pantalla`)
+        continue
+      }
+
       const m = await medirElMarco(page)
 
       // ── Lo que se afirma ──
@@ -216,7 +286,7 @@ test.describe('El contenedor de scroll de las diecisiete llega hasta el borde de
 })
 
 test.describe('El punto de venta es la única pantalla fuera del marco, y lo sigue siendo', () => {
-  test('/pos NO tiene el contenedor de 1320px que tienen las otras diecisiete', async ({ page }) => {
+  test('/pos NO tiene el contenedor de 1320px que tienen las otras dieciocho', async ({ page }) => {
     // La contracara del caso de arriba: si alguien «arregla» el marco
     // envolviendo también a `/pos`, el punto de venta pierde el ancho y el alto
     // completos, que es todo lo que el hito 5 vino a resolver.

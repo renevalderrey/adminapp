@@ -1,7 +1,7 @@
 import {
   ShoppingCart, ClipboardList, Package, Truck, Wallet, BarChart3, AlertTriangle,
   Scale, FileCheck, FileSpreadsheet, Zap, Factory, Users, DollarSign, UserCog,
-  CreditCard,
+  CreditCard, Store,
 } from 'lucide-react'
 
 // ════════════════════════════════════════════
@@ -47,6 +47,17 @@ export const GRUPOS = [
     label: 'Configuración',
     items: [
       { to: '/facturacion', icon: FileCheck, label: 'Facturación AFIP', permission: 'config.ver', modulo: 'facturacion' },
+      // ⚠ El módulo y el permiso son los MISMOS que declaran la `<Route>` de
+      // App.jsx y las once rutas privadas de `routes/tiendanube.js`. Si difieren,
+      // el gateo deja de servir: el menú esconde el ítem y la URL escrita a mano
+      // entra igual, que es exactamente lo que pasaba con `/proveedores`.
+      //
+      // ⚠⚠ **Ninguna empresa tiene `tiendanube` en `enabled_modules` todavía**,
+      // así que este ítem no se dibuja para nadie y `/tiendanube` redirige a
+      // `/pos` (`App.jsx:58-62`) hasta que alguien lo agregue. Es el paso manual
+      // P4 de `docs/specs/013-tiendanube/tasks.md` y el riesgo 2 del plan; NO se
+      // arregla sacando el guard.
+      { to: '/tiendanube', icon: Store, label: 'TiendaNube', permission: 'config.ver', modulo: 'tiendanube' },
       { to: '/team', icon: UserCog, label: 'Equipo', permission: 'equipo.ver', modulo: 'equipo' },
       { to: '/suscripcion', icon: CreditCard, label: 'Suscripción', permission: 'config.ver', modulo: 'suscripcion' },
     ],

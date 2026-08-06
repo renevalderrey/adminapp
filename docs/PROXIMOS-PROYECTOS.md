@@ -713,3 +713,192 @@ agente.
 **Primer paso.** P11 primero, porque ya se sabe que ahí había un defecto y lo que
 falta es confirmar que el arreglo alcanza. Después P6 y P5, que son la misma
 sesión de `psql`. P7 se cierra abriendo un archivo.
+
+---
+
+## 12 · Lo que dejó afuera TiendaNube
+
+**Apareció** implementando `docs/specs/013-tiendanube/` (6/8/2026). Siete cosas:
+tres funciones que no entraron, dos condiciones del entorno que hacen que algo ya
+escrito no se ejecute, y dos puntos ciegos —uno de la verificación y otro de una
+guardia—.
+
+Cada una dice **qué falta**, **por qué no entró** y **cuál es el primer paso**.
+
+Y una que **no** queda pendiente y corrige el registro: la columna muerta
+`products.tiendanube_variant_id` **dejó de ser escribible** y sus valores se
+ignoran explícitamente (`routes/products.js:40-52`). Existía, se podía completar
+desde el panel de producto, el sistema respondía «guardado» y **no la leía
+nadie**. La columna no se borra —sacarla de la lista blanca es reversible, un
+`DROP COLUMN` no—.
+
+### 12a · No hay reservas de stock, y cinco caminos borrarían la que hubiera
+
+**Qué falta.** El concepto de «comprometido». La spec decidió publicar en
+TiendaNube el **disponible** (`stock.available`) y no la cantidad, con el ejemplo
+«un producto con 10 en el depósito y 3 comprometidos publica 7». Ese estado
+**AdminApp no lo puede producir**: nada reserva stock.
+
+**Por qué importa igual.** Publicar `available` es lo correcto y **hoy no cambia
+ningún número**, así que no cuesta nada. Lo que no se puede afirmar es que
+proteja de una sobreventa, y ahí está la trampa: el día que exista una reserva de
+verdad, **cinco caminos la borran** asignando `available = quantity` sin que nada
+avise:
+
+| Dónde | Qué es |
+|---|---|
+| `services/productionService.js:357` | Consumo de insumos de una producción |
+| `services/productionService.js:380` | Alta del producto terminado |
+| `routes/import.js:438` | Importación de una planilla |
+| `routes/products.js:344` y `:350` | Alta y actualización de producto con stock |
+| `routes/general.js:265` y `:271` | `POST /api/stock/bulk` |
+
+El único camino que hoy puede separarlas es el ajuste manual de
+`routes/general.js:83-91`, y la siguiente producción o importación lo pisa. Es un
+número que se puede mover y que **nada conserva**.
+
+**Primer paso.** Antes de escribir cualquier reserva, decidir qué significa
+`available` y hacer que los cinco caminos respeten esa definición **en el mismo
+commit**. Escribir la reserva primero y arreglar los escritores después deja una
+ventana en la que el sistema promete algo que cinco lugares deshacen.
+
+### 12b · Un permiso propio de TiendaNube
+
+**Qué falta.** La pantalla se gatea con `config.ver` y `config.editar`, que son
+los permisos de **toda la configuración de la empresa**: el CUIT, el certificado
+de AFIP, los márgenes.
+
+**Por qué no entró.** Los dos permisos ya existen (`seedPermissions.js:59-60`) y
+crear uno nuevo obliga a decidir qué rol lo lleva y a migrar los roles cargados.
+Con una pantalla que todavía no usa nadie, esa decisión se toma sin información.
+
+**Cuándo va a doler.** El día que el encargado de depósito tenga que sincronizar
+el stock o corregir un mapeo: hoy, para hacerlo, hay que darle acceso a la
+configuración fiscal de la empresa.
+
+**Primer paso.** `tiendanube.ver` y `tiendanube.editar` en `seedPermissions.js`,
+y cambiar los `checkPermission` de las once rutas privadas de
+`routes/tiendanube.js`, la `<Route>` de `App.jsx` y el ítem de
+`components/navegacion.js` **a la vez**: el gate va en los tres lados o no sirve.
+
+### 12c · Un pedido de la tienda no registra ninguna venta
+
+**Qué falta.** Un `order/paid` **baja el inventario y no registra una venta**. No
+aparece en facturación, ni en el flujo de caja, ni en los reportes: el stock sale
+del depósito sin ingreso asociado.
+
+**Por qué no entró.** Registrar la venta implica decidir tipo de comprobante,
+punto de venta de AFIP, cliente, medio de pago y numeración — y para un
+comprobante fiscal, además, qué pasa si AFIP rechaza un pedido que ya descontó
+stock. Es una funcionalidad propia, no un agregado.
+
+**Por qué ahora alguien va a preguntar.** Hasta este hito la limitación estaba
+escrita en un comentario del servicio y en `ANALISIS.md`, o sea en ningún lado
+que un usuario mire. **Ahora la pantalla lo dice**, arriba de la tabla. Eso es
+correcto —el que no lo sabía cerraba la caja con una diferencia que no podía
+explicar— y tiene la consecuencia de que la pregunta llega.
+
+**Primer paso.** Decidir si el pedido genera una venta **no fiscal** —que cubre
+caja y reportes y no toca AFIP— o una con comprobante. La primera es
+sustancialmente más chica y contesta la pregunta que la gente hace.
+
+### 12d · `order/cancelled` y las devoluciones
+
+**Qué falta.** Un pedido cancelado o devuelto en TiendaNube **no repone el
+stock**. AdminApp solo escucha `order/paid`.
+
+**Por qué no entró.** Reponer necesita **su propia guarda de idempotencia**, y no
+es la misma que la del descuento: reponer dos veces es tan malo como descontar
+dos veces, y la fila de `tiendanube_pedidos` que hoy impide el segundo descuento
+no dice nada sobre reposiciones. Improvisarla es cómo se llega a un inventario
+inflado que nadie puede reconstruir.
+
+**Mientras tanto** la pantalla lo advierte y dice qué hacer: ajustarlo a mano
+desde Inventario.
+
+**Primer paso.** Una columna o una tabla que registre la reposición por pedido,
+con su `UNIQUE`, **antes** de escribir el handler. Es la lección del CAE y la de
+`POST /api/sales`: la garantía la sostiene una restricción de la base, no el
+orden en que se ejecutaron dos entregas.
+
+### 12e · ⚠ El contrato real de TiendaNube no lo verifica **ni un solo test**
+
+**Qué falta.** Un entorno de pruebas. Las tres URL de la API de TiendaNube están
+**literales** en `services/tiendanubeService.js` y no hay ninguna variable para
+moverlas, así que no se puede apuntar a un sandbox ni a un doble de servidor.
+
+**Qué queda sin verificar, dicho sin adornos.** Todo lo que sigue está escrito
+mirando la documentación y **nadie vio nunca una respuesta real**:
+
+- **El nombre de la cabecera de la firma** (`x-linkedstore-hmac-sha256`). El test
+  de HMAC prueba que **AdminApp verifica lo que AdminApp firmó**: el circuito, no
+  el algoritmo del otro lado. Si la cabecera se llamara distinto, ese test
+  seguiría verde y **todo webhook real respondería 401** — que es el mismo
+  síntoma que ya tuvo esta integración durante meses.
+- **El formato de la paginación**: si es `page`/`per_page`, y si el fin de las
+  páginas se detecta por una respuesta vacía o por una cabecera.
+- **La forma del cuerpo del webhook**: `store_id`, `id`, `products` contra
+  `items`, `product_variant_id` contra `variant_id`. El código contempla **las
+  dos formas de cada par** justamente porque no se sabe cuál llega.
+- **Que `PUT /v1/{user_id}/products/variants/{id}` acepte `{ stock }`**.
+- **Que TiendaNube mande `Retry-After` en un 429**, y en qué formato. La función
+  pura contempla los tres casos; cuál ocurre, no lo sabemos.
+
+**Por qué importa que esté escrito acá.** Porque la suite de este hito es grande
+y verde, y una suite grande y verde se lee como «esto está probado». Lo que está
+probado es AdminApp de su lado del cable.
+
+**Primer paso.** `TIENDANUBE_API_URL` con valor por defecto el actual, para poder
+apuntar a un servidor de pruebas. Es media hora y convierte cinco preguntas
+abiertas en cinco tests. Los pasos manuales P1 y P2 —una compra real en una
+tienda real— siguen siendo la única forma de cerrarlas hoy.
+
+### 12f · `API_URL` y `CRON_SECRET` sin configurar: la reconciliación no se ejecuta
+
+**Qué falta.** Dos secretos de panel. `.github/workflows/tareas-diarias.yml:50-51`
+corta si faltan, y sin `CRON_SECRET` en Render el endpoint responde **404 aunque
+se lo llame**. Están sin marcar en
+[OPERACION.md](OPERACION.md#antes-del-primer-cliente-real) desde antes de este
+hito.
+
+**Por qué importa más que antes.** La decisión de sincronizar ante cada
+movimiento de stock viene con una red de tres partes: cola con reintento,
+agrupado y **reconciliación diaria**. Las dos primeras corren en el proceso; la
+tercera es este cron. **Sin él, un empujón que se perdió queda perdido**, y el
+número que alguien cambió a mano en el panel de TiendaNube no vuelve nunca.
+
+**Lo que sí está.** Toda la lógica está escrita y testeada llamando a la función
+directamente. Lo que falta es el disparador.
+
+**Cómo se ve que falta, sin entrar a ningún panel.** La pantalla muestra
+**«Última reconciliación»** y dice cuándo nunca corrió. Es deliberado: la
+ausencia de la red se ve, en vez de suponerse.
+
+**Primer paso.** Los tres pasos de
+[Tareas programadas](OPERACION.md#tareas-programadas). No es trabajo de
+desarrollo.
+
+### 12g · La guardia de aislamiento no ve el id que sale de un elemento de un arreglo
+
+**Qué falta.** Que `analizarCreates` (`tests/aislamientoEmpresas.test.js`)
+reconozca la forma `Modelo.create({ x_id: item.x_id })` dentro de un bucle sobre
+un arreglo del cuerpo.
+
+**Por qué importa.** Es la forma que tenía el IDOR de `POST /api/stock/bulk`, que
+**ya está corregido** —`d6ac55a`, la consulta que comprueba que los productos
+sean de la empresa antes de tocar una sola fila (`routes/general.js:236-253`)—.
+Lo que sigue abierto es el **detector**: `sospechosas` marca un valor cuando
+empieza en `req.params|body|query.` o cuando es un identificador que la función
+recibió como parámetro (`:450-461`). `item.product_id` no es ninguna de las dos
+—`item` es la variable del `for`—, así que **el patrón puede volver mañana en
+otro endpoint y la guardia lo va a dar por bueno**.
+
+Es exactamente el modo de falla que este repositorio viene juntando, y el hito
+013 ya lo encontró una vez con otra forma: la forma corta de ES6 y los routers
+que no se llaman `router`, que T1301 tuvo que enseñarle al mismo detector.
+
+**Primer paso.** Seguir el valor un salto más: si es `<ident>.<algo>_id` y
+`<ident>` es la variable de un `for…of` cuyo iterable sale del cuerpo del
+request, tratarlo como si fuera del cliente. Y **antes de nada, correr la suite
+entera**: ensanchar el detector cambia la población que mira, y las dos veces que
+se lo ensanchó apareció un IDOR vivo que nadie había visto.

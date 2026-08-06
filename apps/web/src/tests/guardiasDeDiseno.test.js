@@ -45,6 +45,52 @@ import { fileURLToPath } from 'node:url'
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
 const SRC = path.join(AQUI, '..')
 
+// ── Los cuatro patrones ──
+//
+// Estaban declarados adentro de cada `describe`. Viven acá arriba desde que
+// existe el bloque «Los dos rojos de esta guardia se leen distinto», que los
+// ejercita contra muestras sintéticas: un patrón copiado al lado de las
+// muestras puede derivar del que la guardia usa de verdad, y entonces las
+// muestras verificarían una guardia que no es ésta. Es la misma disciplina que
+// las dos muestras de `analizarFindDeOrden`.
+
+/**
+ * Un hexadecimal: un color elegido a ojo que NO existe en modo oscuro. Todo
+ * color sale de los tokens de `index.css`; si falta uno, se agrega ahí y se
+ * discute, no se inventa en el componente.
+ */
+const HEXADECIMAL = /#[0-9a-fA-F]{3,8}\b/
+
+/**
+ * Una regla `dark:` es la consecuencia de lo anterior: los tokens ya resuelven
+ * el modo oscuro, así que necesitarla significa que se usó un color de afuera.
+ * Lo que hay que corregir es el color, no agregar la variante.
+ */
+const REGLA_DARK = /\bdark:/
+
+/**
+ * Un `<table>` o un `Table*` de shadcn rompe el patrón de tabla en grid: sin
+ * las mismas `grid-template-columns` en el encabezado y en las filas, las
+ * etiquetas dejan de estar sobre sus datos.
+ */
+const TABLA_DE_SHADCN =
+  /<table\b|<\/table>|@\/components\/ui\/table|\bTableCell\b|\bTableHeader\b|\bTableRow\b/
+
+/**
+ * Las veintidós familias de color de Tailwind, con sus escalas. Un
+ * `text-blue-500` es exactamente lo mismo que un `#3b82f6`: un color elegido
+ * fuera del sistema, que no cambia en modo oscuro y que nadie relaciona con
+ * ningún token.
+ *
+ * ⚠ `white` y `black` quedan FUERA del patrón a propósito, y hay que decir por
+ * qué: `REGLAS-DISENO.md` fija el botón principal como `bg-brand text-white`, y
+ * la maqueta pone `color:#fff` adentro del botón de confirmar. Un patrón que
+ * los incluyera fallaría contra el propio sistema de diseño el primer día, y la
+ * salida barata sería comentar la guardia.
+ */
+const PALETA_DE_TAILWIND =
+  /\b(?:text|bg|border|ring|from|via|to|fill|stroke|divide|accent|caret|placeholder|outline|decoration|shadow)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:50|\d{3})\b/
+
 /**
  * Los archivos que ya aplican el patrón. Se agregan a medida que se rediseñan.
  *
@@ -99,6 +145,28 @@ const SRC = path.join(AQUI, '..')
  * cuatro de esta lista, comentar el patrón nuevo, meter las clases adentro de un
  * comentario para que `lineasQueMatchean` las saltee, o bajar el
  * `toHaveLength`. Si el rojo molesta, la salida es T1237, T1240 y T1242.
+ *
+ * ⚠⚠⚠⚠ Y VUELVE A PASAR POR CUARTA VEZ, a propósito, con TiendaNube. Entran
+ * TRES archivos que **todavía no están escritos** —`pages/Tiendanube.jsx`,
+ * `components/PanelDeMapeo.jsx` y `components/EstadoDeTiendanube.jsx`—, y esta
+ * vez ninguno de los tres existe siquiera vacío.
+ *
+ * **Esta guardia queda EN ROJO desde este commit**, y lo que la pone en rojo
+ * está enumerado —no es «algo falla»— y es de UN SOLO tipo:
+ *
+ *   · los tres archivos dan el hallazgo «el archivo NO existe: la guardia no
+ *     miró nada», que es una tarea pendiente y NO un color fuera del sistema.
+ *
+ * **Cualquier hallazgo que no sea de ese tipo, en este punto, es un defecto.**
+ * Los dos rojos se leen distinto a propósito, y hay un bloque de muestras
+ * sintéticas —«Los dos rojos de esta guardia se leen distinto»— que lo verifica
+ * sin depender de que los tres archivos existan: confundirlos es cómo se
+ * archiva un `border-green-500/30` creyendo que era «todavía no se escribió».
+ *
+ * Las tareas que la ponen en verde son **T1340** para
+ * `components/EstadoDeTiendanube.jsx`, **T1341** para
+ * `components/PanelDeMapeo.jsx` y **T1342** para `pages/Tiendanube.jsx`. La
+ * guardia baja de tres hallazgos a dos, a uno y a cero, en ese orden.
  */
 const NOMBRES = [
   'pages/InvoicesList.jsx',
@@ -117,6 +185,9 @@ const NOMBRES = [
   'pages/PurchaseOrders.jsx',
   'components/PanelOrdenDeCompra.jsx',
   'components/BloqueDeDocumentos.jsx',
+  'pages/Tiendanube.jsx',
+  'components/PanelDeMapeo.jsx',
+  'components/EstadoDeTiendanube.jsx',
 ]
 
 /**
@@ -172,52 +243,127 @@ function hallazgosDe({ nombre, existe, contenido }, regex) {
 }
 
 describe('No debe haber colores fuera de los tokens del sistema', () => {
-  const PATRON = /#[0-9a-fA-F]{3,8}\b/
-
   it.each(ARCHIVOS)('$nombre no tiene ningún valor hexadecimal', (archivo) => {
-    expect(hallazgosDe(archivo, PATRON)).toEqual([])
+    expect(hallazgosDe(archivo, HEXADECIMAL)).toEqual([])
   })
 })
 
 describe('No debe hacer falta ninguna regla dark:', () => {
-  const PATRON = /\bdark:/;
-
   it.each(ARCHIVOS)('$nombre no tiene reglas dark:', (archivo) => {
-    expect(hallazgosDe(archivo, PATRON)).toEqual([])
+    expect(hallazgosDe(archivo, REGLA_DARK)).toEqual([])
   })
 })
 
 describe('La tabla es un grid y no un <table>', () => {
-  const PATRON = /<table\b|<\/table>|@\/components\/ui\/table|\bTableCell\b|\bTableHeader\b|\bTableRow\b/
-
   it.each(ARCHIVOS)('$nombre no usa <table> ni los Table* de shadcn', (archivo) => {
-    expect(hallazgosDe(archivo, PATRON)).toEqual([])
+    expect(hallazgosDe(archivo, TABLA_DE_SHADCN)).toEqual([])
   })
 })
 
 describe('No debe haber clases de la paleta de Tailwind', () => {
-  // Las veintidós familias de color de Tailwind, con sus escalas. Un
-  // `text-blue-500` es exactamente lo mismo que un `#3b82f6`: un color elegido
-  // fuera del sistema, que no cambia en modo oscuro y que nadie relaciona con
-  // ningún token.
-  //
-  // ⚠ `white` y `black` quedan FUERA del patrón a propósito, y hay que decir
-  // por qué: `REGLAS-DISENO.md` fija el botón principal como
-  // `bg-brand text-white`, y la maqueta pone `color:#fff` adentro del botón de
-  // confirmar. Un patrón que los incluyera fallaría contra el propio sistema de
-  // diseño el primer día, y la salida barata sería comentar la guardia.
-  const PATRON =
-    /\b(?:text|bg|border|ring|from|via|to|fill|stroke|divide|accent|caret|placeholder|outline|decoration|shadow)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:50|\d{3})\b/
-
   it.each(ARCHIVOS)('$nombre no usa clases de la paleta de Tailwind', (archivo) => {
-    expect(hallazgosDe(archivo, PATRON)).toEqual([])
+    expect(hallazgosDe(archivo, PALETA_DE_TAILWIND)).toEqual([])
+  })
+})
+
+// ════════════════════════════════════════════
+//  Los DOS rojos de esta guardia, y por qué tienen que leerse distinto
+//
+//  Un archivo de `NOMBRES` que todavía no se escribió y un archivo escrito con
+//  un color fuera del sistema ponen los mismos casos en rojo. **No son lo
+//  mismo**: el primero es una tarea pendiente de este hito y el segundo es un
+//  defecto que hay que corregir antes de mergear.
+//
+//  Confundirlos tiene una dirección peligrosa y una sola: quien está esperando
+//  tres rojos que dicen «todavía no se escribió» archiva un cuarto que dice
+//  «L353: border-green-500/30» como si fuera el mismo, porque los cuatro
+//  aparecen juntos en la misma corrida y con el mismo nombre de caso.
+//
+//  ── Sobre pasar en vacío ──
+//
+//  `leer()` ya distingue los dos casos y `hallazgosDe()` ya devuelve textos
+//  distintos, pero hasta acá **nada lo verificaba**: la única forma de
+//  comprobarlo era que existiera un archivo de la lista sin escribir, o sea
+//  justo cuando ya no se puede confiar en la lectura. Estas tres muestras lo
+//  fijan sin depender de ningún archivo real, y siguen valiendo el día que los
+//  diecinueve estén escritos —que es el día en que alguien vuelve a envolver el
+//  `readFileSync` en un `try` para que «no explote», y ahí el archivo que falta
+//  pasa a ser un archivo sin hallazgos, que es exactamente igual a un archivo
+//  impecable—.
+// ════════════════════════════════════════════
+
+const MUESTRA_SIN_ESCRIBIR = { nombre: 'pages/Tiendanube.jsx', existe: false, contenido: '' }
+
+const MUESTRA_CON_COLOR_DE_AFUERA = {
+  nombre: 'pages/Tiendanube.jsx',
+  existe: true,
+  contenido: [
+    'export default function Tiendanube() {',
+    '  const marca = "#4f46e5"',
+    '  return <span className="text-blue-500">{marca}</span>',
+    '}',
+  ].join('\n'),
+}
+
+const MUESTRA_IMPECABLE = {
+  nombre: 'pages/Tiendanube.jsx',
+  existe: true,
+  contenido: [
+    'export default function Tiendanube() {',
+    '  return <span className="text-ok">TiendaNube</span>',
+    '}',
+  ].join('\n'),
+}
+
+describe('Los dos rojos de esta guardia se leen distinto', () => {
+  it('un archivo que todavía no se escribió dice que la guardia NO miró nada', () => {
+    // Y lo dice para los CUATRO patrones, no solo para uno: cualquiera de los
+    // cuatro que devolviera `[]` sobre un archivo inexistente sería un patrón
+    // que pasa en verde sin haber leído una línea.
+    for (const patron of [HEXADECIMAL, REGLA_DARK, TABLA_DE_SHADCN, PALETA_DE_TAILWIND]) {
+      expect(hallazgosDe(MUESTRA_SIN_ESCRIBIR, patron)).toEqual([
+        'pages/Tiendanube.jsx — el archivo NO existe: la guardia no miró nada',
+      ])
+    }
+  })
+
+  it('un archivo escrito con un color de afuera lo nombra con su número de línea, y NO dice «no existe»', () => {
+    expect(hallazgosDe(MUESTRA_CON_COLOR_DE_AFUERA, HEXADECIMAL)).toEqual([
+      'L2: const marca = "#4f46e5"',
+    ])
+    expect(hallazgosDe(MUESTRA_CON_COLOR_DE_AFUERA, PALETA_DE_TAILWIND)).toEqual([
+      'L3: return <span className="text-blue-500">{marca}</span>',
+    ])
+
+    // El texto es lo que separa las dos lecturas. Si algún día los dos rojos
+    // dijeran lo mismo, quien lee la salida no tendría con qué distinguirlos.
+    const conColor = hallazgosDe(MUESTRA_CON_COLOR_DE_AFUERA, HEXADECIMAL)
+    expect(conColor.join('\n')).not.toContain('NO existe')
+  })
+
+  it('un archivo escrito y sin colores de afuera no da ningún hallazgo', () => {
+    // Sin esto la guardia podría estar fallando siempre, que es tan inútil como
+    // no fallar nunca: la tercera muestra es la que dice que los tres estados
+    // —falta, está mal, está bien— son tres y no dos.
+    for (const patron of [HEXADECIMAL, REGLA_DARK, TABLA_DE_SHADCN, PALETA_DE_TAILWIND]) {
+      expect(hallazgosDe(MUESTRA_IMPECABLE, patron)).toEqual([])
+    }
   })
 })
 
 // Si esta lista queda vacía, la guardia pasa a ser un test que siempre pasa.
 describe('La guardia mira los archivos que dice mirar', () => {
-  it('los dieciséis archivos existen y tienen contenido', () => {
-    expect(ARCHIVOS).toHaveLength(16)
+  it('los diecinueve archivos existen y tienen contenido', () => {
+    // Diecinueve = los dieciséis de los hitos 4, 5 y 6 —el uno de InvoicesList,
+    // los seis de Inventario, los cinco del punto de venta y los cuatro de
+    // proveedores y órdenes— más los TRES de TiendaNube: `pages/Tiendanube.jsx`
+    // (T1342), `components/PanelDeMapeo.jsx` (T1341) y
+    // `components/EstadoDeTiendanube.jsx` (T1340).
+    //
+    // El número está escrito y no se calcula de `NOMBRES.length`: contra la
+    // lista que se está verificando, el ancla pasaría igual el día que alguien
+    // saque un archivo para que la guardia deje de molestar.
+    expect(ARCHIVOS).toHaveLength(19)
 
     // Primero los que faltan, y con su propio texto: un archivo que todavía no
     // se escribió es una tarea pendiente y se lee distinto de un color fuera

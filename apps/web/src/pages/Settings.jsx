@@ -7,9 +7,9 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import {
   ShieldCheck, FileCheck, Key, AlertCircle, CheckCircle2,
-  Info, ExternalLink, Upload, RefreshCw, ShoppingCart
+  Info, ExternalLink, Upload, RefreshCw, Store, ArrowRight
 } from 'lucide-react'
-import { useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 
 const Settings = () => {
   const [config, setConfig] = useState({
@@ -22,8 +22,6 @@ const Settings = () => {
   const [saveStatus, setSaveStatus] = useState({ type: '', msg: '' })
   const [generatedFiles, setGeneratedFiles] = useState(null)
   const [certInfo, setCertInfo] = useState(null)
-  const [tiendanubeLinked, setTiendanubeLinked] = useState(false)
-  const [searchParams, setSearchParams] = useSearchParams()
 
   const fetchCertInfo = async () => {
     try {
@@ -57,37 +55,26 @@ const Settings = () => {
     } catch (err) { console.error('Error fetching AFIP config:', err) }
   }
 
+  // ⚠ Acá vivían tres cosas de TiendaNube, y las tres se fueron con la tarjeta
+  // (hito 7, US7 escenario 5):
+  //
+  //  · `checkTiendaNubeStatus`, que leía `res.data.linked` de `GET
+  //    /tiendanube/status`. Ese campo **ya no existe**: el endpoint ahora
+  //    devuelve `estado` con cuatro valores. Mientras estuvo, la tarjeta decía
+  //    «no vinculada» SIEMPRE, incluso con la tienda conectada — y su `catch`
+  //    era un `console.error`, así que una caída de red se veía igual.
+  //  · `handleConnectTiendaNube`, que mandaba al usuario a una URL de
+  //    autorización sin `state`. Ese circuito terminaba siempre en error.
+  //  · La lectura de `?tiendanube=success|error`, que quedó muerta cuando el
+  //    callback pasó a redirigir a `/tiendanube?estado=…&motivo=…`.
+  //
+  // Dos lugares que muestran el estado de lo mismo se separan y **nada avisa**;
+  // ya pasó con las listas de estados de orden que la funcionalidad 012 encontró
+  // duplicadas. Ahora hay uno solo, y desde acá se llega por el enlace de abajo.
   useEffect(() => {
     fetchConfig()
     fetchCertInfo()
-    checkTiendaNubeStatus()
-
-    if (searchParams.get('tiendanube') === 'success') {
-      setSaveStatus({ type: 'ok', msg: 'TiendaNube vinculada correctamente.' })
-      setSearchParams({})
-    } else if (searchParams.get('tiendanube') === 'error') {
-      setSaveStatus({ type: 'error', msg: 'Error al vincular TiendaNube.' })
-      setSearchParams({})
-    }
-  }, [searchParams])
-
-  const checkTiendaNubeStatus = async () => {
-    try {
-      const res = await api.get('/tiendanube/status')
-      setTiendanubeLinked(res.data.linked)
-    } catch (err) { console.error('Error status TiendaNube:', err) }
-  }
-
-  const handleConnectTiendaNube = async () => {
-    try {
-      const res = await api.get('/tiendanube/auth')
-      if (res.data.url) {
-        window.location.href = res.data.url
-      }
-    } catch (err) {
-      setSaveStatus({ type: 'error', msg: 'Error al iniciar conexión con TiendaNube' })
-    }
-  }
+  }, [])
 
   const checkStatus = async () => {
     try {
@@ -369,36 +356,59 @@ const Settings = () => {
             </Card>
           </form>
 
-          {/* TiendaNube Card */}
+          {/* ── TiendaNube: acá solo queda el enlace ──
+
+              La tarjeta que estaba en este lugar mostraba el estado de la
+              conexión y ofrecía vincular. Se fue entera, y no por prolijidad:
+              afirmaba dos cosas falsas —«El stock se sincroniza automáticamente
+              mediante webhooks», sobre un webhook que respondía 401 a todo, y
+              «sincronización bidireccional», sobre algo que va en un solo
+              sentido— y leía un `linked` que el endpoint ya no devuelve, así que
+              decía «no vinculada» con la tienda vinculada.
+
+              El estado, el mapeo y la sincronización viven ahora en
+              `/tiendanube`, que es UN solo lugar. */}
           <Card className="mt-6">
             <CardHeader className="pb-4">
               <CardTitle className="text-sm flex items-center gap-2">
-                <ShoppingCart className="h-4 w-4 text-primary" /> Integración TiendaNube
+                <Store className="h-4 w-4 text-primary" /> Integración TiendaNube
               </CardTitle>
               <CardDescription className="text-xs">
-                Sincronizá tu stock y ventas con tu tienda online.
+                Tu tienda online tiene su propia pantalla.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {tiendanubeLinked ? (
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-2 text-ok font-medium text-sm">
-                    <CheckCircle2 className="h-5 w-5" /> Cuenta de TiendaNube vinculada
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    El stock se sincroniza automáticamente mediante webhooks.
-                  </p>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  <p className="text-xs text-muted-foreground">
-                    Conectá tu cuenta de TiendaNube para habilitar la sincronización bidireccional.
-                  </p>
-                  <Button onClick={handleConnectTiendaNube} variant="outline" className="w-full">
-                    Conectar con TiendaNube
-                  </Button>
-                </div>
-              )}
+              <div className="flex flex-col gap-3">
+                <p className="text-xs text-muted-foreground">
+                  El estado de la conexión, el mapeo de tus productos contra las variantes
+                  de la tienda y la sincronización de stock están en TiendaNube.
+                </p>
+
+                {/* Un `Link` y no un `Button`: es navegación, no una acción.
+                    Con un `onClick` que empuja la ruta a mano se pierden el
+                    clic con Ctrl, el «abrir en pestaña nueva» y el `href` que el
+                    navegador muestra abajo — y esta pantalla ya tuvo un botón
+                    que llevaba a un lugar que no existía. */}
+                <Link
+                  to="/tiendanube"
+                  className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg
+                             border border-border bg-background px-2.5 text-sm font-medium
+                             transition-colors hover:bg-muted"
+                >
+                  Ir a TiendaNube <ArrowRight className="h-4 w-4" />
+                </Link>
+
+                {/* ⚠ El enlace puede devolverte al punto de venta: `/tiendanube`
+                    está detrás del módulo `tiendanube` y todavía no lo tiene
+                    ninguna empresa (paso manual P4). Un enlace que te expulsa sin
+                    decir por qué se lee como un sistema roto; dicho, se lee como
+                    lo que es. */}
+                <p className="text-xs text-muted-foreground">
+                  Si la integración todavía no está habilitada para tu empresa, ese enlace
+                  te devuelve al punto de venta y la sección no aparece en el menú. Pedila y
+                  se habilita.
+                </p>
+              </div>
             </CardContent>
           </Card>
         </div>

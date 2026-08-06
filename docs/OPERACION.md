@@ -184,6 +184,73 @@ no le da, la diferencia es exactamente lo pedido y no recibido.
 nada». Sería tener la corrección escrita y apagada, o sea el problema anterior con
 más pasos.
 
+### "La tienda online no se actualiza"
+
+**Dónde se mira: `/tiendanube`.** Desde el hito 7 hay una pantalla propia y es el
+único lugar que dice el estado de la conexión — la tarjeta que estaba al final de
+Facturación se sacó justamente para que no haya dos lugares que digan lo mismo y
+se separen sin que nada avise.
+
+**1 · Qué dice el bloque de estado, y qué hacer con cada cosa.**
+
+| Lo que se ve | Qué significa | Qué hacer |
+|---|---|---|
+| **La integración no está configurada en el servidor** | Falta `TIENDANUBE_CLIENT_ID`. **No es lo mismo que «no vinculada»** y por eso se dibuja distinto | Ver «Las tres variables», abajo |
+| **No hay ninguna tienda conectada** | El servidor está configurado y esta empresa nunca completó el OAuth | «Conectar con TiendaNube» |
+| **Vinculada** | Hay tienda y la última comunicación no falló | Seguir por el punto 2 |
+| **Vinculada con error** | La última llamada a TiendaNube falló. El motivo está en la misma tarjeta | Si dice que hay que volver a vincular, el token se revocó del lado de la tienda: desvincular y conectar de nuevo |
+| **No pudimos comprobar el estado** | `GET /api/tiendanube/status` no contestó. **No dice «no vinculada»**, que es lo que hacía la tarjeta vieja: una caída de red y una tienda sin conectar se veían idénticas | Recargar; si sigue, mirar los logs con `msg` que empieza en `tiendanube:` |
+
+**2 · Los tres relojes de la pantalla.** Los tres están a la vista a propósito:
+una fecha vieja leída como si fuera de ahora es la forma más barata de tomar una
+decisión equivocada.
+
+- **«Catálogo actualizado el»** — cuándo se trajo por última vez la lista de
+  variantes de TiendaNube. Si es vieja, la tabla puede estar mostrando variantes
+  que ya no existen o no mostrar las nuevas. Se arregla con **«Refrescar
+  catálogo»**.
+- **«Última comunicación»** — la última vez que AdminApp le habló a la tienda.
+- **«Última reconciliación»** — la corrida diaria que compara lo que tenemos, lo
+  que mandamos y lo que la tienda dice, y encola lo que difiere. **Si dice que
+  nunca corrió, la red de respaldo no existe**: ver el punto 5.
+
+**3 · ¿Está mapeado?** Una variante **sin mapear no recibe stock nunca**, y no
+es un error: es que nadie dijo qué producto del sistema le corresponde. La tabla
+lo dice fila por fila y el filtro «Solo sin mapear» las junta. El bloque de
+estado cuenta cuántas de cuántas están mapeadas.
+
+**4 · ¿De qué sucursal sale el número?** De **una sola**, la sucursal designada,
+y está escrita en la pantalla. El stock de las otras no se publica. Si el número
+que ve el cliente en la tienda no es el que se esperaba, lo primero es mirar si
+la sucursal designada es la que corresponde. Cambiarla **encola todas las
+variantes mapeadas** para volver a empujar, y la confirmación dice cuántas son
+antes de aceptar.
+
+Y se publica el **disponible**, no la cantidad. Hoy los dos números coinciden en
+casi todos los casos porque no existe el concepto de comprometido; está anotado
+en [PROXIMOS-PROYECTOS.md](PROXIMOS-PROYECTOS.md).
+
+**5 · Si nada de lo anterior explica el desfase.** El caso normal no depende del
+cron: cada movimiento de stock encola la variante y el empujón sale en el mismo
+proceso. Lo que el cron atrapa es **el empujón que se perdió** —la tienda no
+contestó, el proceso se reinició—. Sin él, ese empujón queda perdido y la única
+señal es que «Última reconciliación» diga que nunca corrió. Ver
+[Tareas programadas](#tareas-programadas).
+
+**6 · Lo que la pantalla dice y hay que creerle.** Un pedido de la tienda
+**baja el inventario y no registra ninguna venta**: no aparece en facturación, ni
+en el flujo de caja, ni en los reportes. Y un pedido **cancelado o devuelto en
+TiendaNube no repone el stock**: hay que ajustarlo a mano desde Inventario. Las
+dos cosas están escritas en la propia pantalla, y la tarjeta vieja decía lo
+contrario —«sincronización bidireccional»—, que es cómo alguien cierra la caja
+con una diferencia que no puede explicar.
+
+**7 · Lo que sí es un defecto y hay que mirar en los logs.** Un pedido que
+llegó y **no descontó algún ítem** aparece en la pantalla, con el motivo:
+`sin_mapeo`, `sin_stock_en_sucursal`, `sin_variante` o `cantidad_cero`. Antes eso
+se salteaba en silencio y lo único que quedaba era un inventario mal, que aparece
+en un recuento físico tres meses después.
+
 ### "No puedo facturar" / AFIP rechaza
 
 Por orden de probabilidad:
@@ -311,6 +378,100 @@ Es el free tier funcionando como está documentado:
   segundos; Sequelize reintenta.
 
 Ninguna de las dos cosas es un bug. Se resuelven con plan pago.
+
+---
+
+## TiendaNube · habilitarla y configurarla
+
+Tres cosas, y las tres son de panel o de una llamada. Ninguna se resuelve con
+código.
+
+### 1 · Habilitar el módulo para una empresa
+
+**Sin esto la pantalla no existe para nadie.** `/tiendanube` cuelga de
+`RouteGuard requiredModule="tiendanube"` (`App.jsx`), y ninguna empresa tiene
+`tiendanube` en `settings.enabled_modules`: quien escriba la URL a mano termina
+en `/pos` y en la barra lateral no aparece el ítem. **No se arregla sacándole el
+guard a la ruta** — el gate va en los tres lados (menú, `RouteGuard` y API) o no
+sirve.
+
+```
+# 1. Leer el settings ACTUAL de la empresa
+GET /api/empresas/<id>
+
+# 2. Mandarlo ENTERO, con la clave agregada
+PUT /api/empresas/<id>
+{ "settings": { …todo lo que devolvió el GET…,
+                "enabled_modules": [ …los que ya estaban…, "tiendanube" ] } }
+```
+
+⚠⚠ **El `PUT` reemplaza `settings` completo** (`routes/empresas.js:501-511`).
+Armarlo de memoria **pisa el resto de la configuración de la empresa**: el punto
+de venta de AFIP, la condición fiscal, los márgenes. Hay que leer el JSON actual,
+agregarle la clave y mandarlo completo.
+
+⚠ **El `<id>` tiene que ser el de la empresa activa de la sesión**
+(`requireEmpresaPropia`): un operador de la plataforma primero cambia de empresa
+(`PUT /api/empresas/cambiar-empresa/<id>`) y recién después manda el `PUT`.
+
+Dos detalles que ahorran una confusión:
+
+- Si `enabled_modules` **no existe**, la empresa ve **todas** las pantallas: el
+  guard solo filtra cuando la clave es un arreglo. O sea que agregar la clave por
+  primera vez **puede sacarle pantallas** a esa empresa si la lista queda corta.
+- El dueño de la empresa (`settings.owner_auth0_sub`) pasa el guard siempre, sin
+  mirar la lista. Que a él se le vea la pantalla no significa que al resto
+  también.
+
+### 2 · Las tres variables de entorno
+
+Van en Render → Environment. Están en `.env.example` bajo «TiendaNube
+(opcional)», y «opcional» quiere decir que el resto del sistema arranca sin
+ellas, no que la integración funcione.
+
+| Variable | Para qué | Qué pasa si falta |
+|---|---|---|
+| `TIENDANUBE_CLIENT_ID` | Armar la URL de autorización y canjear el token | La pantalla dice **«no está configurada en el servidor»** y no ofrece conectar. Es un estado propio y distinto de «no vinculada», a propósito |
+| `TIENDANUBE_CLIENT_SECRET` | Canjear el token **y verificar la firma del webhook** | **Todo webhook se rechaza con 401 y se ve idéntico a un ataque.** Ver abajo |
+| `TIENDANUBE_CONTACT_EMAIL` | La cabecera `User-Agent` que TiendaNube exige | Sale el valor de relleno `contacto@tudominio.com`. TiendaNube puede cortar por eso, y el síntoma es un 4xx que no dice por qué |
+
+**Lo de `TIENDANUBE_CLIENT_SECRET` merece leerse dos veces.** Sin esa variable la
+firma no puede validar, así que el webhook responde 401 **a todo**, y **eso es lo
+mismo que se ve si alguien estuviera falsificando webhooks**. La diferencia está
+en el log: el rechazo dice cuál de las tres cosas faltó —el secreto del servidor,
+la cabecera de la firma, o el cuerpo crudo—. Buscar `msg` que empiece en
+`tiendanube:`.
+
+Y el 401 no es sólo un pedido que no descuenta: **TiendaNube cuenta los errores y
+deshabilita el webhook** cuando se repiten. Un despliegue sin esa variable termina
+con la integración apagada del otro lado, y volver a encenderla es reinstalar la
+app en la tienda. Por eso todos los demás caminos del webhook responden 200.
+
+### 3 · Si la reconciliación no corre
+
+La reconciliación es la **red de respaldo**, no el mecanismo principal: cada
+movimiento de stock encola su variante y el empujón sale en el mismo proceso. Lo
+que la reconciliación atrapa es el empujón que se perdió —la tienda no contestó,
+el proceso se reinició— y el número que alguien cambió a mano en el panel de
+TiendaNube.
+
+La dispara `POST /api/tareas/ejecutar`, o sea el mismo cron que vence los trials.
+**Hoy no corre**: faltan los dos secretos, y están sin marcar en la lista de
+[Antes del primer cliente real](#antes-del-primer-cliente-real).
+
+- **`CRON_SECRET`** — en Render **y** en GitHub, con el **mismo valor**. Sin él
+  configurado en Render, el endpoint responde **404 aunque se lo llame**: no
+  queda una ruta abierta por olvido, y desde afuera se ve como si la ruta no
+  existiera.
+- **`API_URL`** — en GitHub. `.github/workflows/tareas-diarias.yml:50-51` corta
+  si falta, así que el workflow falla con el motivo escrito.
+
+El procedimiento completo es el de [Tareas programadas](#tareas-programadas): son
+los mismos dos secretos, no dos pares distintos.
+
+**Cómo se sabe que quedó andando**: al día siguiente, en `/tiendanube`, el bloque
+de estado deja de decir que la reconciliación nunca corrió. Para no esperar:
+pestaña **Actions → Tareas diarias → Run workflow**.
 
 ---
 
