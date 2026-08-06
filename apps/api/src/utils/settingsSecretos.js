@@ -36,6 +36,41 @@ function esSecreto(clave) {
   return SETTINGS_SECRETOS.includes(clave);
 }
 
+// ════════════════════════════════════════════
+//  Las que se LEEN por la API pero solo las escribe el servidor
+//
+//  Son otra cosa que las secretas y por eso son otra lista. `afip_environment`
+//  y `afip_pv` **tienen que salir** por `GET /api/settings`: la pantalla de
+//  Ajustes → Facturación necesita saber contra qué ambiente factura la empresa y
+//  con qué punto de venta para poder dibujarse. Meterlas en `SETTINGS_SECRETOS`
+//  las convertiria en `afip_pv_cargado: true`, que no sirve para nada.
+//
+//  ── Que pasaba, y por que no lo cerro la lista de secretos ──
+//
+//  `01fc77d` cerro la fuga de `afip_key` y de paso bloqueo su escritura por
+//  `PUT /api/settings/:key`. Pero el agujero tenia dos mitades y la que muerde
+//  quedo abierta: `PUT /api/settings/afip_environment` con `"production"`
+//  seguia funcionando, y **no invalida el ticket WSAA cacheado**, que se emitio
+//  contra homologacion.
+//
+//  O sea: por esa puerta se podia pasar una empresa a produccion —comprobantes
+//  fiscales de verdad, numeracion correlativa consumida— sin pasar por ninguna
+//  de las validaciones de `POST /api/afip/setup`, y con el ticket viejo todavia
+//  en memoria. Y `afip_pv` es peor todavia: escribir un punto de venta que ARCA
+//  no tiene declarado no falla en el momento, falla cuando hay que emitir.
+//
+//  `afip_verificacion` entra por un motivo distinto: es **evidencia**. La
+//  escribe el servidor despues de que AFIP contesto, y una evidencia que el
+//  cliente puede escribir no es evidencia de nada.
+// ════════════════════════════════════════════
+
+/** Salen por la API, pero la única mano que las escribe es la del servidor. */
+const SETTINGS_DE_SOLO_LECTURA = ['afip_environment', 'afip_pv', 'afip_verificacion'];
+
+function esDeSoloLectura(clave) {
+  return SETTINGS_DE_SOLO_LECTURA.includes(clave);
+}
+
 /**
  * Saca los secretos de un objeto de configuracion y deja una bandera por cada
  * uno: `afip_key_cargado: true|false`.
@@ -60,4 +95,10 @@ function sinSecretos(configuracion = {}) {
   return limpia;
 }
 
-module.exports = { SETTINGS_SECRETOS, esSecreto, sinSecretos };
+module.exports = {
+  SETTINGS_SECRETOS,
+  esSecreto,
+  sinSecretos,
+  SETTINGS_DE_SOLO_LECTURA,
+  esDeSoloLectura,
+};

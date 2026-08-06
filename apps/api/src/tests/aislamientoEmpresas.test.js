@@ -838,7 +838,7 @@ describe('Ningun include de un hijo con empresa_id se trae sin filtrar', () => {
     expect(analizarIncludes('muestra/buena.js', MUESTRA_INCLUDE_BUENA).sinFiltrar).toEqual([]);
   });
 
-  it('encuentra los cuatro includes de hijos con empresa_id que tiene que mirar', () => {
+  it('encuentra los tres includes de hijos con empresa_id que tiene que mirar', () => {
     // **El ancla, y se lee en las DOS direcciones.**
     //
     // Si SUBE, hay un include nuevo de un hijo con empresa_id y **hay que
@@ -871,14 +871,33 @@ describe('Ningun include de un hijo con empresa_id se trae sin filtrar', () => {
     // Si el numero bajara MAS de cuatro, se saco un include que este plan no
     // nombra y hay que leerlo.
     //
+    // ── Por que bajo de 4 a 3 (hito 014, corte 2, T1355) ──
+    //
+    // El que se fue es **Sale as 'sales' de services/dashboardService.js**, en
+    // `_customerStats`. Estaba bien puesto —traia su `where: { empresa_id }`—
+    // pero servia a un N+1: por cada cliente que devolvia ese include se hacian
+    // DOS `SUM` mas, en serie. Con 500 clientes eran 1.000 consultas
+    // secuenciales en cada carga del panel de control (hallazgo P16, FR-062).
+    //
+    // Lo reemplazan dos GROUP BY fijos, con el molde de routes/suppliers.js. El
+    // include que quedo en su lugar es `Customer as 'customer'` —la direccion
+    // contraria— y **no entra en esta cuenta**: es un belongsTo. Su `where` con
+    // `empresa_id` esta igual, y eso lo verifica el test de integracion
+    // `panel.integracion.test.js`, no esta guardia.
+    //
+    // Los tres que quedan son los dos `Stock as 'stock'` de routes/products.js y
+    // el `SupplierDocument as 'documents'` de la ficha de proveedores.
+    //
     // ⚠ El include de Supplier que T1211 le agrego a getOrders **no entra en
     // esta cuenta**: es un belongsTo, y el detector solo clasifica HasMany y
-    // HasOne. Queda escrito porque es lo primero que alguien va a mirar cuando
-    // el numero no le cierre.
+    // HasOne. Lo mismo vale para los cuatro includes de `Product as 'product'`
+    // que la 014 toca (`Stock.belongsTo(Product)`): el hallazgo P17 dice
+    // textualmente que la guardia no los puede ver. Queda escrito porque es lo
+    // primero que alguien va a mirar cuando el numero no le cierre.
     const deHijos = analisis.flatMap((a) => a.deHijos);
 
     expect(deHijos.length).toBeGreaterThan(0);
-    expect(deHijos.length).toBe(4);
+    expect(deHijos.length).toBe(3);
   });
 
   it.each(archivos)('$nombre', ({ nombre, contenido }) => {

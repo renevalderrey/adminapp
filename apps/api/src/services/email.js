@@ -85,9 +85,31 @@ function welcomeEmail(usuarioNombre, empresaNombre) {
   `;
 }
 
+/**
+ * El mail de invitacion.
+ *
+ * ⚠ El enlace va a `/?invite=<token>` y **no** a `/accept-invite/<token>`, que
+ * es adonde apuntaba hasta este hito: esa ruta **no existe en `App.jsx`**. Quien
+ * abria el enlace del mail entraba, el `<Routes>` no matcheaba nada y el `<main>`
+ * quedaba **en blanco**. Era el segundo de los tres eslabones rotos de la cadena
+ * de la invitacion, y el sintoma —una pagina vacia— no dejaba ni un log.
+ *
+ * ── Por que NO es una `<Route>` nueva ──
+ *
+ * Porque el `<Routes>` de `App.jsx` vive adentro del shell autenticado: exige
+ * contexto de empresa y desloguea con `contextError`, que es exactamente lo que
+ * un invitado no tiene todavia. Una ruta nueva ahi lo sacaria de la aplicacion
+ * antes de que pudiera aceptar nada. Y sumaria una decimonovena ruta contra
+ * FR-004.
+ *
+ * `?invite=` es el mecanismo que la aplicacion **ya tiene**: `App.jsx` lo lee del
+ * query string apenas monta, lo guarda en `localStorage` y lo canjea en cuanto
+ * hay usuario. Funciona igual si la persona todavia se tiene que registrar,
+ * porque el token sobrevive al ida y vuelta con Auth0.
+ */
 function invitationEmail(invitadorNombre, empresaNombre, token) {
   const frontendUrl = process.env.FRONTEND_URL || '#';
-  const acceptUrl = `${frontendUrl}/accept-invite/${token}`;
+  const acceptUrl = `${frontendUrl}/?invite=${token}`;
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h1 style="color: #6d28d9;">Te invitaron a unirte a ${empresaNombre}</h1>

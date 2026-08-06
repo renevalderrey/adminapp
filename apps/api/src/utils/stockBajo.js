@@ -1,25 +1,37 @@
 // ════════════════════════════════════════════
 //  ADMINAPP · Que cuenta como "stock bajo"
 //
-//  Existe porque hoy hay dos reglas distintas para la misma pregunta:
+//  Existe porque hubo dos reglas distintas para la misma pregunta:
 //
-//   - GET /api/faltantes (general.js:416) usa el min_stock de la fila si esta
-//     cargado y, si no, un umbral general de 3 unidades. El 3 esta escrito
-//     como literal ahi adentro.
-//   - GET /api/alerts (general.js:351) exige `min_stock > 0`, o sea que un
-//     producto SIN minimo cargado no alerta nunca, aunque este en cero.
+//   - GET /api/faltantes usa el min_stock de la fila si esta cargado y, si no,
+//     un umbral general de 3 unidades. El 3 estaba escrito como literal ahi
+//     adentro.
+//   - El panel de control exigia `min_stock > 0`, o sea que un producto SIN
+//     minimo cargado no alertaba nunca, aunque estuviera en cero.
 //
-//  El resultado es que dos pantallas del mismo sistema no coinciden sobre que
+//  El resultado era que dos pantallas del mismo sistema no coincidian sobre que
 //  falta. FR-016 y FR-017 piden una sola regla, y esta es. El umbral entra
 //  **por parametro**: la misma funcion se porta al navegador
 //  (apps/web/src/utils/stockBajo.js) y dos literales iguales en dos
 //  repositorios empiezan iguales y terminan distintos.
 //
-//  Lo que NO se toca a proposito: GET /api/alerts y dashboardService.js:250
-//  siguen con la regla vieja. Es el riesgo 6 del plan —cambiarlos mueve un
-//  numero que el usuario mira todos los dias desde el panel de control, y
-//  FR-016 no los incluye—, asi que Inventario va a mostrar mas productos en
-//  stock bajo que el panel.
+//  ── El panel de control tambien usa esta regla, desde la 014 ──
+//
+//  Hasta ese corte, este encabezado decia que el panel quedaba afuera **a
+//  proposito** (riesgo 6 del plan de la 011): cambiarlo movia un numero que el
+//  dueño mira todos los dias. Lo que volvio intolerable la divergencia es que el
+//  Panel pasa a ENLAZAR a la pantalla de Faltantes: un aviso que dice «7
+//  productos por debajo del minimo» y lleva a una pantalla que muestra doce es
+//  peor que los dos numeros sueltos.
+//
+//  Asi que `dashboardService._productStats` y `_lowStockAlerts` leen las filas y
+//  cuentan con `esStockBajo`, igual que GET /api/faltantes. Traducir la regla a
+//  SQL habria sido mas barato y habria dejado **dos escrituras de la misma
+//  regla**, que es exactamente por lo que este archivo existe.
+//
+//  Consecuencia visible, avisada en docs/OPERACION.md: el numero de «stock bajo»
+//  del Panel **subio**, porque ahora cuenta los productos en cero sin minimo
+//  cargado.
 // ════════════════════════════════════════════
 
 /**

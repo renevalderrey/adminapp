@@ -11,7 +11,7 @@ const { findScoped } = require('../utils/tenantScope');
 const { fallo } = require('../utils/errores');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
 const { UMBRAL_POR_DEFECTO, limiteDeStockBajo, esStockBajo } = require('../utils/stockBajo');
-const { esSecreto, sinSecretos } = require('../utils/settingsSecretos');
+const { esSecreto, sinSecretos, esDeSoloLectura } = require('../utils/settingsSecretos');
 
 // Los dos mensajes de stock negativo viven acá porque los usan las DOS puertas
 // —`PUT /stock/:id` y `POST /stock`— y tienen que decir exactamente lo mismo.
@@ -472,6 +472,25 @@ router.put('/settings/:key', checkPermission('config.editar'), async (req, res) 
       return res.status(400).json({
         ok: false,
         error: 'El certificado y la clave de AFIP se cargan desde Ajustes → Facturación, que los valida.',
+      });
+    }
+
+    // La otra mitad del mismo agujero, y la que muerde más.
+    //
+    // Bloquear los secretos dejó `PUT /api/settings/afip_environment` con
+    // `"production"` funcionando: por acá se pasaba una empresa a producción
+    // —comprobantes fiscales reales, numeración correlativa consumida— sin pasar
+    // por ninguna validación y **sin invalidar el ticket WSAA cacheado**, que se
+    // había emitido contra homologación. Lo mismo `afip_pv`: un punto de venta
+    // que ARCA no tiene declarado no falla acá, falla al emitir.
+    //
+    // No son secretas —la pantalla las lee para dibujarse— así que no van en
+    // `SETTINGS_SECRETOS`: van en su propia lista. Ver `utils/settingsSecretos`.
+    if (esDeSoloLectura(req.params.key)) {
+      return res.status(400).json({
+        ok: false,
+        error: 'El ambiente y el punto de venta se cambian desde Ajustes → Facturación, '
+          + 'que valida el punto de venta contra AFIP y renueva el ticket de acceso.',
       });
     }
 

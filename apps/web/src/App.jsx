@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
+import { toast } from 'sonner'
 import api, { setAuthToken, setEmpresaContext, setOnUnauthorized, setOnSubscriptionExpired } from '@/services/api'
+import { decidirTrasAceptar } from '@/utils/invitacion'
 import { usePermission } from '@/hooks/usePermission'
 import useStore from '@/store/useStore'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -137,16 +139,34 @@ function App() {
     }
   }, [])
 
+  // ── Canjear la invitación pendiente ──
+  //
+  // El `catch` de acá abajo hacía `localStorage.removeItem('pendingInvite')` y
+  // nada más: **borraba el token pase lo que pase y en silencio**. Un 500, la
+  // API despertándose del free tier o un segundo sin wifi tenían el mismo efecto
+  // que una invitación vencida — la invitación se perdía para siempre y nadie se
+  // enteraba, ni quien la recibió ni quien la mandó. El reintento no ocurría
+  // nunca porque ya no quedaba token que reintentar.
+  //
+  // Qué es definitivo y qué no lo decide `decidirTrasAceptar`, que es pura y
+  // tiene su test. Acá solo queda el efecto: borrar o no, y avisar siempre.
   useEffect(() => {
     const token = localStorage.getItem('pendingInvite')
     if (token && usuario) {
       api.post(`/auth/accept-invite/${token}`)
         .then(() => {
           localStorage.removeItem('pendingInvite')
+          toast.success('Listo, ya sos parte del equipo.')
           loadEmpresaContext()
         })
-        .catch(() => {
-          localStorage.removeItem('pendingInvite')
+        .catch((error) => {
+          const { borrarToken, mensaje, tono } = decidirTrasAceptar(error)
+
+          if (borrarToken) localStorage.removeItem('pendingInvite')
+
+          if (tono === 'error') toast.error(mensaje)
+          else if (tono === 'aviso') toast.warning(mensaje)
+          else toast.info(mensaje)
         })
     }
   }, [usuario])

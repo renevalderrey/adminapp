@@ -184,6 +184,46 @@ no le da, la diferencia es exactamente lo pedido y no recibido.
 nada». Sería tener la corrección escrita y apagada, o sea el problema anterior con
 más pasos.
 
+### Los números del Panel cambiaron — cinco indicadores se mueven el día del deploy
+
+**No se rompió nada, y no es un número: son cinco.** A partir del día en que se
+despliega el corte 2 de la funcionalidad 014, el Panel de control muestra otros
+números. **«Por Pagar» probablemente baje bastante.** Los cinco estaban mal
+calculados y salen corregidos **en un solo deploy, a propósito**: que haya **un**
+día raro y no cinco.
+
+> **Fecha del deploy**: _completar el día que se despliegue el corte 2._
+> El aviso al dueño va **antes** del deploy, no después.
+
+**1 · Qué se mueve, en qué dirección y por qué.**
+
+| Indicador | Se mueve | Por qué |
+|---|---|---|
+| **Por Pagar** | **BAJA**, y puede bajar mucho | Sumaba **solo las deudas**: pagarle a un proveedor no bajaba el número, así que solo podía crecer. Ahora es **deuda − pagos**, la misma cuenta que muestra la pantalla de Proveedores |
+| **Por Pagar · los cuatro tramos** | Cambian todos | Repartían lo **facturado** y por vencimiento; ahora reparten el **saldo impago** por antigüedad, igual que en Proveedores y en Clientes |
+| **Por Cobrar** | **BAJA** | Contaba como deuda **las ventas de contado** que tenían cliente identificado. Una venta cobrada en el mostrador no es un saldo pendiente aunque sepamos de quién es |
+| **Por Cobrar · los cuatro tramos** | Cambian todos, y ahora **cierran** | El total sumaba lo impago y los tramos sumaban lo facturado: los dos números de la misma tarjeta no podían coincidir nunca. Ahora los cuatro tramos suman exactamente el total de arriba |
+| **Clientes con deuda** | **BAJA** | Mismo motivo que «Por Cobrar»: contaba a quien pagó en el mostrador. Además, quien pagó **exactamente** lo que debía ya no queda del lado equivocado por un residuo de centavos |
+| **Stock bajo** | **SUBE** | Pasa a contar los productos **en cero sin mínimo cargado**, que antes no alertaban nunca. Es el mismo criterio que ya usan Faltantes e Inventario: los tres decían números distintos |
+| **Ventas del mes / del mes anterior** | **Bajan un poco** | La venta del **día 1** se contaba en el mes actual **y** en el anterior. Ahora se cuenta una vez |
+| **Todo lo que corta por fecha** | Se corre hasta un día | Los cortes eran la fecha del servidor en **UTC**; ahora son la fecha del negocio, la misma con la que se guardan las ventas. Entre las 21:00 y las 24:00 hora argentina el Panel iba un día adelante del historial |
+
+**2 · Qué NO cambió.** Ninguna venta, ningún pago y ningún movimiento de
+proveedor se tocó. **Los datos son los mismos**: lo que cambió es la cuenta que
+el Panel hace con ellos. Las pantallas de Proveedores, Clientes, Caja y Faltantes
+**ya mostraban los números buenos** — esas no se mueven, y de hecho el Panel pasa
+a coincidir con ellas, que es de lo que se trataba.
+
+**3 · Si el dueño pregunta «¿qué le pasó al sistema?»**, la respuesta es «esto y
+nada más»: el corte se desplegó solo, sin ninguna pasada de diseño encima, y se
+revierte solo. Si algún número queda dudoso, la comparación que vale es contra la
+pantalla que lo detalla: **el Panel y esa pantalla ahora tienen que decir lo
+mismo.** Si no coinciden, ahí sí hay algo que mirar.
+
+**Lo que NO se hizo**: corregir los cinco de a uno, en cinco deploys. Cinco días
+distintos con un número raro cada uno son cinco llamados y ninguna explicación
+que sirva para el siguiente.
+
 ### "La tienda online no se actualiza"
 
 **Dónde se mira: `/tiendanube`.** Desde el hito 7 hay una pantalla propia y es el

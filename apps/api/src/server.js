@@ -389,6 +389,46 @@ const authEmpresa = process.env.BYPASS_AUTH === 'true'
 // dentro de routes/empresas.js.
 const authSinEmpresa = [...authMiddleware];
 
+// ⚠ ── Los montajes SIN requireEmpresa van ARRIBA del /api generico ──
+//
+// Los middlewares de un `app.use('/api', …)` corren para **todo** lo que empiece
+// con /api, matchee o no el router que va detras. O sea que la cadena
+// `...authEmpresa` de la linea de mas abajo —checkJwt, loadEmpresaContext,
+// requireEmpresa, checkSubscription— se aplica igual a un request de
+// /api/auth/invite/... aunque el router que lo atiende sea otro. Cualquier
+// montaje mas debil que quede DEBAJO nunca recibe el request: lo corta
+// requireEmpresa con 403 NO_EMPRESA, o checkJwt con 401 si no hay token.
+//
+// Las tres lineas de aca abajo son exactamente las que necesitan un usuario sin
+// empresa, y por eso son las que tienen que estar arriba:
+//
+//  - GET /api/auth/invite/:token es publico: quien abre el enlace del mail
+//    todavia no tiene cuenta. Debajo respondia 401.
+//  - POST /api/auth/accept-invite/:token se autentica pero NO puede exigir
+//    empresa: la fila de usuario_empresas es lo que ese endpoint crea. Debajo
+//    respondia 403, o sea que `authSinEmpresa` era codigo muerto tal como
+//    estaba montado.
+//  - POST /api/empresas/onboarding es el endpoint del usuario recien
+//    registrado, que por definicion no tiene empresa. Tambien respondia 403.
+//
+// Hasta este hito las dos de auth ademas se montaban con `app.get`/`app.post`,
+// que le pasa a un Router la URL entera como punto de montaje: adentro buscaba
+// `/` y respondian **404 siempre**. El motivo completo esta en routes/auth.js.
+//
+// Lo protege `tests/montajeDeRouters.test.js`, que verifica el **tipo** de
+// montaje y el **orden**. Es la unica red: con BYPASS_AUTH=true se clava
+// req.empresaId = 1 y requireEmpresa no dispara, asi que ningun test de
+// integracion puede distinguir este orden del anterior.
+//
+// Esto NO tiene nada que ver con el motivo por el que el router publico de
+// TiendaNube subio arriba del `express.json` global —ese necesita el cuerpo
+// crudo— aunque la forma sea la misma: un montaje que queda debajo de otro que
+// ya opino sobre el request. Estos tres no necesitan subir tanto: el rate
+// limiter y el parser de JSON les corresponden.
+app.use('/api/auth', require('./routes/auth').publico);
+app.use('/api/auth', ...authSinEmpresa, require('./routes/auth').privado);
+app.use('/api/empresas', ...authSinEmpresa, require('./routes/empresas'));
+
 app.use('/api/products', ...authEmpresa, require('./routes/products'));
 app.use('/api/sales', ...authEmpresa, require('./routes/sales'));
 app.use('/api/suppliers', ...authEmpresa, require('./routes/suppliers'));
@@ -412,15 +452,13 @@ app.use('/api/reports', ...authEmpresa, requireSuperadmin, require('./routes/rep
 app.use('/api/dashboard', ...authEmpresa, require('./routes/dashboard'));
 app.use('/api/cashflow', ...authEmpresa, requireSuperadmin, require('./routes/cashflow'));
 app.use('/api/taxes', ...authEmpresa, requireSuperadmin, require('./routes/taxes'));
-app.use('/api/empresas', ...authSinEmpresa, require('./routes/empresas'));
 app.use('/api/import', ...authEmpresa, require('./routes/import'));
 app.use('/api/precios', ...authEmpresa, require('./routes/precios'));
 app.use('/api/gastos-variables', ...authEmpresa, require('./routes/gastosVariables'));
 app.use('/api/comparador', ...authEmpresa, require('./routes/comparador'));
 
-// ── Auth routes (invitaciones públicas + protegidas) ──
-app.get('/api/auth/invite/:token', require('./routes/auth'));
-app.post('/api/auth/accept-invite/:token', ...authSinEmpresa, require('./routes/auth'));
+// Los dos montajes de /api/auth y el de /api/empresas vivian aca abajo, y ese
+// era el defecto: ver el bloque de arriba de app.use('/api/products', …).
 
 // ── Error Handler Global ──
 app.use((err, req, res, next) => {

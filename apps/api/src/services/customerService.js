@@ -7,6 +7,11 @@ const {
   sequelize,
 } = require('../models');
 const { assertEmpresaId } = require('../utils/tenantScope');
+// El reparto por antiguedad vivia aca como metodo privado con DOS consumidores
+// internos. El Panel de control es el tercero, y mientras la funcion estuvo
+// escondida en este servicio el Panel escribio su propio aging: los cuatro
+// tramos sumando lo facturado mientras el total de arriba sumaba lo impago.
+const { repartirPorAntiguedad } = require('../utils/antiguedad');
 
 // Todos los metodos publicos reciben empresaId de forma obligatoria.
 // Antes varios tenian `empresaId = 1` como default y otros directamente no
@@ -94,12 +99,12 @@ class CustomerService {
     // bucket, que serializado a JSON sale como null.
     if (unpaid <= 0 || totalSalesAmount <= 0) return buckets;
 
-    return this._repartirPorAntiguedad(
-      sales.map((s) => ({ monto: parseFloat(s.total), fecha: s.date })),
-      unpaid,
-      totalSalesAmount,
-      today
-    );
+    return repartirPorAntiguedad(sales, today, {
+      saldoImpago: unpaid,
+      totalFacturado: totalSalesAmount,
+      fecha: 'date',
+      importe: 'total',
+    });
   }
 
   async getRanking(limit = 20, empresaId) {
@@ -230,12 +235,12 @@ class CustomerService {
     ) || 0;
     const unpaidSupplier = Math.max(0, totalDebt - totalPaid);
 
-    const supplierAging = this._repartirPorAntiguedad(
-      supplierMovements.map((m) => ({ monto: parseFloat(m.amount), fecha: m.date })),
-      unpaidSupplier,
-      totalDebt,
-      today
-    );
+    const supplierAging = repartirPorAntiguedad(supplierMovements, today, {
+      saldoImpago: unpaidSupplier,
+      totalFacturado: totalDebt,
+      fecha: 'date',
+      importe: 'amount',
+    });
 
     // ── Aging de clientes ──
     const allSales = await Sale.findAll({
@@ -246,12 +251,12 @@ class CustomerService {
 
     const totalCustomerSales = allSales.reduce((s, sa) => s + parseFloat(sa.total || 0), 0);
 
-    const customerAging = this._repartirPorAntiguedad(
-      allSales.map((s) => ({ monto: parseFloat(s.total), fecha: s.date })),
-      totalReceivable,
-      totalCustomerSales,
-      today
-    );
+    const customerAging = repartirPorAntiguedad(allSales, today, {
+      saldoImpago: totalReceivable,
+      totalFacturado: totalCustomerSales,
+      fecha: 'date',
+      importe: 'total',
+    });
 
     return {
       total_receivable: Math.round(totalReceivable * 100) / 100,
@@ -259,37 +264,6 @@ class CustomerService {
       total_payable: Math.round(totalPayable * 100) / 100,
       supplier_aging: supplierAging,
     };
-  }
-
-  /**
-   * Reparte un saldo impago entre tramos de antiguedad, en proporcion a como se
-   * distribuyen los comprobantes en el tiempo.
-   *
-   * Es una aproximacion: no imputa cada pago a una venta concreta, sino que
-   * prorratea. Sirve para el tablero; no como respaldo contable.
-   */
-  _repartirPorAntiguedad(comprobantes, saldoImpago, totalFacturado, hoy) {
-    const buckets = { '0_30': 0, '31_60': 0, '61_90': 0, '90_plus': 0 };
-
-    if (saldoImpago <= 0 || totalFacturado <= 0) return buckets;
-
-    const ratio = saldoImpago / totalFacturado;
-
-    for (const c of comprobantes) {
-      const dias = Math.floor((hoy - new Date(c.fecha)) / (1000 * 60 * 60 * 24));
-      const monto = (c.monto || 0) * ratio;
-
-      if (dias <= 30) buckets['0_30'] += monto;
-      else if (dias <= 60) buckets['31_60'] += monto;
-      else if (dias <= 90) buckets['61_90'] += monto;
-      else buckets['90_plus'] += monto;
-    }
-
-    for (const k of Object.keys(buckets)) {
-      buckets[k] = Math.round(buckets[k] * 100) / 100;
-    }
-
-    return buckets;
   }
 
   async listCustomers(filters = {}, empresaId) {

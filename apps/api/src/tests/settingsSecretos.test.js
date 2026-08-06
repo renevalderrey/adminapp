@@ -179,6 +179,86 @@ describe('PUT /api/settings/:key no escribe material fiscal', () => {
   });
 });
 
+// ════════════════════════════════════════════
+//  El ambiente y el punto de venta tampoco se escriben por acá
+//
+//  `01fc77d` cerró la fuga de la clave y de paso bloqueó su escritura, pero el
+//  hallazgo tenía dos mitades y esta quedó abierta: `afip_environment` y
+//  `afip_pv` **no son secretas** —la pantalla las lee para dibujarse— así que la
+//  lista de secretos no las tapa, y `PUT /api/settings/afip_environment` con
+//  `"production"` seguía funcionando.
+//
+//  Lo que eso compraba: pasar una empresa a producción —comprobantes fiscales
+//  reales, numeración correlativa consumida— salteando todas las validaciones de
+//  `POST /api/afip/setup`, y **sin invalidar el ticket WSAA cacheado**, que se
+//  había emitido contra homologación.
+// ════════════════════════════════════════════
+
+describe('PUT /api/settings/:key no cambia el ambiente ni el punto de venta de AFIP', () => {
+  beforeEach(() => {
+    mockSettingModelo.filas = [];
+  });
+
+  it('pasar la empresa a producción por el endpoint genérico responde 400 y NO guarda nada', async () => {
+    // Es el caso concreto: una empresa en homologación queda emitiendo
+    // comprobantes fiscales de verdad, sin que nadie haya validado el punto de
+    // venta y con el ticket WSAA de homologación todavía en memoria.
+    const res = await request(levantarApi())
+      .put('/api/settings/afip_environment')
+      .send({ value: 'production' });
+
+    expect(res.status).toBe(400);
+    expect(mockSettingModelo.filas).toEqual([]);
+  });
+
+  it('el punto de venta tampoco: ARCA lo tiene que tener declarado', async () => {
+    // Un `afip_pv` que ARCA no conoce no falla acá: falla al emitir, con el
+    // cliente en el mostrador.
+    const res = await request(levantarApi())
+      .put('/api/settings/afip_pv')
+      .send({ value: '9' });
+
+    expect(res.status).toBe(400);
+    expect(mockSettingModelo.filas).toEqual([]);
+  });
+
+  it('la evidencia de la verificación la escribe el servidor, no el cliente', async () => {
+    // `afip_verificacion` es lo que va a cumplir el paso 4 del checklist de
+    // puesta en marcha. Una evidencia que el cliente puede escribir a mano no es
+    // evidencia de nada: alcanzaría un PUT para declararse verificado.
+    const res = await request(levantarApi())
+      .put('/api/settings/afip_verificacion')
+      .send({ value: { resultado: 'ok' } });
+
+    expect(res.status).toBe(400);
+    expect(mockSettingModelo.filas).toEqual([]);
+  });
+
+  it('el mensaje nombra el camino y dice qué hace ese camino que éste no', async () => {
+    // «No se puede» manda a alguien a buscar por qué. El mensaje tiene que
+    // decir adónde ir y qué se gana yendo: la validación del punto de venta y la
+    // renovación del ticket.
+    const res = await request(levantarApi())
+      .put('/api/settings/afip_environment')
+      .send({ value: 'production' });
+
+    expect(res.body.error).toMatch(/Ajustes/i);
+    expect(res.body.error).toMatch(/ticket/i);
+  });
+
+  it('una clave de AFIP que NO es de solo lectura se sigue escribiendo', async () => {
+    // Sin este caso, un `if` que rechazara todo lo que empiece con `afip_`
+    // pasaría los cuatro de arriba y rompería el CUIT y la condición fiscal, que
+    // sí se cargan desde el formulario genérico.
+    const res = await request(levantarApi())
+      .put('/api/settings/afip_cuit')
+      .send({ value: '20304050607' });
+
+    expect(res.status).toBe(200);
+    expect(mockSettingModelo.filas).toHaveLength(1);
+  });
+});
+
 describe('La lista de secretos vive en UN solo lugar', () => {
   const RAIZ = path.join(__dirname, '..', '..');
 
@@ -190,6 +270,29 @@ describe('La lista de secretos vive en UN solo lugar', () => {
     expect(SETTINGS_SECRETOS).toEqual(
       expect.arrayContaining(['afip_key', 'afip_cert', 'tiendanube_access_token'])
     );
+  });
+
+  it('las dos listas son distintas: lo de solo lectura SÍ sale por la API', () => {
+    // Ancla contra la simplificación de juntarlas. Si `afip_environment` cayera
+    // en `SETTINGS_SECRETOS`, `sinSecretos` lo convertiría en
+    // `afip_environment_cargado: true` y la pantalla de Ajustes → Facturación se
+    // quedaría sin saber contra qué ambiente factura la empresa.
+    const {
+      SETTINGS_SECRETOS,
+      SETTINGS_DE_SOLO_LECTURA,
+      esDeSoloLectura,
+      sinSecretos,
+    } = require('../utils/settingsSecretos');
+
+    expect(SETTINGS_DE_SOLO_LECTURA).toEqual(['afip_environment', 'afip_pv', 'afip_verificacion']);
+
+    for (const clave of SETTINGS_DE_SOLO_LECTURA) {
+      expect(SETTINGS_SECRETOS).not.toContain(clave);
+      expect(esDeSoloLectura(clave)).toBe(true);
+    }
+
+    expect(esDeSoloLectura('afip_cuit')).toBe(false);
+    expect(sinSecretos({ afip_environment: 'production' }).afip_environment).toBe('production');
   });
 
   it('nadie más declara su propia lista', () => {

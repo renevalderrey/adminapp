@@ -71,13 +71,14 @@ const SERVER = fs.readFileSync(path.join(SRC, 'server.js'), 'utf8');
  * hay que mirar en la revisión.
  */
 const ROUTERS_SIN_SESION = {
-  'routes/auth.js router':
+  'routes/auth.js publico':
     'GET /api/auth/invite/:token se monta público a propósito: quien recibe una ' +
     'invitación por mail todavía no tiene cuenta y tiene que poder ver de qué ' +
-    'empresa es. El POST /accept-invite del mismo archivo SÍ va detrás de ' +
-    'authSinEmpresa, pero es el MISMO objeto router, así que la guardia lo ' +
-    'clasifica por su montaje más débil y no puede exigirle permisos a ninguna ' +
-    'de las dos.',
+    'empresa es. Hasta este hito el archivo exportaba UN router con las dos ' +
+    'rutas, así que la guardia clasificaba a las dos por el montaje más débil y ' +
+    'el POST /accept-invite se le escapaba de la revisión. Ahora son dos objetos ' +
+    'distintos —`publico` y `privado`, como en routes/tiendanube.js— y acá queda ' +
+    'exento únicamente el que de verdad se abre sin sesión.',
   'routes/tiendanube.js publico':
     'Lo llama TiendaNube desde afuera: /callback es el redirect final del OAuth y ' +
     '/webhook se autentica con la firma HMAC del cuerpo crudo. No hay sesión de ' +
@@ -88,10 +89,24 @@ const ROUTERS_SIN_SESION = {
 /**
  * Rutas de un router autenticado que NO declaran permiso, a propósito.
  *
- * Tres, y las tres del onboarding: son las que un usuario tiene que poder usar
+ * Cuatro, y las cuatro son lo mismo: lo que un usuario tiene que poder usar
  * ANTES de tener rol, que es de donde salen los permisos.
+ *
+ * La cuarta —aceptar una invitación— no estaba porque **la guardia no la veía**:
+ * hasta este hito `routes/auth.js` exportaba un router único montado dos veces,
+ * y la guardia lo clasificaba por su montaje más débil, así que el
+ * `POST /accept-invite/:token` quedaba fuera de `RUTAS_AUTENTICADAS`. Partir el
+ * archivo en `publico` / `privado` la trajo adentro, que es lo que se quería:
+ * ahora está exenta con su motivo escrito y no por un efecto colateral del
+ * montaje.
  */
 const SIN_PERMISO_A_PROPOSITO = {
+  'routes/auth.js POST /accept-invite/:token':
+    'Crea la membresía. Quien la llama todavía no tiene fila en usuario_empresas ' +
+    '—es justamente lo que este endpoint le crea— así que no tiene rol y no puede ' +
+    'tener ningún permiso: es el mismo motivo que POST /onboarding. Su ' +
+    'autorización sale del token de la invitación, que se busca por el email del ' +
+    'usuario de la sesión.',
   'routes/empresas.js POST /onboarding':
     'Crea la PRIMERA empresa. Quien la llama todavía no tiene fila en ' +
     'usuario_empresas, así que no tiene rol y no puede tener ningún permiso: ' +
@@ -602,7 +617,7 @@ describe('toda ruta detrás de una cadena autenticada declara su permiso', () =>
     }
   });
 
-  it('las excepciones a propósito son las tres del onboarding, y siguen existiendo', () => {
+  it('las excepciones a propósito son las cuatro de antes del rol, y siguen existiendo', () => {
     // Una excepción que sobrevive a la ruta que la justificaba deja de ser una
     // excepción y pasa a ser un permiso de circulación para cualquier ruta que
     // mañana se llame igual.
@@ -611,7 +626,11 @@ describe('toda ruta detrás de una cadena autenticada declara su permiso', () =>
     for (const clave of Object.keys(SIN_PERMISO_A_PROPOSITO)) {
       expect(claves).toContain(clave);
     }
-    expect(Object.keys(SIN_PERMISO_A_PROPOSITO)).toHaveLength(3);
+    // Sube de tres a cuatro con la partición de routes/auth.js: el
+    // POST /accept-invite/:token entró a la guardia porque dejó de compartir
+    // objeto con la ruta pública. Es una ruta que ya existía y que hasta hoy no
+    // revisaba nadie, no una excepción nueva.
+    expect(Object.keys(SIN_PERMISO_A_PROPOSITO)).toHaveLength(4);
   });
 
   it('la deuda conocida sigue sin permiso (si se corrigió, se borra de la lista)', () => {
