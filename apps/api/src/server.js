@@ -21,6 +21,7 @@ const checkSubscription = require('./middleware/checkSubscription');
 const requestId = require('./middleware/requestId');
 const requireSuperadmin = require('./middleware/requireSuperadmin');
 const subscriptionCron = require('./services/subscriptionCron');
+const tiendanubeSincronizacion = require('./services/tiendanubeSincronizacion');
 const logger = require('./utils/logger');
 
 // ── Validate required env vars ──
@@ -146,6 +147,35 @@ app.use(cors({
   // copiar a mano.
   exposedHeaders: ['X-Empresa-Id', 'X-Punto-De-Venta-Id', 'X-Request-Id'],
 }));
+// ⚠ ── El router publico de TiendaNube se monta ANTES del express.json global ──
+//
+// No es preferencia de orden: es lo unico que hace que el webhook funcione.
+// `routes/tiendanube.js` trae su propio `express.json({ type, verify })` para
+// guardar el cuerpo crudo en `req.rawBody`, que es contra lo que se verifica la
+// firma HMAC. body-parser NO ejecuta el `verify` si alguien ya parseo el cuerpo,
+// asi que con este `app.use(express.json(` delante, `req.rawBody` quedaba
+// `undefined`, `firmaValida` cortaba en `!req.rawBody` y **todo webhook
+// respondia 401**. Ningun pedido de la tienda online desconto stock jamas, y el
+// 401 repetido ademas apaga la integracion del otro lado: TiendaNube
+// deshabilita el webhook ante errores repetidos.
+//
+// Ademas queda ARRIBA del rate limiter (mas abajo, `app.use('/api/', limiter)`),
+// que es deliberado: los 600 requests por IP cada 15 minutos estan pensados para
+// el navegador de una caja, y las IP de TiendaNube no son las de nadie sentado
+// en una caja. Un 429 al webhook es un pedido que no descuenta.
+//
+// ⚠ Consecuencia para el futuro: **cualquier ruta que se agregue al router
+// `publico` nace sin `express.json` global y sin rate limit**. Si necesita
+// cuerpo JSON, se lo tiene que poner ella, como hace `/webhook`. Esta advertencia
+// esta repetida en `routes/tiendanube.js` porque es contraintuitiva, y hay una
+// guardia en `tests/observabilidad.test.js` que falla si este montaje vuelve a
+// caer debajo del `express.json` global.
+//
+// El montaje del router `privado` NO se mueve: sigue mas abajo, detras de la
+// cadena de autenticacion. Como el publico solo declara `/callback` y `/webhook`,
+// el resto cae al privado por orden de declaracion.
+app.use('/api/tiendanube', require('./routes/tiendanube').publico);
+
 app.use(express.json({ limit: '10mb' }));
 
 // ── Health Check (público: sin auth y sin rate limit) ──
@@ -227,9 +257,33 @@ app.post('/api/tareas/ejecutar', async (req, res) => {
     const resultado = await subscriptionCron.expireTrials();
     const avisos = await subscriptionCron.avisarVencimientosProximos();
 
-    logger.info({ ...resultado, avisos }, 'tareas: ejecucion manual completada');
+    // ── La red de la sincronizacion de TiendaNube ──
+    //
+    // La reconciliacion de cada tienda vinculada —refrescar la instantanea,
+    // comparar los tres numeros y encolar solo lo que difiere— mas el barrido de
+    // los `state` del OAuth vencidos y el de las corridas viejas.
+    //
+    // ⚠ Va DESPUES de las suscripciones y en su propio `try`: un fallo hablando
+    // con TiendaNube no puede impedir que se venzan las pruebas gratuitas ni que
+    // salgan los avisos de vencimiento, que es lo que este cron ya hacia.
+    //
+    // ⚠⚠ Y hoy esto NO CORRE: `.github/workflows/tareas-diarias.yml` corta
+    // porque faltan API_URL y CRON_SECRET, y sin CRON_SECRET este endpoint
+    // responde 404 mas arriba. Por eso el caso normal de la sincronizacion no
+    // depende de aca —el drenaje lo dispara la propia peticion que movio el
+    // stock— y por eso GET /api/tiendanube/status devuelve `reconciliada_en`:
+    // la ausencia de la red tiene que verse en la pantalla, no suponerse.
+    let tiendanube = null;
 
-    res.json({ ok: true, ...resultado, avisos });
+    try {
+      tiendanube = await tiendanubeSincronizacion.tareasDiarias();
+    } catch (err) {
+      logger.error({ err }, 'tareas: fallaron las tareas diarias de TiendaNube');
+    }
+
+    logger.info({ ...resultado, avisos, tiendanube }, 'tareas: ejecucion manual completada');
+
+    res.json({ ok: true, ...resultado, avisos, tiendanube });
   } catch (err) {
     logger.error({ err }, 'tareas: error en la ejecucion manual');
     res.status(500).json({ ok: false, error: 'Error ejecutando las tareas' });
@@ -341,8 +395,10 @@ app.use('/api/suppliers', ...authEmpresa, require('./routes/suppliers'));
 app.use('/api/afip', ...authEmpresa, require('./routes/afip'));
 app.use('/api', ...authEmpresa, require('./routes/general'));
 // TiendaNube se monta en dos partes: lo que llama TiendaNube desde afuera va
-// sin sesion (valida firma HMAC), y lo que llama la app va autenticado.
-app.use('/api/tiendanube', require('./routes/tiendanube').publico);
+// sin sesion (valida firma HMAC) y **se monta mucho mas arriba**, antes del
+// `express.json` global y del rate limiter — el motivo esta escrito alla, y
+// moverlo de vuelta aca deja el webhook sin cuerpo crudo y respondiendo 401.
+// Lo que llama la app va autenticado y es esta linea.
 app.use('/api/tiendanube', ...authEmpresa, require('./routes/tiendanube').privado);
 app.use('/api/production', ...authEmpresa, requireSuperadmin, require('./routes/production'));
 // ── Modulos todavia no liberados a los clientes ──
@@ -400,6 +456,38 @@ const setupDefaultData = require('./setup');
 const seedPermissions = require('./seedPermissions');
 const seedPuntosDeVenta = require('./seedPuntosDeVenta');
 
+/**
+ * Avisa al arrancar si hay tiendas vinculadas y no hay `TIENDANUBE_CLIENT_SECRET`.
+ *
+ * `firmaValida` devuelve `false` cuando falta el secreto, asi que **un despliegue
+ * mal configurado y un intento de suplantacion producen el mismo 401 y el mismo
+ * warn**: sin este aviso, la unica pista de que falta una variable de entorno es
+ * una tienda que dejo de descontar stock y nadie sabe desde cuando.
+ *
+ * **No corta el arranque**, y es deliberado: una empresa que no usa TiendaNube no
+ * tiene por que quedarse sin API por una variable de una integracion opcional.
+ * Tampoco corta si la consulta falla —la tabla puede no existir todavia en una
+ * base sin migrar— porque un aviso no puede impedir que el servidor levante.
+ */
+async function avisarSiFaltaElSecretoDeTiendanube() {
+  if (process.env.TIENDANUBE_CLIENT_SECRET) return;
+
+  try {
+    const { TiendanubeTienda } = require('./models');
+    const vinculadas = await TiendanubeTienda.count();
+
+    if (!vinculadas) return;
+
+    logger.error(
+      { tiendasVinculadas: vinculadas },
+      'tiendanube: hay tiendas vinculadas y falta TIENDANUBE_CLIENT_SECRET. ' +
+      'TODOS los webhooks se van a rechazar con 401 y ningun pedido va a descontar stock.'
+    );
+  } catch (err) {
+    logger.warn({ err }, 'tiendanube: no se pudo comprobar si falta el secreto');
+  }
+}
+
 // ── Iniciar servidor ──
 async function start() {
   try {
@@ -416,6 +504,8 @@ async function start() {
     await seedPermissions();
     await seedPuntosDeVenta();
     await setupDefaultData();
+
+    await avisarSiFaltaElSecretoDeTiendanube();
 
     subscriptionCron.start();
 
@@ -512,4 +602,7 @@ function shutdown(codigo = 0) {
   }
 }
 
-module.exports = { app, start, shutdown };
+// `avisarSiFaltaElSecretoDeTiendanube` se exporta para poder ejercitarlo: corre
+// dentro de `start()`, que ningun test llama —abre el puerto—, y un aviso que
+// nadie probo es un aviso que puede no salir el dia que haga falta.
+module.exports = { app, start, shutdown, avisarSiFaltaElSecretoDeTiendanube };

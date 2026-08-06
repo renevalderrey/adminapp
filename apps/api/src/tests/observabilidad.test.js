@@ -390,3 +390,322 @@ describe('src/controllers/ no vuelve a existir', () => {
     expect(fs.existsSync(path.join(SRC, 'controllers'))).toBe(false);
   });
 });
+
+// ════════════════════════════════════════════
+//  El webhook de TiendaNube tiene que recibir el CUERPO CRUDO
+//
+//  ── Que rompia, exactamente ──
+//
+//  `routes/tiendanube.js` monta su propio `express.json({ type, verify })` para
+//  guardar el cuerpo crudo en `req.rawBody`, que es contra lo que se verifica la
+//  firma HMAC. body-parser **no ejecuta el `verify` si el cuerpo ya viene
+//  parseado**: con `app.use(express.json({ limit: '10mb' }))` montado antes,
+//  `req.rawBody` quedaba `undefined`, `firmaValida` cortaba ahi y **todo webhook
+//  respondia 401**.
+//
+//  Las dos consecuencias: ningun pedido de la tienda online desconto stock
+//  jamas, y el 401 repetido apaga la integracion del otro lado —TiendaNube
+//  deshabilita el webhook ante errores repetidos, y el comentario del propio
+//  archivo lo decia mientras el codigo hacia lo contrario—.
+//
+//  ── Por que esto es una guardia y no un test de integracion ──
+//
+//  El de integracion existe y es el que prueba que el cuerpo LLEGA
+//  (`integracion/tiendanubeWebhook.integracion.test.js`). Esta guardia es lo
+//  unico que impide que el proximo `app.use` que alguien agregue arriba vuelva a
+//  matar la integracion sin que nadie se entere: el sintoma no aparece en
+//  ninguna pantalla, aparece en un recuento de inventario meses despues.
+// ════════════════════════════════════════════
+
+/** El montaje del router publico, textual. */
+const MONTAJE_PUBLICO = "app.use('/api/tiendanube', require('./routes/tiendanube').publico)";
+
+/** El parser global que le come el cuerpo. */
+const JSON_GLOBAL = 'app.use(express.json(';
+
+/**
+ * El fuente sin las lineas de comentario.
+ *
+ * ⚠ Hace falta y no es prolijidad: el motivo por el que este montaje esta donde
+ * esta ocupa veinte lineas de comentario **arriba del propio montaje**, y ahi se
+ * nombran las dos lineas que esta guardia busca. Sin sacar los comentarios, el
+ * `indexOf` encuentra primero la explicacion y la guardia mide la prosa en vez
+ * del codigo — medido: daba en rojo con el orden correcto.
+ */
+function sinComentarios(contenido) {
+  return contenido
+    .split('\n')
+    .filter((linea) => {
+      const texto = linea.trim();
+      return !texto.startsWith('//') && !texto.startsWith('*') && !texto.startsWith('/*');
+    })
+    .join('\n');
+}
+
+/**
+ * ¿El montaje del router publico esta ANTES del `express.json` global?
+ *
+ * Devuelve `null` —y no `true`— cuando falta alguna de las dos lineas: una
+ * guardia que no encontro que mirar tiene que fallar, no pasar. Es el modo de
+ * falla que este repositorio viene juntando.
+ */
+function montajePublicoAntesDelJson(contenido) {
+  const codigo = sinComentarios(contenido);
+  const publico = codigo.indexOf(MONTAJE_PUBLICO);
+  const parser = codigo.indexOf(JSON_GLOBAL);
+
+  if (publico === -1 || parser === -1) return null;
+
+  return publico < parser;
+}
+
+const MUESTRA_MONTAJE_MALA = `
+app.use(cors({ origin: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use('/api/', limiter);
+app.use('/api/tiendanube', require('./routes/tiendanube').publico);
+`;
+
+const MUESTRA_MONTAJE_BUENA = `
+app.use(cors({ origin: true }));
+app.use('/api/tiendanube', require('./routes/tiendanube').publico);
+app.use(express.json({ limit: '10mb' }));
+app.use('/api/', limiter);
+`;
+
+describe('El router publico de TiendaNube se monta antes del express.json global', () => {
+  const server = fs.readFileSync(path.join(SRC, 'server.js'), 'utf8');
+
+  it('la guardia reconoce el orden de hoy —el defecto— y lo llama defecto', () => {
+    // Sin esta muestra, la guardia podria estar comparando dos `-1` y pasando
+    // siempre. Es el orden EXACTO que tenia server.js hasta este hito.
+    expect(montajePublicoAntesDelJson(MUESTRA_MONTAJE_MALA)).toBe(false);
+  });
+
+  it('la guardia deja pasar el orden correcto', () => {
+    expect(montajePublicoAntesDelJson(MUESTRA_MONTAJE_BUENA)).toBe(true);
+  });
+
+  it('un comentario que NOMBRA el parser global no la confunde', () => {
+    // Es el caso real: el motivo del movimiento esta escrito arriba del montaje y
+    // menciona las dos lineas. Sin el filtro de comentarios esta guardia daba en
+    // rojo con el orden correcto, y una guardia que empieza en rojo por una
+    // explicacion es una guardia que alguien desactiva el mismo dia.
+    const conProsa = `
+// Sube arriba de app.use(express.json( porque si no no hay rawBody, y ademas
+// queda antes de app.use('/api/', limiter).
+app.use('/api/tiendanube', require('./routes/tiendanube').publico);
+app.use(express.json({ limit: '10mb' }));
+`;
+
+    expect(montajePublicoAntesDelJson(conProsa)).toBe(true);
+  });
+
+  it('si alguna de las dos lineas desaparece, la guardia NO dice que esta bien', () => {
+    // Un renombre del router —o sacar el parser global— dejaria la guardia
+    // afirmando algo que no miro. Devuelve null y la asercion de abajo falla.
+    expect(montajePublicoAntesDelJson('app.use(express.json({ limit: "10mb" }));')).toBeNull();
+    expect(montajePublicoAntesDelJson(MONTAJE_PUBLICO)).toBeNull();
+  });
+
+  it('server.js monta el publico ANTES del parser global: sin esto no hay rawBody', () => {
+    expect(montajePublicoAntesDelJson(server)).toBe(true);
+  });
+
+  it('y por lo tanto tambien antes del rate limiter pensado para el navegador', () => {
+    // FR-029, y sale del mismo movimiento: 600 requests por IP cada 15 minutos
+    // estan pensados para las cajas de un comercio detras de un router. Un 429 al
+    // webhook es un pedido que no descuenta, y las IP de TiendaNube no son las de
+    // nadie sentado en una caja.
+    const codigo = sinComentarios(server);
+    const publico = codigo.indexOf(MONTAJE_PUBLICO);
+    const limiter = codigo.indexOf("app.use('/api/', limiter)");
+
+    expect(publico).toBeGreaterThanOrEqual(0);
+    expect(limiter).toBeGreaterThanOrEqual(0);
+    expect(publico).toBeLessThan(limiter);
+  });
+
+  it('el router privado sigue detras de la cadena de autenticacion', () => {
+    // El movimiento es del publico y solo del publico: subir tambien el privado
+    // dejaria once endpoints con datos de una empresa abiertos a internet.
+    expect(server).toContain(
+      "app.use('/api/tiendanube', ...authEmpresa, require('./routes/tiendanube').privado)"
+    );
+  });
+});
+
+// ════════════════════════════════════════════
+//  Ninguna llamada saliente queda sin `timeout`
+//
+//  ── Que pasaba, exactamente ──
+//
+//  Las tres llamadas de `services/tiendanubeService.js` —el canje del `code`, el
+//  catalogo y el PUT de stock— no tenian ninguna. Un `axios` sin `timeout` no
+//  tiene tope: si el otro lado acepta la conexion y no contesta nunca, el
+//  request de AdminApp **espera para siempre** y se queda con una conexion del
+//  pool. Con unas cuantas, el resto de la aplicacion se queda sin conexiones y
+//  el sintoma no se parece en nada a «TiendaNube no contesta»: se parece a
+//  «AdminApp esta caido».
+//
+//  El precedente contrario esta escrito y comentado en `afipService.js:86-89`,
+//  con el motivo: «Sin timeout, una llamada colgada a AFIP queda esperando para
+//  siempre».
+//
+//  ── Por que la regla es del repositorio y no de TiendaNube ──
+//
+//  Hoy `axios` se usa en un solo archivo, y por eso una guardia acotada a el
+//  pasaria en verde el dia que alguien integre otro tercero en otro lado. Se
+//  miran `routes/`, `services/` y `utils/` enteros, igual que la del
+//  `console.error`.
+// ════════════════════════════════════════════
+
+/**
+ * El fuente con las lineas de comentario en blanco, **conservando los saltos**.
+ *
+ * `sinComentarios` las borra, y eso corre los numeros de linea: un hallazgo
+ * reportado en la L40 de un texto acortado manda a leer otra cosa. Acá el número
+ * de línea es lo único que hace accionable el reporte.
+ */
+function comentariosEnBlanco(contenido) {
+  return contenido
+    .split('\n')
+    .map((linea) => {
+      const texto = linea.trim();
+      const esComentario = texto.startsWith('//') || texto.startsWith('*') || texto.startsWith('/*');
+      return esComentario ? '' : linea;
+    })
+    .join('\n');
+}
+
+/** El indice del parentesis que cierra al que abre en `desde`. */
+function cierreDelParentesis(texto, desde) {
+  let nivel = 0;
+
+  for (let i = desde; i < texto.length; i++) {
+    if (texto[i] === '(') nivel++;
+    else if (texto[i] === ')') {
+      nivel--;
+      if (nivel === 0) return i;
+    }
+  }
+
+  return -1;
+}
+
+/**
+ * Las llamadas de axios de un archivo, con sus argumentos completos.
+ *
+ * Se recorta con parentesis balanceados y no con una expresion regular: los
+ * argumentos de una llamada real traen objetos con parentesis adentro
+ * (`\${credentials.user_id}`, `fn(...)`), y un `[^)]*` cortaria en el primer
+ * cierre y daria por «sin timeout» a una llamada que lo tiene tres lineas mas
+ * abajo. Un falso positivo se cierra con una excepcion, que es como una guardia
+ * deja de servir.
+ */
+function llamadasDeAxios(contenido) {
+  const codigo = comentariosEnBlanco(contenido);
+  const encontradas = [];
+
+  for (const m of codigo.matchAll(/\baxios\s*\.\s*(get|post|put|patch|delete|request)\s*\(/g)) {
+    const abre = codigo.indexOf('(', m.index + m[0].length - 1);
+    const cierra = cierreDelParentesis(codigo, abre);
+    if (cierra === -1) continue;
+
+    encontradas.push({
+      linea: codigo.slice(0, m.index).split('\n').length,
+      metodo: m[1],
+      argumentos: codigo.slice(abre, cierra + 1),
+    });
+  }
+
+  return encontradas;
+}
+
+const llamadasSinTimeout = (contenido) =>
+  llamadasDeAxios(contenido)
+    .filter(({ argumentos }) => !/\btimeout\s*:/.test(argumentos))
+    .map(({ linea, metodo }) => `L${linea}: axios.${metodo}(`);
+
+const MUESTRA_AXIOS_SIN_TIMEOUT = `
+  async getProducts(empresaId) {
+    const response = await axios.get(
+      \`https://api.tiendanube.com/v1/\${credentials.user_id}/products\`,
+      {
+        headers: {
+          'Authentication': \`bearer \${credentials.access_token}\`,
+        }
+      }
+    );
+
+    return response.data;
+  }
+`;
+
+const MUESTRA_AXIOS_CON_TIMEOUT = `
+  async getProducts(empresaId) {
+    const response = await axios.get(
+      \`https://api.tiendanube.com/v1/\${credentials.user_id}/products\`,
+      {
+        headers: { 'Authentication': \`bearer \${credentials.access_token}\` },
+        timeout: 15000,
+      }
+    );
+
+    return response.data;
+  }
+`;
+
+const MUESTRA_AXIOS_COMENTADA = `
+// Antes esto era un axios.get( sin timeout y el request quedaba colgado.
+/**
+ * Ver tambien axios.put( en updateVariantStock.
+ */
+const TIMEOUT_TIENDANUBE_MS = 15000;
+`;
+
+describe('Ninguna llamada de axios de routes/, services/ ni utils/ queda sin timeout', () => {
+  const archivos = [...leerCarpeta('routes'), ...leerCarpeta('services'), ...leerCarpeta('utils')];
+
+  it('el detector encuentra la llamada sin timeout y la nombra con su linea', () => {
+    // Sin esta muestra, la guardia podria no estar reconociendo la forma de una
+    // llamada y estar pasando en verde sobre todas.
+    const hallazgos = llamadasSinTimeout(MUESTRA_AXIOS_SIN_TIMEOUT);
+
+    expect(hallazgos).toHaveLength(1);
+    expect(hallazgos[0]).toBe('L3: axios.get(');
+  });
+
+  it('el detector NO recorta los argumentos en el primer parentesis que encuentra', () => {
+    // Es lo que hace falsa a una guardia escrita con `[^)]*`: los argumentos
+    // reales traen `\${credentials.user_id}` y objetos anidados, y el timeout
+    // esta despues.
+    expect(llamadasSinTimeout(MUESTRA_AXIOS_CON_TIMEOUT)).toEqual([]);
+  });
+
+  it('una llamada nombrada en un comentario no cuenta como llamada', () => {
+    // El motivo del timeout esta escrito arriba de las llamadas y las nombra.
+    // Sin el filtro, la guardia naceria en rojo por una explicacion — y una
+    // guardia que empieza en rojo por un comentario es una que alguien desactiva
+    // el mismo dia.
+    expect(llamadasSinTimeout(MUESTRA_AXIOS_COMENTADA)).toEqual([]);
+  });
+
+  it('encontro las llamadas que dice vigilar, y no una lista vacia', () => {
+    // **El ancla.** Hoy axios se usa en un solo archivo: si el detector dejara
+    // de reconocer la forma, `llamadasSinTimeout` devolveria `[]` para todos y la
+    // guardia pasaria sin haber mirado nada.
+    const deTiendanube = llamadasDeAxios(
+      archivos.find((a) => a.nombre === 'services/tiendanubeService.js').contenido
+    );
+
+    expect(deTiendanube.length).toBeGreaterThanOrEqual(3);
+    expect(deTiendanube.map((l) => l.metodo).sort()).toEqual(
+      expect.arrayContaining(['get', 'post', 'put'])
+    );
+  });
+
+  it.each(archivos)('$nombre', ({ contenido }) => {
+    expect(llamadasSinTimeout(contenido)).toEqual([]);
+  });
+});

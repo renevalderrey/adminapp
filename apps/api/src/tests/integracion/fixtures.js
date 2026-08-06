@@ -38,9 +38,18 @@
 //    resuelve con `translate()` en SQL: contra un doble no se ejecuta nunca.
 //  - **Hay una orden anulada con importe grande.** Sin ella, «pendiente de
 //    recibir» daría el mismo número filtrando por estado y sin filtrar.
+//  - **La sucursal designada de TiendaNube NO es la que elegiría
+//    `sucursalPorDefecto`.** Si lo fuera, «se descontó de la designada» y «se
+//    cayó al escalón por defecto» darían el mismo número, que es exactamente el
+//    defecto que la sucursal designada viene a cerrar. Hay una guarda que lo
+//    verifica y tira con el motivo escrito.
+//  - **`available` es distinto de `quantity` en la sucursal designada.** Los
+//    ocho caminos que escriben stock los mueven juntos, así que en cualquier
+//    otro dato publicar uno u otro da el mismo número.
 // ════════════════════════════════════════════
 
 const { modelos } = require('./baseDePruebas');
+const { elegirPorDefecto } = require('../../utils/sucursalDeStock');
 
 const {
   Empresa,
@@ -55,6 +64,9 @@ const {
   SupplierOrder,
   Sale,
   SaleItem,
+  TiendanubeTienda,
+  TiendanubeMapping,
+  TiendanubeVariante,
 } = modelos;
 
 /** El `auth0_sub` que busca el bypass de `server.js`. */
@@ -146,9 +158,14 @@ async function sembrarDosEmpresas() {
     empresa_id: empresaA.id, product_id: harina.id, punto_de_venta_id: centroA.id,
     location: 'centro', quantity: 20, available: 20,
   });
+  // ⚠ `available` distinto de `quantity`, y **en la sucursal designada de
+  // TiendaNube**. Es lo que hace distinguible «se publica lo disponible» de «se
+  // publica la cantidad»: con los dos numeros iguales —que es como quedan los
+  // ocho caminos que escriben stock— publicar uno u otro da el mismo resultado y
+  // el test pasa con y sin la decision.
   await Stock.create({
     empresa_id: empresaA.id, product_id: harina.id, punto_de_venta_id: norteA.id,
-    location: 'norte', quantity: 7, available: 7,
+    location: 'norte', quantity: 7, available: 5,
   });
   await Stock.create({
     empresa_id: empresaA.id, product_id: levadura.id, punto_de_venta_id: centroA.id,
@@ -166,6 +183,19 @@ async function sembrarDosEmpresas() {
   await Stock.create({
     empresa_id: empresaB.id, product_id: golosinaB.id, punto_de_venta_id: localB.id,
     location: 'kiosco', quantity: 30, available: 30,
+  });
+
+  // Un producto **sin ninguna fila de stock**. Mapeado contra la tienda, es el
+  // caso de «no hay stock en la sucursal designada»: lo que corresponde ahi es
+  // NO publicar nada, y no publicar cero — publicar cero es una decision, y la
+  // que se tomo es que una variante sin fila de stock queda con su motivo
+  // escrito. Sin este producto, ese camino no se ejecuta nunca.
+  const sal = await Product.create({
+    empresa_id: empresaA.id,
+    name: 'Sal fina',
+    sku: 'SAL-001',
+    cost: 120.50,
+    unit_type: 'kg',
   });
 
   // ── Proveedores de A ──
@@ -268,13 +298,112 @@ async function sembrarDosEmpresas() {
     quantity: 3, unit_price: 500.00,
   });
 
+  // ════════════════════════════════════════════
+  //  TiendaNube
+  //
+  //  Una tienda por empresa, con `tiendanube_user_id` distinto: el UNIQUE de esa
+  //  columna es lo que impide que dos empresas vinculen la misma tienda, y con un
+  //  solo valor sembrado no habria contra que chocar.
+  // ════════════════════════════════════════════
+
+  // ⚠ La sucursal designada de A es **norte**, que NO es la que elegiria
+  // `sucursalPorDefecto`. Es lo unico que hace distinguible «se desconto de la
+  // designada» de «se descontó de la por defecto»: con las dos siendo la misma,
+  // el defecto de hoy —el webhook pasa null y cae al escalon por defecto— daria
+  // exactamente el mismo numero y el test pasaria con y sin el arreglo.
+  const designadaA = norteA;
+  const porDefectoA = elegirPorDefecto([centroA, norteA]);
+
+  if (!porDefectoA || Number(porDefectoA.id) === Number(designadaA.id)) {
+    throw new Error(
+      `La sucursal designada de la empresa A (${designadaA.code}) es la misma que elegiria ` +
+      `sucursalPorDefecto (${porDefectoA ? porDefectoA.code : 'ninguna'}). Asi la fixture NO puede ` +
+      'distinguir «se uso la designada» de «se cayo al escalon por defecto», que es justamente el ' +
+      'defecto que la sucursal designada viene a cerrar. Si se renombraron las sucursales —por ' +
+      'ejemplo, si centro paso a llamarse principal— hay que elegir otra designada.'
+    );
+  }
+
+  const tiendaA = await TiendanubeTienda.create({
+    empresa_id: empresaA.id,
+    tiendanube_user_id: 4455667,
+    nombre: 'Panadería del Centro Online',
+    punto_de_venta_id: designadaA.id,
+    vinculada_en: new Date('2026-08-01T12:00:00.000Z'),
+    catalogo_refrescado_en: new Date('2026-08-05T09:00:00.000Z'),
+  });
+
+  const tiendaB = await TiendanubeTienda.create({
+    empresa_id: empresaB.id,
+    tiendanube_user_id: 9988776,
+    nombre: 'Kiosco Online',
+    punto_de_venta_id: localB.id,
+    vinculada_en: new Date('2026-08-02T12:00:00.000Z'),
+  });
+
+  // Tres mapeos en A y uno en B. Los tres de A cubren tres situaciones
+  // distintas a proposito:
+  //
+  //  - harina: tiene stock en la sucursal designada, con available ≠ quantity;
+  //  - levadura: tiene stock, pero **solo en centro**, que NO es la designada;
+  //  - sal: no tiene ninguna fila de stock.
+  //
+  // Con tres productos que tuvieran stock en la designada, «no publica cero» y
+  // «no publica nada» serian el mismo caso.
+  const mapeoHarina = await TiendanubeMapping.create({
+    empresa_id: empresaA.id, product_id: harina.id,
+    tiendanube_variant_id: 5000001, tiendanube_product_id: 700001,
+  });
+  const mapeoLevadura = await TiendanubeMapping.create({
+    empresa_id: empresaA.id, product_id: levadura.id,
+    tiendanube_variant_id: 5000002, tiendanube_product_id: 700001,
+  });
+  const mapeoSal = await TiendanubeMapping.create({
+    empresa_id: empresaA.id, product_id: sal.id,
+    tiendanube_variant_id: 5000003, tiendanube_product_id: 700002,
+  });
+  const mapeoB = await TiendanubeMapping.create({
+    empresa_id: empresaB.id, product_id: golosinaB.id,
+    tiendanube_variant_id: 6000001, tiendanube_product_id: 800001,
+  });
+
+  // La instantanea del catalogo de A. Las dos primeras variantes son del mismo
+  // producto de TiendaNube —un producto con talles tiene varias— y la cuarta
+  // tiene `vista_en` ANTERIOR al `catalogo_refrescado_en` de la tienda: es «esta
+  // variante ya no esta en tu tienda», que sin una fila asi no se puede
+  // distinguir de una que si esta.
+  await TiendanubeVariante.bulkCreate([
+    {
+      empresa_id: empresaA.id, tiendanube_variant_id: 5000001, tiendanube_product_id: 700001,
+      nombre_producto: 'Harina', nombre_variante: '1 kg', sku: 'HAR-000',
+      stock_en_tienda: 20, vista_en: new Date('2026-08-05T09:00:00.000Z'),
+    },
+    {
+      empresa_id: empresaA.id, tiendanube_variant_id: 5000002, tiendanube_product_id: 700001,
+      nombre_producto: 'Harina', nombre_variante: '5 kg', sku: '',
+      stock_en_tienda: 4, vista_en: new Date('2026-08-05T09:00:00.000Z'),
+    },
+    {
+      empresa_id: empresaA.id, tiendanube_variant_id: 5000003, tiendanube_product_id: 700002,
+      nombre_producto: 'Sal fina', nombre_variante: null, sku: 'SAL-001',
+      stock_en_tienda: 0, vista_en: new Date('2026-08-05T09:00:00.000Z'),
+    },
+    {
+      empresa_id: empresaA.id, tiendanube_variant_id: 5000004, tiendanube_product_id: 700003,
+      nombre_producto: 'Producto que se borro de la tienda', nombre_variante: null, sku: 'VIEJO-1',
+      stock_en_tienda: 3, vista_en: new Date('2026-07-01T09:00:00.000Z'),
+    },
+  ]);
+
   return {
     empresaA, empresaB,
     centroA, norteA, localB,
     usuarioA, usuarioB,
-    harina, levadura, golosinaB,
+    harina, levadura, sal, golosinaB,
     molino, distribuidora, almacen, zeta, molinoB,
     ventaA, ventaB,
+    tiendaA, tiendaB, designadaA,
+    mapeoHarina, mapeoLevadura, mapeoSal, mapeoB,
   };
 }
 

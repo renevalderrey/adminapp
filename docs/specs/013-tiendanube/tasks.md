@@ -582,7 +582,7 @@ Es US1 entera del lado del servidor, US4 escenario 4, y los criterios 1 y 7.
 Verificable contra hoy, donde el circuito termina **siempre** en
 `?tiendanube=error&motivo=sin_empresa`.
 
-- [ ] **T1308** [P] Ampliar `apps/api/src/tests/integracion/fixtures.js` con lo
+- [x] **T1308** [P] Ampliar `apps/api/src/tests/integracion/fixtures.js` con lo
       que los dos archivos de integración de este hito necesitan. Hoy
       `sembrarDosEmpresas` ya siembra **dos sucursales en A** (`centro` y
       `norte`) y una en B, y eso alcanza para lo que sigue; lo que falta es:
@@ -616,7 +616,7 @@ Verificable contra hoy, donde el circuito termina **siempre** en
       que alguien renombre `centro` a `principal` la fixture deja de poder
       distinguir el defecto **y nada avisa**.
 
-- [ ] **T1309** [P] `GET /api/tiendanube/auth` pasa a exigir **`config.editar`**
+- [x] **T1309** [P] `GET /api/tiendanube/auth` pasa a exigir **`config.editar`**
       en vez de `config.ver`. Una línea en `apps/api/src/routes/tiendanube.js`.
       **Por qué es su propio corte**: ese endpoint **escribe** —a partir de T1310
       inserta una fila de `tiendanube_estados_oauth`— y arranca el flujo que
@@ -634,7 +634,7 @@ Verificable contra hoy, donde el circuito termina **siempre** en
       **Cómo se comprueba que el test sirve**: se vuelve a `config.ver` y el caso
       se pone en rojo.
 
-- [ ] **T1310** `GET /api/tiendanube/auth` crea el `state`. En
+- [x] **T1310** `GET /api/tiendanube/auth` crea el `state`. En
       `apps/api/src/routes/tiendanube.js`, el handler:
       **(1)** conserva el **500 con su texto** si falta `TIENDANUBE_CLIENT_ID`
       (FR-006, cuarto estado);
@@ -660,7 +660,7 @@ Verificable contra hoy, donde el circuito termina **siempre** en
       y el segundo se pone en rojo; se saca el chequeo de tienda vinculada y el
       cuarto.
 
-- [ ] **T1311** ⚠ **Acá está la mitad que sostiene «de un solo uso».**
+- [x] **T1311** ⚠ **Acá está la mitad que sostiene «de un solo uso».**
       `GET /api/tiendanube/callback`, en `apps/api/src/routes/tiendanube.js`:
       **(1)** el `state` se consume con un **`UPDATE … RETURNING`**, y no con un
       `findOne` seguido de un `update`:
@@ -705,7 +705,7 @@ Verificable contra hoy, donde el circuito termina **siempre** en
       `consumido_en IS NULL` al `UPDATE` y el tercero se pone en rojo; se unifican
       los motivos en uno solo y el primero.
 
-- [ ] **T1312** `GET /api/tiendanube/status` deja de devolver un booleano y pasa
+- [x] **T1312** `GET /api/tiendanube/status` deja de devolver un booleano y pasa
       al contrato de `contracts/api-endpoints.md`: `estado` —uno de
       `sin_configurar`, `no_vinculada`, `vinculada`, `vinculada_con_error`—, el
       objeto `tienda` con su sucursal designada, sus tres fechas y
@@ -731,7 +731,7 @@ Verificable contra hoy, donde el circuito termina **siempre** en
       booleano y los tres primeros se ponen en rojo; se agrega
       `token: token.slice(-4)` a la respuesta y el cuarto.
 
-- [ ] **T1313** Las dos rutas que cierran US1: `PUT /api/tiendanube/sucursal` y
+- [x] **T1313** Las dos rutas que cierran US1: `PUT /api/tiendanube/sucursal` y
       `DELETE /api/tiendanube/vinculacion`, en
       `apps/api/src/routes/tiendanube.js`.
       **`PUT /sucursal`**: resuelve el punto de venta con `findScoped(PuntoDeVenta,
@@ -760,7 +760,7 @@ Verificable contra hoy, donde el circuito termina **siempre** en
       `findByPk` y el primero se pone en rojo; se saca el encolado y el segundo
       devuelve cero; se agrega el borrado de mapeos y el tercero.
 
-- [ ] **T1314** ⚠ **El primero de los dos archivos de integración, y la mitad que
+- [x] **T1314** ⚠ **El primero de los dos archivos de integración, y la mitad que
       ningún test secuencial toca.** Crear
       `apps/api/src/tests/integracion/tiendanubeAislamiento.integracion.test.js`,
       con `baseDePruebas` **primero de todo** —antes que `supertest` y que
@@ -806,7 +806,7 @@ empresa y la sucursal de un pedido salen de la fila que crea el OAuth. Es US2
 entera y los criterios 2, 3, 4 y 5. Verificable contra hoy, donde **todo webhook
 responde 401 y no descuenta nada**.
 
-- [ ] **T1315** ⚠ **Una línea de `server.js` que revive la integración entera, y
+- [x] **T1315** ⚠ **Una línea de `server.js` que revive la integración entera, y
       su guardia.** En `apps/api/src/server.js`,
       `app.use('/api/tiendanube', require('./routes/tiendanube').publico)` sube de
       `:345` a **antes** de `app.use(express.json({ limit: '10mb' }))` (`:149`).
@@ -851,7 +851,7 @@ responde 401 y no descuenta nada**.
       en todos lados por un endpoint. Las otras dos alternativas y su motivo están
       en la decisión 5 del plan.
 
-- [ ] **T1316** Dos cosas del webhook que no son el descuento, en
+- [x] **T1316** Dos cosas del webhook que no son el descuento, en
       `apps/api/src/routes/tiendanube.js`:
       **(a)** `empresaDeLaTienda` deja de ser
       `Setting.findAll({ where: { key: 'tiendanube_user_id' } })` **sobre todas
@@ -886,7 +886,7 @@ responde 401 y no descuenta nada**.
       rechazo en un solo `logger.warn` y el segundo se pone en rojo; se responde
       500 en el camino de tienda no vinculada y el cuarto.
 
-- [ ] **T1317** ⚠ **La idempotencia, y va en `tiendanube_pedidos` — NO en un
+- [x] **T1317** ⚠ **La idempotencia, y va en `tiendanube_pedidos` — NO en un
       índice único sobre `stock_movements`** (punto 5 de «Antes de empezar»). En
       `apps/api/src/services/tiendanubeService.js`, `processOrderCreated`
       (`:102-173`) se reescribe **en el mismo archivo** (decisión 15: el ancla de
@@ -946,7 +946,7 @@ responde 401 y no descuenta nada**.
       **Cómo se comprueba que el test sirve**: se vuelven los `continue` y los dos
       se ponen en rojo con `items` vacío.
 
-- [ ] **T1318** `GET /api/tiendanube/pedidos`, en
+- [x] **T1318** `GET /api/tiendanube/pedidos`, en
       `apps/api/src/routes/tiendanube.js`, con `solo_con_problemas`, `page` y
       `limit`. Devuelve el pedido con sus `items_descontados`,
       `items_sin_descontar` y el JSONB de `items` con los cuatro motivos.
@@ -962,7 +962,7 @@ responde 401 y no descuenta nada**.
       pone en rojo con los pedidos completos adentro; se saca el `empresa_id` del
       `where` y el segundo.
 
-- [ ] **T1319** ⚠ **El archivo que contesta lo que ningún otro nivel puede.**
+- [x] **T1319** ⚠ **El archivo que contesta lo que ningún otro nivel puede.**
       Crear `apps/api/src/tests/integracion/tiendanubeWebhook.integracion.test.js`,
       con el arnés armado como T1314 y la API de TiendaNube **doblada** (supuesto
       11: no hay entorno de pruebas del tercero). Los seis casos:
@@ -1012,7 +1012,7 @@ listan y se borran; y ninguna llamada saliente queda sin `timeout`.
 US3 del lado del servidor, criterios 8 y 9. Es donde vive el ajuste 2 del plan:
 **FR-057, FR-058 y FR-059 no pueden convivir con un pasamanos de la API**.
 
-- [ ] **T1320** [P] Crear `apps/api/src/utils/tiendanubeCatalogo.js` con dos
+- [x] **T1320** [P] Crear `apps/api/src/utils/tiendanubeCatalogo.js` con dos
       funciones **puras**: `normalizarCatalogo(paginas)` → filas de variante
       —producto, variante, SKU, stock— y `sugerirPorSku(variantes, productos)` →
       la sugerencia con **cuántos coincidieron**.
@@ -1047,7 +1047,7 @@ US3 del lado del servidor, criterios 8 y 9. Es donde vive el ajuste 2 del plan:
       cuarto se pone en rojo **mapeando el producto equivocado**, que es el daño
       concreto.
 
-- [ ] **T1321** [P] Crear `apps/api/src/utils/tiendanubeCola.js` con tres
+- [x] **T1321** [P] Crear `apps/api/src/utils/tiendanubeCola.js` con tres
       funciones **puras**: `proximoIntento(intentos, retryAfter)` —el backoff
       `NOW() + min(2^intentos, 60)` minutos, respetando `Retry-After` si viene—,
       `clasificarError(err)` —`ECONNABORTED`, 401, 429, 5xx, y «cualquier otra
@@ -1075,7 +1075,7 @@ US3 del lado del servidor, criterios 8 y 9. Es donde vive el ajuste 2 del plan:
       de stock publique `0` y el séptimo; se lee `err.response.status` sin
       guardia y el sexto tira.
 
-- [ ] **T1322** En `apps/api/src/services/tiendanubeService.js`, tres cosas que
+- [x] **T1322** En `apps/api/src/services/tiendanubeService.js`, tres cosas que
       van juntas porque las tres son «hablar con TiendaNube»:
       **(a) `timeout: 15000` en las tres llamadas `axios`** (`:13`, `:60`, `:77`),
       con el precedente escrito y comentado en `afipService.js:86-89`. **Hoy no
@@ -1104,7 +1104,7 @@ US3 del lado del servidor, criterios 8 y 9. Es donde vive el ajuste 2 del plan:
       tres textos en «No se pudo sincronizar el stock con TiendaNube» —que es el
       de hoy— y los tres primeros se ponen en rojo.
 
-- [ ] **T1323** `POST /api/tiendanube/variantes/refrescar` y
+- [x] **T1323** `POST /api/tiendanube/variantes/refrescar` y
       `GET /api/tiendanube/variantes`, con el refresco en
       `apps/api/src/services/tiendanubeSincronizacion.js` (archivo nuevo).
       **El refresco** recorre todas las páginas, escribe cada variante con
@@ -1144,7 +1144,7 @@ US3 del lado del servidor, criterios 8 y 9. Es donde vive el ajuste 2 del plan:
       pone en rojo con las de las otras páginas afuera —que es el defecto que
       FR-057 viene a cerrar, con otro nombre—.
 
-- [ ] **T1324** `GET /api/tiendanube/mapeos` y `DELETE
+- [x] **T1324** `GET /api/tiendanube/mapeos` y `DELETE
       /api/tiendanube/mapeos/:id`, y el renombre de la ruta de creación a
       `POST /api/tiendanube/mapeos`. Las tres rutas viejas —`/products`,
       `/mapping`, `/sync-stock`— se borran.
@@ -1171,7 +1171,7 @@ US3 del lado del servidor, criterios 8 y 9. Es donde vive el ajuste 2 del plan:
       `findScoped`; que la fila ajena haya quedado como estaba lo contesta el
       cuarto nivel.
 
-- [ ] **T1325** Ampliar
+- [x] **T1325** Ampliar
       `apps/api/src/tests/integracion/tiendanubeAislamiento.integracion.test.js`
       (creado en T1314) con el aislamiento del mapeo **ejecutado**:
       `it('la empresa B no lista, no crea y no borra mapeos de la A, y la fila de
@@ -1206,7 +1206,7 @@ US5 escenarios 1 a 10 y los criterios 10, 11 y 12. Va **antes** de la cola a
 propósito: la corrida explícita es el mismo motor y hay que poder culparla sola
 si falla.
 
-- [ ] **T1326** En `apps/api/src/services/tiendanubeSincronizacion.js`, la
+- [x] **T1326** En `apps/api/src/services/tiendanubeSincronizacion.js`, la
       función `sincronizar(empresaId, { disparador, usuarioId })`:
       **(1) el arriendo** (FR-044), con un `UPDATE` condicional sobre
       `tiendanube_tiendas.sincronizando_desde` y una ventana de **10 minutos**.
@@ -1254,7 +1254,7 @@ si falla.
       `quantity` y el segundo; se pone un `throw` en el primer fallo y el tercero;
       se publica `0` cuando no hay fila y el cuarto.
 
-- [ ] **T1327** `POST /api/tiendanube/sincronizar` y
+- [x] **T1327** `POST /api/tiendanube/sincronizar` y
       `GET /api/tiendanube/corridas/ultima`, en
       `apps/api/src/routes/tiendanube.js`.
       **El 200 con fallas es el contrato, no un descuido**: `{ ok, corrida_id,
@@ -1282,7 +1282,7 @@ si falla.
       variable de módulo y el primero se pone en rojo; se devuelve `{}` en vez de
       `null` y el segundo.
 
-- [ ] **T1328** Ampliar
+- [x] **T1328** Ampliar
       `apps/api/src/tests/integracion/tiendanubeAislamiento.integracion.test.js`
       con el arriendo:
       `it('dos POST /sincronizar EN PARALELO: uno arranca y el otro recibe «hay
@@ -1317,7 +1317,7 @@ quedó desfasado.
 reintenta» y «el agrupado no manda cien llamadas» no son lo mismo, y una tarea
 que las junte no puede decir cuál de las dos se rompió.
 
-- [ ] **T1329** **(a) El encolado.** En `apps/api/src/models/Stock.js`, los hooks
+- [x] **T1329** **(a) El encolado.** En `apps/api/src/models/Stock.js`, los hooks
       `afterCreate` y `afterUpdate`, dentro de la transacción del que escribió
       (`options.transaction`), marcando la variante mapeada de ese producto como
       pendiente con el `UPDATE` de la decisión 8a del plan.
@@ -1358,7 +1358,7 @@ que las junte no puede decir cuál de las dos se rompió.
       que sí se puede contar es **cuántas consultas** agrega, y eso es lo que
       afirma el segundo caso.
 
-- [ ] **T1330** **(b) El agrupado, que es lo que hace viable la decisión 4.**
+- [x] **T1330** **(b) El agrupado, que es lo que hace viable la decisión 4.**
       No hay código propio: el agrupado **sale del índice único**
       `uq_tn_variante (empresa_id, tiendanube_variant_id)`. Cien movimientos del
       mismo producto en diez segundos actualizan **cien veces la misma fila** y
@@ -1381,7 +1381,7 @@ que las junte no puede decir cuál de las dos se rompió.
       filas; se manda un PUT por movimiento y el segundo se pone en rojo con cien
       llamadas — que es el número que la API del tercero rechaza.
 
-- [ ] **T1331** **(c) El drenaje, con su reintento.** En
+- [x] **T1331** **(c) El drenaje, con su reintento.** En
       `apps/api/src/services/tiendanubeSincronizacion.js`, `drenarCola(empresaId)`
       toma las filas con `pendiente_desde IS NOT NULL AND proximo_intento_en <=
       NOW()` —por el índice parcial `idx_tn_variantes_cola`—, manda un PUT por
@@ -1414,7 +1414,7 @@ que las junte no puede decir cuál de las dos se rompió.
       el handler **no** espera el drenaje: la respuesta llega con la fila todavía
       pendiente.
 
-- [ ] **T1332** **(d) La reconciliación y los dos barridos**, colgados de
+- [x] **T1332** **(d) La reconciliación y los dos barridos**, colgados de
       `POST /api/tareas/ejecutar` (`apps/api/src/server.js:211-236`), que ya existe
       y ya se protege con `x-cron-secret`. **No cambia nada de eso.** Gana tres
       tareas, para cada tienda vinculada:

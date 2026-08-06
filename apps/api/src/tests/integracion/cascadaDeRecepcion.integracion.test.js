@@ -276,13 +276,34 @@ describe('Lo que crece es la cantidad de consultas, y eso sí se puede afirmar',
   it('cada línea de más cuesta un número FIJO de consultas', async () => {
     const { conUna, conSeis } = await medirUnaYSeisLineas();
 
-    // Dos por línea: el `SELECT … FOR UPDATE` de la fila de stock y su `UPDATE`.
+    // **Cuatro** por línea, y las dos últimas son nuevas:
+    //
+    //  1. el `SELECT … FOR UPDATE` de la fila de stock;
+    //  2. su `UPDATE`;
+    //  3. un `SAVEPOINT`;
+    //  4. el `UPDATE` que encola la variante mapeada de ese producto para
+    //     TiendaNube — el hook `afterUpdate` de `models/Stock.js`, hito 013.
+    //
+    // Pasaron de cero a dos en la fase 7 de ese hito, y **son el precio declarado
+    // de dos decisiones**:
+    //
+    //  - la 8a del plan: la regla de encolar vive en un solo lugar, porque los
+    //    ocho caminos que escriben stock no se iban a acordar cada uno por su
+    //    cuenta y el síntoma de olvidarse habría sido una variante desfasada en
+    //    silencio. El `UPDATE` toca **una** fila —`uq_tn_mapping_product` y
+    //    `uq_tn_variante` lo garantizan—, que es lo que el riesgo 3 pedía mirar;
+    //  - el `SAVEPOINT`: en Postgres una sentencia que falla aborta la
+    //    transacción entera, así que sin él un problema de la cola —la tabla que
+    //    todavía no existe entre dos deploys, un deadlock— haría que **ninguna
+    //    recepción y ninguna venta se pudieran registrar**. Con él, el encolado
+    //    se revierte solo y la recepción sigue.
+    //
     // Todo lo demás —la orden, la empresa, la sucursal, los productos, el
     // movimiento de deuda— es fijo y no depende de cuántas líneas tenga.
     //
     // Es la magnitud que el paso manual buscaba y el reloj no podía dar: si
     // alguien mete una lectura adentro del bucle, este número sube y el test lo
     // dice en cualquier máquina.
-    expect(conSeis.length - conUna.length).toBe(10);
+    expect(conSeis.length - conUna.length).toBe(20);
   });
 });
