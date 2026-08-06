@@ -11,6 +11,7 @@ const { findScoped } = require('../utils/tenantScope');
 const { fallo } = require('../utils/errores');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
 const { UMBRAL_POR_DEFECTO, limiteDeStockBajo, esStockBajo } = require('../utils/stockBajo');
+const { esSecreto, sinSecretos } = require('../utils/settingsSecretos');
 
 // Los dos mensajes de stock negativo viven acá porque los usan las DOS puertas
 // —`PUT /stock/:id` y `POST /stock`— y tienen que decir exactamente lo mismo.
@@ -408,7 +409,10 @@ router.get('/settings', checkPermission('config.ver'), async (req, res) => {
     // dos repositorios empiezan iguales y terminan distintas.
     obj.umbral_stock_bajo = UMBRAL_POR_DEFECTO;
 
-    res.json({ ok: true, data: obj });
+    // La clave privada de AFIP, su certificado y el token de TiendaNube NO
+    // salen de aca. Salian: este endpoint devolvia la tabla entera y la
+    // pantalla los metia en el store del navegador. Ver utils/settingsSecretos.
+    res.json({ ok: true, data: sinSecretos(obj) });
   } catch (err) {
     fallo(req, res, err, 'Error al leer la configuración');
   }
@@ -418,6 +422,27 @@ router.get('/settings', checkPermission('config.ver'), async (req, res) => {
 router.get('/settings/:key', checkPermission('config.ver'), async (req, res) => {
   try {
     const empresaId = req.empresaId;
+
+    // La otra puerta por la que salia la clave privada de AFIP. Cerrar solo
+    // `GET /settings` habria dejado esta abierta, que ademas es mas comoda:
+    // `GET /api/settings/afip_key` devolvia la clave sola, sin nada alrededor.
+    //
+    // Se contesta con la bandera y no con un 404: que la clave EXISTE no es el
+    // secreto —la pantalla necesita saberlo para decir «certificado cargado»—,
+    // el secreto es su contenido.
+    if (esSecreto(req.params.key)) {
+      const guardado = await Setting.findOne({
+        where: { key: req.params.key, empresa_id: empresaId },
+      });
+
+      return res.json({
+        ok: true,
+        data: null,
+        cargado: Boolean(guardado && guardado.value),
+        error: 'Esa configuración no se puede leer por la API.',
+      });
+    }
+
     const setting = await Setting.findOne({
       where: {
         key: req.params.key,
@@ -433,6 +458,23 @@ router.get('/settings/:key', checkPermission('config.ver'), async (req, res) => 
 // PUT /api/settings/:key — Guardar configuración
 router.put('/settings/:key', checkPermission('config.editar'), async (req, res) => {
   try {
+    // El material fiscal NO se escribe por acá, y no es simetría con el GET.
+    //
+    // `POST /api/afip/setup` hace tres cosas que este endpoint genérico no hace:
+    // valida que el certificado y la clave sean lo que dicen ser, comprueba que
+    // se correspondan entre sí, e **invalida el ticket WSAA en curso**. Sin lo
+    // último, AFIP sigue firmando con el ticket viejo hasta que vence y el
+    // certificado nuevo no tiene efecto — con la pantalla diciendo que se guardó.
+    //
+    // O sea: por acá se podía dejar la facturación electrónica rota de una forma
+    // que no falla en el momento y se descubre cuando hay que emitir.
+    if (esSecreto(req.params.key)) {
+      return res.status(400).json({
+        ok: false,
+        error: 'El certificado y la clave de AFIP se cargan desde Ajustes → Facturación, que los valida.',
+      });
+    }
+
     const [setting, created] = await Setting.findOrCreate({
       where: { key: req.params.key, empresa_id: req.empresaId },
       defaults: { value: req.body.value, empresa_id: req.empresaId },

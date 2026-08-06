@@ -55,8 +55,12 @@ const {
   TiendanubeMapping,
 } = require('../src/models');
 
-/** Claves de configuración que no se incluyen en el respaldo. */
-const SETTINGS_EXCLUIDOS = ['afip_cert', 'afip_key', 'tiendanube_access_token'];
+// La lista vive en `src/utils/settingsSecretos.js` y la importan los dos: este
+// script y `routes/general.js`. Estuvo escrita solo acá durante meses, mientras
+// `GET /api/settings` mandaba la clave privada de AFIP al navegador — dos listas
+// iguales en dos archivos empiezan iguales y terminan distintas, y ésta ni
+// siquiera llegó a existir del otro lado.
+const { SETTINGS_SECRETOS: SETTINGS_EXCLUIDOS } = require('../src/utils/settingsSecretos');
 
 /**
  * Tablas que se respaldan, con cómo filtrarlas por empresa.

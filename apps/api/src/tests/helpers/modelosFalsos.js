@@ -158,6 +158,37 @@ function crearModelo(filas = [], relaciones = {}) {
       modelo.filas.push(fila);
       return modelo._hidratar(fila);
     },
+
+    /**
+     * `findOrCreate`, con la misma forma que el de Sequelize: devuelve
+     * `[instancia, creada]`.
+     *
+     * Vive aca y no en cada archivo de test porque ya lo necesitaron dos —el
+     * stock y la configuracion— y el segundo se enteró con un 500 que decia
+     * «Error al guardar la configuración», que no nombra al doble por ningun
+     * lado. Un doble al que le falta un metodo no responde «no lo tengo»:
+     * responde `TypeError`, y el `fallo()` de la ruta lo convierte en un 500
+     * generico. La causa queda a dos saltos del sintoma.
+     *
+     * `validarWhere` va igual que en `findOne`: un `where` con un `undefined`
+     * —el olvido mas comun despues de un refactor de firmas— tiene que romper
+     * acá como rompe en Postgres, no encontrar la primera fila que pase.
+     */
+    async findOrCreate(opciones = {}) {
+      modelo.llamadas.push({ metodo: 'findOrCreate', ...opciones });
+      validarWhere(opciones.where);
+
+      const existente = modelo.filas.find((f) => coincide(f, opciones.where));
+      if (existente) return [modelo._hidratar(existente, opciones), false];
+
+      const fila = {
+        id: modelo.filas.length + 1,
+        ...opciones.where,
+        ...(opciones.defaults || {}),
+      };
+      modelo.filas.push(fila);
+      return [modelo._hidratar(fila, opciones), true];
+    },
   };
 
   return modelo;
