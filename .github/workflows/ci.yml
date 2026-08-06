@@ -221,8 +221,19 @@ jobs:
           # bypass. Van como red — si alguien saca el bypass de este paso, el
           # servidor arranca y la falla se ve en las pruebas, no en noventa
           # segundos de espera y un ERR_ASSERTION que no nombra a Auth0.
+          # Las dos de TiendaNube van porque `GET /api/tiendanube/status`
+          # responde `sin_configurar` SIN MIRAR NINGUNA FILA cuando falta
+          # TIENDANUBE_CLIENT_ID —que es lo correcto: sin credenciales no hay
+          # integracion posible—. En una maquina con apps/api/.env eso no se
+          # nota; en CI no hay .env, y la prueba de la pantalla fallaba diciendo
+          # «se sembro la tienda pero /status no la ve», que suena a un problema
+          # de la siembra y no a una variable que falta.
+          #
+          # Son valores de mentira a proposito: no se habla con TiendaNube en
+          # ninguna prueba. Lo unico que hacen es que el endpoint mire la base.
           NODE_ENV=development BYPASS_AUTH=true PORT=5099 \
             AUTH0_DOMAIN=ci.example.com AUTH0_AUDIENCE=https://ci.example.com/api \
+            TIENDANUBE_CLIENT_ID=ci-cliente TIENDANUBE_CLIENT_SECRET=ci-secreto \
             ALLOWED_ORIGINS=http://localhost:5199 LOG_LEVEL=warn \
             node src/server.js > /tmp/api-navegador.log 2>&1 &
 

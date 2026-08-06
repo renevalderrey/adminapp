@@ -926,6 +926,36 @@ function dispararDrenaje(empresaId) {
   return promesa;
 }
 
+/**
+ * Espera a que terminen los drenajes que ya estan en vuelo. NO arranca ninguno.
+ *
+ * Existe para los tests, y no es azucar: sin esto, la unica forma de esperar un
+ * drenaje disparado por `setImmediate` era encadenar unos ticks y confiar. Un
+ * drenaje hace varias consultas a Postgres, que tardan bastante mas que un tick,
+ * asi que la espera alcanzaba en una maquina y no en otra — y esa es la forma
+ * exacta de un test que pasa local y falla en CI.
+ *
+ * Paso: `drenar despues de cien movimientos manda UN solo PUT` daba 0 llamadas
+ * en CI porque el drenaje de fondo seguia corriendo y el explicito se salteaba
+ * por el candado de arriba, que devuelve la promesa en curso en vez de empezar
+ * otro.
+ *
+ * Vuelve a mirar el mapa despues de esperar, porque un drenaje puede haber
+ * encolado a otro. El tope corta una espera infinita en vez de colgar la suite.
+ */
+async function esperarDrenajesEnCurso({ vueltas = 10 } = {}) {
+  for (let i = 0; i < vueltas; i += 1) {
+    const enVuelo = [...drenajesEnCurso.values()];
+    if (!enVuelo.length) return true;
+
+    // `dispararDrenaje` ya envuelve cada promesa en un `.catch`, asi que ninguna
+    // rechaza: esperarlas no puede tumbar el test por un error del drenaje.
+    await Promise.all(enVuelo);
+  }
+
+  return drenajesEnCurso.size === 0;
+}
+
 // ════════════════════════════════════════════
 //  La reconciliación diaria y los dos barridos
 //
@@ -1202,6 +1232,7 @@ module.exports = {
   sincronizar,
   drenarCola,
   dispararDrenaje,
+  esperarDrenajesEnCurso,
   reconciliar,
   tareasDiarias,
   ARRIENDO_DE_SINCRONIZACION_MS,

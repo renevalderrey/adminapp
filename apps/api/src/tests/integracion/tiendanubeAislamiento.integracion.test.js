@@ -887,10 +887,23 @@ const enLaCola = () => TiendanubeVariante.count({
  * cola.
  */
 async function dejarPasarLosDrenajesDeFondo() {
+  // Los ticks son para que el `setImmediate` que dispara el drenaje llegue a
+  // ejecutarse. Alcanzan para ARRANCARLO, no para que TERMINE.
   for (let i = 0; i < 5; i++) {
     // eslint-disable-next-line no-await-in-loop
     await new Promise((resolve) => setImmediate(resolve));
   }
+
+  // Y esto espera a que terminen los que arrancaron.
+  //
+  // ⚠ Sin esta línea el archivo pasaba acá y fallaba en CI, con 0 llamadas donde
+  // se esperaba 1: el drenaje de fondo seguía en vuelo, y el `drenarCola`
+  // explícito del test se salteaba porque `dispararDrenaje` devuelve la promesa
+  // en curso en vez de empezar otra. Un drenaje hace varias consultas a
+  // Postgres, que tardan mucho más que cinco ticks — así que cuántos ticks
+  // «alcanzan» depende de la máquina, que es justo lo que un test no puede
+  // depender.
+  await tiendanubeSincronizacion.esperarDrenajesEnCurso();
 }
 
 /** Pone una variante en la cola y ya vencida, sin esperar los cinco segundos. */
