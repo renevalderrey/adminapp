@@ -13,6 +13,11 @@ import { Can } from '@/components/Can'
 import {
   Scale, Plus, Trash2, Eye, EyeOff, FileSpreadsheet, Loader2, TrendingDown, Info,
 } from 'lucide-react'
+// El `pesos` propio de esta pantalla NO era el de siempre: mostraba los
+// centavos solo si el precio los tenía. Esa diferencia es deliberada —ver
+// `pesosDeLista` en utils/formato.js— y por eso se mudó con nombre propio en
+// vez de aplanarse contra `pesos`.
+import { pesosDeLista } from '@/utils/formato'
 
 // ════════════════════════════════════════════
 //  Comparador de proveedores
@@ -25,11 +30,6 @@ import {
 //  encabezado de pantalla, tarjetas, tabla en grid, badges de estado, estados
 //  vacíos. Cuando algo del documento no se entienda, mirar acá.
 // ════════════════════════════════════════════
-
-const pesos = (n) => Number(n || 0).toLocaleString('es-AR', {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-})
 
 /** Clases del botón secundario del sistema (34px, borde, hover en surface-3). */
 const BOTON_SECUNDARIO =
@@ -329,7 +329,7 @@ export default function Comparador() {
                             }`}
                             title={precio.nombre}
                           >
-                            ${pesos(precio.precio)}
+                            ${pesosDeLista(precio.precio)}
                           </span>
                         </span>
                       )
@@ -339,7 +339,7 @@ export default function Comparador() {
                       {g.cantidad_proveedores > 1 ? (
                         <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-fg-2">
                           <TrendingDown className="h-3.5 w-3.5 text-ok" />
-                          <span className="num">${pesos(g.diferencia)}</span>
+                          <span className="num">${pesosDeLista(g.diferencia)}</span>
                           <span className="num text-fg-3">({g.diferencia_pct}%)</span>
                         </span>
                       ) : (

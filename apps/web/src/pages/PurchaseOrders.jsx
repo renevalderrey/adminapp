@@ -46,7 +46,9 @@ import {
   esRecibible,
   esAnulable,
 } from '@/utils/ordenDeCompra';
-import { pesos, fechaCorta } from '@/utils/formato';
+// `fechaDeHoy` estaba escrita al pie de este archivo con un comentario que
+// decía que su lugar era acá y que mudarla quedaba anotado. Es esa mudanza.
+import { pesos, fechaCorta, fechaDeHoy } from '@/utils/formato';
 import { mensajeDeError } from '@/utils/erroresDeApi';
 import PageHeader from '@/components/PageHeader'
 
@@ -210,26 +212,6 @@ function estadoDelSegmento(clave) {
   const estados = SEGMENTOS.find((s) => s.clave === clave)?.estados;
 
   return estados?.length === 1 ? estados[0] : null;
-}
-
-/**
- * La fecha de hoy como `AAAA-MM-DD`, leída en la zona horaria del usuario.
- *
- * **No** es `new Date().toISOString().slice(0, 10)`: eso pasa por UTC, así que
- * en Argentina (UTC−3) toda la tarde del día 5 se guardaría como día 6 y la
- * orden aparecería en el día equivocado del período.
- *
- * ⚠ Es la MISMA función que `pages/Orders.jsx` tiene al pie, y dos copias de
- * algo así es cómo una se arregla y la otra no. Su lugar es
- * `utils/formato.js`, al lado de `fechaCorta`; mudarla es tocar un archivo que
- * esta corrección no tiene alcance para tocar, y queda anotado.
- */
-function fechaDeHoy() {
-  const ahora = new Date();
-  const mes = String(ahora.getMonth() + 1).padStart(2, '0');
-  const dia = String(ahora.getDate()).padStart(2, '0');
-
-  return `${ahora.getFullYear()}-${mes}-${dia}`;
 }
 
 /** Una línea vacía del alta de una orden. */

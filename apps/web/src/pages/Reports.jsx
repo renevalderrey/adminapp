@@ -30,6 +30,10 @@ import * as XLSX from 'xlsx';
 import { format } from 'date-fns';
 import { Label } from '@/components/ui/label';
 import PageHeader from '@/components/PageHeader'
+// El `formatCurrency` que estaba acá fijaba `minimumFractionDigits: 2` y no el
+// máximo, cuyo valor por defecto es 3: la columna «Costo» de un producto
+// costeado a 1234.567 mostraba «$1.234,567» al lado de otro con «$1.200,00».
+import { importeOGuion } from '@/utils/formato'
 
 const TABS = [
   { id: 'sales', label: 'Ventas' },
@@ -79,11 +83,6 @@ const Reports = () => {
     else if (activeTab === 'profit') fetchProfit();
     else if (activeTab === 'inventory') fetchInventory();
   }, [activeTab, fetchSales, fetchProfit, fetchInventory]);
-
-  const formatCurrency = (val) => {
-    const n = parseFloat(val);
-    return isNaN(n) ? '-' : '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 2 });
-  };
 
   const exportToXLSX = (data, filename) => {
     const ws = XLSX.utils.json_to_sheet(data);
@@ -170,21 +169,21 @@ const Reports = () => {
                   <CardContent className="p-3 text-center">
                     <DollarSign className="h-4 w-4 mx-auto mb-1 text-primary" />
                     <p className="text-[10px] font-bold uppercase text-muted-foreground">Ventas</p>
-                    <p className="text-lg font-black font-mono">{formatCurrency(salesData.summary.total_sales)}</p>
+                    <p className="text-lg font-black font-mono">{importeOGuion(salesData.summary.total_sales)}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-3 text-center">
                     <TrendingDown className="h-4 w-4 mx-auto mb-1 text-destructive" />
                     <p className="text-[10px] font-bold uppercase text-muted-foreground">Costo</p>
-                    <p className="text-lg font-black font-mono">{formatCurrency(salesData.summary.total_cost)}</p>
+                    <p className="text-lg font-black font-mono">{importeOGuion(salesData.summary.total_cost)}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-3 text-center">
                     <TrendingUp className="h-4 w-4 mx-auto mb-1 text-ok" />
                     <p className="text-[10px] font-bold uppercase text-muted-foreground">Ganancia Bruta</p>
-                    <p className="text-lg font-black font-mono text-ok">{formatCurrency(salesData.summary.gross_profit)}</p>
+                    <p className="text-lg font-black font-mono text-ok">{importeOGuion(salesData.summary.gross_profit)}</p>
                   </CardContent>
                 </Card>
                 <Card>
@@ -231,10 +230,10 @@ const Reports = () => {
                           <TableCell className="text-xs font-mono">{item.sale_id}</TableCell>
                           <TableCell className="text-sm">{item.product_name}</TableCell>
                           <TableCell className="text-right font-mono text-sm">{item.quantity}</TableCell>
-                          <TableCell className="text-right font-mono text-sm">{formatCurrency(item.unit_price)}</TableCell>
-                          <TableCell className="text-right font-mono text-sm">{formatCurrency(item.cost)}</TableCell>
+                          <TableCell className="text-right font-mono text-sm">{importeOGuion(item.unit_price)}</TableCell>
+                          <TableCell className="text-right font-mono text-sm">{importeOGuion(item.cost)}</TableCell>
                           <TableCell className={`text-right font-mono text-sm font-medium ${item.margin >= 0 ? 'text-ok' : 'text-destructive'}`}>
-                            {formatCurrency(item.margin)}
+                            {importeOGuion(item.margin)}
                           </TableCell>
                           <TableCell className={`text-right font-mono text-sm ${item.margin_pct >= 0 ? 'text-ok' : 'text-destructive'}`}>
                             {item.margin_pct}%
@@ -256,24 +255,24 @@ const Reports = () => {
                   <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
                     <div className="text-center p-4 bg-green-50 dark:bg-green-950/20 rounded-lg">
                       <p className="text-[10px] font-bold uppercase text-muted-foreground">Ingresos</p>
-                      <p className="num text-[26px] font-semibold text-ok">{formatCurrency(profitData.total_revenue)}</p>
+                      <p className="num text-[26px] font-semibold text-ok">{importeOGuion(profitData.total_revenue)}</p>
                     </div>
                     <div className="text-center p-4 bg-red-50 dark:bg-red-950/20 rounded-lg">
                       <p className="text-[10px] font-bold uppercase text-muted-foreground">Costo de Ventas</p>
-                      <p className="num text-[26px] font-semibold text-destructive">{formatCurrency(profitData.total_cost_of_goods)}</p>
+                      <p className="num text-[26px] font-semibold text-destructive">{importeOGuion(profitData.total_cost_of_goods)}</p>
                     </div>
                     <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
                       <p className="text-[10px] font-bold uppercase text-muted-foreground">Ganancia Bruta</p>
-                      <p className="num text-[26px] font-semibold text-info">{formatCurrency(profitData.gross_profit)}</p>
+                      <p className="num text-[26px] font-semibold text-info">{importeOGuion(profitData.gross_profit)}</p>
                     </div>
                     <div className="text-center p-4 bg-orange-50 dark:bg-orange-950/20 rounded-lg">
                       <p className="text-[10px] font-bold uppercase text-muted-foreground">Gastos Fijos</p>
-                      <p className="num text-[26px] font-semibold text-warn">{formatCurrency(profitData.fixed_expenses)}</p>
+                      <p className="num text-[26px] font-semibold text-warn">{importeOGuion(profitData.fixed_expenses)}</p>
                     </div>
                     <div className="text-center p-4 bg-purple-50 dark:bg-purple-950/20 rounded-lg">
                       <p className="text-[10px] font-bold uppercase text-muted-foreground">Ganancia Neta</p>
                       <p className={`num text-[26px] font-semibold ${profitData.net_profit >= 0 ? 'text-ok' : 'text-destructive'}`}>
-                        {formatCurrency(profitData.net_profit)}
+                        {importeOGuion(profitData.net_profit)}
                       </p>
                     </div>
                     <div className="text-center p-4 bg-muted rounded-lg">
@@ -306,7 +305,7 @@ const Reports = () => {
                     <Package className="h-8 w-8 text-primary" />
                     <div>
                       <p className="text-xs text-muted-foreground">Valor Total del Inventario</p>
-                      <p className="num text-[26px] font-semibold">{formatCurrency(inventoryData.total_value)}</p>
+                      <p className="num text-[26px] font-semibold">{importeOGuion(inventoryData.total_value)}</p>
                     </div>
                     <Badge variant="outline" className="ml-auto">{inventoryData.items.length} productos</Badge>
                   </div>
@@ -344,8 +343,8 @@ const Reports = () => {
                           <TableCell className="text-xs text-muted-foreground">{item.sku}</TableCell>
                           <TableCell className="text-xs capitalize">{item.location}</TableCell>
                           <TableCell className="text-right font-mono">{item.quantity}</TableCell>
-                          <TableCell className="text-right font-mono">{formatCurrency(item.cost)}</TableCell>
-                          <TableCell className="text-right font-mono font-medium">{formatCurrency(item.total_value)}</TableCell>
+                          <TableCell className="text-right font-mono">{importeOGuion(item.cost)}</TableCell>
+                          <TableCell className="text-right font-mono font-medium">{importeOGuion(item.total_value)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

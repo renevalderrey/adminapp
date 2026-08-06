@@ -7,6 +7,12 @@ import { Badge } from '@/components/ui/badge'
 import { useIsMounted } from '@/lib/useAsyncEffect'
 import { calcularBep, estrategiasDePrecio } from '@/utils/bep'
 import { etiquetaDePago } from '@/utils/mediosDePago'
+// Las dos que estaban acá: `formatCurrency` (abreviada, para las tarjetas de
+// indicadores) y `formatFull`, que fijaba `minimumFractionDigits: 2` y no el
+// máximo —3 por defecto— así que los gastos fijos de 1234.567 salían
+// «$1.234,567». La abreviatura no se aplanó: es una diferencia deliberada y se
+// mudó con su nombre y su motivo.
+import { importeAbreviado, importeOGuion } from '@/utils/formato'
 import {
   TrendingUp,
   Calculator,
@@ -68,20 +74,6 @@ const Dashboard = () => {
   const bep = calcularBep(fixedExpenses, targetSales)
   const estrategias = estrategiasDePrecio(fixedExpenses, targetSales)
 
-  const formatCurrency = (val) => {
-    const n = parseFloat(val)
-    if (isNaN(n)) return '-'
-    if (Math.abs(n) >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M'
-    if (Math.abs(n) >= 1000) return '$' + (n / 1000).toFixed(1) + 'K'
-    return '$' + n.toLocaleString('es-AR')
-  }
-
-  const formatFull = (val) => {
-    const n = parseFloat(val)
-    if (isNaN(n)) return '-'
-    return '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 2 })
-  }
-
   const calcGrowth = (current, previous) => {
     if (!previous || previous === 0) return null
     return ((current - previous) / previous) * 100
@@ -110,7 +102,7 @@ const Dashboard = () => {
           <CardContent className="p-3 text-center">
             <ShoppingCart className="h-4 w-4 mx-auto mb-1 text-primary" />
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Ventas 30d</p>
-            <p className="text-lg font-black font-mono mt-1">{formatCurrency(kpis?.sales_30d?.total)}</p>
+            <p className="text-lg font-black font-mono mt-1">{importeAbreviado(kpis?.sales_30d?.total)}</p>
             <p className="text-[10px] text-muted-foreground">{kpis?.sales_30d?.count} ops</p>
           </CardContent>
         </Card>
@@ -119,7 +111,7 @@ const Dashboard = () => {
           <CardContent className="p-3 text-center">
             <TrendingUp className="h-4 w-4 mx-auto mb-1 text-ok" />
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Ticket Prom.</p>
-            <p className="text-lg font-black font-mono mt-1">{formatCurrency(kpis?.sales_30d?.avg_ticket)}</p>
+            <p className="text-lg font-black font-mono mt-1">{importeAbreviado(kpis?.sales_30d?.avg_ticket)}</p>
             <p className="text-[10px] text-muted-foreground">promedio 30d</p>
           </CardContent>
         </Card>
@@ -129,7 +121,7 @@ const Dashboard = () => {
             <DollarSign className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Saldo Caja</p>
             <p className={`text-lg font-black font-mono mt-1 ${kpis?.cashflow?.balance >= 0 ? 'text-ok' : 'text-destructive'}`}>
-              {formatCurrency(kpis?.cashflow?.balance)}
+              {importeAbreviado(kpis?.cashflow?.balance)}
             </p>
             <p className="text-[10px] text-muted-foreground">actual</p>
           </CardContent>
@@ -140,7 +132,7 @@ const Dashboard = () => {
             <Wallet className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Proy. 30d</p>
             <p className={`text-lg font-black font-mono mt-1 ${kpis?.cashflow?.projected_30d >= 0 ? 'text-ok' : 'text-destructive'}`}>
-              {formatCurrency(kpis?.cashflow?.projected_30d)}
+              {importeAbreviado(kpis?.cashflow?.projected_30d)}
             </p>
             <p className="text-[10px] text-muted-foreground">proyección</p>
           </CardContent>
@@ -179,7 +171,7 @@ const Dashboard = () => {
                 <CardTitle className="text-sm">Ventas</CardTitle>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>Este mes: <strong className="text-foreground">{formatCurrency(kpis?.sales_current_month?.total)}</strong></span>
+                <span>Este mes: <strong className="text-foreground">{importeAbreviado(kpis?.sales_current_month?.total)}</strong></span>
                 {kpis?.sales_previous_month?.total > 0 && (
                   <Badge variant={calcGrowth(kpis?.sales_current_month?.total, kpis?.sales_previous_month?.total) >= 0 ? 'default' : 'destructive'} className="text-[10px]">
                     {calcGrowth(kpis?.sales_current_month?.total, kpis?.sales_previous_month?.total) >= 0 ? '+' : ''}
@@ -193,12 +185,12 @@ const Dashboard = () => {
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-muted/40 rounded-lg p-3">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Mes Anterior</p>
-                <p className="text-lg font-bold font-mono mt-1">{formatCurrency(kpis?.sales_previous_month?.total)}</p>
+                <p className="text-lg font-bold font-mono mt-1">{importeAbreviado(kpis?.sales_previous_month?.total)}</p>
                 <p className="text-[10px] text-muted-foreground">{kpis?.sales_previous_month?.count} ventas</p>
               </div>
               <div className="bg-primary/5 rounded-lg p-3">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Mes Actual</p>
-                <p className="text-lg font-bold font-mono mt-1">{formatCurrency(kpis?.sales_current_month?.total)}</p>
+                <p className="text-lg font-bold font-mono mt-1">{importeAbreviado(kpis?.sales_current_month?.total)}</p>
                 <p className="text-[10px] text-muted-foreground">{kpis?.sales_current_month?.count} ventas</p>
               </div>
             </div>
@@ -223,7 +215,7 @@ const Dashboard = () => {
                             style={{ width: `${Math.min(100, (total / kpis.sales_30d.total) * 100)}%` }}
                           />
                         </div>
-                        <span className="font-mono w-20 text-right">{formatCurrency(total)}</span>
+                        <span className="font-mono w-20 text-right">{importeAbreviado(total)}</span>
                       </div>
                     </div>
                   ))}
@@ -245,11 +237,11 @@ const Dashboard = () => {
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-3">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Por Cobrar</p>
-                <p className="text-lg font-bold font-mono mt-1 text-ok">{formatCurrency(kpis?.receivables?.total)}</p>
+                <p className="text-lg font-bold font-mono mt-1 text-ok">{importeAbreviado(kpis?.receivables?.total)}</p>
               </div>
               <div className="bg-red-50 dark:bg-red-950/20 rounded-lg p-3">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Por Pagar</p>
-                <p className="text-lg font-bold font-mono mt-1 text-destructive">{formatCurrency(kpis?.payables?.total)}</p>
+                <p className="text-lg font-bold font-mono mt-1 text-destructive">{importeAbreviado(kpis?.payables?.total)}</p>
               </div>
             </div>
 
@@ -261,7 +253,7 @@ const Dashboard = () => {
                     {[['0_30', '0-30d'], ['31_60', '31-60d'], ['61_90', '61-90d'], ['90_plus', '90+d']].map(([key, label]) => (
                       <div key={key} className="flex justify-between text-[11px]">
                         <span className="text-muted-foreground">{label}</span>
-                        <span className="font-mono font-medium">{formatCurrency(kpis.receivables.aging[key])}</span>
+                        <span className="font-mono font-medium">{importeAbreviado(kpis.receivables.aging[key])}</span>
                       </div>
                     ))}
                   </div>
@@ -274,7 +266,7 @@ const Dashboard = () => {
                     {[['0_30', '0-30d'], ['31_60', '31-60d'], ['61_90', '61-90d'], ['90_plus', '90+d']].map(([key, label]) => (
                       <div key={key} className="flex justify-between text-[11px]">
                         <span className="text-muted-foreground">{label}</span>
-                        <span className="font-mono font-medium">{formatCurrency(kpis.payables.aging[key])}</span>
+                        <span className="font-mono font-medium">{importeAbreviado(kpis.payables.aging[key])}</span>
                       </div>
                     ))}
                   </div>
@@ -285,7 +277,7 @@ const Dashboard = () => {
             <div className="flex items-center gap-2 bg-muted/40 rounded-lg p-2.5 text-xs">
               <TrendingDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <span className="text-muted-foreground">
-                Gastos Fijos: <strong className="text-foreground">{formatFull(kpis?.fixed_expenses)}</strong>
+                Gastos Fijos: <strong className="text-foreground">{importeOGuion(kpis?.fixed_expenses)}</strong>
               </span>
             </div>
           </CardContent>

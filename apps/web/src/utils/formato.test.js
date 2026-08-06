@@ -1,8 +1,16 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { pesos, fechaCorta } from './formato'
+import {
+  pesos,
+  pesosRedondos,
+  pesosDeLista,
+  importeOGuion,
+  importeAbreviado,
+  fechaCorta,
+  fechaDeHoy,
+} from './formato'
 
 // ════════════════════════════════════════════
 //  Los dos errores que no hacen fallar nada
@@ -14,14 +22,14 @@ import { pesos, fechaCorta } from './formato'
 
 describe('pesos escribe siempre dos decimales', () => {
   it('un importe entero se ve $1.234,00 y no $1.234', () => {
-    // `toLocaleString('es-AR')` sin opciones —lo que hace hoy `Orders.jsx:302`—
+    // `toLocaleString('es-AR')` sin opciones —lo que hacía `Orders.jsx:302`—
     // devuelve «1.234» para el entero y «1.234,5» para el de un decimal: tres
     // formatos distintos en la misma columna.
     expect(pesos(1234)).toBe('1.234,00')
   })
 
   it('NO deja tres decimales', () => {
-    // El defecto de `PurchaseOrders.jsx:156`, que fija el mínimo y no el
+    // El defecto de `PurchaseOrders.jsx:156`, que fijaba el mínimo y no el
     // máximo: sin `maximumFractionDigits` el valor por defecto es 3 y esto sale
     // «1.234,567».
     expect(pesos(1234.567)).toBe('1.234,57')
@@ -35,6 +43,115 @@ describe('pesos escribe siempre dos decimales', () => {
     expect(pesos(null)).toBe('0,00')
     expect(pesos(undefined)).toBe('0,00')
     expect(pesos(NaN)).toBe('0,00')
+  })
+})
+
+// ════════════════════════════════════════════
+//  Las tres variantes que NO son `pesos` con otro nombre
+//
+//  Cada una venía de una pantalla y tenía una diferencia deliberada. Se
+//  mudaron con su motivo escrito en vez de aplanarse, y estos tests son lo que
+//  impide que alguien las «unifique» más adelante creyendo que sobran: si las
+//  tres devolvieran lo mismo que `pesos`, tres de estos tests se ponen rojos.
+// ════════════════════════════════════════════
+
+describe('pesosRedondos: el valorizado del inventario, sin centavos', () => {
+  it('un valorizado de siete cifras NO arrastra centavos', () => {
+    // Venía de `Inventory.jsx:97`. Con `pesos` esto sería «1.234.567,89» y los
+    // centavos ensanchan la celda del total para no decir nada.
+    expect(pesosRedondos(1234567.89)).toBe('1.234.568')
+    expect(pesosRedondos(1234567.89)).not.toBe(pesos(1234567.89))
+  })
+
+  it('un importe entero NO se rellena con ,00', () => {
+    expect(pesosRedondos(1200)).toBe('1.200')
+  })
+})
+
+describe('pesosDeLista: los centavos solo si el precio los tiene', () => {
+  it('un precio redondo NO se rellena con ,00', () => {
+    // Venía de `Comparador.jsx:29`. Las listas de proveedor son casi todas de
+    // importes redondos y esa tabla se lee comparando filas enteras.
+    expect(pesosDeLista(1200)).toBe('1.200')
+    expect(pesosDeLista(1200)).not.toBe(pesos(1200))
+  })
+
+  it('un precio con centavos los muestra', () => {
+    expect(pesosDeLista(1234.5)).toBe('1.234,5')
+  })
+
+  it('el máximo SÍ está fijo: el proveedor que manda tres decimales no ensancha su columna', () => {
+    // La mitad que se olvida. `minimumFractionDigits: 0` sin el máximo deja
+    // pasar «1.234,567» y desalinea la comparación.
+    expect(pesosDeLista(1234.567)).toBe('1.234,57')
+  })
+})
+
+describe('importeOGuion: el importe con signo, o «-» cuando no vino el dato', () => {
+  it('NO deja tres decimales', () => {
+    // ⚠ Éste es el defecto que estaba vivo en `Reports.jsx:85` y
+    // `Dashboard.jsx:82`: fijaban `minimumFractionDigits: 2` y no el máximo,
+    // cuyo valor por defecto es 3. Un costo de 1234.567 salía «$1.234,567» en
+    // la misma columna que otro que salía «$1.200,00».
+    expect(importeOGuion(1234.567)).toBe('$1.234,57')
+  })
+
+  it('un importe entero lleva sus dos decimales', () => {
+    expect(importeOGuion(1234)).toBe('$1.234,00')
+  })
+
+  it('acepta el string que manda la API, porque DECIMAL vuelve como string', () => {
+    expect(importeOGuion('1234.5')).toBe('$1.234,50')
+  })
+
+  it('el campo que el reporte NO trajo se escribe «-» y no «$0,00»', () => {
+    // Es la diferencia deliberada con `pesos`, que devuelve «0,00». Escribir
+    // «$0,00» donde no vino nada afirma que el período cerró en cero cuando lo
+    // que pasó es que el reporte no trae el campo.
+    expect(importeOGuion(undefined)).toBe('-')
+    expect(importeOGuion(null)).toBe('-')
+    expect(importeOGuion('')).toBe('-')
+    expect(importeOGuion('sin dato')).toBe('-')
+  })
+
+  it('el cero SÍ es un dato y se escribe $0,00', () => {
+    // La otra mitad: si el guión se comiera también al cero, un período sin
+    // ventas se leería como un período sin datos.
+    expect(importeOGuion(0)).toBe('$0,00')
+    expect(importeOGuion('0')).toBe('$0,00')
+  })
+})
+
+describe('importeAbreviado: los indicadores del panel', () => {
+  it('el millón se abrevia', () => {
+    // Seis tarjetas en una fila no tienen ancho para «$7.245.318,40». La
+    // abreviatura es la diferencia deliberada con `importeOGuion`.
+    expect(importeAbreviado(1234567)).toBe('$1,2M')
+    expect(importeAbreviado(45600)).toBe('$45,6K')
+  })
+
+  it('la coma es el separador decimal, también en la abreviatura', () => {
+    // `toFixed(1)` producía un punto —«$1.2M»— y en es-AR el punto es el
+    // separador de MILES: el mismo error de lectura que convierte $1.234 en
+    // $1,234.
+    expect(importeAbreviado(1234567)).not.toBe('$1.2M')
+    expect(importeAbreviado(45600)).not.toBe('$45.6K')
+  })
+
+  it('por debajo de mil NO deja tres decimales', () => {
+    // El tramo que nadie miraba: escribía `toLocaleString('es-AR')` sin
+    // opciones, o sea máximo 3 decimales. El ticket promedio es una división y
+    // llega con tres, así que la tarjeta mostraba «$856,567» al lado de otra
+    // que mostraba «$1,2M».
+    expect(importeAbreviado(856.567)).toBe('$856,57')
+  })
+
+  it('los negativos se abrevian igual: un saldo de caja en rojo también es de siete cifras', () => {
+    expect(importeAbreviado(-1234567)).toBe('$-1,2M')
+  })
+
+  it('sin dato escribe «-»', () => {
+    expect(importeAbreviado(undefined)).toBe('-')
   })
 })
 
@@ -64,32 +181,287 @@ describe('fechaCorta no corre el día', () => {
 })
 
 // ════════════════════════════════════════════
-//  Guardia · la copia no vuelve
+//  fechaDeHoy · el bug que solo aparece de noche
 //
-//  Sin esto, la próxima persona que necesite formatear un importe adentro del
-//  panel escribe las cuatro líneas en el archivo en vez de importar nada — que
-//  es cómo llegó a haber siete `pesos` distintos, tres de ellos sin el máximo
-//  de decimales.
+//  ⚠ **La zona horaria se fija a mano y no se hereda de la máquina.** Este
+//  defecto es INVISIBLE en una máquina en UTC: ahí el día local y el día UTC
+//  son siempre el mismo, así que el test pasaría con y sin la corrección y no
+//  valdría nada. Se fuerza Buenos Aires, se verifica que el desplazamiento
+//  quedó aplicado de verdad, y se restaura al terminar para no ensuciar a los
+//  otros archivos de la suite que comparten el proceso.
+// ════════════════════════════════════════════
+
+describe('fechaDeHoy no adelanta el día', () => {
+  let tzOriginal
+
+  beforeAll(() => {
+    tzOriginal = process.env.TZ
+    process.env.TZ = 'America/Argentina/Buenos_Aires'
+  })
+
+  afterAll(() => {
+    if (tzOriginal === undefined) delete process.env.TZ
+    else process.env.TZ = tzOriginal
+    vi.useRealTimers()
+  })
+
+  it('la zona horaria del test quedó realmente en UTC−3', () => {
+    // Sin esto, si `process.env.TZ` dejara de tener efecto —cambio de runtime,
+    // de pool de vitest— los dos tests de abajo pasarían por la razón
+    // equivocada y nadie se enteraría.
+    expect(new Date(2026, 6, 31, 23, 30).getTimezoneOffset()).toBe(180)
+  })
+
+  it('las 23:30 del 31 de julio son el 31 de julio y NO el 1 de agosto', () => {
+    // El defecto: `new Date().toISOString().slice(0, 10)` pasa por UTC, y a las
+    // 23:30 de Buenos Aires en UTC ya es el día siguiente. El pago cargado esa
+    // noche quedaría fechado en agosto y saldría en el mes equivocado del
+    // estado de cuenta.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 6, 31, 23, 30))
+
+    expect(fechaDeHoy()).toBe('2026-07-31')
+    expect(fechaDeHoy()).not.toBe(new Date().toISOString().slice(0, 10))
+
+    vi.useRealTimers()
+  })
+
+  it('el mes y el día van con cero adelante: la API espera AAAA-MM-DD', () => {
+    // Sin `padStart` el 5 de enero sale «2026-1-5», que un `<input type="date">`
+    // no muestra y el backend rechaza.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 0, 5, 10, 0))
+
+    expect(fechaDeHoy()).toBe('2026-01-05')
+
+    vi.useRealTimers()
+  })
+})
+
+// ════════════════════════════════════════════
+//  Guardia · las copias no vuelven
+//
+//  Sin esto, la próxima persona que necesite formatear un importe adentro de
+//  una pantalla escribe las cuatro líneas ahí mismo en vez de importar nada —
+//  que es cómo se llegó a tener siete `pesos`, seis `formatCurrency` y tres
+//  `fechaDeHoy` escritas por separado, y cómo el defecto de los decimales
+//  sobrevivió en dos pantallas después de haberse corregido en una tercera.
+//
+//  La guardia se generalizó a partir de la que cubría solo `PanelVenta`.
+//  Revisa **todos** los archivos de `pages/` y `components/`, con recursión, y
+//  afirma cuántos revisó: este repositorio ya tuvo dos guardias que pasaban por
+//  vacío, una de ellas porque leía un directorio sin bajar a sus subcarpetas.
 // ════════════════════════════════════════════
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
-const PANEL_VENTA = fs.readFileSync(path.join(AQUI, '../components/PanelVenta.jsx'), 'utf8')
+const SRC = path.join(AQUI, '..')
 
-describe('PanelVenta usa la fuente compartida', () => {
-  it('PanelVenta NO tiene su propia copia de pesos', () => {
-    expect(PANEL_VENTA).not.toMatch(/const\s+pesos\s*=/)
-    expect(PANEL_VENTA).not.toMatch(/function\s+fechaCorta\b/)
+const leer = (rel) => fs.readFileSync(path.join(SRC, rel), 'utf8')
+
+/**
+ * Los archivos de código de una carpeta y de todas sus subcarpetas.
+ *
+ * La recursión es el punto: `components/pos/` tiene tres archivos y dos de
+ * ellos formatean plata. Una guardia que lea solo el primer nivel los deja
+ * afuera sin decirlo.
+ */
+function archivosDeCodigo(relativa) {
+  const encontrados = []
+
+  const bajar = (dir) => {
+    for (const entrada of fs.readdirSync(dir, { withFileTypes: true })) {
+      const completa = path.join(dir, entrada.name)
+
+      if (entrada.isDirectory()) {
+        bajar(completa)
+      } else if (/\.jsx?$/.test(entrada.name) && !/\.test\.jsx?$/.test(entrada.name)) {
+        encontrados.push(path.relative(SRC, completa).replace(/\\/g, '/'))
+      }
+    }
+  }
+
+  bajar(path.join(SRC, relativa))
+
+  return encontrados
+}
+
+/**
+ * El archivo sin sus comentarios.
+ *
+ * Los comentarios de este cambio nombran `formatCurrency` y
+ * `minimumFractionDigits` justamente para explicar qué se sacó de cada
+ * pantalla. Buscando sobre el texto crudo, la guardia se dispararía con la nota
+ * que documenta la corrección — y para callarla habría que borrar la
+ * explicación, que es lo último que se quiere.
+ */
+function sinComentarios(texto) {
+  return texto
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .filter((linea) => !/^\s*(\/\/|\*)/.test(linea))
+    .join('\n')
+}
+
+/**
+ * Lo que ninguna pantalla ni componente puede declarar por su cuenta.
+ *
+ * Los dos primeros son por nombre y el último por contenido: sin él, copiar las
+ * cuatro líneas con el nombre `formatearPlata` esquivaría la guardia entera.
+ * Los decimales de un importe se deciden en `utils/formato.js` y en ningún
+ * otro lado.
+ */
+const PROHIBIDO = [
+  {
+    que: 'una función `pesos` propia',
+    patron: /(?:const|let|var|function)\s+pesos\w*\s*[=(]/,
+  },
+  {
+    que: 'un `formatCurrency` propio',
+    patron: /(?:const|let|var|function)\s+format(?:Currency|Full)\w*\s*[=(]/,
+  },
+  {
+    que: 'una `fechaDeHoy` propia',
+    patron: /(?:const|let|var|function)\s+(?:fechaDeHoy|hoy)\s*[=(]/,
+  },
+  {
+    que: 'los decimales de un importe decididos en la pantalla',
+    patron: /(?:minimum|maximum)FractionDigits/,
+  },
+]
+
+/**
+ * Lo que quedó sin mudar, y por qué.
+ *
+ * ⚠ **Esto no es una lista de permisos: es el registro de la deuda.** Cada
+ * entrada es un archivo que esta corrección no tenía alcance para tocar. La
+ * guardia verifica que cada uno SIGA teniendo su copia, así que cuando alguien
+ * lo migre el test se pone rojo y la línea hay que borrarla — la lista solo
+ * puede achicarse.
+ */
+const PENDIENTES = [
+  ['pages/CashFlow.jsx', 'formatCurrency propio, idéntico a los otros tres; fuera del alcance de este cambio'],
+  ['pages/Customers.jsx', 'ídem CashFlow'],
+  ['pages/Production.jsx', 'ídem CashFlow'],
+  ['pages/Taxes.jsx', 'ídem CashFlow'],
+  ['components/BloqueDeDocumentos.jsx', 'tercera copia de `hoy()`, la misma corrección del bug de UTC'],
+  ['components/pos/CatalogoDelPos.jsx', '`pesos` sin centavos, del punto de venta; la pantalla la tiene otro frente'],
+  ['components/pos/TicketDelPos.jsx', 'ídem CatalogoDelPos'],
+  ['components/ImportWizard.jsx', 'formatea un importe de muestra en línea, sin declarar función'],
+  // ⚠ Éste lo encontró la guardia, no una búsqueda: no declara ninguna función
+  // y por eso no aparecía buscando `pesos` ni `formatCurrency`. Formatea tres
+  // importes en línea con `toLocaleString(undefined, …)` —sin locale: en un
+  // navegador en inglés el costo por unidad sale «1,234.57», que es el error de
+  // lectura que convierte $1.234 en $1,234— y dos de los tres tampoco fijan el
+  // máximo. Es peor que el defecto que este cambio vino a corregir y está
+  // fuera de su alcance; queda anotado acá y reportado.
+  ['pages/Recipes.jsx', 'formatea plata en línea, sin locale y sin máximo; fuera del alcance de este cambio'],
+]
+
+const REVISADOS = [...archivosDeCodigo('pages'), ...archivosDeCodigo('components')]
+
+describe('ninguna pantalla ni componente escribe su propio formateo', () => {
+  it('la guardia revisó archivos de verdad, y bajó a las subcarpetas', () => {
+    // El ancla. Dos guardias de este repositorio pasaron por vacío: una tenía
+    // la ruta mal y comparaba contra una cadena vacía, la otra leía el
+    // directorio sin recursión. Las dos afirmaciones de abajo son contra eso:
+    // la cantidad, y que un archivo que SOLO existe en una subcarpeta esté.
+    expect(REVISADOS.length).toBeGreaterThan(0)
+    expect(REVISADOS.length).toBeGreaterThanOrEqual(55)
+
+    expect(REVISADOS).toContain('pages/Reports.jsx')
+    expect(REVISADOS).toContain('components/PanelVenta.jsx')
+    // Sin recursión, `pages/` + `components/` dan 42 archivos y éste no está.
+    expect(REVISADOS).toContain('components/pos/TicketDelPos.jsx')
+    expect(REVISADOS).toContain('components/ui/card.jsx')
   })
 
-  it('PanelVenta importa las dos de utils/formato', () => {
-    // Sin esta mitad, borrar la copia y dejar el archivo sin formatear nada
-    // también pasaría la guardia de arriba.
-    expect(PANEL_VENTA).toMatch(/import\s*\{[^}]*\bpesos\b[^}]*\}\s*from\s*'@\/utils\/formato'/)
-    expect(PANEL_VENTA).toMatch(/import\s*\{[^}]*\bfechaCorta\b[^}]*\}\s*from\s*'@\/utils\/formato'/)
+  it('los archivos revisados se leyeron: ninguno vino vacío', () => {
+    // Un `readFileSync` que devuelve '' hace pasar cualquier `not.toMatch`.
+    const vacios = REVISADOS.filter((rel) => leer(rel).trim().length === 0)
+
+    expect(vacios).toEqual([])
   })
 
-  it('la guardia leyó el archivo de verdad y no una cadena vacía', () => {
-    // Una guardia con la ruta equivocada compara contra vacío y pasa siempre.
-    expect(PANEL_VENTA.length).toBeGreaterThan(2000)
+  it('nadie declara su propio pesos, formatCurrency ni fechaDeHoy', () => {
+    const pendientes = new Set(PENDIENTES.map(([archivo]) => archivo))
+    const infractores = []
+
+    for (const rel of REVISADOS) {
+      if (pendientes.has(rel)) continue
+
+      const codigo = sinComentarios(leer(rel))
+
+      for (const { que, patron } of PROHIBIDO) {
+        if (patron.test(codigo)) infractores.push(`${rel}: ${que}`)
+      }
+    }
+
+    expect(infractores).toEqual([])
+  })
+
+  it('la lista de pendientes no junta polvo: cada entrada sigue teniendo su copia', () => {
+    // Sin esto, la lista se convierte en un permiso permanente: alguien migra
+    // el archivo, la línea queda, y el próximo que escriba su `pesos` ahí pasa
+    // la guardia sin que nadie lo note.
+    const yaMigrados = PENDIENTES.filter(([archivo]) => {
+      const codigo = sinComentarios(leer(archivo))
+
+      return !PROHIBIDO.some(({ patron }) => patron.test(codigo))
+    })
+
+    expect(yaMigrados).toEqual([])
+  })
+})
+
+/**
+ * Quién tiene que importar qué de `utils/formato`.
+ *
+ * Es la otra mitad de la guardia: sin ella, borrar la copia y dejar el archivo
+ * sin formatear nada —o formateando a mano— también pasaría.
+ */
+const IMPORTAN = [
+  ['pages/Reports.jsx', ['importeOGuion']],
+  ['pages/Dashboard.jsx', ['importeAbreviado', 'importeOGuion']],
+  ['pages/Comparador.jsx', ['pesosDeLista']],
+  ['pages/Inventory.jsx', ['pesos', 'pesosRedondos']],
+  ['pages/InvoicesList.jsx', ['pesos']],
+  ['pages/Orders.jsx', ['pesos', 'fechaCorta', 'fechaDeHoy']],
+  ['pages/PurchaseOrders.jsx', ['pesos', 'fechaCorta', 'fechaDeHoy']],
+  ['components/HistorialDeCostos.jsx', ['pesos']],
+  ['components/PanelProducto.jsx', ['pesos']],
+  ['components/PanelVenta.jsx', ['pesos', 'fechaCorta']],
+  ['utils/impresionInventario.js', ['pesos']],
+]
+
+describe('los archivos migrados usan la fuente compartida', () => {
+  it.each(IMPORTAN)('%s importa %s de utils/formato', (archivo, nombres) => {
+    const importado = leer(archivo).match(
+      /import\s*\{([^}]*)\}\s*from\s*'@\/utils\/formato'/
+    )
+
+    expect(importado, `${archivo} no importa nada de @/utils/formato`).not.toBeNull()
+
+    const traidos = importado[1].split(',').map((n) => n.trim())
+
+    for (const nombre of nombres) {
+      expect(traidos).toContain(nombre)
+    }
+  })
+
+  it('PanelVenta NO tiene su propia copia de fechaCorta', () => {
+    // `fechaCorta` queda afuera de la lista prohibida a propósito —abajo se
+    // explica por qué— así que la que cubría a `PanelVenta` se conserva acá:
+    // su entrada SÍ es un DATEONLY y su copia sí sería la misma función.
+    expect(leer('components/PanelVenta.jsx')).not.toMatch(/function\s+fechaCorta\b/)
+  })
+
+  it('`fechaCorta` de HistorialDeCostos NO se unificó, y es a propósito', () => {
+    // La de `utils/formato.js` parte el string sin pasar por `Date` porque su
+    // entrada es un DATEONLY. La de acá recibe un timestamp CON hora, que es un
+    // instante real y se muestra en la hora del usuario: un costo cambiado a
+    // las 21:30 del 2 pasó el 2 para quien lo hizo y en UTC figura como el 3.
+    // Aplanarlas movería un día una de las dos columnas, así que esta guardia
+    // afirma la diferencia en vez de prohibirla.
+    expect(leer('components/HistorialDeCostos.jsx')).toMatch(/function\s+fechaCorta\b/)
   })
 })

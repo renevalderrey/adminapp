@@ -54,7 +54,11 @@ import {
 } from 'lucide-react'
 import { ESTADOS, esRecibible, porcentajeRecibido } from '@/utils/ordenDeCompra'
 import { ETIQUETAS, estadoDeProveedor, tonoDeProveedor } from '@/utils/cuentaDeProveedor'
-import { pesos, fechaCorta } from '@/utils/formato'
+// `fechaDeHoy` estaba escrita al pie de este archivo y, palabra por palabra,
+// también al pie de `PurchaseOrders.jsx` y de `BloqueDeDocumentos.jsx`: tres
+// copias de la misma corrección del bug de UTC, que es tres lugares donde puede
+// volver y uno solo donde se arregla.
+import { pesos, fechaCorta, fechaDeHoy } from '@/utils/formato'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 import { armarHoja, nombreDelArchivo } from '@/utils/exportarProveedores'
 
@@ -367,10 +371,10 @@ const Orders = () => {
 
   const [formAlta, setFormAlta] = useState({ name: '' })
   const [formEdicion, setFormEdicion] = useState({ name: '', phone: '', email: '', address: '', cuit: '' })
-  const [formPago, setFormPago] = useState({ amount: '', method: 'ef', date: hoy(), notes: '' })
+  const [formPago, setFormPago] = useState({ amount: '', method: 'ef', date: fechaDeHoy(), notes: '' })
   const [lineasDelPedido, setLineasDelPedido] = useState([lineaVacia()])
   const [notasDelPedido, setNotasDelPedido] = useState('')
-  const [fechaDelPedido, setFechaDelPedido] = useState(hoy())
+  const [fechaDelPedido, setFechaDelPedido] = useState(fechaDeHoy())
   const [productos, setProductos] = useState([])
 
   /**
@@ -659,7 +663,7 @@ const Orders = () => {
       })
 
       setPagoAbierto(false)
-      setFormPago({ amount: '', method: 'ef', date: hoy(), notes: '' })
+      setFormPago({ amount: '', method: 'ef', date: fechaDeHoy(), notes: '' })
       await recargarCuenta()
       toast.success('Pago registrado.')
     } catch (err) {
@@ -1813,21 +1817,6 @@ const Orders = () => {
       <ConfirmDialog />
     </div>
   )
-}
-
-/**
- * La fecha de hoy como `AAAA-MM-DD`, leída en la zona horaria del usuario.
- *
- * **No** es `new Date().toISOString().slice(0, 10)`: eso pasa por UTC, así que
- * en Argentina (UTC−3) toda la tarde del día 5 se guardaría como día 6, y el
- * pago hecho a las 21:30 aparecería en el mes equivocado cada fin de mes.
- */
-function hoy() {
-  const ahora = new Date()
-  const mes = String(ahora.getMonth() + 1).padStart(2, '0')
-  const dia = String(ahora.getDate()).padStart(2, '0')
-
-  return `${ahora.getFullYear()}-${mes}-${dia}`
 }
 
 /** Una línea vacía del alta de un pedido. */

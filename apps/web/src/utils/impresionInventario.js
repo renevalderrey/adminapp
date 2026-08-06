@@ -1,5 +1,8 @@
 import { calcularPrecios } from '@/utils/precios'
 import { esStockBajo } from '@/utils/stockBajo'
+// La hoja impresa tiene que decir los mismos importes que la pantalla. Con la
+// copia propia eran dos funciones que hoy coincidían y mañana no.
+import { pesos } from '@/utils/formato'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · La vista de impresión del inventario
@@ -36,11 +39,6 @@ function escapar(texto) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
 }
-
-const pesos = (n) => Number(n || 0).toLocaleString('es-AR', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
 
 const unidades = (n) => Number(n || 0).toLocaleString('es-AR')
 

@@ -1,0 +1,675 @@
+#!/usr/bin/env node
+/**
+ * ════════════════════════════════════════════
+ *  El `down` de cada migración, CORRIDO — el paso manual P5
+ *
+ *  Requisito del proyecto 0 de `docs/PROXIMOS-PROYECTOS.md`, textual: **una
+ *  migración que no se puede revertir no se puede probar**. El paso manual P5 de
+ *  `docs/specs/012-proveedores-y-ordenes-de-compra/tasks.md` pedía correr
+ *  `db:migrate:undo` a mano y mirar el esquema con `\di`.
+ *
+ *  ── Por qué leer el `down` no alcanza, y por eso existe este script ──
+ *
+ *  El `IF EXISTS` puede estar perfecto y el `down` fallar igual: por el orden
+ *  dentro de la transacción, por un nombre de índice que no coincide con el del
+ *  `up`, porque un `DROP TYPE` encuentra el tipo todavía en uso. Y eso **no se
+ *  descubre cuando se agrega la migración**: se descubre el día que hay que
+ *  revertir un deploy, que es el peor momento posible para enterarse de que la
+ *  vuelta atrás no existe.
+ *
+ *  ── Por qué un script y no un test de integración ──
+ *
+ *  Porque necesita una base **propia y descartable**, y crearla y destruirla es
+ *  la mitad del procedimiento. El arnés de `src/tests/integracion/` corre contra
+ *  una base compartida ya migrada, que trunca entre test y test: aplicar y
+ *  revertir migraciones ahí le movería el esquema abajo de los pies a cualquier
+ *  otra corrida. Lo que sí va en la suite rápida es la guardia estática
+ *  `src/tests/reversibilidadDeMigraciones.test.js`, que verifica lo que se puede
+ *  verificar sin Postgres —que toda migración exporte un `down`, y que las que
+ *  se niegan lo hagan con un mensaje que explique qué hacer—.
+ *
+ *  ── Qué verifica, migración por migración ──
+ *
+ *  Para cada migración posterior a `--desde`, en orden ascendente:
+ *
+ *    1. foto del esquema **antes** de aplicarla;
+ *    2. `db:migrate --to <migración>` — su `up`;
+ *    3. foto **después del up**;
+ *    4. `db:migrate:undo --name <migración>` — su `down`;
+ *    5. foto **después del down**, y se COMPARA contra la 1. No se supone que
+ *       quedó igual: se compara columna por columna, índice por índice, tipo por
+ *       tipo y default por default;
+ *    6. el `up` otra vez, y se compara contra la 3.
+ *
+ *  Las que se niegan a revertirse a propósito —`20260806-esquema-de-permisos`—
+ *  se verifican al revés: que el `down` **falle**, que el mensaje diga qué pasa
+ *  y qué hacer, y que el esquema quede **intacto** (la 5 igual a la 3). Un
+ *  `down` que se niega a medio camino sería peor que uno que revierte mal.
+ *
+ *  ── Por qué hay datos sembrados y no una base vacía ──
+ *
+ *  Porque sobre una base vacía casi todo `down` pasa. El `USING …::text::<tipo>`
+ *  de los ENUM no convierte una sola fila, la fusión de `recipe_items` no
+ *  encuentra ningún duplicado que fusionar, y el `down` que tendría que
+ *  restaurarlos no restaura nada. La semilla de `sembrar()` está armada para que
+ *  cada una de esas ramas se ejecute: valores de ENUM que **no** son el default,
+ *  y dos insumos repetidos —uno con cantidades distintas y otro con la misma,
+ *  que son los dos casos que `planificarFusiones` distingue—.
+ *
+ *  ── Uso ──
+ *
+ *    node scripts/verificar-reversibilidad.js
+ *    node scripts/verificar-reversibilidad.js --conservar       deja la base viva
+ *    node scripts/verificar-reversibilidad.js --url postgres://…  usa una propia
+ *    node scripts/verificar-reversibilidad.js --desde 20260803-intentos-de-facturacion.js
+ *
+ *  Sale con código 0 solo si TODAS las migraciones del rango se comportaron como
+ *  corresponde. Cualquier diferencia de esquema se imprime como una lista de
+ *  líneas «sobra» / «falta», que es lo que hay que arreglar.
+ *
+ *  ⚠ La base la crea y la borra este script (`adminapp-pg-reversibilidad`, puerto
+ *  55433). **No usa `adminapp-pg-integracion`**: esa es de los tests de
+ *  integración y revertirle migraciones la dejaría con el esquema movido.
+ * ════════════════════════════════════════════
+ */
+
+const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const { Client } = require('pg');
+
+/** La foto de los ENUM sale de la migración misma, no de una copia. */
+const { COLUMNAS: COLUMNAS_ENUM } = require('../src/migrations/20260809-tipos-enum-y-indices-de-productos');
+
+const RAIZ_API = path.resolve(__dirname, '..');
+const RUTA_MIGRACIONES = path.join(RAIZ_API, 'src', 'migrations');
+
+/** Nombre propio y puerto propio: no se pisa con ninguna otra base del árbol. */
+const CONTENEDOR = 'adminapp-pg-reversibilidad';
+const PUERTO = 55433;
+const IMAGEN = 'postgres:16-alpine';
+const URL_POR_DEFECTO = `postgres://postgres:postgres@localhost:${PUERTO}/adminapp_reversibilidad`;
+
+/**
+ * La última migración que NO se verifica.
+ *
+ * Por defecto, la del hito 5: lo que este script mira es lo que agregaron el
+ * hito 6 (proveedores) y el proyecto 0 (las migraciones que no podían recrear la
+ * base). Se mueve con `--desde` para verificar más atrás.
+ */
+const DESDE_POR_DEFECTO = '20260805-historial-de-costos-con-autor.js';
+
+/**
+ * Las que se niegan a revertirse **a propósito**, y qué tiene que decir.
+ *
+ * No alcanza con que falle: el mensaje es la mitad del comportamiento correcto.
+ * Alguien que corre un `undo` reflejo después de un deploy raro tiene que leer
+ * por qué no se puede y qué hacer si igual hace falta. Las palabras que se
+ * exigen acá son las que contestan esas dos preguntas.
+ */
+const SE_NIEGAN = {
+  '20260806-esquema-de-permisos.js': ['no es reversible', 'permisos', 'a mano'],
+};
+
+function log(mensaje) {
+  console.log(`[reversibilidad] ${mensaje}`);
+}
+
+// ════════════════════════════════════════════
+//  Procesos
+// ════════════════════════════════════════════
+
+/**
+ * Corre un comando y devuelve código y salida.
+ *
+ * `shell` en Windows porque `docker` y `npx` son `.cmd` y `spawn` sin shell no
+ * los encuentra — el mismo motivo que `scripts/migrar.js`.
+ *
+ * La salida se captura además de imprimirse: el mensaje con el que una migración
+ * se niega a revertirse es parte de lo que hay que verificar, y para eso hay que
+ * tenerlo, no solo verlo pasar.
+ */
+function correr(comando, argumentos, opciones = {}) {
+  return new Promise((resolve, reject) => {
+    const proceso = spawn(comando, argumentos, {
+      shell: process.platform === 'win32',
+      ...opciones,
+    });
+
+    let salida = '';
+    const juntar = (d) => { salida += d.toString(); };
+
+    proceso.stdout.on('data', juntar);
+    proceso.stderr.on('data', juntar);
+    proceso.on('close', (codigo) => resolve({ codigo, salida }));
+    proceso.on('error', reject);
+  });
+}
+
+function sequelizeCli(url, argumentos) {
+  return correr('npx', [
+    'sequelize-cli', ...argumentos,
+    '--config', 'src/config/sequelize-cli.js',
+    '--migrations-path', 'src/migrations',
+  ], {
+    cwd: RAIZ_API,
+    env: {
+      ...process.env,
+      DATABASE_URL: url,
+      DB_SSL: 'false',
+      // Sin esto, `config/database.js` loguea cada consulta de las migraciones.
+      NODE_ENV: 'test',
+    },
+  });
+}
+
+const migrarHasta = (url, archivo) => sequelizeCli(url, ['db:migrate', '--to', archivo]);
+
+/**
+ * El `down` de UNA migración.
+ *
+ * `--name` y no el `db:migrate:undo` pelado: como el recorrido es ascendente, la
+ * migración bajo prueba siempre es la última aplicada y las dos formas hacen lo
+ * mismo — pero nombrarla hace que el script no dependa del orden que el CLI
+ * infiera, que es justo una de las cosas que puede fallar.
+ */
+const revertir = (url, archivo) => sequelizeCli(url, ['db:migrate:undo', '--name', archivo]);
+
+// ════════════════════════════════════════════
+//  La base descartable
+// ════════════════════════════════════════════
+
+async function contesta(url) {
+  const cliente = new Client({ connectionString: url, ssl: false });
+
+  try {
+    await cliente.connect();
+    await cliente.query('SELECT 1');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await cliente.end().catch(() => {});
+  }
+}
+
+async function esperar(url, segundos) {
+  for (let i = 0; i < segundos; i += 1) {
+    if (await contesta(url)) return true;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return false;
+}
+
+async function levantar(url) {
+  // Se borra antes de crear: una corrida anterior que murió a la mitad deja el
+  // contenedor con el esquema a medio revertir, y arrancar sobre eso daría un
+  // resultado que no significa nada.
+  await correr('docker', ['rm', '-f', CONTENEDOR]);
+
+  const { port, pathname, username, password } = new URL(url);
+
+  log(`Creando la base descartable ${CONTENEDOR} (${IMAGEN}) en el puerto ${port}.`);
+
+  const { codigo, salida } = await correr('docker', [
+    'run', '-d', '--name', CONTENEDOR,
+    '-e', `POSTGRES_USER=${username}`,
+    '-e', `POSTGRES_PASSWORD=${password}`,
+    '-e', `POSTGRES_DB=${pathname.replace(/^\//, '')}`,
+    '-p', `${port}:5432`,
+    IMAGEN,
+  ]);
+
+  if (codigo !== 0) {
+    throw new Error(
+      `No se pudo crear el contenedor:\n${salida}\n\n` +
+      'Si no tenés Docker, levantá un Postgres vacío como quieras y pasalo con --url.'
+    );
+  }
+}
+
+const bajar = () => correr('docker', ['rm', '-f', CONTENEDOR]);
+
+// ════════════════════════════════════════════
+//  Las fotos
+// ════════════════════════════════════════════
+
+/**
+ * Cada consulta devuelve una lista de líneas comparables.
+ *
+ * Son líneas de texto y no objetos a propósito: la comparación tiene que poder
+ * decir «sobra esto» y «falta esto otro» con algo que se lea en una terminal, y
+ * un diff de objetos anidados no se lee.
+ */
+const CONSULTAS_DE_ESQUEMA = {
+  tablas: `
+    SELECT table_name AS linea
+      FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+     ORDER BY 1
+  `,
+
+  // `column_default` y `udt_name` están acá porque son exactamente los dos que
+  // un `down` mal escrito pierde: el default que el `ALTER TYPE` obligó a soltar
+  // y no repuso, y la columna que volvió a `varchar` pero con otro tipo abajo.
+  //
+  // ⚠ `ordinal_position` NO entra, y conviene que quede escrito para que nadie
+  // lo agregue de nuevo. `information_schema` lo saca del `attnum` de Postgres, y
+  // Postgres **no reutiliza el attnum de una columna borrada**: después de un
+  // `DROP COLUMN` + `ADD COLUMN` —que es literalmente lo que hacen el `down` y el
+  // `up` de `20260807-punto-de-venta-en-cashflow`— la columna vuelve al final de
+  // la tabla y con otro número. Medido: 13 la primera vez, 14 después de revertir
+  // y volver a aplicar. Ninguna migración puede evitarlo, así que exigirlo pondría
+  // en rojo un `down` correcto — y una verificación que ningún código puede
+  // satisfacer no verifica nada, solo enseña a ignorar el rojo.
+  //
+  // La consecuencia real es que una base revertida-y-vuelta-a-migrar no tiene las
+  // columnas en el mismo orden que una migrada de una sola vez. No rompe nada acá
+  // porque Sequelize enumera las columnas en cada `INSERT` y en cada `SELECT`;
+  // rompería un `INSERT INTO … VALUES (…)` sin lista de columnas, que este
+  // repositorio no tiene.
+  columnas: `
+    SELECT table_name || '.' || column_name
+           || ' ' || data_type || '(' || udt_name || ')'
+           || coalesce(' len=' || character_maximum_length, '')
+           || coalesce(' prec=' || numeric_precision || ',' || numeric_scale, '')
+           || ' null=' || is_nullable
+           || coalesce(' default=' || column_default, ' default=∅') AS linea
+      FROM information_schema.columns
+     WHERE table_schema = 'public'
+     ORDER BY 1
+  `,
+
+  indices: `
+    SELECT indexdef AS linea
+      FROM pg_indexes
+     WHERE schemaname = 'public'
+     ORDER BY 1
+  `,
+
+  restricciones: `
+    SELECT c.conrelid::regclass::text || ' · ' || c.conname || ' · '
+           || pg_get_constraintdef(c.oid) AS linea
+      FROM pg_constraint c
+      JOIN pg_namespace n ON n.oid = c.connamespace
+     WHERE n.nspname = 'public'
+     ORDER BY 1
+  `,
+
+  // El ORDEN de los valores va adentro de la línea: en Postgres el orden de un
+  // ENUM es el de comparación (`ORDER BY status` ordena por `enumsortorder`), así
+  // que dos bases con los mismos valores en distinto orden NO son la misma base.
+  //
+  // Y los tipos huérfanos se ven acá: un `down` que convierte las columnas pero
+  // se olvida de borrar el tipo deja una línea de más.
+  tiposEnum: `
+    SELECT t.typname || ' = ' || e.enumsortorder || ':' || e.enumlabel AS linea
+      FROM pg_type t
+      JOIN pg_enum e ON e.enumtypid = t.oid
+      JOIN pg_namespace n ON n.oid = t.typnamespace
+     WHERE n.nspname = 'public'
+     ORDER BY 1
+  `,
+
+  secuencias: `
+    SELECT sequence_name || ' ' || data_type AS linea
+      FROM information_schema.sequences
+     WHERE sequence_schema = 'public'
+     ORDER BY 1
+  `,
+};
+
+async function lineas(cliente, sql) {
+  const { rows } = await cliente.query(sql);
+  return rows.map((r) => r.linea);
+}
+
+async function fotoDelEsquema(cliente) {
+  const foto = {};
+
+  for (const [seccion, sql] of Object.entries(CONSULTAS_DE_ESQUEMA)) {
+    foto[seccion] = await lineas(cliente, sql);
+  }
+
+  return foto;
+}
+
+/**
+ * Los datos que las migraciones del rango tocan.
+ *
+ * No es la base entera: es lo que una de estas migraciones puede romper. Las
+ * filas de `recipe_items` porque `20260809-unico-de-insumo-por-receta` las
+ * fusiona y su `down` las tiene que reponer con su id original, y el valor de
+ * cada columna ENUM porque el `USING …::text::<tipo>` de ida y el `USING …::text`
+ * de vuelta son dos casts que pueden no ser inversos.
+ *
+ * ⚠ `updated_at` queda AFUERA a propósito y no es un descuido: el `down` de la
+ * fusión repone la cantidad con `updated_at = NOW()`, así que compararlo daría
+ * una diferencia en cada corrida que no dice nada sobre si la reversión sirvió.
+ * `created_at` sí entra: ése el `down` lo restaura desde el archivo, y si lo
+ * perdiera, la fila reinsertada no sería la misma fila.
+ */
+async function fotoDeLosDatos(cliente) {
+  const foto = {
+    recipe_items: await lineas(cliente, `
+      SELECT id || ' receta=' || recipe_id || ' insumo=' || ingredient_product_id
+             || ' cantidad=' || quantity::text
+             || ' alta=' || created_at::text AS linea
+        FROM recipe_items
+       ORDER BY id
+    `),
+  };
+
+  for (const { tabla, columna } of COLUMNAS_ENUM) {
+    foto[`${tabla}.${columna}`] = await lineas(cliente, `
+      SELECT id || ' = ' || coalesce(${columna}::text, '∅') AS linea
+        FROM ${tabla}
+       ORDER BY id
+    `);
+  }
+
+  return foto;
+}
+
+const fotoCompleta = async (cliente) => ({
+  ...await fotoDelEsquema(cliente),
+  datos: await fotoDeLosDatos(cliente),
+});
+
+/**
+ * Las diferencias entre dos fotos, como líneas legibles.
+ *
+ * Se comparan como MULTICONJUNTOS y no como conjuntos: dos filas idénticas
+ * cuentan dos veces, porque «quedó una de más» es un resultado posible.
+ */
+function diferencias(esperada, obtenida, prefijo = '') {
+  const salida = [];
+
+  for (const seccion of Object.keys(esperada)) {
+    const a = esperada[seccion];
+    const b = obtenida[seccion];
+
+    if (!Array.isArray(a)) {
+      salida.push(...diferencias(a, b || {}, `${prefijo}${seccion}/`));
+      continue;
+    }
+
+    const cuenta = new Map();
+
+    for (const linea of a) cuenta.set(linea, (cuenta.get(linea) || 0) + 1);
+    for (const linea of b) cuenta.set(linea, (cuenta.get(linea) || 0) - 1);
+
+    for (const [linea, n] of cuenta) {
+      if (n > 0) salida.push(`  FALTA  ${prefijo}${seccion}: ${linea}`);
+      if (n < 0) salida.push(`  SOBRA  ${prefijo}${seccion}: ${linea}`);
+    }
+  }
+
+  return salida;
+}
+
+// ════════════════════════════════════════════
+//  La semilla
+// ════════════════════════════════════════════
+
+/**
+ * Datos mínimos para que los `down` tengan algo que revertir.
+ *
+ * Cada valor está elegido: los ENUM van con valores que **no** son el default
+ * —`compras`, `revoked`, `voided`, `partial`, `past_due`— porque una conversión
+ * que perdiera el valor y lo dejara en el default pasaría desapercibida con
+ * datos por defecto. Y los `recipe_items` traen los dos casos que
+ * `planificarFusiones` distingue: cantidades distintas (dos momentos de la misma
+ * receta) e idénticas (una línea cargada dos veces, que se marca `revisar`).
+ */
+async function sembrar(cliente) {
+  const sql = `
+    INSERT INTO empresas (id, name, created_at, updated_at)
+      VALUES (1, 'Empresa de prueba', NOW(), NOW());
+
+    INSERT INTO products (id, empresa_id, name, cost, unit_type, category, created_at, updated_at) VALUES
+      (1, 1, 'Torta',   0, 'unidad', 'elaborado', NOW(), NOW()),
+      (2, 1, 'Harina',  0, 'kg',     'insumo',    NOW(), NOW()),
+      (3, 1, 'Azúcar',  0, 'gr',     'insumo',    NOW(), NOW());
+    SELECT setval(pg_get_serial_sequence('products', 'id'), 3);
+
+    INSERT INTO recipes (id, empresa_id, product_id, created_at, updated_at)
+      VALUES (1, 1, 1, NOW(), NOW());
+
+    INSERT INTO recipe_items (id, recipe_id, ingredient_product_id, quantity, created_at, updated_at) VALUES
+      (1, 1, 2, 0.2000, NOW(), NOW()),
+      (2, 1, 2, 0.0500, NOW(), NOW()),
+      (3, 1, 3, 1.0000, NOW(), NOW()),
+      (4, 1, 3, 1.0000, NOW(), NOW());
+    SELECT setval(pg_get_serial_sequence('recipe_items', 'id'), 4);
+
+    INSERT INTO cashflow_entries (empresa_id, type, category, amount, entry_date, created_at, updated_at) VALUES
+      (1, 'inflow',  'ventas', 1500.55, CURRENT_DATE, NOW(), NOW()),
+      (1, 'outflow', 'otro',    300.25, CURRENT_DATE, NOW(), NOW());
+
+    INSERT INTO invitaciones (empresa_id, email, role, token, status, expires_at, created_at, updated_at)
+      VALUES (1, 'alguien@ejemplo.com', 'compras', 'token-de-prueba', 'revoked', NOW() + interval '7 days', NOW(), NOW());
+
+    INSERT INTO production_orders
+      (empresa_id, product_id, quantity_produced, batch_code, production_date,
+       unit_cost_calculated, total_cost, status, created_at, updated_at)
+      VALUES (1, 1, 10.0000, 'LOTE-1', CURRENT_DATE, 12.3400, 123.40, 'voided', NOW(), NOW());
+
+    INSERT INTO suppliers (id, empresa_id, name, cuit, created_at, updated_at)
+      VALUES (1, 1, 'Distribuidora Sur', '30123456789', NOW(), NOW());
+
+    INSERT INTO supplier_orders (empresa_id, supplier_id, date, total, status, created_at, updated_at)
+      VALUES (1, 1, CURRENT_DATE, 72000.55, 'partial', NOW(), NOW());
+
+    INSERT INTO supplier_movements (empresa_id, supplier_id, type, date, amount, created_at, updated_at) VALUES
+      (1, 1, 'deuda', CURRENT_DATE, 72000.55, NOW(), NOW()),
+      (1, 1, 'pago',  CURRENT_DATE, 50000.25, NOW(), NOW());
+
+    INSERT INTO suscripciones (empresa_id, plan, status, trial_starts_at, trial_ends_at, created_at, updated_at)
+      VALUES (1, 'free', 'past_due', NOW(), NOW() + interval '14 days', NOW(), NOW());
+  `;
+
+  await cliente.query(sql);
+}
+
+// ════════════════════════════════════════════
+//  La verificación
+// ════════════════════════════════════════════
+
+/** Las migraciones posteriores a `desde`, en el orden en que las corre el CLI. */
+function migracionesDelRango(desde) {
+  const todas = fs.readdirSync(RUTA_MIGRACIONES).filter((f) => f.endsWith('.js')).sort();
+  const corte = todas.indexOf(desde);
+
+  if (corte === -1) {
+    throw new Error(`--desde ${desde} no existe en src/migrations. Las que hay:\n  ${todas.join('\n  ')}`);
+  }
+
+  return todas.slice(corte + 1);
+}
+
+/**
+ * Una migración, de ida y de vuelta.
+ *
+ * @returns {{archivo: string, ok: boolean, notas: string[]}}
+ */
+async function verificarUna(url, cliente, archivo) {
+  const notas = [];
+  const seNiega = SE_NIEGAN[archivo];
+
+  const antes = await fotoCompleta(cliente);
+
+  const up = await migrarHasta(url, archivo);
+  if (up.codigo !== 0) {
+    return { archivo, ok: false, notas: [`El \`up\` falló:\n${up.salida}`] };
+  }
+
+  const despuesDelUp = await fotoCompleta(cliente);
+
+  const sinCambios = diferencias(antes, despuesDelUp);
+  if (!sinCambios.length) {
+    // No es un error, pero sí algo que hay que saber: si el `up` no movió el
+    // esquema ni los datos, revertirlo tampoco prueba nada, y este resultado en
+    // verde es un verde vacío.
+    notas.push('⚠ El `up` no cambió NADA del esquema ni de los datos observados: revertirlo no prueba mucho.');
+  }
+
+  const down = await revertir(url, archivo);
+
+  // ── Las que se niegan a propósito ──
+  if (seNiega) {
+    if (down.codigo === 0) {
+      return { archivo, ok: false, notas: [...notas, 'El `down` NO se negó: se esperaba que fallara y terminó bien.'] };
+    }
+
+    const texto = down.salida.toLowerCase();
+    const faltantes = seNiega.filter((palabra) => !texto.includes(palabra.toLowerCase()));
+
+    if (faltantes.length) {
+      notas.push(
+        `El mensaje del rechazo no dice: ${faltantes.join(', ')}. Un "no se puede" sin ` +
+        `explicación deja a alguien sin saber qué hacer.\n${down.salida}`
+      );
+    }
+
+    // Que se niegue A TIEMPO: un `down` que revienta después de haber borrado
+    // media tabla es peor que uno que revierte mal.
+    const despuesDelRechazo = await fotoCompleta(cliente);
+    const dano = diferencias(despuesDelUp, despuesDelRechazo);
+
+    if (dano.length) {
+      notas.push(`El \`down\` falló PERO dejó el esquema tocado:\n${dano.join('\n')}`);
+    }
+
+    return { archivo, ok: !faltantes.length && !dano.length, notas };
+  }
+
+  // ── Las reversibles ──
+  if (down.codigo !== 0) {
+    return { archivo, ok: false, notas: [...notas, `El \`down\` falló:\n${down.salida}`] };
+  }
+
+  const despuesDelDown = await fotoCompleta(cliente);
+  const vuelta = diferencias(antes, despuesDelDown);
+
+  if (vuelta.length) {
+    notas.push(`El \`down\` corrió sin error pero el esquema NO quedó como estaba:\n${vuelta.join('\n')}`);
+  }
+
+  // El `up` de nuevo: una migración que solo se puede aplicar una vez no sirve
+  // para volver adelante después de un rollback.
+  const reUp = await migrarHasta(url, archivo);
+
+  if (reUp.codigo !== 0) {
+    notas.push(`El \`up\` posterior al \`down\` falló:\n${reUp.salida}`);
+    return { archivo, ok: false, notas };
+  }
+
+  const despuesDelReUp = await fotoCompleta(cliente);
+  const ida = diferencias(despuesDelUp, despuesDelReUp);
+
+  if (ida.length) {
+    notas.push(`El \`up\` volvió a correr pero dejó la base distinta de la primera vez:\n${ida.join('\n')}`);
+  }
+
+  return { archivo, ok: !vuelta.length && !ida.length, notas };
+}
+
+async function main() {
+  // `dotenv` va acá adentro y no arriba de todo: `src/tests/reversibilidadDeMigraciones.test.js`
+  // importa este archivo para revisar sus constantes, y un `.config()` al
+  // importar le metería el `.env` de desarrollo al proceso de jest —incluida
+  // `DATABASE_URL`— para todos los archivos que compartan ese worker.
+  require('dotenv').config();
+
+  const argumentos = process.argv.slice(2);
+  const valorDe = (bandera) => {
+    const i = argumentos.indexOf(bandera);
+    return i === -1 ? null : argumentos[i + 1];
+  };
+
+  const urlPropia = valorDe('--url');
+  const url = urlPropia || URL_POR_DEFECTO;
+  const conservar = argumentos.includes('--conservar');
+  const desde = valorDe('--desde') || DESDE_POR_DEFECTO;
+
+  const rango = migracionesDelRango(desde);
+
+  if (!rango.length) {
+    throw new Error(`No hay ninguna migración posterior a ${desde}: no hay nada que verificar.`);
+  }
+
+  log(`Se van a verificar ${rango.length} migración(es), de ${rango[0]} a ${rango[rango.length - 1]}.`);
+
+  if (!urlPropia) await levantar(url);
+
+  if (!(await esperar(url, 60))) {
+    throw new Error(`No hay Postgres escuchando en ${url.replace(/:[^:@/]*@/, ':***@')}.`);
+  }
+
+  const cliente = new Client({ connectionString: url, ssl: false });
+  await cliente.connect();
+
+  const resultados = [];
+
+  try {
+    log(`Aplicando todo hasta ${desde} para partir del esquema que estas migraciones encuentran.`);
+    const base = await migrarHasta(url, desde);
+
+    if (base.codigo !== 0) {
+      throw new Error(`Las migraciones previas fallaron, así que no hay de dónde partir:\n${base.salida}`);
+    }
+
+    log('Sembrando los datos que los `down` tienen que saber revertir.');
+    await sembrar(cliente);
+
+    for (const archivo of rango) {
+      log(`── ${archivo}`);
+      const resultado = await verificarUna(url, cliente, archivo);
+      resultados.push(resultado);
+
+      console.log(`   ${resultado.ok ? 'BIEN' : 'MAL '} · ${archivo}`);
+      for (const nota of resultado.notas) console.log(`        ${nota.replace(/\n/g, '\n        ')}`);
+    }
+  } finally {
+    await cliente.end().catch(() => {});
+
+    if (!urlPropia && !conservar) {
+      log(`Borrando ${CONTENEDOR}.`);
+      await bajar();
+    } else if (conservar) {
+      log(`Se conserva ${CONTENEDOR}. Para borrarlo: docker rm -f ${CONTENEDOR}`);
+    }
+  }
+
+  const mal = resultados.filter((r) => !r.ok);
+
+  console.log('');
+  log(`${resultados.length - mal.length} de ${resultados.length} migración(es) revierten como corresponde.`);
+
+  if (mal.length) {
+    log(`Hay que arreglar: ${mal.map((r) => r.archivo).join(', ')}`);
+    process.exit(1);
+  }
+}
+
+// El `require.main` no es ceremonia: sin él, importar este archivo desde un test
+// levantaría un contenedor de Postgres y le aplicaría migraciones a una base.
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(`\n[reversibilidad] ${err.message}\n`);
+    process.exit(1);
+  });
+}
+
+// Lo que revisa la guardia estática de `src/tests/reversibilidadDeMigraciones.test.js`.
+// `diferencias` se exporta porque es la pieza de la que depende TODO el
+// resultado: un comparador que devolviera siempre la lista vacía dejaría este
+// script en verde para siempre, y eso no lo nota nadie mirando la salida.
+module.exports = {
+  SE_NIEGAN,
+  DESDE_POR_DEFECTO,
+  CONTENEDOR,
+  migracionesDelRango,
+  diferencias,
+};

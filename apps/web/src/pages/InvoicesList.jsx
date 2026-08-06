@@ -8,6 +8,7 @@ import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid
 import PanelVenta from '@/components/PanelVenta'
 import { presentacionDeEstado, estaAnulada } from '@/utils/estadoVenta'
 import { descargarVentas } from '@/utils/exportarVentas'
+import { pesos } from '@/utils/formato'
 import {
   Calendar, Search, Printer, ShieldCheck, FileText, Store, Trash2,
   Receipt, FilterX, Download, Plus, Loader2, RefreshCw, FileCheck,
@@ -72,12 +73,6 @@ const TODAS_LAS_SUCURSALES = 'todas'
 /** Más de esto no se baja en un solo archivo. Es el mismo tope que aplica la
  *  API: acá se avisa antes de pedir nada, allá es la red de abajo. */
 const LIMITE_EXPORT = 5000
-
-/** Importes en formato argentino: 1.234,50. */
-const pesos = (n) => Number(n || 0).toLocaleString('es-AR', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
 
 /**
  * El identificador del comprobante fiscal: «0005-00014882».

@@ -9,6 +9,9 @@ import {
 } from '@/utils/inventario'
 import { descargarInventario } from '@/utils/exportarInventario'
 import { imprimirInventario } from '@/utils/impresionInventario'
+// `pesos` y `pesosRedondos` estaban escritos acá. Los dos se mudaron: el
+// valorizado sin centavos es una diferencia deliberada y conservó su nombre.
+import { pesos, pesosRedondos } from '@/utils/formato'
 import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import {
@@ -83,18 +86,8 @@ const BOTON_SECUNDARIO =
   'text-[13px] font-medium transition-colors hover:bg-surface-3 ' +
   'disabled:pointer-events-none disabled:opacity-60'
 
-/** Importes en formato argentino: 1.234,50. */
-const pesos = (n) => Number(n || 0).toLocaleString('es-AR', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
-
 /** Cantidades: sin decimales forzados, pero con separador de miles. */
 const unidades = (n) => Number(n || 0).toLocaleString('es-AR')
-
-/** El valorizado del inventario entero: sin centavos, que en un total de siete
- *  cifras son ruido y empujan la columna. */
-const pesosRedondos = (n) => Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })
 
 /**
  * Cuántas columnas de stock se dibujan a la vez.

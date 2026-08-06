@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import api from '@/services/api'
 import { calcularPrecios } from '@/utils/precios'
 import { cuerposDeStockAlCrear, unidadesComprometidas } from '@/utils/inventario'
+import { pesos } from '@/utils/formato'
 import { usePermission } from '@/hooks/usePermission'
 import HistorialDeCostos from '@/components/HistorialDeCostos'
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet'
@@ -68,11 +69,6 @@ const FORMULARIO_VACIO = {
   taxed: true,
   image_url: '',
 }
-
-const pesos = (n) => Number(n || 0).toLocaleString('es-AR', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
 
 const BOTON_PRINCIPAL =
   'inline-flex h-[34px] items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-semibold ' +

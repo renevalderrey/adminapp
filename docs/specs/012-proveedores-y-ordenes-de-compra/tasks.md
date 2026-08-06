@@ -2017,124 +2017,188 @@ cambió para quien opera está escrito donde lo va a buscar.
 
 ## Los pasos manuales de `sdd-verify`
 
-**Esto no son tareas.** Son las verificaciones que **no se pueden escribir como
-test en este repositorio**, escritas como pasos reproducibles justamente para no
-disfrazarlas de test. Cada una dice **qué hacer** y **qué tiene que verse**.
+**Esto no son tareas.** Son las verificaciones que no se pueden escribir como
+test en este repositorio, escritas como pasos reproducibles justamente para no
+disfrazarlas de test.
 
-### Qué quedó automatizado al cerrar la fase 15
+⚠ **La lista arrancó con doce y se corrió uno.** Eso no fue un problema de
+disciplina: doce pasos a mano antes de cada release es una lista que nadie hace
+entera, y una lista que nadie hace entera es peor que una corta, porque figura al
+lado de cincuenta y cuatro casillas marcadas y se lee como «verificado» cuando lo
+único que dice es «escrito».
 
-Revisado paso por paso después de T1250 y T1251, porque una lista de pasos
-manuales que no se poda es una lista que nadie corre entera:
+**Hoy quedan dos** —P9 y P10, que son una sola tarea de `pruebas-de-navegador`—.
+Siete bajaron a test de integración, P8 ya era automático desde T1250, **P5** lo
+cerró `scripts/verificar-reversibilidad.js` y **P7** seis casos que escriben el
+`.xlsx` y lo vuelven a leer.
 
-| Paso | Cómo quedó |
-|---|---|
-| **P8** · Las rutas siguen centradas | **Automático.** `marcoDeLasPantallas.navegador.js`, y ahora `/proveedores` y `/ordenes-compra` tienen además su propio archivo, `proveedoresYOrdenes.navegador.js` |
-| Las cuatro medidas de maquetado del hito | **Automáticas.** Son T1251 y ya no son pasos: el scroll de la tabla en su tarjeta, los 520px del panel, el nombre de 80 caracteres y las dos columnas de `/proveedores` |
-| **P1** · El `GROUP BY` de saldos | **Parcial.** El `GROUP BY` corre contra Postgres de verdad en **cada corrida** de las pruebas de navegador —`preparacion.js` siembra por HTTP y las dos pantallas leen `GET /suppliers`—, así que una consulta rota ya no llega a producción en silencio. Lo que sigue necesitando `psql` es el centavo exacto |
-| **P2** y **P3** · Recepción por línea contra Postgres | **Parcial.** `preparacion.js` crea seis órdenes, recibe una entera y otra a medias **por posición de línea** contra Postgres real: si la recepción por línea se rompiera, la siembra falla y la suite entera no arranca. Lo que sigue necesitando `psql` es mirar el JSONB y la fila de `Stock` |
-| **P4**, **P5**, **P6**, **P7**, **P9**, **P10**, **P11**, **P12** | **Siguen necesitando una persona**, y abajo está el motivo de cada uno |
+De doce a dos, y ninguno de los diez se cerró afirmando menos: cada uno encontró
+algo. Los dos últimos son los únicos que de verdad piden ojos.
 
-⚠ **Lo que NO se automatizó pudiendo**, y queda dicho para quien retome: **P2 se
-puede cerrar sin `psql`**. `GET /api/suppliers/orders/:id` devuelve el detalle con
-el `quantity_received` de cada línea, así que recibir una de las dos líneas del
-mismo producto y leer la respuesta demuestra que el JSONB guardó **dos valores
-distintos** —que es exactamente lo que P2 mira—. No se hizo acá porque cambiaría
-el estado de la orden sembrada y con él el reparto de los cuatro estados de orden
-que T1250 pide.
+---
 
-### ⏳ Qué se corrió DE VERDAD — estado después de la verificación del hito 6
+### Lo que dejó de ser manual
 
-⚠ **La tabla de arriba dice qué se puede automatizar. Esta dice qué se corrió, y
-no es lo mismo.** La verificación adversarial sobre el hito 6 encontró que **de
-los doce pasos se corrió uno: P8**, y ese porque es automático. Los otros once
-figuraban al lado de cincuenta y cuatro casillas marcadas, y eso se lee como
-«verificado» cuando lo único que dice es «escrito».
+Los siete bajaron a test **el día que existió con qué escribirlos**, no antes: el
+proyecto **5c** dejó un arnés de integración contra un Postgres de verdad
+(`apps/api/src/tests/integracion/`, con la aplicación montada con `supertest` y
+dos empresas de fixture). Todo lo que estos pasos pedían mirar en `psql` es lo
+que ese arnés puede afirmar.
 
-Queda anotado acá y no en la cabeza de nadie, porque un paso manual que no se
-corre no falla: **se archiva**.
+Corren con `npm --prefix apps/api run test:integracion`. **`npm run test:api` no
+los levanta**: es otra suite y hay que pedirla (`CONVENCIONES.md`, definición de
+terminado, punto 4).
 
-| Paso | Estado | Qué sigue sin saberse mientras no se corra |
+| Paso | Dónde vive ahora | Qué afirma, y qué mutación lo pone en rojo |
 |---|---|---|
-| **P8** · Las rutas centradas | ✔ **Corrido** | — |
-| **P1** · El centavo del `GROUP BY` | ⏳ Pendiente | Que `saldo` responda `1234.56` y no `1234.5600000000002`. La aritmética está testeada (T1213); lo que no está probado es que la consulta agregada devuelva las filas que la aritmética espera —`modelosFalsos` no soporta `group`— |
-| **P2** · Dos líneas del mismo producto en el JSONB | ⏳ Pendiente | Que el `changed('detail', true)` siga guardando **dos** `quantity_received` distintos. Es el bug que ya se corrigió una vez y que ningún doble puede ver. **Se puede cerrar sin `psql`**, ver la nota de arriba |
-| **P3** · La línea sin producto | ⏳ Pendiente | Que una línea sin `product_id` deje la deuda y **no** revierta las otras. Hoy —antes del hito— eso respondía 500 y no entraba nada |
-| **P4** · Los cuatro índices existen | ⏳ Pendiente | Que `db:migrate` los haya creado. `verificar:esquema` **no mira índices** y no lo tapa |
-| **P5** · La migración es reversible | ⏳ Pendiente | Ver abajo, «los cuatro que no se postergan» |
-| **P6** · El índice se usa | ⏳ Pendiente | Ídem |
-| **P7** · La columna suma en una planilla | ⏳ Pendiente | Ídem |
-| **P9** · El foco al cerrar el panel | ⏳ Pendiente | Que `Esc` devuelva el foco a la fila. Lo resuelve Radix y por eso no lleva test; **por eso mismo nadie se entera si deja de pasar** |
-| **P10** · Copiar el enlace | ⏳ Pendiente | Que el portapapeles quede con el enlace completo. `navigator.clipboard` no existe en jsdom |
-| **P11** · La recepción con cascada | ⏳ **Pendiente y urgente** | Ver abajo. **Dejó de ser una medición** |
-| **P12** · Dos personas recibiendo | ⏳ Pendiente | Está declarado Fuera de alcance: se corre para **documentar** el comportamiento, no para arreglarlo. Sigue siendo el riesgo 7 y este hito empeoró la exposición |
+| **P1** · El centavo del `GROUP BY` | `integracion/centavoDelSaldo.integracion.test.js` | Que el saldo dé `999.94` y no `999.9399999999999`, en el listado, en la ficha y en el `saldo_final` del archivo del contador. Muere si la resta de `resumenDeCuenta` deja de ir en centavos, y si el `saldo_inicial` del export vuelve a ser un `0` literal |
+| **P2** · Dos líneas del mismo producto | `integracion/recepcionPorLinea.integracion.test.js` | Que el JSONB quede con **dos** `quantity_received` distintos, leído con el mismo `jsonb_array_elements` que pedía el paso. Muere si la línea se vuelve a resolver por `product_id`, y si `aplicarRecepcion` vuelve a devolver la misma referencia sin `changed('detail', true)` |
+| **P3** · La línea sin producto | `integracion/recepcionPorLinea.integracion.test.js` | Que una línea con `product_id: null` genere deuda, no toque stock y **no revierta las otras**. Muere si se saca la rama del producto ausente: vuelve el 500 y no entra nada |
+| **P4** · Los cuatro índices existen | `integracion/indicesQueSeUsan.integracion.test.js` | Que los cuatro `idx_…` que declara la migración estén creados, sobre su tabla y **con sus columnas en ese orden**. Los nombres se leen del archivo de la migración, no de una copia |
+| **P6** · El índice se USA | `integracion/indicesQueSeUsan.integracion.test.js` | `EXPLAIN` sobre el SQL que emitió la aplicación —capturado del request real, no retipeado— con volumen suficiente para que `empresa_id` sea selectivo. Muere si el índice no está: el plan pasa a `Seq Scan` |
+| **P11** · La recepción con cascada | `integracion/cascadaDeRecepcion.integracion.test.js` | Que el recosteo llegue a todo el grafo sobre un **diamante** y sobre una **cadena de tres niveles**, y que el costo de una línea de más sea un número **fijo** de consultas. Ver abajo por qué la medición de tiempo no bajó |
+| **P12** · Dos personas recibiendo | `integracion/recepcionesEnParalelo.integracion.test.js` | **Documenta el defecto, no lo arregla** (sigue Fuera de alcance). Dos requests en paralelo: la orden queda con 5 recibidas, el stock sube 10 y se generan dos deudas por 10. Ver abajo el hallazgo sobre la mitigación |
+| **P8** · Las rutas centradas | `apps/web/pruebas-de-navegador/` | Ya era automático desde T1250/T1251 |
 
-⚠ **Y las tres filas «parciales» de la tabla anterior valen solo si la suite de
-navegador corre.** P1, P2 y P3 quedan parcialmente cubiertos **en cada corrida de
-`npm --prefix apps/web run test:navegador`**; si esa suite no se corre —y hace
-falta el procedimiento P0 entero, con las dos bases y el `ALLOWED_ORIGINS`—, la
-cobertura parcial es cero, no parcial.
+⚠ **Los siete primeros se verificaron por mutación, uno por uno**: se revirtió la
+línea que cada test dice cubrir, se corrió, se comprobó el rojo y se restauró. Lo
+que **no** murió con ninguna mutación está dicho adentro de cada archivo, en el
+comentario del test que lo tiene —hay dos, y los dos están marcados como
+caracterización y no como guardia—.
 
-#### Los cuatro que no se postergan
+#### Tres cosas que salieron de bajarlos a test
 
-**P11 · La recepción con cascada — y ya no es una medición.** La verificación
-reprodujo el fallo: con un grafo **en diamante** —un insumo que llega al mismo
-elaborado por dos caminos: Colágeno es insumo de la Premezcla, y el Combo lleva
-Colágeno **y** Premezcla— la cascada de recosteo **se cae**, con «Dependencia
-circular detectada» sobre un grafo que no tiene ningún ciclo. Y era
-**intermitente**, que es lo peor que podía ser: el `findAll` de las recetas
-dependientes no lleva `ORDER BY`, así que el orden de las filas decidía si la
-misma recepción respondía 200 o rompía. Este paso pasa de «cuánto tarda» a
-**«¿el recosteo llega a todo el grafo?»**, y hay que correrlo sobre un diamante
-—no sobre una cadena, que es donde el defecto no aparece— además de sobre los
-veinte insumos anidados que ya pedía. La medición de tiempo sigue valiendo: si
-duele, sacar la cascada de la transacción está anotado en T1253.
+**1. El `\di supplier*` de P4 nunca habría mostrado los cuatro índices.** `\di`
+filtra por el nombre del **índice**, no por el de la tabla, y los cuatro se llaman
+`idx_…`. Quien hubiera corrido el paso tal como estaba escrito habría visto los
+nueve viejos, ninguno de los nuevos, y concluido que la migración no hizo nada.
+Hay un test que lo fija para que la corrección no se pierda.
 
-**P6 · El índice se usa — es el único que verifica que T1214 haya servido de
-algo.** Que los cuatro índices existan (P4) y que el chequeo de esquema pase no
-dicen **nada** sobre si el planificador los elige: `verificar:esquema` hace un
-`findOne` por modelo y no mira índices, y una consulta con `Seq Scan` devuelve
-exactamente los mismos datos, solo que tarda. Un índice creado y no usado es una
-migración que se desplegó, se revisó y no hizo nada, y el día que se note va a ser
-por una pantalla lenta con tres años de movimientos —cuando ya nadie relacione las
-dos cosas—. **Con datos suficientes**, o el planificador prefiere el `Seq Scan`
-por tamaño y el paso no prueba nada.
+**2. `P11` dejó de ser una medición de tiempo, y eso es definitivo.** Un umbral
+de segundos no se puede elegir —la misma recepción tarda distinto en cada
+máquina— y sin umbral no puede ponerse en rojo, que era exactamente el problema
+del paso. Lo que sí crece cuando esto se degrada es la **cantidad de consultas**,
+que es la misma en cualquier máquina, y eso es lo que quedó afirmado: la sucursal
+se resuelve las mismas veces con una línea que con seis, los productos se leen en
+una sola consulta, y cada línea de más cuesta exactamente dos. *Si algún día
+duele de verdad*: sacar la cascada de la transacción sigue anotado en T1253.
 
-**P5 · El `down` de la migración, corrido de verdad.** Leerlo no es correrlo:
-el `IF EXISTS` puede estar bien escrito y el `down` fallar igual —por el orden de
-la transacción, por un nombre de índice que no coincide con el del `up`, por el
-lock de migraciones—. Y esto **no se descubre cuando se agrega la migración**: se
-descubre el día que hay que revertir un deploy, que es el peor momento posible
-para enterarse de que la vuelta atrás no existe. Es el requisito del proyecto 0,
-textual: una migración que no se puede revertir no se puede probar.
+**3. ⚠ La mitigación de P12 que estaba anotada NO funciona escrita así.** T1253 y
+el paso decían «una línea, `lock: t.LOCK.UPDATE` sobre el `SupplierOrder.findOne`».
+Aplicada tal cual, **rompe todas las recepciones**: ese `findOne` lleva un
+`include` de `Supplier`, Sequelize lo traduce a un `LEFT OUTER JOIN` y Postgres
+responde `0A000: FOR UPDATE cannot be applied to the nullable side of an outer
+join`. O sea un **500 en cada recepción**, no solo en las simultáneas. La forma
+que sí funciona —medida, con el defecto desapareciendo— es
+`lock: { level: t.LOCK.UPDATE, of: SupplierOrder }`. Está escrito en el encabezado
+de `recepcionesEnParalelo.integracion.test.js` porque una mitigación de una línea
+que en realidad rompe todo es peor que ninguna: se aplica apurado el día que
+alguien reporta el problema.
 
-**P7 · La columna suma en una planilla de verdad.** El test afirma que cada celda
-lleva `{ t: 'n' }`, que es todo lo que un test puede afirmar. Lo que no puede es
-abrir el archivo: si el tipo se pierde al escribir la hoja, **el `.xlsx` abre, se
-ve bien y está mal**, y el contador se entera cuando selecciona la columna Saldo y
-no aparece ninguna suma. Es el criterio de éxito 12 y es de las pocas cosas de
-este hito que le llegan a alguien de afuera del equipo.
+---
 
-### P0 · El procedimiento, con la trampa del esquema
+### Los dos que siguen necesitando una persona
 
-⚠⚠ **Hacen falta DOS bases descartables, y no es opcional.** El motivo es el
-proyecto 0 de `PROXIMOS-PROYECTOS.md`: **ocho columnas están declaradas
-`DataTypes.ENUM` en los modelos y creadas `VARCHAR` por las migraciones**
-—`products.unit_type`, `cashflow_entries.type`, `invitaciones.role`,
-`invitaciones.status`, `production_orders.status`, `supplier_movements.type`,
-`supplier_orders.status`, `suscripciones.status`—, y
-`sequelize.sync({ alter: true })` —que corre en **todo entorno que no sea
-producción**, `server.js:409-412`— muere al intentar convertirlas:
+> **Nota de reconciliación.** Esta sección la escribieron dos trabajos en
+> paralelo, y cada uno cerró un paso que el otro dejó anotado como manual. Se
+> verificó el árbol y se unificó: **P5 y P7 ya no son manuales.** Queda abajo lo
+> que aprendieron, porque el motivo sigue valiendo aunque el paso esté cerrado.
 
-```
-default for column "unit_type" cannot be cast automatically to type enum_products_unit_type
-```
+#### ~~P5 · La migración es reversible~~ · cerrado — T1214
 
-O sea: **una base migrada no levanta con `NODE_ENV=development`**, y una base
-vacía sí —porque `sync` la crea de cero—. Las dos cosas que hay que verificar
-necesitan estados opuestos, así que se usan dos bases.
+Lo cierra `apps/api/scripts/verificar-reversibilidad.js`: levanta un Postgres
+descartable propio, aplica todo hasta el hito anterior, siembra datos, y para
+cada migración hace foto → `up` → foto → `undo` → foto y **compara** columna por
+columna, índice por índice, restricción por restricción y tipo ENUM por tipo
+ENUM. Después vuelve a aplicar el `up` y compara otra vez. Las cinco migraciones
+del hito 6 y del proyecto 0 pasan.
+
+La mitad que corre siempre —sin Postgres— es
+`src/tests/reversibilidadDeMigraciones.test.js`: ninguna migración se quedó sin
+`down`, las que se niegan lo hacen con un mensaje útil, y **el comparador de
+fotos distingue de verdad** (un comparador que devolviera siempre `[]` dejaría el
+script en verde para siempre y no lo notaría nadie).
+
+No se podía hacer con el arnés de integración, y por eso quedó como script
+aparte: ejecutar un `down` **muta el esquema de la base compartida**, y los demás
+archivos corren en serie sobre ella —un `down` en el medio deja a
+`indicesQueSeUsan` afirmando `Seq Scan`—.
+
+**Y leerlo no contaba.** El paso encontró dos defectos que leyendo el `down` no
+se ven: uno reinsertaba las filas archivadas con la fecha **truncada al
+milisegundo** —los microsegundos se pierden al pasar por `JSON.stringify`, antes
+del JSON— y otro repone una foreign key **con otro nombre**. La vuelta atrás se
+descubre rota el día que hay que revertir un deploy, que es el peor momento
+posible para enterarse.
+
+#### ~~P7 · La columna Saldo suma en una planilla de verdad~~ · cerrado — T1229, T1247
+
+Ningún test abre Excel, pero **sí puede escribir el libro y volver a leerlo**, que
+es lo que faltaba. Seis casos en `exportarProveedores.test.js` serializan la hoja
+con `XLSX.write` y afirman sobre **las celdas releídas**, no sobre el objeto que
+devolvió `armarHoja` — que es la diferencia con el test que ya existía.
+
+La suma se calcula como la calcula una planilla: se saltea toda celda cuyo `t` no
+sea `'n'`, igual que `=SUMA()`. Un `reduce` con `Number(v) || 0` habría convertido
+el texto en número y el caso habría pasado con y sin el defecto.
+
+Lo que encontró: el tipo **sí** sobrevive a la ida y vuelta. Lo que **puede**
+perderse y solo se ve mirando el archivo es que **el escritor recorre el `!ref` y
+lo que quede afuera no se escribe** — con un `!ref` una fila corto, el último
+movimiento desaparece del `.xlsx` y sigue presente en el objeto de hoja. Es la
+forma de perder una fila sin error ni aviso, y ningún assert sobre el objeto la
+ve. Tiene su caso dedicado.
+
+Y una trampa que vale para todo el repositorio: **`toBeCloseTo` acepta una cadena
+numérica y la compara como número**. Con los importes escritos como texto, el
+assert quedaba en verde. Los `DECIMAL` de Postgres llegan como string, así que
+cualquier `toBeCloseTo` sobre un valor que venga de la base necesita además un
+`expect(typeof …).toBe('number')`.
+
+#### P9 y P10 · El foco al cerrar el panel, y el portapapeles — T1238, T1243
+
+**P9**: abrir una orden desde la tabla, apretar `Esc`; el panel se cierra y el
+foco vuelve **a la fila que lo abrió**.
+**P10**: cargar un documento, tocar «Copiar enlace» y pegar; aparece el enlace
+completo.
+
+*Por qué siguen acá*: **son de navegador, no de API**, y el nivel que les
+corresponde existe: `apps/web/pruebas-de-navegador/*.navegador.js`. Ninguno de
+los dos se puede afirmar en jsdom —`navigator.clipboard` no existe sin doblarlo,
+y un test sobre el doble dice que se llamó al doble; el foco lo resuelve Radix y
+afirmarlo en jsdom sería testear la librería—.
+
+⚠ **Están juntos a propósito**: son **una tarea de `pruebas-de-navegador`**, no
+dos pasos manuales permanentes. Mientras esa tarea no exista, se miran a mano una
+vez por release, y «se mira una vez» solo vale si esa vez ocurre.
+
+---
+
+### P0 · El procedimiento para lo que queda a mano
+
+Hace falta para **P9 y P10** —que se miran a mano hasta que exista su tarea de
+`pruebas-de-navegador`—. Los pasos que bajaron a test **no lo necesitan**: el
+arnés levanta su propia base con `npm --prefix apps/api run test:db:levantar`, y
+la reversibilidad de las migraciones la verifica
+`apps/api/scripts/verificar-reversibilidad.js`, que levanta y borra la suya.
+
+> **Actualización.** Este procedimiento pedía **dos** bases descartables, porque
+> una base migrada **no levantaba** con `NODE_ENV=development`: ocho columnas
+> eran `ENUM` en los modelos y `VARCHAR` en las migraciones, y
+> `sequelize.sync({ alter: true })` moría al convertirlas con
+> `default for column "unit_type" cannot be cast automatically`. Era el síntoma
+> del proyecto 0.
+>
+> **Ya no.** `20260809-tipos-enum-y-indices-de-productos.js` convergió el esquema
+> migrado con el de producción, así que **alcanza con una sola base**: se migra,
+> se levanta en desarrollo, y anda. El job del navegador de CI hace exactamente
+> eso en cada push, así que si la divergencia vuelve, se cae ahí.
+>
+> Lo que sigue abajo se conserva porque el resto —CORS, superadmin, el choque de
+> puertos— se descubrió a los golpes y sigue valiendo.
 
 ```bash
-# ── Base A: VACÍA. Para todo lo que sea ejercitar endpoints y pantallas. ──
+# ── La base descartable. Vacía o migrada: las dos levantan. ──
 docker run -d --name adminapp-e2e-pg \
   -e POSTGRES_USER=adminapp -e POSTGRES_PASSWORD=adminapp \
   -e POSTGRES_DB=adminapp_e2e -p 55432:5432 postgres:16-alpine
@@ -2155,6 +2219,12 @@ cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55432/adminap
   ALLOWED_ORIGINS=http://localhost:5199 node src/server.js
 ```
 
+⚠ **El puerto 55432 es el mismo que usa el contenedor del arnés de integración
+(`adminapp-pg-integracion`).** Los dos no pueden estar arriba a la vez: o se baja
+uno (`npm --prefix apps/api run test:db:bajar`) o esta base A se levanta en otro
+puerto. Es la clase de choque que se ve como «la API no arranca» y no como «hay
+dos Postgres peleando por un puerto».
+
 ⚠⚠ **`ALLOWED_ORIGINS` no es opcional y no estaba escrito en ninguna parte.** La
 lista blanca de CORS (`server.js:112-119`) trae `5173`, `5174` y `3000`, y el
 servidor de las pruebas de navegador corre en el **5199**
@@ -2174,214 +2244,37 @@ cd apps/api && DATABASE_URL=<la de pruebas> DB_SSL=false \
   node scripts/superadmin.js activar dev@adminapp.app
 ```
 
-```bash
-# ── Base B: SOLO MIGRACIONES. Para verificar la migración de T1214. ──
-docker run -d --name adminapp-mig-pg \
-  -e POSTGRES_USER=adminapp -e POSTGRES_PASSWORD=adminapp \
-  -e POSTGRES_DB=adminapp_mig -p 55433:5432 postgres:16-alpine
+Y si querés partir del camino migrado —que ahora es el mismo que el de
+producción— en vez de dejar que `sync` cree el esquema:
 
-cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55433/adminapp_mig \
+```bash
+cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55432/adminapp_e2e \
   DB_SSL=false npm run db:migrate
 
 # El chequeo de esquema NO necesita levantar el servidor: hace un findOne por
-# modelo contra la base que le indiques.
-cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55433/adminapp_mig \
+# modelo, y además compara el TIPO declarado contra information_schema.
+cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55432/adminapp_e2e \
   DB_SSL=false npm run verificar:esquema
 ```
 
-⚠ **Contra la base B NO se levanta el servidor con `NODE_ENV=development`**: se
-cae en `products.unit_type` antes de llegar a nada de este hito. Y **tampoco con
-`NODE_ENV=production`**, porque ahí `BYPASS_AUTH` responde 500 a propósito. La
-base B se inspecciona con `psql` y con `verificar:esquema`, que es todo lo que
-los pasos P4 a P6 necesitan.
+⚠ **Con `NODE_ENV=production` el servidor no sirve para esto**: ahí `BYPASS_AUTH`
+responde 500 a propósito. Para inspeccionar sin levantar nada están `psql` y
+`verificar:esquema`.
 
-**Esto no es un problema del camino de producción**: el `Dockerfile` corre con
-`NODE_ENV=production`, que **no** sincroniza, y el job `contenedor` del CI lo
-verifica con las migraciones más `scripts/verificar-esquema.js`. Es el camino de
-**desarrollo** el que está roto, y es el proyecto 0.
+⚠ **La reversibilidad NO se prueba a mano contra esta base.** Ejecutar un `down`
+acá deja la base en un estado que el resto del procedimiento no espera. Para eso
+está `node scripts/verificar-reversibilidad.js`, que levanta y borra la suya.
 
-### Contra Postgres (base A)
+⚠ **`verificar:esquema` NO mira índices** —está escrito en su propio comentario:
+hace un `findOne` por modelo—. Lo que sí los mira es
+`indicesQueSeUsan.integracion.test.js`, que corre solo.
 
-**P1 · El `GROUP BY` de saldos — T1213, T1215.** Sembrar un proveedor con
-movimientos que en punto flotante sumen `1234.5600000000002` —por ejemplo
-`1234.56` en tres pagos de `411.52`— y pedir `GET /api/suppliers`.
-*Qué tiene que verse*: `saldo` responde exactamente `1234.56`, y en la base
-
-```sql
-SELECT supplier_id, type, SUM(amount) FROM supplier_movements
- WHERE empresa_id = 1 GROUP BY supplier_id, type;
-```
-
-devuelve **dos filas** para ese proveedor, con `amount` como **string**. Es el
-riesgo 9 del plan: `modelosFalsos` no soporta `group`, así que **este paso es el
-único que verifica que la consulta traiga las filas correctas**.
-
-↻ **Parcialmente automático desde T1250.** `preparacion.js` siembra cuatro
-proveedores en los cuatro estados de cuenta y las dos pantallas leen
-`GET /suppliers` en cada corrida de `test:navegador`, así que el `GROUP BY` corre
-contra Postgres de verdad y una consulta rota hace fallar la suite. Lo que sigue
-siendo de una persona es **el centavo**: que `saldo` responda exactamente
-`1234.56` y no `1234.5600000000002`.
-
-⏳ **La mitad manual sigue pendiente al cierre del hito 6**, y la automática vale
-solo si `test:navegador` se corre de verdad (procedimiento P0).
-
-**P2 · Dos líneas del mismo producto — T1204.** Crear una orden con Colágeno en
-la posición 0 y en la 2, y recibir 10 en la 2 con
-`{ items: [{ linea: 2, cantidad: 10 }] }`.
-*Qué tiene que verse*, después del commit:
-
-```sql
-SELECT jsonb_array_elements(detail)->>'quantity_received' FROM supplier_orders WHERE id = <la orden>;
-```
-
-devuelve `0`, `0`, `10` — **dos valores distintos en el JSONB**. Es el bug del
-`changed('detail', true)` que ya se corrigió una vez y que **los dobles no pueden
-ver**.
-
-↻ **Parcialmente automático desde T1250.** La siembra de las pruebas de navegador
-crea seis órdenes y recibe dos —una entera y otra a medias— mandando
-`{ linea, cantidad }` contra Postgres real, así que si la recepción por posición
-se rompiera, `test:navegador` no arranca. Lo que sigue siendo de una persona es el
-`SELECT` de arriba: que el JSONB haya guardado dos valores **distintos** en dos
-líneas del mismo producto. **Y se puede cerrar sin `psql`** —ver la nota del
-principio de esta sección—.
-
-⏳ **La mitad manual sigue pendiente al cierre del hito 6.** Es el paso más barato
-de los once que faltan y el que cubre el defecto más caro.
-
-**P3 · Una línea sin producto — T1204.** Una orden con una línea normal y una con
-`product_id: null` («Fletes»), y recibir las dos.
-*Qué tiene que verse*: `200`, un `SupplierMovement` de tipo `deuda` por **las
-dos** líneas, la fila de `Stock` de la línea normal **sí** creció, **no** hay
-fila de stock para «Fletes», y `avisos` trae la frase que lo dice. Hoy esto
-responde **500 y no entra nada, ni de la otra línea**.
-
-↻ **Parcialmente automático desde T1250**, igual que P2: el camino feliz —recibir
-y que crezca el stock y se cree el movimiento de deuda— lo ejercita la siembra en
-cada corrida. La línea **sin producto** no se siembra y sigue siendo de una
-persona: es el caso que revertía la transacción entera.
-
-⏳ **La mitad manual sigue pendiente al cierre del hito 6.**
-
-### Contra Postgres (base B)
-
-**P4 · Los cuatro índices existen — T1214.** Después de `db:migrate`, en `psql`:
-
-```sql
-\di supplier*
-```
-
-*Qué tiene que verse*: los cuatro `idx_…` de `data-model.md`, además de los cinco
-que ya estaban. ⚠ **`verificar:esquema` no los mira** —está escrito en su propio
-comentario—, así que este paso no se puede saltear con «el chequeo pasó».
-
-⏳ **Pendiente al cierre del hito 6.**
-
-**P5 · La migración es reversible — T1214.** Correr el `down`
-(`npm --prefix apps/api run db:migrate:undo`), verificar con `\di` que ninguno de
-los cuatro está, y volver a correr el `up`.
-*Qué tiene que verse*: los tres comandos terminan sin error y el esquema queda
-como estaba. Es el requisito del proyecto 0: **una migración que no se puede
-revertir no se puede probar**.
-
-⏳ **Pendiente al cierre del hito 6, y leerlo no cuenta**: el `down` puede estar
-bien escrito y fallar igual, y eso se descubre el día que hay que revertir un
-deploy.
-
-**P6 · El índice se usa — T1214.** Con datos suficientes para que el planificador
-no prefiera un `Seq Scan`:
-
-```sql
-EXPLAIN ANALYZE SELECT supplier_id, type, SUM(amount) FROM supplier_movements
- WHERE empresa_id = 1 GROUP BY supplier_id, type;
-```
-
-*Qué tiene que verse*: `idx_supplier_movements_empresa_supplier` en el plan, **no
-un `Seq Scan`**. Es el único paso que verifica que el índice sirva para lo que se
-creó, y por eso es el que no se puede saltear.
-
-⏳ **Pendiente al cierre del hito 6.** Que los cuatro existan (P4) y que
-`verificar:esquema` pase no dicen nada sobre si el planificador los elige: una
-consulta con `Seq Scan` devuelve **los mismos datos**, solo que tarda. Un índice
-creado y no usado es una migración que se desplegó, se revisó y no hizo nada.
-
-### Lo que necesita una persona
-
-**P7 · La columna suma en una planilla de verdad — T1229, T1247.** Exportar la
-cuenta de un proveedor con cinco movimientos, abrir el `.xlsx` y seleccionar la
-columna Saldo.
-*Qué tiene que verse*: la planilla muestra una suma. Si la celda quedó como
-texto, no muestra nada y **el archivo abre, se ve bien y está mal**. Es el
-criterio de éxito 12 y es lo único de la exportación que el test del tipo de
-celda no puede afirmar. *No baja a prueba de navegador*: un Chromium sin manos no
-abre Excel.
-
-⏳ **Pendiente al cierre del hito 6.** El test afirma que la celda lleva
-`{ t: 'n' }`; lo que no puede es abrir el archivo. Y es de las pocas cosas de este
-hito que le llegan a alguien de afuera del equipo: el contador.
-
-**P8 · Las dos rutas siguen centradas — T1232.** ✔ **Automático.** Después del
-corte 8, que toca `App.jsx`, correr
-`npm --prefix apps/web run test:navegador -- marcoDeLasPantallas`.
-*Qué tiene que verse*: las diecisiete pantallas siguen centradas a 1320px con su
-padding. Se anota acá solo para que no se saltee después de tocar el shell.
-Desde T1251, `/proveedores` y `/ordenes-compra` tienen además sus propias medidas
-en `proveedoresYOrdenes.navegador.js`.
-
-**P9 · El foco al cerrar el panel — T1238.** Abrir una orden desde la tabla,
-apretar `Esc`.
-*Qué tiene que verse*: el panel se cierra y el foco vuelve **a la fila que lo
-abrió**. Lo resuelve `ui/sheet.jsx` (Radix) y **no lleva test propio**: afirmarlo
-en jsdom sería testear la librería, y en el navegador sería una prueba cara para
-algo que ninguna línea de este hito controla. Se mira una vez.
-
-⏳ **Pendiente al cierre del hito 6** — y «se mira una vez» solo vale si esa vez
-ocurre.
-
-**P10 · Copiar el enlace al portapapeles — T1243.** Cargar un documento y tocar
-«Copiar enlace», después pegar en cualquier lado.
-*Qué tiene que verse*: el enlace completo. **No baja a test**:
-`navigator.clipboard` no existe en jsdom sin doblarlo, y un test sobre el doble
-dice que se llamó al doble, no que el portapapeles tenga el texto.
-
-⏳ **Pendiente al cierre del hito 6.**
-
-**P11 · La recepción con cascada — T1209, riesgo 3.** ⏳ **Pendiente, y pasó a
-ser urgente: ya no es solo una medición.**
-
-⚠ **La verificación del hito 6 reprodujo un fallo de correctitud acá.** Con un
-grafo **en diamante** —un insumo que llega al mismo elaborado por dos caminos:
-Colágeno es insumo de la Premezcla, y el Combo lleva Colágeno **y** Premezcla— la
-cascada de recosteo **se cae**, respondiendo «Dependencia circular detectada»
-sobre un grafo que **no tiene ningún ciclo**. Y era **intermitente**, que es lo
-peor que podía ser: el `findAll` de las recetas dependientes no lleva `ORDER BY`,
-así que el orden en que Postgres devolviera las filas decidía si la misma
-recepción respondía 200 o rompía.
-
-Por eso este paso cambia de pregunta. Eran «cuánto tarda»; ahora son dos:
-
-1. **¿El recosteo llega a todo el grafo?** Recibir sobre un **diamante**, no
-   sobre una cadena: en una cadena el defecto no aparece, y es la forma que
-   cualquiera arma primero cuando prueba a mano.
-2. **¿Cuánto tarda?** Lo de siempre: una orden de veinte insumos en recetas
-   anidadas, y si choca contra un lock de otra operación de costos. **Acá sigue
-   sin haber número de corte**: es una medición y alguien la interpreta. *Si
-   duele*: sacar la cascada de la transacción es un cambio de una línea y está
-   anotado en T1253.
-
-**P12 · Dos personas recibiendo la misma orden — riesgo 7.** Dos pestañas, la
-misma orden, confirmar casi a la vez.
-*Qué tiene que verse*: la orden puede quedar con **menos recibido del que
-entró**; el stock **no** se duplica. **Está declarado Fuera de alcance en la
-spec y este hito no lo arregla** — lo que sí hace es empeorar la exposición, con
-«Recibir» en cada fila. Se corre una vez para tener el comportamiento
-documentado, no para arreglarlo acá.
-
-⏳ **Pendiente al cierre del hito 6.** Correrlo no cambia el código: cambia que el
-día que alguien reporte «cargué la recepción y falta la mitad» haya una respuesta
-escrita en vez de una investigación desde cero. La mitigación mínima —una línea,
-`lock: t.LOCK.UPDATE` sobre el `SupplierOrder.findOne`— está anotada en T1253.
+**El camino de desarrollo ya no está roto.** Lo estuvo, y era el proyecto 0: una
+base migrada moría al arrancar con `NODE_ENV=development`. Lo cerró
+`20260809-tipos-enum-y-indices-de-productos.js`, y ahora el job del navegador de
+CI migra antes de levantar, así que la convergencia se verifica en cada push en
+vez de confiarse. El camino de producción nunca estuvo afectado —el `Dockerfile`
+corre con `NODE_ENV=production`, que no sincroniza—.
 
 ---
 
@@ -2416,10 +2309,17 @@ cada pantalla que manda reescribir importa lo que la tarea dice que importe.
 Queda escrito porque una revisión que no deja rastro se vuelve a pedir.
 
 ⚠ **Lo que «54 tareas completas» NO dice.** Las casillas cubren lo que se puede
-afirmar con un test. Los **doce pasos manuales** de la sección de arriba son otra
-lista, y de esa se corrió **uno**. Un hito con las 54 marcadas y once pasos sin
-correr no está verificado: está escrito. Las dos listas se leen juntas o no se
-leen.
+afirmar con un test. Los pasos manuales de la sección de arriba son otra lista, y
+las dos se leen juntas o no se leen. Al cierre del hito 6 esa lista tenía **doce
+pasos y se había corrido uno**, que es cómo un hito queda escrito sin quedar
+verificado.
+
+**Hoy son cuatro**, porque siete bajaron a test de integración cuando existió el
+arnés que los hacía escribibles (proyecto 5c) y P8 ya era automático. Los cuatro
+que quedan tienen su motivo escrito, y ninguno es «alguien se olvidó de
+correrlo»: **P7** necesita abrir Excel, **P9** y **P10** necesitan un navegador
+con manos y tienen su nivel esperándolos, y **P5** está a una base descartable de
+poder automatizarse.
 
 ⚠ **Y una desviación deliberada que no hay que «corregir»:** varias tareas de la
 API piden el test en `apps/api/src/utils/<algo>.test.js` —T1201, T1203, T1213—.

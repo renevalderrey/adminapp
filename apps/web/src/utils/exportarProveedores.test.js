@@ -263,6 +263,243 @@ describe('armarHoja · el saldo con el que abre el período', () => {
   })
 })
 
+// ════════════════════════════════════════════
+//  P7 · Que la columna SUME — sobre el archivo, no sobre el objeto
+//
+//  El paso manual decía: exportar la cuenta, abrir el `.xlsx` y seleccionar la
+//  columna Saldo; si la celda quedó texto, «el archivo abre, se ve bien y está
+//  mal». Es el criterio de éxito 12.
+//
+//  ── Por qué esto no lo cubren los casos de arriba ──
+//
+//  Los de arriba miran el OBJETO que devuelve `armarHoja`: que la celda lleve
+//  `{ t: 'n' }`. Eso es una intención, no un archivo. Entre ese objeto y lo que
+//  abre el contador hay un escritor —`XLSX.write`— que puede no respetarla, y
+//  hay al menos una forma documentada de perder filas sin error ni aviso: **el
+//  escritor recorre el `!ref` y todo lo que quede afuera no se escribe**.
+//  Comprobado: con un `!ref` una fila corto, la última fila desaparece del
+//  archivo mientras sigue presente en el objeto, y ningún assert sobre el objeto
+//  lo ve.
+//
+//  Por eso estos casos escriben el libro de verdad, lo vuelven a leer, y afirman
+//  sobre las celdas RELEÍDAS. Es lo más cerca de abrir Excel que se puede llegar
+//  sin manos, y cubre justo lo que el test del tipo de celda no podía.
+//
+//  ── El detalle que hace que esto valga: cómo suma una planilla ──
+//
+//  `sumaDeLaColumna` saltea las celdas que no son numéricas, que es exactamente
+//  lo que hace `=SUMA(F3:F8)`: una celda de texto no se suma, no se avisa, y el
+//  total sale de menos. Un `reduce` con `Number(v) || 0` convertiría el texto en
+//  número y el caso pasaría con y sin el defecto — el modo de falla que este
+//  repositorio viene juntando.
+// ════════════════════════════════════════════
+
+/** El `saldo_inicial` del período: la cuenta ya venía debiendo. */
+const SALDO_DE_APERTURA = 100000
+
+/**
+ * Los cinco movimientos del paso manual P7, ascendentes como los manda la API.
+ *
+ * ⚠ **Ninguno es redondo y las dos columnas no dan lo mismo.** Con importes
+ * enteros, un defecto que pierda los centavos cierra igual; y con un total de
+ * Debe igual al de Haber, intercambiar las dos columnas también. Acá Debe suma
+ * 90.450,65 y Haber 66.311,40: cualquiera de las dos cosas se ve.
+ */
+const CINCO_MOVIMIENTOS = [
+  {
+    fecha: '2026-07-03',
+    tipo: 'Pedido',
+    descripcion: 'Recepción orden #118',
+    debe: 72000.55,
+    haber: 0,
+    saldo: 172000.55,
+    cuit: '30123456789',
+  },
+  {
+    fecha: '2026-07-09',
+    tipo: 'Pago',
+    descripcion: 'Transferencia',
+    debe: 0,
+    haber: 50000.25,
+    saldo: 122000.3,
+    cuit: '30123456789',
+  },
+  {
+    fecha: '2026-07-15',
+    tipo: 'Pedido',
+    descripcion: 'Recepción orden #124',
+    debe: 18450.1,
+    haber: 0,
+    saldo: 140450.4,
+    cuit: '30123456789',
+  },
+  {
+    fecha: '2026-07-22',
+    tipo: 'Nota de crédito',
+    descripcion: 'Devolución 3 bultos',
+    debe: 0,
+    haber: 4310.95,
+    saldo: 136139.45,
+    cuit: '30123456789',
+  },
+  {
+    fecha: '2026-07-30',
+    tipo: 'Pago',
+    descripcion: 'Efectivo',
+    debe: 0,
+    haber: 12000.2,
+    saldo: 124139.25,
+    cuit: '30123456789',
+  },
+]
+
+const TOTAL_DEBE = 90450.65
+const TOTAL_HABER = 66311.4
+/** 100.000 + 90.450,65 − 66.311,40. El saldo con el que cierra la cuenta. */
+const SALDO_DE_CIERRE = 124139.25
+
+/** Índice (base 0) de la primera fila de datos: la 1 es CUIT y la 2, encabezado. */
+const PRIMER_DATO = 2
+
+/**
+ * El libro escrito y vuelto a abrir, como lo hace el contador.
+ *
+ * `book_new` + `book_append_sheet` + el nombre de hoja son los de
+ * `Orders.jsx:842-847`: la parte impura vive allá y acá se replica para que lo
+ * que se serializa sea el mismo libro que baja el navegador. `type: 'array'` son
+ * los mismos bytes que `XLSX.writeFile` mete en el Blob de la descarga.
+ */
+function escribirYVolverALeer(filas, opciones) {
+  const libro = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(libro, armarHoja(filas, opciones), 'Cuenta corriente')
+
+  const bytes = XLSX.write(libro, { type: 'array', bookType: 'xlsx' })
+
+  return XLSX.read(bytes, { type: 'array' }).Sheets['Cuenta corriente']
+}
+
+/**
+ * Lo que hace la planilla al seleccionar una columna: sumar lo numérico.
+ *
+ * Devuelve también **cuántas celdas entraron**, que es la mitad que importa: una
+ * columna donde una sola celda quedó texto sigue mostrando una suma —por eso
+ * nadie lo nota— pero con un sumando menos. Sin `sumadas`, un total distinto se
+ * podría confundir con un dato mal cargado.
+ */
+function sumaDeLaColumna(hoja, letra) {
+  const ultima = XLSX.utils.decode_range(hoja['!ref']).e.r
+  let total = 0
+  let sumadas = 0
+
+  for (let r = PRIMER_DATO; r <= ultima; r += 1) {
+    const celda = hoja[`${letra}${r + 1}`]
+    // Una celda de texto no la suma la planilla, y `Number()` acá taparía el
+    // defecto entero: se saltea igual que Excel.
+    if (!celda || celda.t !== 'n') continue
+
+    total += celda.v
+    sumadas += 1
+  }
+
+  return { total, sumadas }
+}
+
+describe('el .xlsx escrito y vuelto a abrir · paso manual P7', () => {
+  it('las tres columnas de plata siguen siendo numéricas DESPUÉS de serializar', () => {
+    // Lo que el test del tipo de celda no podía afirmar: que la intención
+    // `{ t: 'n' }` sobreviva al escritor. Si se perdiera, el archivo abriría, se
+    // vería bien, y la columna no sumaría.
+    const hoja = escribirYVolverALeer(CINCO_MOVIMIENTOS, { saldoInicial: SALDO_DE_APERTURA })
+
+    const ultima = XLSX.utils.decode_range(hoja['!ref']).e.r
+
+    for (let r = PRIMER_DATO; r <= ultima; r += 1) {
+      for (const letra of ['D', 'E', 'F']) {
+        const celda = hoja[`${letra}${r + 1}`]
+
+        expect(celda, `${letra}${r + 1} no llegó al archivo`).toBeDefined()
+        expect(celda.t, `${letra}${r + 1} quedó como texto`).toBe('n')
+        expect(typeof celda.v).toBe('number')
+      }
+    }
+  })
+
+  it('la columna Saldo del archivo suma las SEIS filas, apertura incluida', () => {
+    // El «seleccionar la columna y ver una suma» del paso manual. `sumadas` es
+    // lo que lo hace valer: seis es apertura + cinco movimientos, y una celda
+    // que quedara texto —o una fila que el `!ref` dejara afuera del archivo—
+    // baja ese número sin que el total deje de existir.
+    const hoja = escribirYVolverALeer(CINCO_MOVIMIENTOS, { saldoInicial: SALDO_DE_APERTURA })
+
+    expect(sumaDeLaColumna(hoja, 'D').sumadas).toBe(6)
+    expect(sumaDeLaColumna(hoja, 'E').sumadas).toBe(6)
+    expect(sumaDeLaColumna(hoja, 'F').sumadas).toBe(6)
+
+    // Los centavos se comparan con dos decimales a propósito: sumar seis
+    // importes en coma flotante da 66311,399999… tanto acá como en Excel, y
+    // exigir igualdad exacta pondría en rojo un archivo correcto.
+    expect(sumaDeLaColumna(hoja, 'D').total).toBeCloseTo(TOTAL_DEBE, 2)
+    expect(sumaDeLaColumna(hoja, 'E').total).toBeCloseTo(TOTAL_HABER, 2)
+  })
+
+  it('la fila «Saldo anterior» entra en la suma del ARCHIVO y la cuenta cierra', () => {
+    // La mitad que importa del paso: el saldo de apertura escrito como texto es
+    // el caso más fácil de dejar pasar —lo fabrica `armarHoja`, no la API— y es
+    // el que descuadra el archivo contra la pantalla: $24.139,25 de neto del
+    // período sobre una cuenta que debe $124.139,25.
+    const hoja = escribirYVolverALeer(CINCO_MOVIMIENTOS, { saldoInicial: SALDO_DE_APERTURA })
+
+    expect(hoja.C3.v).toBe('Saldo anterior')
+    expect(hoja.F3.t).toBe('n')
+
+    // La cuenta del contador, hecha sobre las celdas releídas: apertura + todo
+    // el Debe − todo el Haber = el saldo con el que cierra la última fila.
+    const cuenta = hoja.F3.v + sumaDeLaColumna(hoja, 'D').total - sumaDeLaColumna(hoja, 'E').total
+
+    expect(cuenta).toBeCloseTo(SALDO_DE_CIERRE, 2)
+    expect(hoja.F8.v).toBeCloseTo(SALDO_DE_CIERRE, 2)
+  })
+
+  it('el archivo tiene una fila por movimiento y ninguna se pierde al escribirlo', () => {
+    // El escritor recorre el `!ref`: una fila que quede afuera NO se escribe, y
+    // el objeto la sigue teniendo. Es la forma de perder el último movimiento
+    // sin error ni aviso, y solo se ve mirando el archivo.
+    const hoja = escribirYVolverALeer(CINCO_MOVIMIENTOS, { saldoInicial: SALDO_DE_APERTURA })
+
+    expect(hoja['!ref']).toBe('A1:F8')
+    // La última fila del archivo es el último movimiento, con su fecha y su
+    // importe: si el `!ref` la hubiera dejado afuera, acá no habría nada.
+    expect(hoja.A8.v).toBe('2026-07-30')
+    // ⚠ El `typeof` no es redundante con el `toBeCloseTo`: `toBeCloseTo` acepta
+    // la cadena '12000.2' y la compara como número, así que sin esta línea el
+    // caso pasaría con el importe escrito como texto —medido—.
+    expect(typeof hoja.E8.v).toBe('number')
+    expect(hoja.E8.v).toBeCloseTo(12000.2, 2)
+  })
+
+  it('el CUIT del archivo conserva los once dígitos, sin notación científica', () => {
+    // Inferido como número se escribiría 3,01235E+10 y perdería los últimos, que
+    // es lo que pasaba con el CAE. Un CUIT incompleto no identifica a nadie ante
+    // una inspección, y esto también hay que verlo en el archivo.
+    const cuit = escribirYVolverALeer(CINCO_MOVIMIENTOS, { saldoInicial: SALDO_DE_APERTURA }).B1
+
+    expect(cuit.t).toBe('s')
+    expect(cuit.v).toBe('30123456789')
+    expect(cuit.v).toHaveLength(11)
+  })
+
+  it('sin rango, el archivo suma las cinco filas y ninguna apertura fantasma', () => {
+    // La otra mitad: sin `?desde=` no hay fila de apertura, así que la columna
+    // tiene cinco sumandos y no seis. Sin este caso, una apertura dibujada
+    // siempre pasaría todos los anteriores.
+    const hoja = escribirYVolverALeer(CINCO_MOVIMIENTOS)
+
+    expect(hoja.C3.v).toBe('Recepción orden #118')
+    expect(sumaDeLaColumna(hoja, 'F').sumadas).toBe(5)
+    expect(sumaDeLaColumna(hoja, 'D').total).toBeCloseTo(TOTAL_DEBE, 2)
+  })
+})
+
 describe('nombreDelArchivo', () => {
   // Dos exportaciones distintas no se pueden pisar en la carpeta de descargas:
   // bajar dos veces «cuenta.xlsx» deja una sola y no se sabe de quién es.

@@ -297,13 +297,28 @@ module.exports = {
       // El `ORDER BY … , ri.id` no es decoración: de ahí sale cuál fila
       // sobrevive. Sin él lo elegiría el planificador y dos corridas de la misma
       // migración sobre la misma base podrían conservar filas distintas.
+      //
+      // ⚠ Las dos fechas salen como TEXTO, y no es un capricho de estilo.
+      //
+      // La fila archivada se guarda con `JSON.stringify`, y para eso el driver
+      // ya convirtió el `timestamptz` en un `Date` de JavaScript, que solo llega
+      // al milisegundo. Los microsegundos que Postgres sí guarda se pierden ahí,
+      // antes del JSON: `…:58.621389+00` se archiva como `…:58.621Z` y el `down`
+      // reinserta la fila con una fecha que no es la que tenía. Lo encontró
+      // `scripts/verificar-reversibilidad.js` comparando la base antes del `up`
+      // con la base después del `down` — leyendo el `down` no se ve.
+      //
+      // Con `::text` el valor llega entero hasta el JSON, y el
+      // `(d.fila->>'created_at')::timestamptz` del `down` lo devuelve idéntico.
+      // `planificarFusiones` no mira ninguna de las dos columnas, así que el
+      // cambio de tipo no le llega.
       const filas = await filasDe(`
         SELECT ri.id,
                ri.recipe_id,
                ri.ingredient_product_id,
                ri.quantity,
-               ri.created_at,
-               ri.updated_at,
+               ri.created_at::text AS created_at,
+               ri.updated_at::text AS updated_at,
                r.empresa_id,
                r.product_id
           FROM recipe_items ri

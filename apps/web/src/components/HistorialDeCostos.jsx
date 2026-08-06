@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { getProductCostHistory } from '@/services/api'
 import { Loader2, TrendingDown, TrendingUp } from 'lucide-react'
+import { pesos } from '@/utils/formato'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Historial de costos de un producto
@@ -27,12 +28,19 @@ import { Loader2, TrendingDown, TrendingUp } from 'lucide-react'
 /** Cuántas filas trae cada pedido. Es el default del servidor (tope 100). */
 const POR_PAGINA = 10
 
-const pesos = (n) => Number(n || 0).toLocaleString('es-AR', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
-
-/** «2026-08-03T14:20:00Z» → «03/08/2026». */
+/**
+ * «2026-08-03T14:20:00Z» → «03/08/2026».
+ *
+ * ⚠ **No es la `fechaCorta` de `utils/formato.js` y no se unificó a propósito.**
+ * Aquella parte el string sin pasar por `Date` porque su entrada es un
+ * `DATEONLY` —«2026-08-01», sin hora— y leerlo con `new Date()` lo interpreta
+ * en UTC y lo corre un día. Acá la entrada es lo contrario: un timestamp con
+ * hora, que es un instante real y se muestra en la hora del usuario. Un cambio
+ * de costo hecho a las 21:30 del 2 de agosto pasó el 2 de agosto para quien lo
+ * hizo, y en UTC figura como el 3.
+ *
+ * Aplanar las dos contra una sola movería un día una de las dos columnas.
+ */
 function fechaCorta(valor) {
   const d = new Date(valor)
   if (Number.isNaN(d.getTime())) return '—'
