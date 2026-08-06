@@ -31,10 +31,38 @@ function validarWhere(where = {}) {
   }
 }
 
-/** Evalua un where simple contra una fila. Soporta igualdad y arrays (IN). */
+const { Op } = require('sequelize');
+
+/**
+ * Evalua un where simple contra una fila.
+ *
+ * Soporta igualdad, arrays (IN abreviado) y `{ [Op.in]: [...] }`.
+ *
+ * ── Por que `Op.in` necesita una rama propia ──
+ *
+ * `Op.in` es un **Symbol**, y `Object.entries` NO devuelve claves de tipo
+ * Symbol. Sin esta rama, un `where: { id: { [Op.in]: [1, 2] } }` entraba por el
+ * `fila[campo] === valor` de abajo, que compara un numero contra un objeto: da
+ * `false` **siempre**, para toda fila.
+ *
+ * O sea que el doble no respondia «no encontre nada» por los datos, sino porque
+ * no entendia la consulta — y el codigo de produccion que usa `Op.in` se
+ * comportaba en los tests como si la tabla estuviera vacia. Es el mismo modo de
+ * falla que el encabezado de este archivo advierte: un doble que es mas
+ * permisivo o mas restrictivo que la base convierte cualquier test que lo use
+ * en una afirmacion sobre el doble.
+ *
+ * Aparecio validando los productos de una carga masiva de stock: la consulta
+ * legitima devolvia cero filas y la ruta respondia 404 sobre productos propios.
+ */
 function coincide(fila, where = {}) {
   return Object.entries(where).every(([campo, valor]) => {
     if (Array.isArray(valor)) return valor.includes(fila[campo]);
+
+    if (valor && typeof valor === 'object' && Array.isArray(valor[Op.in])) {
+      return valor[Op.in].includes(fila[campo]);
+    }
+
     return fila[campo] === valor;
   });
 }

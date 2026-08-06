@@ -212,6 +212,92 @@ describe('El procedimiento del paso P5 sigue cubriendo algo', () => {
   });
 });
 
+describe('La semilla toca las tablas que la migración de datos de TiendaNube necesita', () => {
+  // ⚠ Esta guardia es grosera a propósito, y el motivo importa: **el defecto que
+  // evita no lo ve ningún test de comportamiento, porque el script sale en verde
+  // igual**.
+  //
+  // `20260810-tiendanube-vinculacion-y-estado` muda `settings.tiendanube_user_id`
+  // a una tabla nueva y su `down` la tiene que devolver. Hasta la funcionalidad
+  // 013, `sembrar()` insertaba en once tablas y en ninguna de éstas cuatro: sobre
+  // esa semilla el `down` no restauraba ninguna fila, el script comparaba dos
+  // esquemas idénticos y salía con código 0 **sin haber ejecutado la rama de
+  // datos**. Medido: con la semilla vieja, un `down` al que se le saca el
+  // `INSERT INTO settings` pasa como BIEN; con la nueva, lo reporta como
+  // «FALTA datos/settings: tiendanube_user_id empresa=1 = 1234567890».
+  const FUENTE = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'scripts', 'verificar-reversibilidad.js'),
+    'utf8'
+  );
+
+  /**
+   * El archivo sin comentarios de JS **ni de SQL**.
+   *
+   * La semilla es un template literal con comentarios `--` adentro que explican
+   * por qué cada fila es como es, y varios nombran las mismas tablas. Sin sacar
+   * esos comentarios, la guardia contestaría sobre la explicación de la semilla
+   * en vez de sobre la semilla, que es exactamente la clase de verde vacío que
+   * este archivo existe para no producir.
+   */
+  const sinComentarios = (texto) => texto
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\n)\s*\/\/[^\n]*/g, '$1')
+    .replace(/(^|\n)\s*--[^\n]*/g, '$1');
+
+  const CODIGO = sinComentarios(FUENTE);
+
+  it('siembra las cuatro tablas sin las cuales el `down` no restaura nada', () => {
+    const faltantes = ['settings', 'puntos_de_venta', 'stock', 'tiendanube_mappings']
+      .filter((tabla) => !CODIGO.includes(`INSERT INTO ${tabla} `));
+
+    expect(faltantes).toEqual([]);
+  });
+
+  it('siembra DOS sucursales, y la `principal` no es la de menor id', () => {
+    // Con una sola sucursal, los tres escalones del COALESCE de la migración
+    // devuelven la misma fila y el orden no se prueba. La `principal` va con el
+    // id 2 justamente para que el primer escalón devuelva algo distinto de los
+    // otros dos.
+    const bloque = CODIGO.slice(CODIGO.indexOf('INSERT INTO puntos_de_venta '));
+
+    expect(bloque).toMatch(/\(1, 1, [^)]*'deposito'/);
+    expect(bloque).toMatch(/\(2, 1, [^)]*'principal'/);
+  });
+
+  it('siembra una empresa SIN sucursales con su fila de settings', () => {
+    // Es la rama de la migración que deja la fila sin mudar y lo dice por
+    // `console.log` en vez de fallar. Sin esta empresa, esa rama no se ejecuta
+    // nunca.
+    expect(CODIGO).toMatch(/\(2, 'Empresa sin sucursales'/);
+    expect(CODIGO).toMatch(/'tiendanube_user_id',\s+2,/);
+  });
+
+  it('siembra el token, que es la fila que la migración NO tiene que tocar', () => {
+    // El token se queda en `settings` a propósito (FR-077). Un `DELETE FROM
+    // settings WHERE key LIKE 'tiendanube%'` mal escrito se lo llevaría puesto y
+    // sin esta fila nadie se enteraría.
+    expect(CODIGO).toContain("'tiendanube_access_token'");
+  });
+
+  it('la foto de datos MIRA settings: sin eso, la semilla no alcanza', () => {
+    // Las dos mitades hacen falta y por separado no sirven de nada. La tabla
+    // `settings` no cambia de forma con esta migración, así que el esquema queda
+    // idéntico con un `down` correcto y con uno que no restaura nada: lo único
+    // que los distingue es la fila, y la fila solo se compara si está en la foto.
+    expect(CODIGO).toMatch(/settings:\s*await lineas/);
+    expect(CODIGO).toMatch(/tiendanube_mappings:\s*await lineasSiExiste/);
+  });
+
+  it('la guardia mira el SQL y no los comentarios que lo explican', () => {
+    // Sin el filtro de comentarios `--`, cualquiera de los casos de arriba
+    // pasaría con la semilla vacía y una explicación puesta al lado.
+    expect(sinComentarios('    -- INSERT INTO settings (key)\n    SELECT 1;'))
+      .not.toContain('INSERT INTO settings');
+    expect(sinComentarios('    INSERT INTO settings (key) VALUES (1);'))
+      .toContain('INSERT INTO settings');
+  });
+});
+
 describe('El comparador de fotos, del que depende todo el resultado', () => {
   // ⚠ Un comparador que devolviera siempre `[]` dejaría el script en verde para
   // siempre, y la salida se vería idéntica a la de una base que revierte

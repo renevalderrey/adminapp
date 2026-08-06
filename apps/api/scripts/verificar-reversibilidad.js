@@ -324,6 +324,21 @@ async function lineas(cliente, sql) {
   return rows.map((r) => r.linea);
 }
 
+/**
+ * Las filas de una tabla que puede **no existir todavía**.
+ *
+ * `tiendanube_tiendas` la crea justamente una de las migraciones bajo prueba: la
+ * foto de «antes» se toma cuando la tabla no está, y una consulta a secas
+ * cortaría el script con «relation does not exist» en vez de verificar nada.
+ * Devolver la lista vacía es lo correcto —antes de la migración no había ninguna
+ * fila— y hace que la comparación siga significando lo mismo.
+ */
+async function lineasSiExiste(cliente, tabla, sql) {
+  const { rows } = await cliente.query(`SELECT to_regclass('public.${tabla}') IS NOT NULL AS hay`);
+
+  return rows[0].hay ? lineas(cliente, sql) : [];
+}
+
 async function fotoDelEsquema(cliente) {
   const foto = {};
 
@@ -343,11 +358,23 @@ async function fotoDelEsquema(cliente) {
  * cada columna ENUM porque el `USING …::text::<tipo>` de ida y el `USING …::text`
  * de vuelta son dos casts que pueden no ser inversos.
  *
+ * Y las filas de `settings` porque `20260810-tiendanube-vinculacion-y-estado`
+ * **muda** una de ellas a una tabla nueva y su `down` la tiene que devolver. Sin
+ * esta sección, ese `down` podría no reinsertar nada y el script saldría en
+ * verde igual: el esquema queda idéntico de las dos maneras —la tabla `settings`
+ * no cambia de forma—, así que lo único que distingue un `down` correcto de uno
+ * roto es **la fila**. Es literalmente el punto ciego que el encabezado de este
+ * archivo advierte, con otro nombre.
+ *
  * ⚠ `updated_at` queda AFUERA a propósito y no es un descuido: el `down` de la
  * fusión repone la cantidad con `updated_at = NOW()`, así que compararlo daría
  * una diferencia en cada corrida que no dice nada sobre si la reversión sirvió.
- * `created_at` sí entra: ése el `down` lo restaura desde el archivo, y si lo
- * perdiera, la fila reinsertada no sería la misma fila.
+ * `created_at` sí entra donde el `down` lo restaura desde el archivo, y si lo
+ * perdiera, la fila reinsertada no sería la misma fila. En `settings` **las dos
+ * fechas quedan afuera**: la fila que el `down` de `20260810` reinserta nace con
+ * `NOW()` —la tabla nueva no guarda la fecha original de la fila de `settings`—
+ * y compararlas pondría en rojo un `down` que hizo exactamente lo que tenía que
+ * hacer. Lo que sí se compara es la clave, la empresa y el valor, que es el dato.
  */
 async function fotoDeLosDatos(cliente) {
   const foto = {
@@ -357,6 +384,34 @@ async function fotoDeLosDatos(cliente) {
              || ' alta=' || created_at::text AS linea
         FROM recipe_items
        ORDER BY id
+    `),
+
+    settings: await lineas(cliente, `
+      SELECT key || ' empresa=' || empresa_id || ' = ' || coalesce(value::text, '∅') AS linea
+        FROM settings
+       ORDER BY key, empresa_id
+    `),
+
+    // El `ALTER TYPE` de ida y el de vuelta son dos casts que pueden no ser
+    // inversos. Sobre una tabla vacía los dos pasan sin tocar nada, así que sin
+    // una fila acá el ensanchado a BIGINT y su reversa se verifican solos.
+    tiendanube_mappings: await lineasSiExiste(cliente, 'tiendanube_mappings', `
+      SELECT id || ' empresa=' || empresa_id || ' producto=' || product_id
+             || ' variante=' || tiendanube_variant_id
+             || ' productoTN=' || tiendanube_product_id AS linea
+        FROM tiendanube_mappings
+       ORDER BY id
+    `),
+
+    // Sin las fechas: `vinculada_en` es `NOW()` y la segunda aplicación de la
+    // migración cae en otro instante, así que compararlas pondría en rojo un
+    // `up` idéntico. Lo que importa es cuál sucursal quedó designada, que es el
+    // número que decide qué stock se publica y de dónde se descuenta.
+    tiendanube_tiendas: await lineasSiExiste(cliente, 'tiendanube_tiendas', `
+      SELECT 'empresa=' || empresa_id || ' tienda=' || tiendanube_user_id
+             || ' sucursal=' || punto_de_venta_id AS linea
+        FROM tiendanube_tiendas
+       ORDER BY empresa_id
     `),
   };
 
@@ -421,11 +476,42 @@ function diferencias(esperada, obtenida, prefijo = '') {
  * datos por defecto. Y los `recipe_items` traen los dos casos que
  * `planificarFusiones` distingue: cantidades distintas (dos momentos de la misma
  * receta) e idénticas (una línea cargada dos veces, que se marca `revisar`).
+ *
+ * ── Lo que se agregó para `20260810-tiendanube-vinculacion-y-estado` ──
+ *
+ * Esa migración **mueve datos**: pasa `settings.tiendanube_user_id` a
+ * `tiendanube_tiendas` y su `down` lo tiene que devolver. Hasta acá esta semilla
+ * no tocaba `settings`, `puntos_de_venta`, `stock` ni `tiendanube_mappings`, así
+ * que **la única migración con datos del hito habría pasado en verde sin
+ * ejecutar su rama**: el `down` no habría restaurado ninguna fila y el script
+ * habría comparado dos esquemas idénticos. Es exactamente lo que el encabezado
+ * de este archivo advierte —«sobre una base vacía casi todo `down` pasa»— con un
+ * caso nuevo.
+ *
+ * Cada cosa que se agrega tiene su motivo escrito al lado, en el SQL.
  */
 async function sembrar(cliente) {
   const sql = `
-    INSERT INTO empresas (id, name, created_at, updated_at)
-      VALUES (1, 'Empresa de prueba', NOW(), NOW());
+    INSERT INTO empresas (id, name, created_at, updated_at) VALUES
+      (1, 'Empresa de prueba', NOW(), NOW()),
+      -- La segunda existe SOLO para la rama de la migración de TiendaNube que
+      -- deja una fila sin mudar: no tiene ninguna sucursal, así que no puede
+      -- tener una sucursal designada, que es NOT NULL. Sin esta empresa esa rama
+      -- no se ejecuta nunca, y una rama que no se ejecuta es una rama que nadie
+      -- sabe si funciona.
+      (2, 'Empresa sin sucursales', NOW(), NOW());
+    SELECT setval(pg_get_serial_sequence('empresas', 'id'), 2);
+
+    -- Dos sucursales de la empresa 1, y la de \`code = 'principal'\` NO es la de
+    -- menor id. La migración resuelve la sucursal designada con un COALESCE de
+    -- tres escalones —principal, después la activa de menor id, después la de
+    -- menor id— y con UNA sola sucursal los tres devuelven lo mismo: el orden no
+    -- se probaría. Acá el primer escalón devuelve la 2 y los otros dos la 1, así
+    -- que equivocarse de orden cambia el número que la foto de datos compara.
+    INSERT INTO puntos_de_venta (id, empresa_id, name, code, is_active, created_at, updated_at) VALUES
+      (1, 1, 'Depósito',     'deposito',  true, NOW(), NOW()),
+      (2, 1, 'Casa central', 'principal', true, NOW(), NOW());
+    SELECT setval(pg_get_serial_sequence('puntos_de_venta', 'id'), 2);
 
     INSERT INTO products (id, empresa_id, name, cost, unit_type, category, created_at, updated_at) VALUES
       (1, 1, 'Torta',   0, 'unidad', 'elaborado', NOW(), NOW()),
@@ -467,6 +553,43 @@ async function sembrar(cliente) {
 
     INSERT INTO suscripciones (empresa_id, plan, status, trial_starts_at, trial_ends_at, created_at, updated_at)
       VALUES (1, 'free', 'past_due', NOW(), NOW() + interval '14 days', NOW(), NOW());
+
+    -- ════════ Lo que la migración de datos de TiendaNube necesita ════════
+
+    -- Una fila de stock en la sucursal que la migración va a designar. La
+    -- sucursal designada es de donde sale el stock que se publica y a la que se
+    -- le descuenta el pedido: sembrarla vacía haría que «eligió la correcta» y
+    -- «eligió cualquiera» se vean igual el día que alguien mire los datos. Es
+    -- además lo que le da sentido al ON DELETE RESTRICT de la FK a
+    -- \`puntos_de_venta\`: hay mercadería colgando de esa sucursal.
+    INSERT INTO stock (empresa_id, product_id, punto_de_venta_id, location, quantity, available, created_at, updated_at)
+      VALUES (1, 1, 2, 'principal', 12, 9, NOW(), NOW());
+
+    -- Tres filas de \`settings\`, y las tres tienen que terminar distinto:
+    --
+    --   · la de la empresa 1 se MUDA a tiendanube_tiendas y se borra de acá;
+    --   · el token de la MISMA empresa NO se toca —el token se queda en
+    --     settings a propósito (FR-077), y un \`DELETE ... WHERE empresa_id = ...\`
+    --     mal escrito se lo llevaría puesto—;
+    --   · la de la empresa 2 no se muda, porque esa empresa no tiene sucursales.
+    --
+    -- El valor va como NÚMERO y no como texto porque es lo que \`Setting.upsert\`
+    -- producía con el user_id de la respuesta del OAuth, y es la forma a la que
+    -- el \`down\` lo devuelve (\`to_jsonb(bigint)\`). Con un string acá, el viaje de
+    -- ida y vuelta cambiaría el tipo del JSON y la comparación reportaría una
+    -- diferencia que no es un defecto.
+    INSERT INTO settings (key, empresa_id, value, created_at, updated_at) VALUES
+      ('tiendanube_user_id',      1, to_jsonb(1234567890::bigint),        NOW(), NOW()),
+      ('tiendanube_access_token', 1, to_jsonb('token-que-no-se-toca'::text), NOW(), NOW()),
+      ('tiendanube_user_id',      2, to_jsonb(987654321::bigint),         NOW(), NOW());
+
+    -- Un mapeo con un id de variante grande pero DENTRO de int4. Es lo que le da
+    -- al \`ALTER TYPE ... BIGINT\` de ida y al \`... INTEGER\` de vuelta una fila que
+    -- convertir: sobre una tabla vacía los dos ALTER pasan sin tocar nada y el
+    -- \`down\` parecería correcto aunque perdiera el valor. 2147483647 es
+    -- exactamente el tope de int4, que es el caso que más cerca está de romperse.
+    INSERT INTO tiendanube_mappings (empresa_id, product_id, tiendanube_variant_id, tiendanube_product_id, created_at, updated_at)
+      VALUES (1, 1, 2147483647, 2147483646, NOW(), NOW());
   `;
 
   await cliente.query(sql);
@@ -476,16 +599,46 @@ async function sembrar(cliente) {
 //  La verificación
 // ════════════════════════════════════════════
 
-/** Las migraciones posteriores a `desde`, en el orden en que las corre el CLI. */
+/**
+ * Las migraciones posteriores a `desde`, en el orden en que las corre el CLI.
+ *
+ * `desde` puede ser el nombre completo del archivo o un **prefijo**, que es como
+ * se escribe a mano: `--desde 20260809`. Con prefijo se toma la ÚLTIMA que
+ * empieza así —«todo lo posterior al 9 de agosto»—, porque hay días con más de
+ * una migración y quedarse con la primera dejaría a la segunda dentro del rango
+ * sin que nadie lo pidiera.
+ */
 function migracionesDelRango(desde) {
   const todas = fs.readdirSync(RUTA_MIGRACIONES).filter((f) => f.endsWith('.js')).sort();
-  const corte = todas.indexOf(desde);
 
-  if (corte === -1) {
+  return todas.slice(todas.indexOf(resolverMigracion(desde)) + 1);
+}
+
+/**
+ * El nombre de archivo completo de una migración, a partir de un prefijo.
+ *
+ * Hace falta en dos lugares y por eso está aparte: el rango que se recorre y el
+ * `db:migrate --to` con el que se arranca. La primera versión resolvía el
+ * prefijo solo en el rango, y el `--to` recibía `20260809` tal cual: el CLI no
+ * migraba nada, la semilla corría contra una base vacía y el script cortaba con
+ * «relation "empresas" does not exist». Un prefijo que se entiende a medias es
+ * peor que uno que no se entiende.
+ */
+function resolverMigracion(desde) {
+  const todas = fs.readdirSync(RUTA_MIGRACIONES).filter((f) => f.endsWith('.js')).sort();
+
+  if (todas.includes(desde)) return desde;
+
+  // La ÚLTIMA que empieza así —«todo lo posterior al 9 de agosto»—, porque hay
+  // días con más de una migración y quedarse con la primera dejaría a la segunda
+  // dentro del rango sin que nadie lo pidiera.
+  const indice = todas.findLastIndex((f) => f.startsWith(desde));
+
+  if (indice === -1) {
     throw new Error(`--desde ${desde} no existe en src/migrations. Las que hay:\n  ${todas.join('\n  ')}`);
   }
 
-  return todas.slice(corte + 1);
+  return todas[indice];
 }
 
 /**
@@ -591,7 +744,10 @@ async function main() {
   const urlPropia = valorDe('--url');
   const url = urlPropia || URL_POR_DEFECTO;
   const conservar = argumentos.includes('--conservar');
-  const desde = valorDe('--desde') || DESDE_POR_DEFECTO;
+  // Se resuelve UNA vez y se usa para las dos cosas: el rango que se recorre y
+  // el `--to` con el que se arranca. Si las dos no hablan del mismo archivo, la
+  // semilla corre contra una base que no tiene las tablas.
+  const desde = resolverMigracion(valorDe('--desde') || DESDE_POR_DEFECTO);
 
   const rango = migracionesDelRango(desde);
 

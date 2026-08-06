@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { Setting, Stock, TiendanubeMapping, StockMovement } = require('../models');
 const { resolverSucursal } = require('../utils/sucursalDeStock');
+const logger = require('../utils/logger');
 
 class TiendaNubeService {
   constructor() {
@@ -31,8 +32,14 @@ class TiendaNubeService {
       });
 
       return { access_token, user_id };
-    } catch (error) {
-      console.error('Error al obtener token TiendaNube:', error.response?.data || error.message);
+    } catch (err) {
+      // `console.error` NO pasa por la redaccion de secretos: `utils/logger.js`
+      // tapa `access_token` y `tiendanube_access_token`, y `config/sentry.js`
+      // los tapa antes de salir a un tercero, pero las dos cosas viven en el
+      // logger. Esta era la unica linea de la integracion por la que el token
+      // podia llegar entero a un log —imprimia `error.response?.data`, que es
+      // la respuesta del canje— y era justo la que esquivaba el filtro.
+      logger.error({ err, empresaId }, 'tiendanube: canje del code');
       throw new Error('No se pudo autenticar con TiendaNube');
     }
   }

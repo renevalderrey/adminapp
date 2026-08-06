@@ -321,12 +321,20 @@ function esDeEmpresa(nombreDeModelo) {
 function ambitos(contenido) {
   const encontrados = [];
 
-  for (const m of contenido.matchAll(/router\.(get|post|put|delete|patch)\s*\(/g)) {
+  // ⚠ El router NO siempre se llama `router`. `routes/tiendanube.js` declara
+  // DOS —`publico` y `privado`, separados por exposicion a proposito— y con el
+  // literal `router.` ninguno de sus handlers era un ambito. La consecuencia es
+  // la que muerde al reves: sin ambito, `antes` queda vacio (mas abajo) y
+  // NINGUN findScoped escrito en ese archivo cuenta como validacion previa. La
+  // guardia reportaria como sinValidar un create que si valido el padre, y un
+  // falso positivo se cierra agregando una excepcion — que es exactamente como
+  // una guardia deja de servir.
+  for (const m of contenido.matchAll(/\b(\w+)\.(get|post|put|delete|patch)\s*\(/g)) {
     const abre = contenido.indexOf('(', m.index + m[0].length - 1);
     encontrados.push({
       ini: m.index,
       fin: cierreDe(contenido, abre, '(', ')'),
-      nombre: `router.${m[1]}`,
+      nombre: `${m[1]}.${m[2]}`,
       parametros: ['req', 'res'],
     });
   }
@@ -358,6 +366,56 @@ const queEnvuelve = (lista, ini, fin) =>
 // ── Detector 1: creates colgados de un padre que nadie valido ──
 
 /**
+ * De donde salio un identificador que el create pasa en forma corta.
+ *
+ * `product_id,` a secas no dice nada; lo que importa es que tres lineas mas
+ * arriba diga `const { product_id } = req.body`. Sin resolver esa
+ * desestructuracion el valor seria el nombre de la clave, y el clasificador no
+ * podria distinguir un id que eligio el cliente de una variable que calculo el
+ * servidor.
+ *
+ * ⚠ Se busca en el archivo ENTERO y no solo en el ambito del create, a
+ * proposito. El dia que el detector de ambitos no reconozca una forma nueva
+ * —que es exactamente el defecto que este hito vino a cerrar— buscar solo ahi
+ * devolveria «no vino del cliente» y la guardia se callaria justo cuando mas
+ * falta hace. Ante la duda se revisa de mas, que es el lado seguro para
+ * equivocarse.
+ */
+function origenDelIdentificador(clave, contenido) {
+  for (const m of contenido.matchAll(/\{([^{}]*)\}\s*=\s*(req\.(?:body|params|query))/g)) {
+    // `const { product_id: pid } = req.body` deja como local a `pid`: lo que
+    // se compara es el nombre con el que se usa, no el de la propiedad.
+    const locales = m[1].split(',').map((n) => n.trim().split(':').pop().trim());
+    if (locales.includes(clave)) return `${m[2]}.${clave}`;
+  }
+
+  return clave;
+}
+
+/**
+ * Las claves `<algo>_id` que recibe un create, con el valor de cada una.
+ *
+ * Reconoce las DOS formas de escribir lo mismo: `product_id: valor` y la forma
+ * corta de ES6, `product_id,`. El extractor anterior exigia los dos puntos, asi
+ * que contra el objeto de `controllers/tiendanube.js:159` devolvia CERO claves
+ * y el bucle hacia `continue` antes de mirar nada: la guardia pasaba en verde
+ * sobre el defecto que existe para encontrar, y ese defecto era el mismo IDOR
+ * que dfd7009 habia cerrado en los pagos a proveedores.
+ *
+ * El `(?<![.\w])` deja afuera lo que viene despues de un punto: en
+ * `total: fila.product_id` la clave es `total`, y sin ese filtro `product_id`
+ * entraria como si fuera una clave del objeto.
+ */
+function clavesForaneas(argumentos, contenido) {
+  return [...argumentos.matchAll(/(?<![.\w])(\w+_id)\s*(?::\s*([^,\n}]+)|(?=\s*[,}]))/g)]
+    .filter(([, clave]) => clave !== 'empresa_id')
+    .map(([, clave, valor]) => ({
+      clave,
+      valor: valor === undefined ? origenDelIdentificador(clave, contenido) : valor.trim(),
+    }));
+}
+
+/**
  * @returns {{ conClaveForanea: object[], delCliente: object[], sinValidar: object[] }}
  *   `conClaveForanea` es la poblacion que el detector reviso —sirve de ancla—;
  *   `sinValidar` es lo que hay que arreglar.
@@ -375,9 +433,7 @@ function analizarCreates(nombre, contenido) {
     const fin = cierreDe(contenido, abre, '(', ')');
     const argumentos = contenido.slice(abre, fin + 1);
 
-    const claves = [...argumentos.matchAll(/(\w+_id)\s*:\s*([^,\n}]+)/g)]
-      .filter(([, clave]) => clave !== 'empresa_id')
-      .map(([, clave, valor]) => ({ clave, valor: valor.trim() }));
+    const claves = clavesForaneas(argumentos, contenido);
     if (claves.length === 0) continue;
 
     const hallazgo = {
@@ -559,6 +615,52 @@ router.post('/:id/payments', checkPermission('x'), async (req, res) => {
 });
 `;
 
+// ── Las dos formas que el detector NO veia hasta el hito 013 ──
+//
+// Las dos salen del mismo archivo real, `controllers/tiendanube.js:157-164`, y
+// cada una por su cuenta alcanzaba para que la guardia pasara en verde:
+//
+//  · la forma corta de ES6 (`product_id,` sin dos puntos) dejaba el objeto sin
+//    ninguna clave que extraer, asi que el create ni se miraba;
+//  · el router se llama `privado`, no `router`, asi que el handler no era un
+//    ambito y ningun findScoped de ese archivo contaba como validacion.
+//
+// La segunda muerde al reves que la primera: no tapa un defecto, INVENTA uno.
+// Por eso van las dos muestras y no una.
+
+const MUESTRA_CREATE_CORTA_MALA = `
+privado.post('/mapping', checkPermission('config.editar'), async (req, res) => {
+  const { product_id, tiendanube_variant_id, tiendanube_product_id } = req.body;
+
+  const mapping = await TiendanubeMapping.create({
+    empresa_id: req.empresaId,
+    product_id,
+    tiendanube_variant_id,
+    tiendanube_product_id,
+  });
+
+  res.status(201).json({ ok: true, data: mapping });
+});
+`;
+
+const MUESTRA_CREATE_CORTA_BUENA = `
+privado.post('/mapping', checkPermission('config.editar'), async (req, res) => {
+  const { product_id, tiendanube_variant_id, tiendanube_product_id } = req.body;
+
+  const producto = await findScoped(Product, product_id, req.empresaId);
+  if (!producto) return res.status(404).json({ ok: false });
+
+  const mapping = await TiendanubeMapping.create({
+    empresa_id: req.empresaId,
+    product_id: producto.id,
+    tiendanube_variant_id,
+    tiendanube_product_id,
+  });
+
+  res.status(201).json({ ok: true, data: mapping });
+});
+`;
+
 const MUESTRA_INCLUDE_MALA = `
 const suppliers = await Supplier.findAll({
   where: { empresa_id: req.empresaId },
@@ -594,6 +696,30 @@ describe('Un create no cuelga una fila de un padre que no se valido', () => {
     // como no fallar nunca: nadie convive con una guardia que no se puede
     // poner en verde.
     expect(analizarCreates('muestra/buena.js', MUESTRA_CREATE_BUENA).sinValidar).toEqual([]);
+  });
+
+  it('ve el create que cuelga de un product_id escrito en forma corta', () => {
+    // El extractor viejo exigia los dos puntos —`/(\w+_id)\s*:\s*…/`— y contra
+    // este objeto devolvia CERO claves: el bucle hacia `continue` antes de
+    // mirar nada. La guardia pasaba en verde sobre un IDOR identico al que
+    // dfd7009 cerro en los pagos a proveedores.
+    const { sinValidar } = analizarCreates('muestra/corta.js', MUESTRA_CREATE_CORTA_MALA);
+
+    expect(sinValidar).toHaveLength(1);
+    expect(sinValidar[0]).toContain('muestra/corta.js:5');
+    expect(sinValidar[0]).toContain('product_id: req.body.product_id');
+  });
+
+  it('acepta el findScoped que esta adentro de un handler de un router que no se llama router', () => {
+    // La otra mitad, y muerde al reves: sin ambito, `antes` queda vacio y
+    // ningun findScoped cuenta. La guardia reportaria un create que SI valido
+    // el padre, y ese falso positivo se cierra agregando una excepcion — que es
+    // como una guardia deja de servir.
+    expect(analizarCreates('muestra/corta-buena.js', MUESTRA_CREATE_CORTA_BUENA).sinValidar).toEqual([]);
+
+    // Y no pasa por vacio: el create SI se miro, con sus claves foraneas.
+    const { conClaveForanea } = analizarCreates('muestra/corta-buena.js', MUESTRA_CREATE_CORTA_BUENA);
+    expect(conClaveForanea).toHaveLength(1);
   });
 
   it('leyo los archivos que dice leer', () => {
@@ -633,6 +759,21 @@ describe('Un create no cuelga una fila de un padre que no se valido', () => {
       'routes/suppliers.js',
       'services/purchaseService.js',
     ]));
+  });
+
+  it('el create del mapeo de TiendaNube esta adentro de la poblacion que se revisa', () => {
+    // Es la afirmacion entera del hito 013: ese create vivia en
+    // `src/controllers/`, el unico directorio del servidor que NINGUNA de las
+    // cinco guardias estaticas lee, y por eso colgo una fila de un producto sin
+    // validar durante meses —respondiendo 201— y sobrevivio a una auditoria de
+    // aislamiento que encontro veintiocho casos.
+    //
+    // Si alguien lo devuelve a un directorio que esta guardia no recorre, esto
+    // se pone en rojo en vez de pasar en verde sin haber mirado nada.
+    const conClaveForanea = analisis.flatMap((a) => a.conClaveForanea);
+    const delMapeo = conClaveForanea.filter((h) => h.escritura === 'TiendanubeMapping.create');
+
+    expect(delMapeo.map((h) => h.archivo)).toEqual(['routes/tiendanube.js']);
   });
 
   it('el create del pago sigue viviendo en routes/suppliers.js', () => {

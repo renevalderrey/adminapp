@@ -140,10 +140,24 @@ router.post('/stock', checkPermission('stock.editar'), async (req, res) => {
       puntoDeVentaId: punto_de_venta_id || req.puntoDeVentaId,
     });
 
+    // El producto se resuelve acotado a la empresa ANTES de escribir la fila.
+    // Sin esto, `product_id` viajaba del cuerpo al `findOrCreate` sin que nadie
+    // mirara de quién es: la fila salía con el `empresa_id` de quien la mandó
+    // —así que revisando la tabla no se ve nada raro— pero colgada del producto
+    // de otro cliente. Es la misma forma del defecto 1 de la funcionalidad 012,
+    // y la consecuencia ya estaba escrita en `aislamientoDeProveedores.test.js`:
+    // «el Stock.create crea una fila de stock propia para un producto ajeno».
+    //
+    // Apareció al ensanchar `analizarCreates` en el hito 013: la guardia exigía
+    // dos puntos para leer las claves del objeto y este `where` usa la forma
+    // corta de ES6, así que el create no se miraba nunca.
+    const producto = await findScoped(Product, product_id, empresaId);
+    if (!producto) return res.status(404).json({ ok: false, error: 'Producto no encontrado' });
+
     const ubicacion = ubicacionDeStock(sucursal);
 
     const [stock, created] = await Stock.findOrCreate({
-      where: { product_id, punto_de_venta_id: ubicacion.punto_de_venta_id, empresa_id: empresaId },
+      where: { product_id: producto.id, punto_de_venta_id: ubicacion.punto_de_venta_id, empresa_id: empresaId },
       defaults: {
         quantity: quantity ?? 0,
         // `available` se manda siempre, aunque el cliente no lo mande: la
@@ -197,6 +211,46 @@ router.post('/stock/bulk', checkPermission('stock.editar'), async (req, res) => 
     });
 
     const ubicacion = ubicacionDeStock(sucursal);
+
+    // ── Los productos son de esta empresa, o no se escribe nada ──
+    //
+    // Sin esto, `Stock.findOrCreate` con el `product_id` que vino en el cuerpo
+    // CREA una fila de stock —con el `empresa_id` de quien pide, asi que a
+    // primera vista no se escapa nada— colgada de un producto de OTRO cliente.
+    // Es la misma forma del defecto que ya aparecio en los pagos a proveedores:
+    // un `create` bajo un padre que nadie valido.
+    //
+    // La guardia estatica NO lo ve, y por eso esta escrito aca: `analizarCreates`
+    // reconoce `product_id: req.body.algo`, pero este id sale de un elemento del
+    // arreglo (`item.product_id`), que es una indireccion mas. El hermano de
+    // arriba —POST /api/stock, con un solo producto— si lo detecta.
+    //
+    // Se valida TODO junto y antes del bucle, no producto por producto adentro:
+    // una carga masiva que escribe la mitad de las filas y falla en la otra
+    // mitad deja un inventario que nadie puede explicar.
+    const idsPedidos = [...new Set(
+      items.map((item) => parseInt(item.product_id, 10)).filter(Number.isInteger)
+    )];
+
+    if (idsPedidos.length) {
+      const propios = await Product.findAll({
+        where: { id: { [Op.in]: idsPedidos }, empresa_id: empresaId },
+        attributes: ['id'],
+      });
+
+      if (propios.length !== idsPedidos.length) {
+        const conocidos = new Set(propios.map((p) => p.id));
+        const ajenos = idsPedidos.filter((id) => !conocidos.has(id));
+
+        // 404 y no 403: un 403 confirmaria que esos productos existen en otra
+        // empresa. El mensaje nombra los ids que el cliente mando, que ya son
+        // suyos, y ningun dato del producto ajeno.
+        return res.status(404).json({
+          ok: false,
+          error: `No se encontraron ${ajenos.length} de los productos: ${ajenos.join(', ')}.`,
+        });
+      }
+    }
 
     let updated = 0;
     for (const item of items) {

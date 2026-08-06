@@ -246,7 +246,7 @@ visto esto **de verdad lo ve**.
 **Es API pura, no depende de ninguna tabla nueva y no bloquea nada.** Se mergea y
 se despliega sola. Es el criterio de éxito 6 y US4 escenario 1.
 
-- [ ] **T1301** [P] ⚠ **Va primera y no se puede saltear.** En
+- [x] **T1301** [P] ⚠ **Va primera y no se puede saltear.** En
       `apps/api/src/tests/aislamientoEmpresas.test.js`, enseñarle al detector las
       dos formas que hoy no ve (punto 2 de «Antes de empezar»):
       **(a)** en `analizarCreates` (`:379`), el extractor de claves pasa a
@@ -286,7 +286,7 @@ se despliega sola. Es el criterio de éxito 6 y US4 escenario 1.
       estuviera pasando desapercibido **aparece acá**. Si aparece alguno, es un
       hallazgo propio y va con su tarea, **no** con una excepción.
 
-- [ ] **T1302** ⚠ **El corazón de este corte.** `apps/api/src/controllers/` se
+- [x] **T1302** ⚠ **El corazón de este corte.** `apps/api/src/controllers/` se
       disuelve y el directorio se borra. Los siete handlers de
       `controllers/tiendanube.js` bajan a `apps/api/src/routes/tiendanube.js`, y
       en el mismo commit `createMapping` se corrige:
@@ -339,7 +339,7 @@ se despliega sola. Es el criterio de éxito 6 y US4 escenario 1.
       fila ajena haya quedado como estaba lo contesta el cuarto nivel, y es
       **T1325**.
 
-- [ ] **T1303** [P] FR-060 y la única línea de esta integración por la que un
+- [x] **T1303** [P] FR-060 y la única línea de esta integración por la que un
       secreto podía llegar a un log. En
       `apps/api/src/services/tiendanubeService.js:35`, el `console.error` con
       `error.response?.data` se reemplaza por `logger.error({ err, empresaId },
@@ -391,7 +391,7 @@ Es aditivo puro y se despliega solo. Va antes que el OAuth y **sola**, por el
 motivo del plan: un fallo del `down` de una migración que mueve datos no se puede
 leer como un fallo del OAuth.
 
-- [ ] **T1304** [P] Crear
+- [x] **T1304** [P] Crear
       `apps/api/src/migrations/20260810-tiendanube-vinculacion-y-estado.js`,
       siguiendo el molde de `20260808-indices-de-empresa-en-proveedores.js`:
       **SQL crudo, una sola transacción, `IF NOT EXISTS` en el `up` e `IF EXISTS`
@@ -448,7 +448,7 @@ leer como un fallo del OAuth.
       **Cómo se comprueba que el test sirve**: se deja `INTEGER` en la migración y
       `BIGINT` en el modelo, y el caso lo nombra.
 
-- [ ] **T1305** [P] Crear
+- [x] **T1305** [P] Crear
       `apps/api/src/migrations/20260811-tiendanube-catalogo-pedidos-y-corridas.js`
       con las tres tablas de `data-model.md` y sus seis índices:
       **`tiendanube_variantes`** con `uq_tn_variante (empresa_id,
@@ -481,7 +481,7 @@ leer como un fallo del OAuth.
       **Cómo se comprueba que el test sirve**: se le saca el `name` a una entrada
       del modelo y el caso lo nombra.
 
-- [ ] **T1306** Los cinco modelos —`models/TiendanubeTienda.js`,
+- [x] **T1306** Los cinco modelos —`models/TiendanubeTienda.js`,
       `TiendanubeEstadoOauth.js`, `TiendanubeVariante.js`, `TiendanubePedido.js`,
       `TiendanubeCorrida.js`— y su registro en `apps/api/src/models/index.js`. Y
       en `apps/api/src/models/TiendanubeMapping.js:8-9`, los dos ids pasan a
@@ -514,7 +514,7 @@ leer como un fallo del OAuth.
       segundo se pone en rojo **y además** `analizarIncludes` sube a 5, que es la
       consecuencia real.
 
-- [ ] **T1307** ⚠ **Sin esta tarea, la única migración con datos de este hito
+- [x] **T1307** ⚠ **Sin esta tarea, la única migración con datos de este hito
       pasa en verde sin ejecutar su rama.** En
       `apps/api/scripts/verificar-reversibilidad.js`, `sembrar()` (`:425-470`)
       hoy inserta en once tablas y **no inserta en `settings`, ni en
@@ -1474,7 +1474,7 @@ tienda. Es el criterio 17 y US8 escenario 4.
 **Cuatro líneas y un revert.** Va sola porque es un cambio de acceso que puede
 dejar a alguien afuera de golpe.
 
-- [ ] **T1333** En `apps/api/src/middleware/checkSubscription.js:4-8`,
+- [x] **T1333** En `apps/api/src/middleware/checkSubscription.js:4-8`,
       `'/api/tiendanube'` se parte en los dos caminos exactos:
       `'/api/tiendanube/callback'` y `'/api/tiendanube/webhook'`. `isExempt` ya
       compara con `startsWith` sobre `req.originalUrl`, así que el callback con
@@ -1517,7 +1517,7 @@ rutas privadas y el webhook sigue entrando. Un revert de cuatro líneas.
 **Purpose**: `products.tiendanube_variant_id` no se puede escribir por un camino
 que no produce ningún efecto. US9 y criterio 19.
 
-- [ ] **T1334** `'tiendanube_variant_id'` sale de `CAMPOS_EDITABLES` en
+- [x] **T1334** `'tiendanube_variant_id'` sale de `CAMPOS_EDITABLES` en
       `apps/api/src/routes/products.js:44`. **La columna NO se borra y el modelo
       no cambia** (FR-072): sacarlo de la lista blanca es reversible; el `DROP
       COLUMN` no.
@@ -1564,7 +1564,7 @@ variantes son funciones puras con su test, y ningún componente calcula nada.
 de render que verifica una regla es diez veces más lento y se pone en rojo cuando
 alguien mueve un `<div>`.
 
-- [ ] **T1335** Crear `apps/web/src/utils/tiendanube.js` con los cuatro estados y
+- [x] **T1335** Crear `apps/web/src/utils/tiendanube.js` con los cuatro estados y
       sus tonos: `estadoDeLaConexion(status)` —los cuatro de FR-006 más el quinto
       **de la pantalla**, «no se pudo comprobar»—, `tonoDeConexion`,
       `estadoDeMapeo(variante)` y `tonoDeMapeo`.
@@ -1588,7 +1588,7 @@ alguien mueve un `<div>`.
       `no_vinculada` en uno y el primero se pone en rojo; se le saca el `default`
       al `switch` de los tonos y el sexto.
 
-- [ ] **T1336** En el mismo `apps/web/src/utils/tiendanube.js`, las dos
+- [x] **T1336** En el mismo `apps/web/src/utils/tiendanube.js`, las dos
       restantes: `resumenDeCorrida(corrida, cola)` —el texto legible de FR-042: qué
       pasó, hace cuánto, cuántas entraron y cuántas fallaron— y
       `filtrarVariantes(variantes, { q, soloSinMapear })`.

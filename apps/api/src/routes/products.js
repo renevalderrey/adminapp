@@ -36,12 +36,33 @@ function autorDe(req) {
 // Se enumera lo permitido y no lo prohibido a propósito: con una lista de
 // prohibidos, cada columna nueva del modelo queda editable por omisión, y nadie
 // se acuerda de agregarla.
+//
+// ── Por qué `tiendanube_variant_id` YA NO está en esta lista ──
+//
+// La columna existe desde la migración `20260603` y está en el modelo
+// (`models/Product.js:86`), pero **no la lee nadie**: el único mapeo que usan
+// el webhook y la sincronización de TiendaNube es la tabla
+// `tiendanube_mappings`. Mientras estuvo acá, cualquiera con `products.editar`
+// la completaba desde el panel de producto esperando que el stock empezara a
+// sincronizarse, el sistema respondía «guardado» y no pasaba nada nunca. Es la
+// misma familia de error que `sendEmail` devolviendo `ok: true` sin haber
+// enviado: no falla, miente.
+//
+// **La columna NO se borra y el modelo no cambia**: sacarla de la lista blanca
+// es reversible, un `DROP COLUMN` no.
+//
+// **Y los valores ya cargados se ignoran, explícitamente**. No se migran a
+// `tiendanube_mappings` porque un número que alguien escribió esperando que
+// hiciera algo no dice contra qué producto de TiendaNube estaba pensado: esa
+// tabla necesita también el `tiendanube_product_id`, que esta columna no
+// tiene, y adivinarlo del catálogo crearía mapeos que nadie confirmó. Se
+// siguen leyendo —`GET /api/products/:id` los devuelve— porque un dato que
+// desaparece sin que nadie diga que desapareció es el peor de los dos casos.
 const CAMPOS_EDITABLES = [
   'name', 'description', 'sku', 'barcode', 'cost',
   'brand_id', 'supplier_id',
   'margin_override', 'price_override', 'wholesale_margin', 'wholesale_price',
   'category', 'unit_type', 'unit_size', 'taxed', 'image_url', 'is_active',
-  'tiendanube_variant_id',
 ];
 
 function camposEditables(body = {}) {

@@ -36,6 +36,21 @@ const RolPermiso = require('./RolPermiso');
 const UsuarioPermiso = require('./UsuarioPermiso');
 const StockMovement = require('./StockMovement');
 const TiendanubeMapping = require('./TiendanubeMapping');
+// Los cinco de TiendaNube van SIN una sola asociación declarada más abajo, y es
+// deliberado: `analizarIncludes` de `tests/aislamientoEmpresas.test.js` clasifica
+// cualquier `include` de una tabla asociada como «hijo con empresa_id», y su
+// ancla `toBe(4)` existe para no moverse. Ninguna consulta de este hito usa
+// `include`: se traen las filas planas y se unen en JS.
+//
+// Se importan y se exportan igual porque `scripts/verificar-esquema.js` hace un
+// `findOne` **por modelo de src/models** (:288): una tabla cuyo modelo no esté
+// acá no se compara contra `information_schema`, y una columna que la migración
+// se olvide pasa desapercibida hasta que alguien recrea la base.
+const TiendanubeTienda = require('./TiendanubeTienda');
+const TiendanubeEstadoOauth = require('./TiendanubeEstadoOauth');
+const TiendanubeVariante = require('./TiendanubeVariante');
+const TiendanubePedido = require('./TiendanubePedido');
+const TiendanubeCorrida = require('./TiendanubeCorrida');
 const ActualizacionPrecio = require('./ActualizacionPrecio');
 const GastoVariable = require('./GastoVariable');
 const ListaProveedor = require('./ListaProveedor');
@@ -199,6 +214,11 @@ module.exports = {
   UsuarioPermiso,
   StockMovement,
   TiendanubeMapping,
+  TiendanubeTienda,
+  TiendanubeEstadoOauth,
+  TiendanubeVariante,
+  TiendanubePedido,
+  TiendanubeCorrida,
   ActualizacionPrecio,
   GastoVariable,
   ListaProveedor,

@@ -105,3 +105,63 @@ describe('Asociaciones que el codigo da por sentadas', () => {
     expect(Object.keys(models[modelo].associations)).toContain(alias);
   });
 });
+
+describe('Los cinco modelos de TiendaNube', () => {
+  // Los cinco son de la funcionalidad 013 y son un caso al reves de todo lo de
+  // arriba: aca lo que hay que fijar no es que una asociacion exista, sino que
+  // NO exista ninguna.
+  const NUEVOS = [
+    'TiendanubeTienda',
+    'TiendanubeEstadoOauth',
+    'TiendanubeVariante',
+    'TiendanubePedido',
+    'TiendanubeCorrida',
+  ];
+
+  it('los cinco estan registrados en index.js', () => {
+    // `scripts/verificar-esquema.js` hace un `findOne` POR MODELO de src/models
+    // (:288). Una tabla cuyo modelo no este registrado aca NO se compara contra
+    // information_schema, asi que una columna que la migracion se olvide pasa
+    // desapercibida hasta que alguien recrea la base. Ese es el unico motivo por
+    // el que estos cinco se registran, y alcanza.
+    expect(NUEVOS.filter((nombre) => !models[nombre])).toEqual([]);
+  });
+
+  const DE_TIENDANUBE = [...NUEVOS, 'TiendanubeMapping'];
+
+  it('ninguno declara asociaciones: el ancla de includes no se mueve', () => {
+    // Declarar `Product.hasOne(TiendanubeVariante)` o
+    // `Product.hasMany(TiendanubeMapping)` haria que `analizarIncludes`
+    // (aislamientoEmpresas.test.js) clasificara cualquier include de esas tablas
+    // como «hijo con empresa_id» y subiria su ancla de toBe(4). Ninguna consulta
+    // del hito 013 usa include: se traen las filas planas y se unen en JS, que
+    // es el mismo corte que tomo la funcionalidad 012.
+    for (const nombre of DE_TIENDANUBE) {
+      expect(Object.keys(models[nombre].associations)).toEqual([]);
+    }
+  });
+
+  it('y NINGUN otro modelo las apunta: `Product.hasOne(TiendanubeVariante)` tampoco', () => {
+    // La mitad que el caso de arriba no cubre, y es la que importa. Una
+    // asociacion se registra en el modelo que la DECLARA, no en el destino: con
+    // `Product.hasOne(TiendanubeVariante)` escrito en index.js,
+    // `TiendanubeVariante.associations` sigue vacio y el caso anterior pasa en
+    // verde — verificado ejecutandolo. Lo que `analizarIncludes` mira es
+    // justamente el destino (`asoc.target`), asi que esa forma es exactamente la
+    // que movería el ancla sin que nada avisara.
+    const tablas = new Set(DE_TIENDANUBE.map((n) => models[n].getTableName()));
+    const apuntando = [];
+
+    for (const [nombre, Modelo] of Object.entries(models)) {
+      if (!Modelo || !Modelo.associations) continue;
+
+      for (const [alias, asoc] of Object.entries(Modelo.associations)) {
+        if (asoc.target && tablas.has(asoc.target.getTableName())) {
+          apuntando.push(`${nombre}.${alias} → ${asoc.target.name}`);
+        }
+      }
+    }
+
+    expect(apuntando).toEqual([]);
+  });
+});

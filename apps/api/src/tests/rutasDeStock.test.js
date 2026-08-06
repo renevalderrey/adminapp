@@ -355,3 +355,275 @@ describe('la importación escribe en el stock que la pantalla lee', () => {
     expect(IMPORT).not.toMatch(/cost:\s*toNum\(data\.cost\)\s*\|\|\s*0/);
   });
 });
+
+// ════════════════════════════════════════════
+//  POST /api/stock con el producto de otra empresa
+//
+//  El defecto que faltaba en las tres puertas de arriba, y apareció recién en el
+//  hito 013 al ensanchar `analizarCreates`: `product_id` viajaba del cuerpo al
+//  `findOrCreate` **sin que nadie mirara de quién es ese producto**. La fila de
+//  stock salía con el `empresa_id` de quien la mandó —así que revisando la tabla
+//  no se ve nada raro— colgada del producto de otro cliente.
+//
+//  Es la misma forma del defecto 1 de la funcionalidad 012, y la consecuencia ya
+//  estaba escrita en `aislamientoDeProveedores.test.js:266`: «el Stock.create
+//  crea una fila de stock propia para un producto ajeno».
+//
+//  ── Por qué ninguna guardia lo veía ──
+//
+//  El `where` usa la forma corta de ES6 (`{ product_id, … }`) y el extractor de
+//  claves de `aislamientoEmpresas.test.js` exigía los dos puntos: contra ese
+//  objeto devolvía cero claves y el create no se miraba nunca. Y `findByPk` no
+//  aparece por ningún lado, así que la otra guardia tampoco.
+// ════════════════════════════════════════════
+
+const express = require('express');
+const request = require('supertest');
+const { crearModelo, coincide, validarWhere } = require('./helpers/modelosFalsos');
+
+const PROPIA = 7;
+const AJENA = 9;
+
+const mockStockModelo = crearModelo([]);
+const mockProductModelo = crearModelo([]);
+const mockPuntoDeVentaModelo = crearModelo([]);
+const mockStockMovementModelo = crearModelo([]);
+const mockBrandModelo = crearModelo([]);
+const mockFixedExpenseModelo = crearModelo([]);
+const mockSettingModelo = crearModelo([]);
+const mockSupplierModelo = crearModelo([]);
+
+// findScoped normaliza el id contra la clave primaria del modelo. Sin esto, un
+// id que llega como '501' en el cuerpo no coincidiría nunca con el 501 del
+// array y **todo** daría 404 —incluido el caso legítimo—, que es como una
+// prueba de aislamiento pasa por el motivo equivocado.
+for (const doble of [mockProductModelo, mockPuntoDeVentaModelo, mockStockModelo]) {
+  doble.primaryKeyAttribute = 'id';
+  doble.rawAttributes = { id: { type: { key: 'INTEGER' } } };
+}
+
+/**
+ * `findOrCreate`, que `modelosFalsos` no trae.
+ *
+ * Sin él la ruta tira un TypeError, `fallo` lo convierte en un 500 y una prueba
+ * que espera «no se creó ninguna fila» pasaría **sin haber ejercitado nada**.
+ */
+mockStockModelo.findOrCreate = async (opciones = {}) => {
+  mockStockModelo.llamadas.push({ metodo: 'findOrCreate', ...opciones });
+  validarWhere(opciones.where);
+
+  const existente = mockStockModelo.filas.find((f) => coincide(f, opciones.where));
+  if (existente) return [mockStockModelo._hidratar(existente), false];
+
+  const fila = { id: mockStockModelo.filas.length + 1, ...opciones.where, ...opciones.defaults };
+  mockStockModelo.filas.push(fila);
+  return [mockStockModelo._hidratar(fila), true];
+};
+
+jest.mock('../models', () => ({
+  Stock: mockStockModelo,
+  Product: mockProductModelo,
+  PuntoDeVenta: mockPuntoDeVentaModelo,
+  StockMovement: mockStockMovementModelo,
+  Brand: mockBrandModelo,
+  FixedExpense: mockFixedExpenseModelo,
+  Setting: mockSettingModelo,
+  Supplier: mockSupplierModelo,
+}));
+
+function levantarApi(empresaId) {
+  const api = express();
+  api.use(express.json());
+  api.use((req, _res, siguiente) => {
+    req.empresaId = empresaId;
+    req.userId = 'auth0|quien-carga';
+    req.id = 'req-de-prueba';
+    siguiente();
+  });
+  api.use('/api', require('../routes/general'));
+  return api;
+}
+
+describe('POST /api/stock no cuelga una fila del producto de otra empresa', () => {
+  const SUCURSAL_PROPIA = 31;
+
+  beforeEach(() => {
+    mockProductModelo.filas = [
+      { id: 501, empresa_id: PROPIA, name: 'Harina propia' },
+      { id: 900, empresa_id: AJENA, name: 'Insumo de otro cliente' },
+    ];
+    mockPuntoDeVentaModelo.filas = [
+      { id: SUCURSAL_PROPIA, empresa_id: PROPIA, name: 'Depósito', code: 'principal', is_active: true },
+      { id: 41, empresa_id: AJENA, name: 'Kiosco', code: 'kiosco', is_active: true },
+    ];
+    mockStockModelo.filas = [];
+    mockStockModelo.llamadas = [];
+  });
+
+  it('con el product_id de otra empresa responde 404 y NO crea ninguna fila de stock', async () => {
+    const res = await request(levantarApi(PROPIA))
+      .post('/api/stock')
+      .send({ product_id: 900, quantity: 12, punto_de_venta_id: SUCURSAL_PROPIA });
+
+    expect(res.status).toBe(404);
+    // La mitad que importa: sin el findScoped esto respondía 200 y dejaba una
+    // fila de stock de la empresa PROPIA colgada del producto de la AJENA.
+    expect(mockStockModelo.filas).toEqual([]);
+  });
+
+  it('responde 404 y no 403: un 403 confirmaría que ese producto existe', async () => {
+    const ajeno = await request(levantarApi(PROPIA))
+      .post('/api/stock')
+      .send({ product_id: 900, quantity: 12, punto_de_venta_id: SUCURSAL_PROPIA });
+
+    const inexistente = await request(levantarApi(PROPIA))
+      .post('/api/stock')
+      .send({ product_id: 999999, quantity: 12, punto_de_venta_id: SUCURSAL_PROPIA });
+
+    expect(ajeno.status).toBe(404);
+    expect(ajeno.status).not.toBe(403);
+    expect(inexistente.status).toBe(404);
+    expect(inexistente.body.error).toBe(ajeno.body.error);
+  });
+
+  it('sigue cargando stock cuando el producto SÍ es de la empresa', async () => {
+    // Sin este caso la validación podría estar rechazando siempre, que es tan
+    // inútil como no validar nada: dejaría la pantalla de Inventario sin forma
+    // de cargar una fila.
+    const res = await request(levantarApi(PROPIA))
+      .post('/api/stock')
+      .send({ product_id: 501, quantity: 12, punto_de_venta_id: SUCURSAL_PROPIA });
+
+    expect(res.status).toBe(200);
+    expect(mockStockModelo.filas).toHaveLength(1);
+    expect(mockStockModelo.filas[0]).toMatchObject({
+      product_id: 501,
+      empresa_id: PROPIA,
+      punto_de_venta_id: SUCURSAL_PROPIA,
+      quantity: 12,
+    });
+  });
+});
+
+// ════════════════════════════════════════════
+//  POST /api/stock/bulk — el hermano que la guardia NO ve
+//
+//  El mismo defecto que el bloque de arriba, en la carga masiva. Lo dejó
+//  anotado la fase que ensanchó `analizarCreates`, porque su detector **sigue
+//  sin verlo**: reconoce `product_id: req.body.algo`, y acá el id sale de un
+//  elemento del arreglo (`item.product_id`), que es una indirección más.
+//
+//  O sea que este bloque no es redundante con el anterior: es la única red que
+//  existe para esta puerta. Si mañana alguien saca la validación, ninguna
+//  guardia estática lo va a nombrar.
+//
+//  La validación va ANTES del bucle y sobre todos los ids juntos, a propósito:
+//  una carga masiva que escribe la mitad de las filas y falla en la otra mitad
+//  deja un inventario que nadie puede explicar.
+// ════════════════════════════════════════════
+
+describe('POST /api/stock/bulk tampoco cuelga filas de productos ajenos', () => {
+  const SUCURSAL_PROPIA = 31;
+
+  beforeEach(() => {
+    mockProductModelo.filas = [
+      { id: 501, empresa_id: PROPIA, name: 'Harina propia' },
+      { id: 502, empresa_id: PROPIA, name: 'Azúcar propia' },
+      { id: 900, empresa_id: AJENA, name: 'Insumo de otro cliente' },
+    ];
+    mockPuntoDeVentaModelo.filas = [
+      { id: SUCURSAL_PROPIA, empresa_id: PROPIA, name: 'Depósito', code: 'principal', is_active: true },
+    ];
+    mockStockModelo.filas = [];
+    mockStockModelo.llamadas = [];
+  });
+
+  it('un solo product_id ajeno entre varios propios NO escribe NINGUNA fila', async () => {
+    // Éste es el caso que importa y el que un `findScoped` adentro del bucle no
+    // cubriría: los dos primeros son legítimos, así que una validación por ítem
+    // ya habría escrito dos filas antes de llegar al tercero.
+    const res = await request(levantarApi(PROPIA))
+      .post('/api/stock/bulk')
+      .send({
+        punto_de_venta_id: SUCURSAL_PROPIA,
+        items: [
+          { product_id: 501, quantity: 10 },
+          { product_id: 502, quantity: 20 },
+          { product_id: 900, quantity: 30 },
+        ],
+      });
+
+    expect(res.status).toBe(404);
+    expect(mockStockModelo.filas).toEqual([]);
+  });
+
+  it('el mensaje nombra el id ajeno y NO dice nada del producto de la otra empresa', async () => {
+    const res = await request(levantarApi(PROPIA))
+      .post('/api/stock/bulk')
+      .send({
+        punto_de_venta_id: SUCURSAL_PROPIA,
+        items: [{ product_id: 900, quantity: 30 }],
+      });
+
+    // El id ya es del cliente: lo mandó él. El nombre del producto, no.
+    expect(res.body.error).toContain('900');
+    expect(res.body.error).not.toContain('Insumo de otro cliente');
+  });
+
+  it('responde 404 y no 403: un 403 confirmaría que ese producto existe', async () => {
+    const ajeno = await request(levantarApi(PROPIA))
+      .post('/api/stock/bulk')
+      .send({ punto_de_venta_id: SUCURSAL_PROPIA, items: [{ product_id: 900, quantity: 1 }] });
+
+    const inexistente = await request(levantarApi(PROPIA))
+      .post('/api/stock/bulk')
+      .send({ punto_de_venta_id: SUCURSAL_PROPIA, items: [{ product_id: 999999, quantity: 1 }] });
+
+    expect(ajeno.status).toBe(404);
+    expect(ajeno.status).not.toBe(403);
+    expect(inexistente.status).toBe(404);
+
+    // Los dos mensajes NO son idénticos, y eso es correcto: cada uno nombra el
+    // id que mandó el cliente, que es un dato suyo. Lo que no puede diferir es
+    // la FORMA — si el del producto ajeno dijera algo distinto («pertenece a
+    // otra empresa», «sin permiso»), el mensaje mismo confirmaría que ese
+    // producto existe, que es justo lo que el 404 viene a esconder.
+    const sinIds = (texto) => texto.replace(/\d+/g, 'N');
+    expect(sinIds(inexistente.body.error)).toBe(sinIds(ajeno.body.error));
+  });
+
+  it('sigue cargando la masiva cuando TODOS los productos son de la empresa', async () => {
+    // Sin este caso, una validación que rechaza siempre pasaría los tres de
+    // arriba y dejaría la importación de inventario sin funcionar.
+    const res = await request(levantarApi(PROPIA))
+      .post('/api/stock/bulk')
+      .send({
+        punto_de_venta_id: SUCURSAL_PROPIA,
+        items: [
+          { product_id: 501, quantity: 10 },
+          { product_id: 502, quantity: 20 },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.updated).toBe(2);
+    expect(mockStockModelo.filas).toHaveLength(2);
+  });
+
+  it('un id repetido no exige que el producto exista dos veces', async () => {
+    // La validación consulta ids ÚNICOS y compara cantidades. Sin el `Set`, dos
+    // líneas del mismo producto darían «faltan 1 de 2» y la masiva legítima
+    // fallaría — el modo de falla más probable de esta corrección.
+    const res = await request(levantarApi(PROPIA))
+      .post('/api/stock/bulk')
+      .send({
+        punto_de_venta_id: SUCURSAL_PROPIA,
+        items: [
+          { product_id: 501, quantity: 10 },
+          { product_id: 501, quantity: 25 },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+  });
+});

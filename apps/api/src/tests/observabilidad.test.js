@@ -150,12 +150,30 @@ describe('sendEmail sin RESEND_API_KEY', () => {
 //  fallan si el patron peligroso reaparece.
 // ════════════════════════════════════════════
 
-const RUTAS = path.join(__dirname, '..', 'routes');
+const SRC = path.join(__dirname, '..');
+const RUTAS = path.join(SRC, 'routes');
 
 function leerRutas() {
   return fs.readdirSync(RUTAS)
     .filter((f) => f.endsWith('.js'))
     .map((f) => ({ nombre: f, contenido: fs.readFileSync(path.join(RUTAS, f), 'utf8') }));
+}
+
+/**
+ * Los .js de un directorio de `src/`, con el nombre prefijado.
+ *
+ * `leerRutas()` mira **solo** `routes/`, y por eso las guardias de este archivo
+ * nunca vieron nada de `services/` ni de `utils/`. Este lector es el que
+ * necesitan las reglas que son del repositorio y no de las rutas.
+ */
+function leerCarpeta(subdir) {
+  const dir = path.join(SRC, subdir);
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => ({
+      nombre: `${subdir}/${f}`,
+      contenido: fs.readFileSync(path.join(dir, f), 'utf8'),
+    }));
 }
 
 describe('Toda ruta con :empresaId tiene que validar que sea la propia', () => {
@@ -244,5 +262,131 @@ describe('Ningun catch responde 500 con el mensaje del error', () => {
       .map(({ n, texto }) => `L${n}: ${texto}`);
 
     expect(hallazgos).toEqual([]);
+  });
+});
+
+// ════════════════════════════════════════════
+//  Nadie escribe en el log por fuera del logger
+//
+//  `utils/logger.js:63-67` redacta `access_token`, `*.access_token`,
+//  `tiendanube_access_token`, el SQL y los parametros de un error de Sequelize;
+//  `config/sentry.js:55` los tapa **antes** de salir a un tercero. Las dos cosas
+//  viven adentro del logger: `console.error` no pasa por ninguna.
+//
+//  El caso medido: `services/tiendanubeService.js:35` imprimia
+//  `error.response?.data` del canje del `code` de OAuth. O sea, la respuesta que
+//  trae el `access_token`. Era la UNICA linea de esa integracion por la que un
+//  secreto podia llegar a un log, y era justo la que esquivaba el filtro.
+//
+//  La regla es del repositorio y no de TiendaNube, asi que se mira `routes/`,
+//  `services/` y `utils/` enteros.
+// ════════════════════════════════════════════
+
+/**
+ * Las lineas que usan `console.error`, con su numero.
+ *
+ * ⚠ El patron NO exige el parentesis a proposito, y por eso el filtro de
+ * comentarios es lo que sostiene la guardia: `routes/suppliers.js:56` menciona
+ * `console.error` **adentro de un JSDoc** —explicando un defecto viejo de la
+ * pantalla— y sin ese filtro la guardia naceria en rojo por una explicacion.
+ * Una guardia que empieza en rojo por un comentario es una guardia que alguien
+ * desactiva el mismo dia.
+ */
+function usosDeConsoleError(contenido) {
+  return contenido
+    .split('\n')
+    .map((linea, i) => ({ n: i + 1, texto: linea.trim() }))
+    .filter(({ texto }) => /console\.error/.test(texto)
+      && !texto.startsWith('//')
+      && !texto.startsWith('*'))
+    .map(({ n, texto }) => `L${n}: ${texto}`);
+}
+
+const MUESTRA_CONSOLE_MALA = `
+  async getAccessToken(code, empresaId) {
+    try {
+      return await canjear(code);
+    } catch (error) {
+      console.error('Error al obtener token TiendaNube:', error.response?.data);
+      throw new Error('No se pudo autenticar con TiendaNube');
+    }
+  }
+`;
+
+const MUESTRA_CONSOLE_COMENTADA = `
+/**
+ * Ese espacio llegaba a una columna INTEGER, Postgres respondia 500 y el catch
+ * de la pantalla hacia console.error: la lista quedaba con lo anterior y sin
+ * ningun aviso.
+ */
+// Antes de dfd7009 esto era un console.error y el token salia sin redactar.
+router.get('/', checkPermission('proveedores.ver'), async (req, res) => {
+  logger.info({ empresaId: req.empresaId }, 'proveedores: listado');
+});
+`;
+
+describe('Ningun archivo de routes/, services/ ni utils/ usa console.error', () => {
+  const archivos = [...leerCarpeta('routes'), ...leerCarpeta('services'), ...leerCarpeta('utils')];
+
+  it('leyo los tres directorios y ninguno vino vacio', () => {
+    // El ancla. `leerRutas()` mira solo `routes/`, y una guardia que copiara ese
+    // lector recorreria un tercio de lo que dice recorrer **en verde**. Este
+    // repositorio ya tuvo dos guardias asi.
+    for (const subdir of ['routes', 'services', 'utils']) {
+      expect(archivos.filter((a) => a.nombre.startsWith(`${subdir}/`)).length).toBeGreaterThan(3);
+    }
+
+    expect(archivos.length).toBeGreaterThan(35);
+  });
+
+  it('el detector encuentra la forma y la nombra con archivo y linea', () => {
+    const hallazgos = usosDeConsoleError(MUESTRA_CONSOLE_MALA);
+
+    expect(hallazgos).toHaveLength(1);
+    expect(hallazgos[0]).toContain('L6:');
+    expect(hallazgos[0]).toContain('error.response?.data');
+  });
+
+  it('la guardia distingue un console.error de una linea que lo menciona en un comentario', () => {
+    // Sin este caso, el filtro de comentarios se puede sacar «para simplificar»
+    // y la guardia pasa a nombrar el JSDoc de suppliers.js, que es un falso
+    // positivo — y un falso positivo se cierra con una excepcion, que es como
+    // una guardia deja de servir.
+    expect(usosDeConsoleError(MUESTRA_CONSOLE_COMENTADA)).toEqual([]);
+  });
+
+  it.each(archivos)('$nombre', ({ contenido }) => {
+    expect(usosDeConsoleError(contenido)).toEqual([]);
+  });
+});
+
+// ════════════════════════════════════════════
+//  src/controllers/ no existe
+//
+//  Era el unico directorio del servidor que NINGUNA de las cinco guardias
+//  estaticas miraba: `aislamientoEmpresas.test.js` recorre routes/, services/ y
+//  utils/; `observabilidad.test.js` y `permisosDeRutas.test.js`, solo routes/.
+//  Tenia exactamente un archivo, `tiendanube.js`, y adentro un `create` que
+//  colgaba una fila de un producto que nadie habia validado: el mismo IDOR que
+//  dfd7009 cerro en los pagos a proveedores, respondiendo 201.
+//
+//  El archivo se disolvio en routes/tiendanube.js. Esta guardia existe porque
+//  no alcanza con no volver a usar el directorio: cada guardia que se escriba
+//  de ahora en mas vuelve a nacer con su lista de directorios, y la lista de
+//  directorios de una guardia es exactamente el lugar donde nadie mira.
+// ════════════════════════════════════════════
+
+describe('src/controllers/ no vuelve a existir', () => {
+  it('el chequeo sabe reconocer un directorio que SI existe', () => {
+    // El ancla: sin esto, un error de tipeo en la ruta —o un __dirname que
+    // cambie de lugar— dejaria la prueba de abajo en verde para siempre,
+    // afirmando la ausencia de algo que nunca busco.
+    expect(fs.existsSync(path.join(SRC, 'routes'))).toBe(true);
+    expect(fs.existsSync(path.join(SRC, 'services'))).toBe(true);
+    expect(fs.existsSync(path.join(SRC, 'utils'))).toBe(true);
+  });
+
+  it('src/controllers/ no existe: es el directorio que ninguna guardia miraba', () => {
+    expect(fs.existsSync(path.join(SRC, 'controllers'))).toBe(false);
   });
 });

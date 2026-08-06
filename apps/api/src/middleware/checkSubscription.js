@@ -1,11 +1,38 @@
 const { Suscripcion } = require('../models');
 const logger = require('../utils/logger');
 
+// ── Lo que no pasa por el paywall ──
+//
+// TiendaNube estaba con el prefijo entero y eso eximia tambien a las once
+// rutas privadas de la integracion: una empresa con la suscripcion vencida
+// seguia mapeando productos y sincronizando su stock con la tienda online.
+// Es la misma forma del paywall eludible que CONVENCIONES.md cita entre los
+// tres errores mas caros del proyecto — la puerta no estaba abierta, estaba en
+// otra pared. Ahora se nombran los dos caminos exactos.
+//
+// isExempt compara con startsWith sobre req.originalUrl, asi que el callback
+// que vuelve con ?code=…&state=… sigue entrando.
+//
+// ⚠ Esas dos lineas de TiendaNube son defensivas y NINGUN test las ejercita, a
+// proposito. /callback y /webhook viven en el router `publico`, que server.js
+// monta SIN la cadena authEmpresa —o sea, sin este middleware—, y Express
+// atiende con el primer montaje que matchee: no llegan hasta aca nunca. Un
+// test que afirmara «el webhook funciona con la suscripcion vencida» pasaria
+// igual con esta lista vacia, no probaria nada, y seria uno mas de los veinte
+// que este repositorio ya junto. Lo que si esta probado es lo contrario —que
+// las once privadas queden cortadas— en tests/paywallDeTiendanube.test.js,
+// junto con la guardia que fija que el montaje del router publico siga sin
+// authEmpresa, que es de donde sale de verdad la exencion.
+//
+// Se dejan igual porque no cuestan nada y porque el dia que ese montaje se
+// mueva, un 402 repetido hace que TiendaNube deshabilite el webhook del lado
+// de ellos y la integracion se apague sola.
 const EXEMPT_PREFIXES = [
   '/api/empresas',
   '/api/auth',
   '/api/ping',
-  '/api/tiendanube',
+  '/api/tiendanube/callback',
+  '/api/tiendanube/webhook',
 ];
 
 function isExempt(path) {
