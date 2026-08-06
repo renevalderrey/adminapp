@@ -1341,13 +1341,48 @@ descuido: **es la única sin las dos fuentes que las otras tuvieron.** El legacy
 no tenía TiendaNube y la maqueta no la dibuja. Todo lo que la pantalla haga es
 una decisión nueva.
 
-Cuando estén contestados, esta sección pasa a llamarse «Lo que faltaba decidir ·
-**resuelto**», con la tabla de quién decidió cada uno, como en
-`docs/specs/012-proveedores-y-ordenes-de-compra/spec.md`. El planteo completo de
-cada pregunta se conserva: el motivo sigue valiendo cuando alguien pregunte,
-dentro de un año, por qué se publica un número y no el otro.
+El planteo completo de cada pregunta se conserva abajo, con las opciones
+descartadas: el motivo sigue valiendo cuando alguien pregunte, dentro de un año,
+por qué se publica un número y no el otro.
 
-### Bloquean
+---
+
+## Lo que faltaba decidir · **resuelto**
+
+| # | Decisión | Quién decidió |
+|---|---|---|
+| 1 | **Token opaco de un solo uso** para el `state` del OAuth (opción a), guardado del lado del servidor con su empresa, su usuario y su vencimiento; el callback lo consume y lo invalida. Se eligió sobre el HMAC firmado porque éste no protege contra reusar el mismo `state` dentro de su ventana | Usuario |
+| 2 | **Se publica `available`**, no `quantity`. Un producto con 10 en depósito y 3 comprometidos publica **7**. Puede subvender; lo que no puede es vender algo ya reservado para otro | Usuario |
+| 3 | **Una sucursal designada «la de la tienda online»**: de ahí sale lo que se publica **y** ahí se descuenta el pedido. Las dos mitades coinciden **por construcción**, que es exactamente lo que hoy no pasa —se publica el stock de una, elegida por el orden de las filas, y se descuenta de la que sea el punto de venta por defecto— | Usuario |
+| 4 | **Se sincroniza ante cada movimiento de stock**: cada venta, recepción o ajuste actualiza ese producto en la tienda. Es la que mantiene la tienda al día, y la que más rápido choca contra el límite de la API | Usuario |
+
+### La decisión 4 necesita una red, y no es una segunda decisión
+
+Empujar en cada movimiento **y nada más** tiene un modo de falla que las otras
+dos opciones no tienen: si un empujón falla —la API caída, un 429, un token
+vencido— **esa variante queda desfasada en silencio y para siempre**. No hay
+nada que la vuelva a intentar, porque el disparador ya ocurrió.
+
+Por eso la implementación lleva, además del empujón:
+
+- **Cola con reintento** para el empujón que falla, con espera creciente. Un 429
+  no es un error: es «más despacio».
+- **Reconciliación periódica de respaldo**, que compara y **solo corrige lo que
+  quedó desfasado**. No es la opción «cada N minutos» descartada: aquella era el
+  mecanismo principal, ésta es la red que atrapa lo que el principal perdió.
+- **Agrupar los empujones**: una importación de lista o un masivo de precios
+  genera cientos de movimientos en segundos, y son cientos de llamadas a una API
+  con límite. Se agrupan por producto en una ventana corta.
+
+Esto **no cambia** la decisión: la hace sobrevivir a un error de red. Sin la red,
+la respuesta honesta a «¿el stock de la tienda está bien?» sería «probablemente,
+salvo que alguna vez haya fallado una llamada, y no hay forma de saberlo».
+
+---
+
+## El planteo completo de cada pregunta
+
+### Bloqueaban
 
 **[PENDIENTE DE DEFINIR 1] — ¿Cómo viaja la empresa en el `state` del OAuth, y
 qué lo protege?**
@@ -1428,7 +1463,7 @@ justamente cuando la tienda online vende sin que haya nadie.
 **Bloquea** porque cambia qué hay que construir —un job, un endpoint, una tabla o
 una fila de `settings`— y qué significa exactamente «la última corrida».
 
-### No bloquean
+### No bloqueaban
 
 Tienen un valor por defecto propuesto. Si nadie dice lo contrario, se toma ese.
 
