@@ -13,6 +13,18 @@ on:
   push:
     branches: [main, chore/monorepo]
   pull_request:
+  # A pedido, sin tener que empujar un commit vacio.
+  #
+  # Hizo falta el 6/8/2026: Actions estuvo caido un rato —«Failed to resolve
+  # action download info: Service Unavailable»— y tres corridas quedaron en rojo
+  # sin haber ejecutado una sola linea de codigo, mas un push que directamente no
+  # genero corrida. Sin esto, la unica forma de volver a pedirla es un commit que
+  # no cambia nada, que despues queda para siempre en el historial confundiendo a
+  # quien lo lea.
+  #
+  # Y sirve para lo otro: un rojo que no se puede repetir no se puede distinguir
+  # de uno intermitente.
+  workflow_dispatch:
 
 jobs:
   api:

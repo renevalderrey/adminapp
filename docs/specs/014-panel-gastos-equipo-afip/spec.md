@@ -3005,29 +3005,37 @@ Explícito, para que no se discuta después si estaba incluido.
 Marcado tal cual se pide: lo que **cambia el resultado** y no está claro en el
 pedido, en el plan ni en la maqueta. **Ninguno tiene una respuesta inventada.**
 
-Siete bloquean y quince no. Los que no bloquean traen un valor por defecto
+Siete bloqueaban y quince no. Los que no bloquean traen un valor por defecto
 propuesto: si nadie dice lo contrario, se toma ese.
 
 ---
 
 ## Lo que faltaba decidir · **resuelto**
 
+**Los siete están contestados.** Esta tabla manda sobre el planteo largo de más
+abajo, que se conserva con las opciones descartadas: el motivo sigue valiendo
+cuando alguien pregunte, dentro de un año, por qué se eligió una y no la otra.
+
 | # | Decisión | Quién decidió |
 |---|---|---|
-| — | **Vacía todavía.** Ninguno de los siete bloqueantes está resuelto | — |
+| 1 | **Sesiones de verdad, con cierre**: tabla propia, registro de cada acceso y validación contra ella. Se eligió sobre «solo el último acceso» porque ése **no puede cerrar una sesión**, que es la mitad de lo que servía: si alguien deja la empresa, desactivarlo no lo saca hasta que vence su token | Usuario |
+| 2 | **La prueba en homologación BLOQUEA el pase a producción.** La pantalla la muestra como paso cumplido o pendiente. Motivo: el circuito nunca se probó, y sin esto **el primer comprobante real de Comprafit sería también la primera prueba del circuito** | Usuario |
+| 3 | **Se unifica «stock bajo»** entre Panel y Faltantes. El número del Panel va a cambiar —hoy uno de los dos está mal— y eso es preferible a que la pregunta «¿cuántos productos me faltan?» tenga dos respuestas y nadie sepa cuál creer | Usuario |
+| 4 | **Los gastos fijos sin sucursal se asignan a la sucursal por defecto** de cada empresa, con una migración que **informa cuántos movió, uno por uno**. Hoy no se dibujan en ninguna pantalla y **siguen moviendo el punto de equilibrio**: con una sola sucursal desaparecen. Mismo criterio que las filas de stock huérfanas | Usuario |
+| 5 | **El Panel se recorta por permiso**: quien no tiene `caja.ver` no ve los indicadores de caja, quien no tiene `clientes.ver` no ve la deuda. Ventas y stock siguen para todos. Hoy `dashboard.ver` lo tienen los cinco roles y un vendedor ve la plata del negocio | Usuario |
+| 6 | **Las cuatro rutas quedan SIN gate de módulo.** Panel, Gastos, Equipo y Ajustes son el esqueleto del sistema, no módulos opcionales: toda empresa necesita configurar AFIP y manejar su equipo. Cerrar el gate exigiría revisar `enabled_modules` de cada empresa antes del deploy, y una lista mal armada haría desaparecer cuatro pantallas sin aviso | Usuario |
+| 7 | **Los cinco defectos de plata del Panel se corrigen en este hito**, y el cambio se avisa en `OPERACION.md`: los números van a moverse el día del deploy —«Por Pagar» probablemente baje bastante, porque hoy nunca resta lo que se pagó— y hay que poder saber cuál era el que mentía | Usuario |
 
-> Esta tabla es donde se anotan las respuestas cuando la persona las dé, con el
-> mismo formato que `docs/specs/013-tiendanube/spec.md:1350-1357`. **Mientras
-> esté vacía, `sdd-plan` no puede arrancar con las partes que dependen de los
-> siete de abajo.** El planteo completo de cada pregunta se conserva más abajo,
-> con las opciones descartadas: el motivo sigue valiendo cuando alguien pregunte,
-> dentro de un año, por qué se eligió una y no la otra.
+**Y una que se tomó y ya se ejecutó, fuera del hito**: la fuga de `afip_key` salió
+de acá y se cerró sola en `01fc77d`. Es un `if` más su test, no dependía de
+ninguna decisión de diseño, y mezclarla en un commit de rediseño habría
+significado que no se puede revertir el rediseño sin reabrir la fuga.
 
 ---
 
 ## El planteo completo de cada pregunta
 
-### Bloquean
+### Bloqueaban
 
 **[PENDIENTE DE DEFINIR 1] — Sesiones activas: ¿Auth0, último acceso, o las dos
 mitades?**
@@ -3193,7 +3201,7 @@ mitad, la reacción razonable es pensar que el sistema perdió datos.
 **Bloquea** el alcance, el orden de los commits y si hace falta un aviso en la
 pantalla.
 
-### No bloquean
+### No bloqueaban
 
 Tienen un valor por defecto propuesto. Si nadie dice lo contrario, se toma ese.
 
