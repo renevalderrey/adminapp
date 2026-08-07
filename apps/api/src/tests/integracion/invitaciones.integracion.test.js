@@ -659,6 +659,312 @@ describe('POST /api/empresas/:empresaId/usuarios ya no existe', () => {
   });
 });
 
+// ════════════════════════════════════════════
+//  A2 · la empresa se queda sin ningún administrador activo, por dos puertas
+//
+//  La regla «al último administrador activo no se lo degrada» vivía en
+//  `utils/equipo.js` y la aplicaba **un solo** handler. Los dos caminos de acá
+//  abajo la esquivaban:
+//
+//   · **La determinista**, y es la peor porque no necesita nada raro: aceptar una
+//     invitación le cambia el rol a un miembro que ya está activo, y eso pasaba
+//     por un `ue.update({ role: invitacion.role })` a secas. Invitar al único
+//     admin como `vendedor` + aceptar = cero administradores. Un request de cada
+//     lado y los dos alcanzables desde la pantalla.
+//   · **La carrera**: el PUT leía el equipo afuera de la transacción que escribe.
+//
+//  ── Cómo están elegidas las fixtures, que acá es la mitad del trabajo ──
+//
+//  · **La invitación pide `vendedor` y el miembro es `admin`.** Con los dos roles
+//    iguales el `update` no cambiaría nada y «no degradó» no se distinguiría de
+//    «no hizo falta».
+//  · **La empresa es la A**, no la B: en B el usuario de la sesión no es miembro
+//    y el `findOrCreate` crearía la fila, que es el otro camino del handler.
+//  · **Cada caso tiene su contracaso con un SEGUNDO admin activo.** Sin él,
+//    «responde 409» pasaría igual sobre un endpoint que rechaza todo.
+// ════════════════════════════════════════════
+
+/** Una invitación a la empresa A —la de la sesión— para el usuario de la sesión. */
+async function invitarALaPropia(role = 'vendedor') {
+  return Invitacion.create({
+    empresa_id: datos.empresaA.id,
+    email: EMAIL_DE_LA_SESION,
+    role,
+    invited_by: datos.usuarioA.id,
+  });
+}
+
+/** Cuántos administradores activos tiene la empresa A. */
+function adminsActivosDeA() {
+  return UsuarioEmpresa.count({
+    where: { empresa_id: datos.empresaA.id, role: 'admin', is_active: true },
+  });
+}
+
+describe('A2 · aceptar una invitación NO puede dejar la empresa sin administrador', () => {
+  it('el único admin activo que acepta una invitación de vendedor recibe 409 y sigue siendo admin', async () => {
+    // El estado final del defecto es irreversible: sin ningún admin activo,
+    // nadie puede invitar, cambiar roles ni tocar la configuración, y de eso no
+    // se sale desde la aplicación.
+    expect(await adminsActivosDeA()).toBe(1);
+
+    const invitacion = await invitarALaPropia('vendedor');
+
+    const res = await request(app).post(`/api/auth/accept-invite/${invitacion.token}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('ULTIMO_ADMIN');
+    expect(res.body.message).toContain('único administrador activo');
+
+    // La mitad que importa: el 409 no sirve de nada si la fila igual se guardó.
+    const mia = await membresiaDeLaSesion();
+    expect(mia.role).toBe('admin');
+    expect(await adminsActivosDeA()).toBe(1);
+  });
+
+  it('la invitación NO se consume: el día que nombren otro admin, el mismo enlace sirve', async () => {
+    const invitacion = await invitarALaPropia('vendedor');
+
+    await request(app).post(`/api/auth/accept-invite/${invitacion.token}`);
+
+    await invitacion.reload();
+    expect(invitacion.status).toBe('pending');
+  });
+
+  it('con un SEGUNDO admin activo la misma invitación SÍ se aplica', async () => {
+    // El contracaso, y es lo que hace verificable al de arriba: sin él, un
+    // handler que rechazara todas las aceptaciones de un miembro ya activo
+    // pasaría igual — y ése es un defecto peor, porque rompe el camino legítimo
+    // de re-invitar a alguien con otro rol.
+    await miembroDeA({
+      email: 'admin.dos@panaderia.test', nombre: 'Admin Dos', role: 'admin',
+    });
+
+    const invitacion = await invitarALaPropia('vendedor');
+
+    const res = await request(app).post(`/api/auth/accept-invite/${invitacion.token}`);
+
+    expect(res.status).toBe(200);
+
+    const mia = await membresiaDeLaSesion();
+    expect(mia.role).toBe('vendedor');
+    expect(await adminsActivosDeA()).toBe(1);
+  });
+
+  it('una invitación con el MISMO rol que ya tiene no se rechaza: no saca a nadie', async () => {
+    // El único admin invitado de nuevo como admin no degrada nada, y bloquearlo
+    // sería negar una aceptación que no cambia el estado. Es el caso que un
+    // `esUltimoAdmin` sin mirar el rol pedido rechazaría de más.
+    const invitacion = await invitarALaPropia('admin');
+
+    const res = await request(app).post(`/api/auth/accept-invite/${invitacion.token}`);
+
+    expect(res.status).toBe(200);
+
+    const mia = await membresiaDeLaSesion();
+    expect(mia.role).toBe('admin');
+
+    await invitacion.reload();
+    expect(invitacion.status).toBe('accepted');
+  });
+});
+
+describe('A2 · invitar avisa antes de mandar un enlace que va a fallar', () => {
+  it('invitar al único admin activo con otro rol responde 400 y NO crea la invitación', async () => {
+    // `POST /:empresaId/invitar` solo miraba si había otra invitación pendiente,
+    // nunca si el email **ya es miembro activo**. Cortar acá es lo que hace que
+    // quien invita lo lea ahora en vez de descubrirlo cuando el otro acepta.
+    const res = await request(app)
+      .post(`/api/empresas/${datos.empresaA.id}/invitar`)
+      .send({ email: EMAIL_DE_LA_SESION, role: 'vendedor' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('ULTIMO_ADMIN');
+
+    const creadas = await Invitacion.count({
+      where: { empresa_id: datos.empresaA.id, email: EMAIL_DE_LA_SESION },
+    });
+    expect(creadas).toBe(0);
+  });
+
+  it('a alguien que NO es del equipo se lo invita igual', async () => {
+    // El ancla: sin esto, «responde 400» pasaría sobre un endpoint que dejó de
+    // invitar a nadie, que es la forma más cara de arreglar este defecto.
+    const res = await request(app)
+      .post(`/api/empresas/${datos.empresaA.id}/invitar`)
+      .send({ email: 'de.afuera@panaderia.test', role: 'vendedor' });
+
+    expect(res.status).toBe(201);
+  });
+
+  it('con un segundo admin activo, invitar al primero con otro rol se permite', async () => {
+    await miembroDeA({
+      email: 'admin.dos@panaderia.test', nombre: 'Admin Dos', role: 'admin',
+    });
+
+    const res = await request(app)
+      .post(`/api/empresas/${datos.empresaA.id}/invitar`)
+      .send({ email: EMAIL_DE_LA_SESION, role: 'vendedor' });
+
+    expect(res.status).toBe(201);
+  });
+});
+
+describe('A2 · dos PUT simultáneos no pueden vaciar la empresa de administradores', () => {
+  it('a la vez dan 200 y 400, igual que en secuencia, y queda un admin activo', async () => {
+    // ⚠ Este caso **no lo puede escribir un doble**: hacen falta dos
+    // transacciones de verdad chocando. Y un test secuencial tampoco lo ve — los
+    // mismos dos requests uno detrás del otro daban 200 y 400 **con el defecto
+    // puesto**, porque el segundo leía después del commit del primero.
+    //
+    // El defecto era la ventana entre leer el equipo y escribir: las dos
+    // lecturas veían dos admins, las dos pasaban la regla, y la empresa quedaba
+    // con cero. El `FOR UPDATE` adentro de la transacción hace que el segundo
+    // espere y vuelva a leer.
+    //
+    // La sesión pasa a `vendedor` para no ser ninguno de los dos: la regla «no te
+    // podés tocar a vos mismo» contestaría antes y taparía la carrera.
+    const mia = await membresiaDeLaSesion();
+    await mia.update({ role: 'vendedor' });
+
+    const uno = await miembroDeA({
+      email: 'admin.uno@panaderia.test', nombre: 'Admin Uno', role: 'admin',
+    });
+    const dos = await miembroDeA({
+      email: 'admin.dos@panaderia.test', nombre: 'Admin Dos', role: 'admin',
+    });
+
+    expect(await adminsActivosDeA()).toBe(2);
+
+    const degradar = (membresia) =>
+      request(app).put(`/api/empresas/usuarios/${membresia.id}`).send({ role: 'vendedor' });
+
+    const [a, b] = await Promise.all([degradar(uno.membresia), degradar(dos.membresia)]);
+
+    // Uno de los dos tiene que perder. Cuál, no importa: importa que no ganen
+    // los dos.
+    expect([a.status, b.status].sort()).toEqual([200, 400]);
+    expect([a.body.error, b.body.error]).toContain('ULTIMO_ADMIN');
+
+    // Y lo único que de verdad importa: la empresa sigue teniendo quien la
+    // administre.
+    expect(await adminsActivosDeA()).toBe(1);
+  });
+
+  it('desactivar a los dos a la vez tampoco: es la otra mitad del mismo agujero', async () => {
+    // Dejar la protección solo sobre `role` permitiría vaciar la empresa de
+    // administradores con dos `is_active: false` simultáneos.
+    const mia = await membresiaDeLaSesion();
+    await mia.update({ role: 'vendedor' });
+
+    const uno = await miembroDeA({
+      email: 'admin.uno@panaderia.test', nombre: 'Admin Uno', role: 'admin',
+    });
+    const dos = await miembroDeA({
+      email: 'admin.dos@panaderia.test', nombre: 'Admin Dos', role: 'admin',
+    });
+
+    const desactivar = (membresia) =>
+      request(app).put(`/api/empresas/usuarios/${membresia.id}`).send({ is_active: false });
+
+    const [a, b] = await Promise.all([desactivar(uno.membresia), desactivar(dos.membresia)]);
+
+    expect([a.status, b.status].sort()).toEqual([200, 400]);
+    expect(await adminsActivosDeA()).toBe(1);
+  });
+});
+
+// ════════════════════════════════════════════
+//  C3 · re-enviar una invitación vencida
+//
+//  El `where` encontraba la vencida —está bien que la encuentre: es la fila que
+//  la pantalla pinta «Vencida» y el único botón que ofrece esa fila es éste— pero
+//  **no renovaba nada**. Salía el mail, en producción de verdad, con el enlace
+//  muerto; la pantalla decía «Invitación reenviada»; quien lo abría leía «Esa
+//  invitación venció»; y volver a invitar a ese email daba 400 «Ya hay una
+//  invitación pendiente». Sin salida.
+// ════════════════════════════════════════════
+
+describe('POST /api/empresas/invitaciones/:token/re-enviar · renueva el vencimiento', () => {
+  /** Una invitación de la empresa A que venció hace un minuto. */
+  function vencidaDeA() {
+    return Invitacion.create({
+      empresa_id: datos.empresaA.id,
+      email: 'se.le.vencio@panaderia.test',
+      role: 'vendedor',
+      invited_by: datos.usuarioA.id,
+      expires_at: new Date(Date.now() - 60 * 1000),
+    });
+  }
+
+  it('el enlace que sale en el mail vuelve a abrir, y antes no abría', async () => {
+    const vencida = await vencidaDeA();
+
+    // El ancla de la fixture: si esto ya diera 200, el caso de abajo pasaría sin
+    // que se hubiera renovado nada.
+    const antes = await request(app).get(`/api/auth/invite/${vencida.token}`);
+    expect(antes.status).toBe(404);
+
+    // El 502 es el envío —en este entorno RESEND_API_KEY está borrada— y no
+    // tiene nada que ver con lo que se afirma: la renovación va ANTES de mandar,
+    // justamente para que el mail que sale lleve un enlace vivo.
+    await request(app).post(`/api/empresas/invitaciones/${vencida.token}/re-enviar`);
+
+    const despues = await request(app).get(`/api/auth/invite/${vencida.token}`);
+    expect(despues.status).toBe(200);
+    expect(despues.body.data.email).toBe('se.le.vencio@panaderia.test');
+  });
+
+  it('la fecha nueva son los siete días del alta, no un segundo más', async () => {
+    // Sin esto, mover `expires_at` a `ahora + 1s` haría pasar el caso de arriba y
+    // el enlace se moriría otra vez antes de que nadie lo abra.
+    const vencida = await vencidaDeA();
+
+    await request(app).post(`/api/empresas/invitaciones/${vencida.token}/re-enviar`);
+
+    await vencida.reload();
+
+    const diasQueFaltan = (new Date(vencida.expires_at).getTime() - Date.now()) / 86400000;
+
+    expect(diasQueFaltan).toBeGreaterThan(6.9);
+    expect(diasQueFaltan).toBeLessThan(7.1);
+  });
+
+  it('el token NO cambia: el enlace viejo del mail viejo también revive', async () => {
+    // Rotar el token dejaría muerto el mail que ya se mandó, que es el que la
+    // persona tiene en la bandeja. La invitación es la misma, con otra fecha.
+    const vencida = await vencidaDeA();
+    const token = vencida.token;
+
+    await request(app).post(`/api/empresas/invitaciones/${token}/re-enviar`);
+
+    await vencida.reload();
+    expect(vencida.token).toBe(token);
+    expect(vencida.status).toBe('pending');
+  });
+
+  it('una revocada NO revive: renovar no es resucitar', async () => {
+    // El `where` sigue pidiendo `status: 'pending'`. Sin este caso, «renueva lo
+    // que encuentra» podría haber quedado devolviéndole la vida a una invitación
+    // que la empresa canceló a propósito.
+    const revocada = await Invitacion.create({
+      empresa_id: datos.empresaA.id,
+      email: 'cancelada@panaderia.test',
+      role: 'vendedor',
+      invited_by: datos.usuarioA.id,
+      status: 'revoked',
+      expires_at: new Date(Date.now() - 60 * 1000),
+    });
+
+    const res = await request(app).post(`/api/empresas/invitaciones/${revocada.token}/re-enviar`);
+
+    expect(res.status).toBe(404);
+
+    await revocada.reload();
+    expect(new Date(revocada.expires_at).getTime()).toBeLessThan(Date.now());
+  });
+});
+
 describe('POST /api/empresas/:empresaId/invitar · el enlace para pasarlo a mano', () => {
   it('cuando el mail no sale, la respuesta trae el enlace con el token', async () => {
     // FR-106. Sin RESEND_API_KEY, `sendEmail` devuelve `{ok:false}` —eso ya está

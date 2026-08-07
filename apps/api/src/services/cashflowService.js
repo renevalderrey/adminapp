@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { assertEmpresaId } = require('../utils/tenantScope');
+const { hoyDelNegocio } = require('../utils/fechas');
 const {
   CashFlowEntry,
   Sale,
@@ -10,11 +11,45 @@ const {
   sequelize,
 } = require('../models');
 
+const MILISEGUNDOS_POR_DIA = 1000 * 60 * 60 * 24;
+
+/**
+ * La fecha `dias` antes de `fechaISO`, en formato YYYY-MM-DD.
+ *
+ * La cuenta se hace en UTC sobre el texto a propósito, igual que en
+ * `dashboardService`: la zona horaria ya la resolvió `hoyDelNegocio` una sola
+ * vez, y volver a pasar por la zona local del servidor para restar treinta días
+ * es la forma de reintroducir el defecto que este corte cierra.
+ */
+function restarDias(fechaISO, dias) {
+  const fecha = new Date(`${fechaISO}T00:00:00Z`);
+
+  return new Date(fecha.getTime() - dias * MILISEGUNDOS_POR_DIA).toISOString().split('T')[0];
+}
+
 class CashflowService {
-  async getBalance(empresaId, puntoDeVentaId = null) {
-    const today = new Date().toISOString().split('T')[0];
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const sixtyDaysFromNow = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  /**
+   * El saldo de caja y la proyección a 30 y 60 días.
+   *
+   * @param {number} empresaId
+   * @param {number|null} [puntoDeVentaId]
+   * @param {object} [opciones]
+   * @param {string} [opciones.hoy] La fecha del negocio, YYYY-MM-DD. La pasa el
+   *   Panel —que ya la resolvió para sus propios cortes— para que la proyección
+   *   mida el mismo período que las tarjetas que tiene al lado. Si no viene, se
+   *   resuelve acá.
+   */
+  async getBalance(empresaId, puntoDeVentaId = null, opciones = {}) {
+    // ── El corte de los 30 días es el del NEGOCIO, no el del servidor ──
+    //
+    // Era `new Date(Date.now() - 30 días).toISOString()`, o sea la fecha del
+    // servidor en UTC. Argentina es UTC−3: a las 23:25 hora local UTC ya está en
+    // el día siguiente, así que la ventana de la proyección arrancaba un día
+    // después que la del resto del Panel. La misma pantalla mostraba dos
+    // períodos distintos sin decirlo. Es el defecto que `dashboardService` cerró
+    // para sus cortes (FR-048) y este archivo se había quedado afuera.
+    const hoy = opciones.hoy || (await hoyDelNegocio(empresaId));
+    const hace30Dias = restarDias(hoy, 30);
 
     const scope = { empresa_id: empresaId };
     if (puntoDeVentaId) scope.punto_de_venta_id = puntoDeVentaId;
@@ -73,11 +108,11 @@ class CashflowService {
     const balance = allInflows - allOutflows;
 
     const sales30d = parseFloat(
-      await Sale.sum('total', { where: { ...scope, status: 'active', is_credit: false, date: { [Op.gte]: thirtyDaysAgo } } })
+      await Sale.sum('total', { where: { ...scope, status: 'active', is_credit: false, date: { [Op.gte]: hace30Dias } } })
     ) || 0;
 
     const customerPayments30d = parseFloat(
-      await CustomerPayment.sum('amount', { where: { empresa_id: empresaId, payment_date: { [Op.gte]: thirtyDaysAgo } } })
+      await CustomerPayment.sum('amount', { where: { empresa_id: empresaId, payment_date: { [Op.gte]: hace30Dias } } })
     ) || 0;
 
     // OJO: los gastos fijos no tienen columna de fecha en el modelo, asi que
@@ -88,7 +123,7 @@ class CashflowService {
     ) || 0;
 
     const monthlyTaxPayments = parseFloat(
-      await TaxPayment.sum('amount', { where: { empresa_id: empresaId, payment_date: { [Op.gte]: thirtyDaysAgo } } })
+      await TaxPayment.sum('amount', { where: { empresa_id: empresaId, payment_date: { [Op.gte]: hace30Dias } } })
     ) || 0;
 
     // Lo que efectivamente entro y salio en los ultimos 30 dias.
@@ -173,7 +208,11 @@ class CashflowService {
       type: data.type,
       category: data.category || 'otro',
       amount: data.amount,
-      entry_date: data.entry_date || new Date().toISOString().split('T')[0],
+      // La fecha del NEGOCIO, por el mismo motivo que en `customerService`: un
+      // movimiento cargado a las 22:00 en Argentina quedaba fechado mañana, y la
+      // proyección —que desde este mismo hito corta con `hoyDelNegocio`— lo
+      // dejaba afuera del período que lo tenía que contener.
+      entry_date: data.entry_date || (await hoyDelNegocio(empresaId)),
       description: data.description || null,
       reference: data.reference || null,
       is_recurring: data.is_recurring || false,

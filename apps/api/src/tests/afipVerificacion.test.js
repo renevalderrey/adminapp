@@ -159,10 +159,18 @@ function generarPar(cuit) {
 
 let PANADERIA;
 let OTRA_EMPRESA;
+let OTRO_CERTIFICADO_DEL_MISMO_CUIT;
 
 beforeAll(() => {
   PANADERIA = generarPar('30111111118');
   OTRA_EMPRESA = generarPar('20999999997');
+
+  // El certificado de PRODUCCIÓN de la misma panadería: mismo CUIT, otro par de
+  // claves y por lo tanto otra huella. Es el material con el que se pasa a
+  // producción de verdad —el de homologación es un trámite distinto de ARCA— y
+  // hace falta para poder distinguir «cambió la configuración» de «cambió el
+  // certificado», que son dos cosas y solo una bloquea.
+  OTRO_CERTIFICADO_DEL_MISMO_CUIT = generarPar('30111111118');
 });
 
 beforeEach(() => {
@@ -290,6 +298,32 @@ describe('POST /api/afip/verificar ejercita el circuito sin emitir nada', () => 
 
     expect(evidencia().resultado).toBe('ok');
     expect(evidencia().ultimo_comprobante).toBe(0);
+  });
+
+  it('sin certificado cargado no llama a AFIP: dice que hay que subirlo', async () => {
+    // **US12 escenario 1, y estaba sin red.** La empresa sin certificado que
+    // aprieta el botón tiene que leer que NO está conectada y por qué. Sin esta
+    // guardia el pedido llega hasta el WSAA, que en producción falla con «Error al
+    // firmar el ticket de acceso» —un mensaje que no nombra el certificado— y, lo
+    // que es peor, deja una evidencia de error que dice que el circuito se probó.
+    //
+    // ⚠ La fixture importa: el CUIT y el punto de venta SÍ están cargados, así que
+    // lo único que puede cortar es la falta de certificado. Con los tres campos
+    // vacíos el caso pasaría igual por la guardia del CUIT y no probaría nada.
+    sembrar('afip_cuit', '30111111118');
+    sembrar('afip_pv', '5');
+
+    const res = await request(levantarApi()).post('/api/afip/verificar');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/certificado/i);
+
+    // No se salió a la red, y no quedó evidencia: «te falta subir el certificado»
+    // no es «probaste y AFIP te rechazó», y el paso 4 del checklist las dibuja
+    // distinto.
+    expect(afipAuth.getAccessTicket).not.toHaveBeenCalled();
+    expect(afipService.getLastVoucher).not.toHaveBeenCalled();
+    expect(evidencia()).toBeNull();
   });
 
   it('sin punto de venta cargado no llama a AFIP: dice qué falta', async () => {
@@ -469,6 +503,95 @@ describe('pasar a producción exige haber verificado el circuito', () => {
     expect(fila('tax_condition').value).toBe('RI');
   });
 
+  // ── El gate leía la configuración ANTERIOR a la escritura ──
+  //
+  // Los dos casos de abajo salieron de una sonda contra el endpoint real, y los
+  // dos respondían **200 sin una sola llamada a AFIP**: el bloqueo corre antes de
+  // escribir y leía las filas viejas, así que la evidencia del punto de venta 5
+  // habilitaba un pase a producción con el punto de venta 99 adentro del mismo
+  // cuerpo. El comprobante real salía después contra un punto de venta que nadie
+  // confirmó — y consume numeración correlativa que sin nota de crédito no se
+  // deshace.
+
+  it('cambiar el punto de venta en el MISMO pedido que el pase a producción no pasa', async () => {
+    // **El grave.** Las credenciales nuevas hacen que `POST /setup` saltee la
+    // consulta del punto de venta contra AFIP (es deliberado: se consulta con las
+    // credenciales guardadas, que ya no son las que van a regir), así que este
+    // camino no le preguntaba nada a nadie.
+    sembrarConfiguracionCompleta();
+    sembrar('afip_environment', 'homologation');
+    sembrar('afip_verificacion', {
+      resultado: 'ok', cuit: '30111111118', pv: 5, ambiente: 'homologation',
+    });
+
+    const res = await request(levantarApi())
+      .post('/api/afip/setup')
+      .send({
+        environment: 'production',
+        pv: '99',
+        cert: PANADERIA.cert,
+        key: PANADERIA.key,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('CIRCUITO_NO_VERIFICADO');
+
+    // Nada quedó escrito: ni el ambiente ni el punto de venta nuevo.
+    expect(fila('afip_environment').value).toBe('homologation');
+    expect(fila('afip_pv').value).toBe('5');
+
+    // Y esto es lo que hacía al caso invisible: no hubo ninguna llamada a AFIP
+    // que pudiera haber fallado y delatado el punto de venta inexistente.
+    expect(afipService.getLastVoucher).not.toHaveBeenCalled();
+  });
+
+  it('cambiar el CUIT en el mismo pedido que el pase a producción tampoco pasa', async () => {
+    // La otra mitad de la sonda. Sin certificado en el cuerpo, la comparación del
+    // CUIT del certificado (FR-088) ni corre, así que lo único que quedaba entre
+    // esta petición y producción era el gate — que miraba la fila vieja.
+    sembrarConfiguracionCompleta();
+    sembrar('afip_environment', 'homologation');
+    sembrar('afip_verificacion', {
+      resultado: 'ok', cuit: '30111111118', pv: 5, ambiente: 'homologation',
+    });
+
+    const res = await request(levantarApi())
+      .post('/api/afip/setup')
+      .send({ environment: 'production', cuit: '20999999996' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('CIRCUITO_NO_VERIFICADO');
+    expect(fila('afip_environment').value).toBe('homologation');
+    expect(fila('afip_cuit').value).toBe('30111111118');
+  });
+
+  it('pasar a producción con un certificado NUEVO y la misma configuración SÍ pasa', async () => {
+    // ⚠⚠ **El contrapeso, y no es opcional.** Pasar a producción implica cambiar
+    // el certificado —el de homologación es otro trámite—, así que una corrección
+    // que comparara también el certificado dejaría el paso 4 imposible de cumplir
+    // justo cuando hace falta. La evidencia de otro certificado sigue valiendo:
+    // se informa, no bloquea. Sin este caso, un gate que rechazara todo pasaría
+    // los dos de arriba.
+    sembrarConfiguracionCompleta();
+    sembrar('afip_environment', 'homologation');
+    sembrar('afip_verificacion', {
+      resultado: 'ok', cuit: '30111111118', pv: 5, ambiente: 'homologation',
+    });
+
+    const res = await request(levantarApi())
+      .post('/api/afip/setup')
+      .send({
+        environment: 'production',
+        cuit: '30111111118',
+        pv: '5',
+        cert: OTRO_CERTIFICADO_DEL_MISMO_CUIT.cert,
+        key: OTRO_CERTIFICADO_DEL_MISMO_CUIT.key,
+      });
+
+    expect(res.status).toBe(200);
+    expect(fila('afip_environment').value).toBe('production');
+  });
+
   it('volver a homologación nunca se bloquea', async () => {
     // Es la salida de emergencia: si algo salió mal en producción, el camino de
     // vuelta no puede depender de una verificación.
@@ -516,6 +639,95 @@ describe('GET /api/afip/status separa los servidores de ARCA de la verificación
     const res = await request(levantarApi()).get('/api/afip/status');
 
     expect(res.body.data.ambiente).toBe('homologation');
+  });
+
+  // ── El veredicto del circuito, que la pantalla estaba re-derivando ──
+  //
+  // `estadoDelCircuito` ya calcula `cumplido`, `via` y `otroCertificado` —es lo
+  // mismo que decide el bloqueo del pase a producción— y **no salía por ningún
+  // lado**: tenía un solo llamador, que leía únicamente `cumplido`. La pantalla
+  // adivinaba las tres cosas y adivinaba mal las dos que se prueban acá.
+
+  it('devuelve el veredicto del circuito, y no solo la evidencia cruda', async () => {
+    sembrarConfiguracionCompleta();
+    sembrar('afip_verificacion', {
+      resultado: 'ok',
+      cuit: '30111111118',
+      pv: 5,
+      ambiente: 'homologation',
+      certificado: require('../services/afipVerificacion').huellaDelCertificado(PANADERIA.cert),
+    });
+
+    const res = await request(levantarApi()).get('/api/afip/status');
+
+    expect(res.body.data.circuito).toEqual({
+      cumplido: true,
+      via: 'verificacion',
+      otro_certificado: false,
+    });
+  });
+
+  it('una empresa que ya facturó sale como CUMPLIDA por la vía del CAE previo', async () => {
+    // **El caso que la pantalla no podía ver.** Sin `via`, decía «hasta que se
+    // verifique no se puede pasar a producción» a una empresa a la que el
+    // servidor le contesta 200 — porque un comprobante autorizado es la prueba
+    // más fuerte que existe de que el circuito funciona.
+    //
+    // ⚠ La fixture no tiene evidencia NINGUNA: es la única forma de que el
+    // `cumplido` solo pueda venir del CAE.
+    sembrarConfiguracionCompleta();
+    mockVentaConCae = { id: 31 };
+
+    const res = await request(levantarApi()).get('/api/afip/status');
+
+    expect(res.body.data.verificacion).toBeNull();
+    expect(res.body.data.circuito).toEqual({
+      cumplido: true,
+      via: 'cae_previo',
+      otro_certificado: false,
+    });
+  });
+
+  it('la evidencia de OTRO certificado se informa por la huella, no por la fecha', async () => {
+    // La pantalla lo deducía comparando `validFrom` del certificado contra
+    // `verificado_en`, y esa heurística falla con un certificado cuyo `validFrom`
+    // es anterior a la verificación pero que se cargó después — que es el caso de
+    // abajo: el certificado en uso empezó a valer AYER y la verificación es de
+    // HOY, así que la fecha diría «es el mismo» y la huella dice que no.
+    sembrar('afip_cuit', '30111111118');
+    sembrar('afip_pv', '5');
+    sembrar('afip_cert', OTRO_CERTIFICADO_DEL_MISMO_CUIT.cert);
+    sembrar('afip_verificacion', {
+      resultado: 'ok',
+      cuit: '30111111118',
+      pv: 5,
+      ambiente: 'homologation',
+      verificado_en: new Date().toISOString(),
+      certificado: require('../services/afipVerificacion').huellaDelCertificado(PANADERIA.cert),
+    });
+
+    const res = await request(levantarApi()).get('/api/afip/status');
+
+    expect(res.body.data.circuito.otro_certificado).toBe(true);
+
+    // Y avisa sin bloquear: el paso sigue cumplido. Si invalidara, pasar a
+    // producción sería imposible, porque el pase implica cambiar el certificado.
+    expect(res.body.data.circuito.cumplido).toBe(true);
+  });
+
+  it('sin evidencia y sin ningún CAE, el circuito NO está cumplido', async () => {
+    // El contrapeso: sin este caso, un `circuito` que dijera siempre `cumplido:
+    // true` pasaría los tres de arriba y la pantalla dibujaría verde sobre una
+    // empresa que nunca probó nada.
+    sembrarConfiguracionCompleta();
+
+    const res = await request(levantarApi()).get('/api/afip/status');
+
+    expect(res.body.data.circuito).toEqual({
+      cumplido: false,
+      via: null,
+      otro_certificado: false,
+    });
   });
 
   it('si los servidores de ARCA no contestan, la evidencia sale igual', async () => {

@@ -287,7 +287,11 @@ class DashboardService {
       // defecto P4, y el arreglo ya estaba escrito 130 líneas más abajo.
       this._salesPeriod(primeroDelMesAnterior, primeroDelMes, empresaId),
       this._salesByMethod(hace30Dias, manana, empresaId),
-      puedeVer('cashflow') ? cashflowService.getBalance(empresaId) : null,
+      // `hoy` viaja: la proyección de caja corta a 30 días y sin pasársela
+      // resolvía su propia fecha con `new Date().toISOString()`, o sea la del
+      // servidor en UTC. Después de las 21:00 hora argentina eso es el día
+      // siguiente, y el Panel mostraba dos períodos distintos con la misma cara.
+      puedeVer('cashflow') ? cashflowService.getBalance(empresaId, null, { hoy }) : null,
       this._customerStats(empresaId, { conDeuda: puedeVer('customers_with_debt') }),
       puedeVer('receivables') ? this._receivables(empresaId, hoy) : null,
       puedeVer('payables') ? this._payables(empresaId, hoy) : null,

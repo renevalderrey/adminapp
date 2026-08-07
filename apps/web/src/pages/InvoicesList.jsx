@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { toast } from 'sonner'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import api, { getSales, getSale, exportSales } from '@/services/api'
 import { printInvoice } from '@/utils/printInvoice'
 import useStore from '@/store/useStore'
@@ -8,10 +8,12 @@ import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid
 import PanelVenta from '@/components/PanelVenta'
 import { presentacionDeEstado, estaAnulada } from '@/utils/estadoVenta'
 import { descargarVentas } from '@/utils/exportarVentas'
+import { comprobanteInicial, comprobantesDisponibles } from '@/utils/comprobantes'
 import { pesos } from '@/utils/formato'
 import {
   Calendar, Search, Printer, ShieldCheck, FileText, Store, Trash2,
   Receipt, FilterX, Download, Plus, Loader2, RefreshCw, FileCheck,
+  AlertTriangle,
 } from 'lucide-react'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { usePermission } from '@/hooks/usePermission'
@@ -138,8 +140,131 @@ function nombreDelCliente(venta) {
   return (venta.customer && venta.customer.name) || venta.customer_name || 'Consumidor final'
 }
 
+/**
+ * El comprobante que el servidor va a emitir en el reintento, con el nombre
+ * que lee el operador.
+ *
+ * La REGLA no se reescribe acá: se le pregunta a `utils/comprobantes.js`, que
+ * es la misma que aplica `resolverComprobante` de la API cuando el body no
+ * trae `type` —RI emite Factura B, todo lo demás Factura C—. Dos copias de una
+ * regla fiscal se separan sin que nada avise, y la confirmación diría un
+ * comprobante y ARCA emitiría otro.
+ *
+ * Es para DECIRLO, no para mandarlo: el body del reintento sigue yendo vacío y
+ * quien decide sigue siendo el servidor.
+ */
+function comprobanteQueSeVaAEmitir(condicionFiscal) {
+  const valor = comprobanteInicial(condicionFiscal)
+  const elegido = comprobantesDisponibles({ condicionFiscal, afipConfigurado: true })
+    .find((c) => c.valor === valor)
+
+  return elegido ? elegido.etiqueta : 'un comprobante fiscal'
+}
+
+/**
+ * Lo que dice la confirmación antes de emitir.
+ *
+ * ── Por qué no alcanza con «¿Confirmar?» ──
+ *
+ * Un comprobante emitido consume numeración correlativa y para darlo de baja
+ * hace falta una nota de crédito, que el sistema todavía no emite. Preguntar
+ * sin decir QUÉ se emite y CONTRA QUÉ ambiente no le da a nadie con qué
+ * decidir: es el mismo criterio con el que el hito 5 sacó «Emitir Factura de
+ * Prueba» del pie de cobro.
+ *
+ * La diferencia entre los dos ambientes es exactamente lo que importa: en
+ * producción el comprobante tiene validez fiscal y el número no se devuelve;
+ * en homologación no vale nada. Ese dato es el que decide si el clic va o no
+ * va, y es el que faltaba.
+ */
+function textoDeConfirmacionDeEmision({ comprobante, ambiente, referencia }) {
+  const enProduccion = ambiente === 'production'
+
+  return `Se va a emitir ${comprobante} ante ARCA para la venta ${referencia}, en `
+    + (enProduccion
+      ? 'el ambiente de PRODUCCIÓN. El comprobante tiene validez fiscal y consume un '
+        + 'número correlativo: para darlo de baja hace falta una nota de crédito, que el '
+        + 'sistema todavía no emite.'
+      : 'el ambiente de HOMOLOGACIÓN. El comprobante NO tiene validez fiscal.')
+}
+
+/**
+ * Los estados de venta que el filtro sabe pedirle a la API.
+ *
+ * ⚠ **La otra mitad vive en `apps/api/src/utils/filtroVentas.js`.** Esta lista
+ * es el contrato del lado del navegador: dice qué valores viajan. Quien tiene
+ * que traducir `estado=rechazada` a `afip_cae IS NULL AND afip_ultimo_error IS
+ * NOT NULL` —la MISMA población que cuenta el aviso del Panel
+ * (`dashboardService._contarVentasRechazadas`)— es el filtro de la API. Si allá
+ * el parámetro no existe, acá no se nota: un parámetro desconocido no devuelve
+ * cero filas, devuelve TODAS, y el control queda diciendo que filtra algo que
+ * no filtró.
+ */
+const ESTADOS_FILTRABLES = ['rechazada']
+
+/** Los tipos de comprobante que entiende la API (`utils/filtroVentas.js`). */
+const TIPOS_FILTRABLES = ['1', '6', '11', 'sin_cae']
+
+/**
+ * Los filtros que vienen en la URL, ya validados.
+ *
+ * ── Por qué existe ──
+ *
+ * El aviso «N ventas que AFIP rechazó y siguen sin comprobante» del Panel
+ * llevaba acá y la pantalla arrancaba en `{ page: 1 }`, sin mirar la URL: el
+ * usuario aterrizaba en el listado del día completo y tenía que encontrar a
+ * mano las N que el número prometía. Aunque el Panel mandara el filtro, la
+ * pantalla lo ignoraba.
+ *
+ * ⚠ Cada valor se valida contra la lista que la API entiende, y lo que no está
+ * se DESCARTA. Un parámetro que la API no reconoce no devuelve cero filas:
+ * devuelve todas, y la pantalla mostraría el listado entero con un filtro
+ * puesto en el control — que es peor que no filtrar, porque ahí sí dice algo
+ * que no es cierto.
+ *
+ * `page` NO se lee a propósito: el rebote de la búsqueda corre al montar y
+ * `aplicarFiltro` vuelve siempre a la página 1, así que una página en la URL
+ * duraría 350 ms. Ningún enlace del sistema la manda.
+ *
+ * @param {URLSearchParams} parametros
+ */
+export function filtrosDeLaUrl(parametros) {
+  const leer = (clave) => {
+    const valor = parametros && typeof parametros.get === 'function' ? parametros.get(clave) : null
+    return typeof valor === 'string' ? valor.trim() : ''
+  }
+
+  const filtros = { page: 1 }
+
+  const estado = leer('estado')
+  if (ESTADOS_FILTRABLES.includes(estado)) filtros.estado = estado
+
+  const tipo = leer('tipo')
+  if (TIPOS_FILTRABLES.includes(tipo)) filtros.tipo = tipo
+
+  const sucursal = leer('punto_de_venta_id')
+  if (sucursal === TODAS_LAS_SUCURSALES || /^\d+$/.test(sucursal)) {
+    filtros.punto_de_venta_id = sucursal
+  }
+
+  // Las fechas se validan por forma y no por contenido: la API rechaza un
+  // rango invertido o de más de un año con su mensaje, que es el mismo que
+  // muestra el campo. Lo que no puede pasar es que llegue algo que no es una
+  // fecha, porque va derecho a un `BETWEEN` contra una columna DATEONLY.
+  for (const clave of ['desde', 'hasta']) {
+    const fecha = leer(clave)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fecha)) filtros[clave] = fecha
+  }
+
+  const q = leer('q')
+  if (q) filtros.q = q
+
+  return filtros
+}
+
 const InvoicesList = () => {
   const navigate = useNavigate()
+  const [parametrosDeLaUrl] = useSearchParams()
   const { settings } = useStore()
   const empresaActiva = useStore(s => s.empresaActiva)
 
@@ -179,26 +304,42 @@ const InvoicesList = () => {
     return [...porId.values()].sort((a, b) => String(a.name).localeCompare(String(b.name), 'es'))
   }, [empresaActiva?.puntosDeVenta, sucursalesVistas])
 
+  /**
+   * Los filtros con los que la pantalla ARRANCA, leídos de la URL.
+   *
+   * Se calcula una sola vez —inicializador perezoso de `useState`— y de ahí
+   * salen los tres estados que dependen de ella. Volver a leer la URL en cada
+   * render pisaría lo que el usuario acaba de elegir en los controles.
+   */
+  const [filtrosIniciales] = useState(() => filtrosDeLaUrl(parametrosDeLaUrl))
+
   // ── El rango ──
   //
-  // Arranca VACÍO a propósito. El «hoy» lo calcula el servidor con la zona
-  // horaria de la empresa y lo devuelve en `rango`; la pantalla inicializa sus
-  // campos con eso. Calcularlo acá con `new Date().toISOString()` devuelve UTC:
-  // en Argentina (UTC−3), después de las 21:00 «hoy» pasa a ser mañana y una
-  // venta recién cobrada no aparece en su propio listado.
-  const [desde, setDesde] = useState('')
-  const [hasta, setHasta] = useState('')
+  // Sin nada en la URL arranca VACÍO a propósito. El «hoy» lo calcula el
+  // servidor con la zona horaria de la empresa y lo devuelve en `rango`; la
+  // pantalla inicializa sus campos con eso. Calcularlo acá con
+  // `new Date().toISOString()` devuelve UTC: en Argentina (UTC−3), después de
+  // las 21:00 «hoy» pasa a ser mañana y una venta recién cobrada no aparece en
+  // su propio listado.
+  //
+  // Con fechas en la URL, los campos arrancan con ESAS: si no, la pantalla
+  // consultaría el rango del enlace y mostraría en los campos el del servidor.
+  const [desde, setDesde] = useState(filtrosIniciales.desde || '')
+  const [hasta, setHasta] = useState(filtrosIniciales.hasta || '')
 
   // Lo que efectivamente se le pidió a la API. Los filtros de arriba se copian
   // acá solo cuando son válidos: un rango invertido avisa y NO consulta.
-  const [consulta, setConsulta] = useState({ page: 1 })
+  const [consulta, setConsulta] = useState(filtrosIniciales)
 
   const [sales, setSales] = useState([])
   const [total, setTotal] = useState(0)
   const [totalPeriodo, setTotalPeriodo] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
+  // El texto de la búsqueda también sale de la URL: el rebote de más abajo
+  // corre al montar y copia ESTE valor a `consulta.q`, así que arrancarlo vacío
+  // borraría el `q` del enlace 350 ms después de haberlo aplicado.
+  const [searchQuery, setSearchQuery] = useState(filtrosIniciales.q || '')
   const [voiding, setVoiding] = useState(null)
   const [imprimiendo, setImprimiendo] = useState(null)
   const [exportando, setExportando] = useState(false)
@@ -441,6 +582,20 @@ const InvoicesList = () => {
     // fuera idempotente, y aun siéndolo es un viaje al pedo a ARCA.
     if (facturando) return
 
+    // ── La confirmación va ADENTRO de esta función y no en cada botón ──
+    //
+    // Los dos caminos que emiten —«Reintentar facturación» y el «Facturar» que
+    // aparece después de un CUIT_REQUERIDO— pasan por acá. Puesta en el
+    // `onClick` de uno solo, el otro seguiría emitiendo un comprobante fiscal
+    // real de un clic, que es el defecto que esto cierra.
+    const confirmado = await confirm(textoDeConfirmacionDeEmision({
+      comprobante: comprobanteQueSeVaAEmitir(settings.tax_condition),
+      ambiente: settings.afip_environment,
+      referencia: venta.afip_nro ? `Nro ${venta.afip_nro}` : identificadorCorto(venta.id),
+    }))
+
+    if (!confirmado) return
+
     setFacturando(true)
     try {
       await api.post(`/sales/${venta.id}/facturar`, extra)
@@ -614,6 +769,7 @@ const InvoicesList = () => {
   const hayFiltros = searchQuery.trim() !== ''
     || sucursalElegida !== TODAS_LAS_SUCURSALES
     || !!consulta.tipo
+    || !!consulta.estado
 
   /** El nombre de la sucursal filtrada, para el nombre del archivo. */
   const nombreDeLaSucursal = sucursalElegida === TODAS_LAS_SUCURSALES
@@ -665,7 +821,12 @@ const InvoicesList = () => {
 
   const limpiarFiltros = () => {
     setSearchQuery('')
-    aplicarFiltro({ punto_de_venta_id: TODAS_LAS_SUCURSALES, tipo: undefined, q: undefined })
+    aplicarFiltro({
+      punto_de_venta_id: TODAS_LAS_SUCURSALES,
+      tipo: undefined,
+      estado: undefined,
+      q: undefined,
+    })
   }
 
   /**
@@ -855,6 +1016,29 @@ const InvoicesList = () => {
               {/* Las ventas internas: remitos, recibos X y todo lo que se
                   registró sin pedirle un CAE a ARCA. */}
               <option value="sin_cae">Sin comprobante fiscal</option>
+            </select>
+          </label>
+
+          {/* ── Estado ──
+
+              ⚠ NO es lo mismo que «Sin comprobante fiscal» del filtro de al
+              lado, y confundirlos es el defecto que este control cierra. Ese
+              filtra `afip_type IS NULL` —toda venta que nunca pidió un CAE,
+              incluidos los remitos de un comercio que no factura
+              electrónicamente—; el aviso del Panel cuenta las que ARCA
+              RECHAZÓ, que son las que tienen un error guardado y sí tienen
+              algo para hacer. El enlace del Panel llegaba con el número de una
+              población y la pantalla mostraba la otra. */}
+          <label className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[13px]">
+            <AlertTriangle className="h-3.5 w-3.5 text-fg-3" />
+            <select
+              aria-label="Estado"
+              value={consulta.estado || ''}
+              onChange={e => aplicarFiltro({ estado: e.target.value || undefined })}
+              className="border-none bg-transparent text-[13px] outline-none"
+            >
+              <option value="">Todos los estados</option>
+              <option value="rechazada">Rechazadas por AFIP</option>
             </select>
           </label>
         </div>

@@ -51,6 +51,12 @@ import { etiquetaDePago } from '@/utils/mediosDePago'
 //     de arriba (FR-052)— y sin los dos datos el simulador **no simula**: dice
 //     qué falta y adónde cargarlo (FR-051).
 //
+//     ⚠ **Y un cero tampoco es un dato.** Una empresa sin gastos fijos cargados
+//     recibe `fixed_expenses: 0` —la clave viene, porque el permiso está—, y ese
+//     cero hacía que el simulador cayera en «no hay precio que cierre», que es
+//     la frase reservada para gastos ≥ facturación. Con los gastos en cero lo
+//     que hay que decir es qué falta, no que el negocio no cierra.
+//
 //  ── Y una que empezó a hacer ──
 //
 //  **Cada tarjeta lleva su nota al pie con la definición del número.** Es la
@@ -97,9 +103,18 @@ const ACCESOS_RAPIDOS = [
 /**
  * Un importe del negocio, listo para el campo. Vacío si no hay dato.
  *
- * El `> 0` no es cosmético: `target_sales` puede venir en cero, y un cero en la
- * facturación no es un dato con el que se pueda simular —el margen sería una
- * división por cero—. Vacío dice «falta cargarlo», que es lo que pasa.
+ * El `> 0` no es cosmético y vale para los DOS campos:
+ *
+ *  · `target_sales` puede venir en cero, y un cero en la facturación no es un
+ *    dato con el que se pueda simular —el margen sería una división por cero—.
+ *  · `kpis.fixed_expenses` viene en cero cuando la empresa **no cargó ningún
+ *    gasto fijo**: `FixedExpense.sum` de cero filas es cero. Ese cero llegaba al
+ *    campo como «0» y el simulador lo tomaba por un dato, con lo cual el Panel
+ *    de una empresa recién abierta decía «los gastos se llevan todo lo que
+ *    entra» —la frase reservada para gastos ≥ facturación— en vez de decir qué
+ *    falta y dónde se carga (FR-051).
+ *
+ * Vacío dice «falta cargarlo», que es lo que pasa.
  */
 function textoDeImporte(valor) {
   const n = Number(valor)
@@ -243,11 +258,14 @@ export default function Dashboard() {
   // precio (decisión 13).
   const metaDeVentas = metaEscrita ?? textoDeImporte(settings?.target_sales)
   const gastosFijos = gastosEscritos
-    ?? (tiene('fixed_expenses') ? String(kpis.fixed_expenses) : '')
+    ?? (tiene('fixed_expenses') ? textoDeImporte(kpis.fixed_expenses) : '')
 
   const meta = numeroDelCampo(metaDeVentas)
   const fijos = numeroDelCampo(gastosFijos)
-  const puedeSimular = meta !== null && fijos !== null && meta > 0
+  // Gastos fijos en cero es «falta el dato», no «no hay precio que cierre». El
+  // `> 0` cubre además el cero escrito a mano, que el campo vacío no alcanza a
+  // atajar.
+  const puedeSimular = meta !== null && meta > 0 && fijos !== null && fijos > 0
   const bep = puedeSimular ? calcularBep(fijos, meta) : null
   const estrategias = puedeSimular ? estrategiasDePrecio(fijos, meta) : []
 
@@ -533,12 +551,16 @@ function variacionDeVentas(kpis) {
 
 /** Qué falta para poder simular, dicho con el lugar donde se carga (FR-051). */
 function faltaParaSimular(meta, fijos, puedeVerGastos) {
-  if (fijos === null && !puedeVerGastos) {
+  // Un cero se trata igual que un vacío: con los gastos fijos en cero no hay
+  // punto de equilibrio que calcular, y la respuesta útil es dónde cargarlos.
+  const hayGastos = fijos !== null && fijos > 0
+
+  if (!hayGastos && !puedeVerGastos) {
     return 'No podemos traer tus gastos fijos porque te falta el permiso de gastos. ' +
       'Podés escribirlos a mano acá arriba.'
   }
 
-  if (fijos === null) {
+  if (!hayGastos) {
     return 'Cargá tus gastos fijos en Gastos, o escribí un importe acá arriba para probar.'
   }
 

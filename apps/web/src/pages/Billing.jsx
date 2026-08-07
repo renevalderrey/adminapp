@@ -80,6 +80,46 @@ function avisoDeRechazoDeAfip(error, pendiente) {
 }
 
 /**
+ * El código de comprobante de AFIP → el nombre que lee el operador.
+ *
+ * Los mismos tres que ofrece el selector del ticket, indexados por el número
+ * que viaja a la API: lo que se confirma tiene que ser lo que se manda, y lo
+ * que se manda es `pendiente.tipo`.
+ */
+const NOMBRE_DEL_COMPROBANTE = { 1: 'Factura A', 6: 'Factura B', 11: 'Factura C' }
+
+/**
+ * Lo que dice la confirmación antes de emitir un comprobante fiscal.
+ *
+ * ── Por qué no alcanza con «¿Confirmar?» ──
+ *
+ * Un comprobante emitido consume numeración correlativa y para darlo de baja
+ * hace falta una nota de crédito, que el sistema todavía no emite. Preguntar
+ * sin decir QUÉ se emite y CONTRA QUÉ ambiente no le da a nadie con qué
+ * decidir: es el mismo criterio con el que el hito 5 sacó «Emitir Factura de
+ * Prueba» del pie de cobro.
+ *
+ * La diferencia entre los dos ambientes es lo que decide si el clic va o no
+ * va: en producción el comprobante tiene validez fiscal y el número no se
+ * devuelve; en homologación no vale nada.
+ *
+ * ⚠ Hay un texto gemelo en `pages/InvoicesList.jsx`, para el reintento desde
+ * el historial. Están separados porque cada pantalla nombra distinto la venta
+ * —acá es «la que quedó registrada», allá es un número de comprobante—; lo que
+ * NO puede diferir son los dos datos que se dicen.
+ */
+function textoDeConfirmacionDeEmision({ comprobante, ambiente }) {
+  const enProduccion = ambiente === 'production'
+
+  return `Se va a emitir ${comprobante} ante ARCA para la venta que quedó registrada, en `
+    + (enProduccion
+      ? 'el ambiente de PRODUCCIÓN. El comprobante tiene validez fiscal y consume un '
+        + 'número correlativo: para darlo de baja hace falta una nota de crédito, que el '
+        + 'sistema todavía no emite.'
+      : 'el ambiente de HOMOLOGACIÓN. El comprobante NO tiene validez fiscal.')
+}
+
+/**
  * A partir de cuándo la espera del CAE deja de ser «un momento».
  *
  * Cuatro segundos: por debajo, el aviso parpadea en cada venta normal y deja de
@@ -773,6 +813,22 @@ const Billing = () => {
     const pendiente = avisoDeCobro
     if (!pendiente?.reintentable) return
     if (cobroEnCurso.current) return
+
+    // ── El clic que emitía un comprobante fiscal real sin preguntar nada ──
+    //
+    // Este botón NO es «reintentar la venta»: la venta ya está registrada. Lo
+    // único que hace es emitir el comprobante ante ARCA, y eso consume un
+    // número correlativo que no se devuelve.
+    //
+    // Va ANTES de tomar el cerrojo: si se tomara primero, un «Cancelar» tendría
+    // que acordarse de soltarlo, y el día que alguien agregue un `return` en el
+    // medio el POS deja de cobrar con el botón habilitado.
+    const confirmado = await confirm(textoDeConfirmacionDeEmision({
+      comprobante: NOMBRE_DEL_COMPROBANTE[pendiente.tipo] || 'un comprobante fiscal',
+      ambiente: settings.afip_environment,
+    }))
+
+    if (!confirmado) return
 
     let avisarDemoraDeArca = null
 

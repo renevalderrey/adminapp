@@ -237,15 +237,33 @@ async function verificarCircuito(empresaId, usuarioId = null) {
  * bloquea. Si invalidara, el paso 4 nunca se podría cumplir en el momento de
  * pasar a producción, porque el pase implica cambiar el certificado.
  *
+ * @param {number} empresaId
+ * @param {object} [pendientes] La configuración que **va a quedar** cuando quien
+ *   pregunta la está por escribir en la misma petición. Cada clave presente
+ *   —`cuit`, `pv`, `cert`— pisa a la fila guardada. El porqué está abajo.
  * @returns {Promise<{cumplido: boolean, via: string|null, otroCertificado: boolean, evidencia: object|null}>}
  */
-async function estadoDelCircuito(empresaId) {
-  const [evidencia, cuit, pv, cert] = await Promise.all([
+async function estadoDelCircuito(empresaId, pendientes = {}) {
+  const [evidencia, cuitGuardado, pvGuardado, certGuardado] = await Promise.all([
     leerEvidencia(empresaId),
     valorDe('afip_cuit', empresaId),
     valorDe('afip_pv', empresaId),
     valorDe('afip_cert', empresaId),
   ]);
+
+  // ⚠ Se compara contra la configuración que VA A QUEDAR, no contra la guardada.
+  //
+  // `POST /afip/setup` decide el pase a producción **antes** de escribir. Leyendo
+  // solo la base, el gate miraba las filas viejas: una petición que mandaba
+  // `environment: 'production'` junto con un punto de venta o un CUIT nuevos
+  // pasaba a producción amparada en la evidencia de OTRA configuración, y sin una
+  // sola llamada a AFIP —porque con credenciales nuevas `POST /setup` también
+  // saltea la consulta del punto de venta—. El primer comprobante real salía
+  // entonces contra un punto de venta que nadie confirmó, y un comprobante
+  // emitido consume numeración correlativa que sin nota de crédito no se deshace.
+  const cuit = pendientes.cuit === undefined ? cuitGuardado : pendientes.cuit;
+  const pv = pendientes.pv === undefined ? pvGuardado : pendientes.pv;
+  const cert = pendientes.cert === undefined ? certGuardado : pendientes.cert;
 
   const sirve = Boolean(
     evidencia &&

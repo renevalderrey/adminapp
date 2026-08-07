@@ -1005,9 +1005,25 @@ describe('routes/empresas.js · el rol de un miembro se cambia con equipo.editar
 //     una acción sobre otra persona —le corta el acceso en TODAS las empresas a
 //     las que tenga acceso— y va con el mismo permiso que cambiarle el rol.
 //
-//  Degradar el DELETE de la sesión ajena a `equipo.ver` —que tienen los cinco
-//  roles— dejaría a un vendedor cerrándole la sesión al dueño, y la regla general
-//  no lo vería.
+//  Degradar el DELETE de la sesión ajena a `equipo.ver` dejaría a un gerente
+//  cerrándole la sesión al dueño, y la regla general no lo vería.
+//
+//  ── ⚠ `equipo.ver` NO lo tienen los cinco roles ──
+//
+//  Acá decía «`equipo.ver` —que tienen los cinco roles—» y **es falso**: según
+//  `seedPermissions.js` lo tienen `admin` y `gerente`, y nadie más. El que tienen
+//  los cinco es `dashboard.ver`. La frase estaba también en el comentario de la
+//  ruta, con la misma consecuencia: dice «cualquiera puede cerrar sus propias
+//  sesiones» sobre un endpoint que hoy le responde 403 a un vendedor, a alguien
+//  de producción y a alguien de compras — que son justamente quienes dejan la
+//  sesión abierta en la computadora del local.
+//
+//  Se corrige el TEXTO y no el alcance, y es una decisión: repartir un permiso
+//  cambia lo que puede hacer un rol que ya está en producción, y además no
+//  alcanzaría con la ruta —`Team.jsx:637` dibuja el bloque de sesiones solo con
+//  `equipo.ver`, así que un vendedor con el permiso nuevo seguiría sin el botón—.
+//  Son tres lados y se deciden juntos. Lo que queda anclado abajo es el hecho:
+//  quién tiene de verdad el permiso que la ruta declara.
 // ════════════════════════════════════════════
 
 describe('routes/empresas.js · las tres rutas de sesiones y su permiso exacto', () => {
@@ -1024,6 +1040,23 @@ describe('routes/empresas.js · las tres rutas de sesiones y su permiso exacto',
 
     expect(encontrada).toBeDefined();
     expect(encontrada.permiso).toBe(permiso);
+  });
+
+  it('cerrar LAS PROPIAS lo pueden hoy admin y gerente, y NO los cinco roles', () => {
+    // El ancla del texto de arriba. Se ata el permiso que la ruta **declara** a
+    // quién lo tiene **en el catálogo**: si mañana alguien mueve la ruta a un
+    // código más ancho —`dashboard.ver`, que sí tienen los cinco— este caso se
+    // pone en rojo y obliga a corregir también los dos comentarios, en vez de
+    // dejarlos afirmando lo contrario de lo que hace el código.
+    const declarado = buscar('DELETE', '/sesiones').permiso;
+
+    expect(rolesCon(declarado)).toEqual(['admin', 'gerente']);
+
+    // Y el contraste, que es lo que hace verificable la afirmación: el permiso
+    // que sí tienen los cinco existe y es otro.
+    expect(rolesCon('dashboard.ver')).toEqual(
+      ['admin', 'compras', 'gerente', 'produccion', 'vendedor']
+    );
   });
 
   it('las tres se declaran ARRIBA de DELETE /:id, o una de ellas no existe', () => {

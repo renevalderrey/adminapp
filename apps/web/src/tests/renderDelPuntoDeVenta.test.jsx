@@ -975,6 +975,10 @@ describe('Los tres finales del cobro dejan la pantalla como corresponde', () => 
     post.mockResolvedValue({ data: { ok: true, data: { cae: '75123456789012', voucherNumber: 41 } } })
     await userEvent.type(screen.getByPlaceholderText('Opcional'), '20304050607')
     await userEvent.click(reintentar)
+    // El reintento EMITE un comprobante fiscal, así que pasa por la
+    // confirmación. Lo que este test mira es lo de después: que no se registre
+    // la venta otra vez.
+    await userEvent.click(await screen.findByRole('button', { name: 'Confirmar' }))
 
     await waitFor(() =>
       expect(screen.queryByText(/cargá el CUIT acá abajo/)).not.toBeInTheDocument())
@@ -1762,5 +1766,117 @@ describe('Las dos medidas que la maqueta fija, tal como están declaradas', () =
     expect(dosColumnas.className).toContain('min-w-[1080px]')
     // Y el desbordamiento queda ADENTRO del POS, no en el cuerpo de la página.
     expect(dosColumnas.parentElement.className).toContain('overflow-x-auto')
+  })
+})
+
+// ════════════════════════════════════════════
+//  El reintento de facturación pide confirmación
+//
+//  «Reintentar la facturación» NO es «reintentar la venta»: la venta ya está
+//  registrada y lo único que hace ese botón es emitir el comprobante ante
+//  ARCA. Un comprobante emitido consume numeración correlativa y para darlo de
+//  baja hace falta una nota de crédito, que es un proyecto que no existe.
+//
+//  Es el mismo criterio con el que este hito sacó «Emitir Factura de Prueba»
+//  del pie de cobro: la diferencia es que aquel botón se fue y éste tiene que
+//  quedarse, así que lo que se agrega es la pregunta.
+//
+//  ⚠ El `confirm` de `Esc` —vaciar el ticket— ya existía y es de otra cosa. Un
+//  archivo con dos confirmaciones distintas es exactamente donde alguien lee
+//  «acá ya se confirma» y da el caso por cubierto.
+// ════════════════════════════════════════════
+
+/** Deja el POS con una venta registrada y un CUIT_REQUERIDO pendiente. */
+async function conUnReintentoPendiente(opciones = {}) {
+  await montar({ cart: UNA_LINEA, ...opciones })
+
+  cobroConAfipQueRechaza({
+    error: 'CUIT_REQUERIDO',
+    message: 'Una Factura A necesita el CUIT del comprador (11 dígitos).',
+  })
+
+  teclear('Enter', { ctrlKey: true })
+
+  return screen.findByRole('button', { name: /Reintentar la facturación/ })
+}
+
+/** Los pedidos que EMITEN un comprobante ante ARCA. */
+const emisiones = () => post.mock.calls.filter(([url]) => String(url).includes('/facturar'))
+
+describe('El reintento de facturación no emite de un clic', () => {
+  it('apretar el botón NO manda el pedido hasta confirmar', async () => {
+    const reintentar = await conUnReintentoPendiente()
+
+    // El del cobro, que ARCA rechazó. Es la línea base.
+    expect(emisiones()).toHaveLength(1)
+
+    await userEvent.click(reintentar)
+
+    expect(await screen.findByRole('button', { name: 'Confirmar' })).toBeInTheDocument()
+    expect(emisiones()).toHaveLength(1)
+  })
+
+  it('cancelar no emite nada', async () => {
+    const reintentar = await conUnReintentoPendiente()
+
+    await userEvent.click(reintentar)
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancelar' }))
+
+    await new Promise((seguir) => setTimeout(seguir, 0))
+    expect(emisiones()).toHaveLength(1)
+
+    // Y el aviso sigue ahí: cancelar no resuelve la venta sin comprobante, la
+    // deja donde estaba.
+    expect(screen.getByText(/cargá el CUIT acá abajo/)).toBeInTheDocument()
+  })
+
+  it('confirmar sí emite', async () => {
+    // La otra mitad: una confirmación que no deja emitir deja la venta
+    // registrada y sin comprobante para siempre.
+    const reintentar = await conUnReintentoPendiente()
+
+    post.mockResolvedValue({ data: { ok: true, data: { cae: '75123456789012', voucherNumber: 41 } } })
+
+    await userEvent.click(reintentar)
+    await userEvent.click(await screen.findByRole('button', { name: 'Confirmar' }))
+
+    await waitFor(() => expect(emisiones()).toHaveLength(2))
+    expect(emisiones()[1][0]).toBe('/sales/sale_1/facturar')
+  })
+
+  it('la confirmación dice qué comprobante y que el ambiente es PRODUCCIÓN', async () => {
+    // «¿Confirmar?» a secas no le da a nadie con qué decidir. Los dos datos que
+    // deciden son cuál es el comprobante y contra qué ambiente sale: en
+    // producción el número correlativo no se devuelve.
+    const reintentar = await conUnReintentoPendiente({
+      settings: { ...SETTINGS, afip_environment: 'production' },
+    })
+
+    await userEvent.click(reintentar)
+
+    // El diálogo de confirmación, no el ticket: se busca por el rol.
+    const texto = (await screen.findByRole('dialog')).textContent
+
+    // Monotributo emite Factura C, que es el tipo que viaja en el pedido.
+    expect(texto).toContain('Factura C')
+    expect(texto).toContain('PRODUCCIÓN')
+    expect(texto).toContain('nota de crédito')
+  })
+
+  it('en homologación lo dice, y dice que el comprobante no vale', async () => {
+    // La diferencia entre los dos ambientes es lo que decide si el clic va. Con
+    // un solo texto para los dos, el aviso más grave del sistema se lee igual
+    // cuando no pasa nada, y entonces deja de leerse.
+    const reintentar = await conUnReintentoPendiente({
+      settings: { ...SETTINGS, afip_environment: 'homologation' },
+    })
+
+    await userEvent.click(reintentar)
+
+    const texto = (await screen.findByRole('dialog')).textContent
+
+    expect(texto).toContain('HOMOLOGACIÓN')
+    expect(texto).toContain('NO tiene validez fiscal')
+    expect(texto).not.toContain('PRODUCCIÓN')
   })
 })

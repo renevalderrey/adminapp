@@ -30,6 +30,34 @@ const CLAVES_AFIP = ['afip_cuit', 'afip_cert', 'afip_key', 'afip_environment', '
 const CONDICIONES_FISCALES = ['Monotributo', 'RI', 'Exento'];
 
 /**
+ * Un valor que `guardarConfiguracionAfip` NO va a escribir: la fila queda como está.
+ *
+ * Es la guarda de la cadena vacía de FR-075, sacada a una función porque ahora la
+ * usan dos: el bucle que escribe y `loQueVaAQuedar`, que le contesta al gate del
+ * pase a producción qué configuración va a quedar. Escrita dos veces, un día
+ * dirían cosas distintas y el gate volvería a comparar contra otra cosa.
+ */
+function noSeEscribe(valor) {
+  return valor === undefined || valor === null || valor === '';
+}
+
+/**
+ * La configuración de AFIP que **va a quedar** después de guardar estos cambios.
+ *
+ * Solo las tres claves que el gate compara. Una clave ausente significa «esta
+ * petición no la toca», y `estadoDelCircuito` usa entonces la fila guardada.
+ */
+function loQueVaAQuedar(cambios) {
+  const efectiva = {};
+
+  if (!noSeEscribe(cambios.afip_cuit)) efectiva.cuit = cambios.afip_cuit;
+  if (!noSeEscribe(cambios.afip_pv)) efectiva.pv = cambios.afip_pv;
+  if (!noSeEscribe(cambios.afip_cert)) efectiva.cert = cambios.afip_cert;
+
+  return efectiva;
+}
+
+/**
  * El ÚNICO lugar que escribe la configuración de AFIP de una empresa.
  *
  * ── Por qué es una función y no el cuerpo del handler ──
@@ -64,7 +92,7 @@ async function guardarConfiguracionAfip(empresaId, cambios, { transaction } = {}
   for (const clave of CLAVES_AFIP) {
     const valor = cambios[clave];
 
-    if (valor === undefined || valor === null || valor === '') continue;
+    if (noSeEscribe(valor)) continue;
 
     await Setting.upsert(
       { key: clave, empresa_id: empresaId, value: valor },
@@ -157,10 +185,24 @@ async function valorGuardado(clave, empresaId) {
 //   · `verificacion` — la evidencia de `POST /afip/verificar`: si el circuito de
 //     esta empresa, con SU certificado y SU punto de venta, se ejercitó alguna
 //     vez y cómo salió.
+//   · `circuito` — **el veredicto del servidor**: si el paso 4 está cumplido, por
+//     cuál de las dos vías, y si la evidencia es de otro certificado.
 //
 //  El banner verde de la pantalla sale de la segunda y **nunca** de la primera
 //  (FR-080). Y `ambiente` va acá porque el aviso de «los comprobantes no tienen
 //  validez fiscal» depende de él (FR-081).
+//
+//  ── Por qué `circuito` y no que la pantalla lo deduzca ──
+//
+//  Lo deducía, y las dos deducciones estaban mal. `estadoDelCircuito` ya calcula
+//  esto —es lo mismo que decide el bloqueo del pase a producción— y no salía por
+//  ningún lado, así que la pantalla afirmaba «hasta que se verifique no se puede
+//  pasar a producción» a una empresa que ya facturó y a la que el servidor le
+//  contesta 200; y adivinaba «se verificó con otro certificado» comparando
+//  fechas, que falla con un certificado cuyo `validFrom` es anterior a la
+//  verificación pero que se cargó después. La huella SHA-256 de la evidencia
+//  contesta eso exacto, y el certificado no sale por la API para poder calcularla
+//  del lado del navegador.
 //
 //  ⚠ Que `FEDummy` no conteste **no** es un 502 de este endpoint: la evidencia y
 //  el ambiente salen igual, y son justamente lo que la pantalla necesita para
@@ -168,9 +210,9 @@ async function valorGuardado(clave, empresaId) {
 // ════════════════════════════════════════════
 router.get('/status', checkPermission('config.ver'), async (req, res) => {
   try {
-    const [enProduccion, verificacion] = await Promise.all([
+    const [enProduccion, circuito] = await Promise.all([
       afipAuth.isProduction(req.empresaId),
-      afipVerificacion.leerEvidencia(req.empresaId),
+      afipVerificacion.estadoDelCircuito(req.empresaId),
     ]);
 
     let servidoresAfip = null;
@@ -188,7 +230,12 @@ router.get('/status', checkPermission('config.ver'), async (req, res) => {
       data: {
         servidores_afip: servidoresAfip,
         error_servidores: errorDeServidores,
-        verificacion,
+        verificacion: circuito.evidencia,
+        circuito: {
+          cumplido: circuito.cumplido,
+          via: circuito.via,
+          otro_certificado: circuito.otroCertificado,
+        },
         ambiente: enProduccion ? 'production' : 'homologation',
       },
     });
@@ -332,12 +379,23 @@ router.post('/setup', checkPermission('config.editar'), async (req, res) => {
     //
     //  Por eso mismo el paso se cumple también con un CAE previo: un comprobante
     //  autorizado es la prueba más fuerte que existe de que el circuito funciona.
+    //
+    //  ⚠⚠ **Se pregunta por la configuración que va a quedar, no por la
+    //  guardada.** El gate corre ANTES de la escritura de más abajo, así que
+    //  leyendo la base miraba las filas viejas: un cuerpo con
+    //  `{ environment: 'production', pv: '99', cert, key }` respondía 200, dejaba
+    //  la empresa en producción con el punto de venta 99 y no llamaba a AFIP ni
+    //  una vez —las credenciales nuevas saltean también la consulta de más
+    //  abajo—, amparado en una evidencia del punto de venta anterior.
     // ════════════════════════════════════════════
     if (environment === 'production') {
       const yaEstabaEnProduccion = await afipAuth.isProduction(req.empresaId);
 
       if (!yaEstabaEnProduccion) {
-        const circuito = await afipVerificacion.estadoDelCircuito(req.empresaId);
+        const circuito = await afipVerificacion.estadoDelCircuito(
+          req.empresaId,
+          loQueVaAQuedar(valores)
+        );
 
         if (!circuito.cumplido) {
           return res.status(400).json({
@@ -370,9 +428,18 @@ router.post('/setup', checkPermission('config.editar'), async (req, res) => {
     //  nuevo, que es exactamente el caso del primer setup de un cliente.
     //
     //  Entonces: se valida cuando cambia el punto de venta y las credenciales en
-    //  vigor son las que ya están. Lo demás lo cubre «Verificar circuito»
-    //  (`POST /afip/verificar`), que ejecuta los dos pasos con la configuración
-    //  ya guardada, y el bloqueo del pase a producción, que exige haberlo hecho.
+    //  vigor son las que ya están.
+    //
+    //  ⚠ **Lo que queda afuera queda afuera de verdad**, y el comentario anterior
+    //  decía que «lo cubre el bloqueo del pase a producción» cuando no lo cubría:
+    //  el bloqueo leía las filas viejas, así que el punto de venta nuevo que venía
+    //  con credenciales nuevas se colaba a producción sin que nadie lo consultara.
+    //  Ahora el bloqueo compara contra el punto de venta que va a quedar, y ahí sí
+    //  lo cubre — **pero solo cuando se pasa a producción**. Cambiar el punto de
+    //  venta con credenciales nuevas quedándose en homologación no consulta nada:
+    //  no hay comprobante fiscal en juego, el paso 4 del checklist pasa a
+    //  «pendiente» solo —la evidencia es de otro punto de venta— y «Verificar
+    //  circuito» ejecuta los dos pasos con la configuración ya guardada.
     // ════════════════════════════════════════════
     const pvPedido = String(pv === undefined || pv === null ? '' : pv).trim();
     const pvActual = String(await valorGuardado('afip_pv', req.empresaId) || '').trim();
@@ -570,9 +637,12 @@ router.delete('/vinculacion', checkPermission('config.editar'), async (req, res)
 //  el ticket WSAA y consulta el último comprobante autorizado: no emite nada y no
 //  consume numeración.
 //
-//  Que no vuelva lo sostiene una guardia estática en `tests/observabilidad.test.js`:
-//  ninguna ruta fuera de `routes/sales.js` puede llamar a
-//  `afipService.createVoucher`.
+//  Que no vuelva lo sostiene una guardia estática en
+//  `tests/afipConfiguracion.test.js` —no en `observabilidad.test.js`, que es
+//  adonde este comentario mandaba y donde nunca estuvo—: ningún archivo de
+//  `routes/`, `services/`, `utils/` ni `middleware/` fuera de `routes/sales.js`
+//  puede nombrar `createVoucher(`, y la única excepción declarada es
+//  `services/afipService.js`, que es donde el método se define.
 // ════════════════════════════════════════════
 
 // GET /api/afip/invoice/:type/:pv/:number/data — Datos para imprimir

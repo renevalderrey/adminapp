@@ -230,8 +230,57 @@ function pasoDelPuntoDeVenta(configuracion) {
  * ⚠ **Es el que bloquea el pase a producción**, y por eso su evidencia la escribe
  * el servidor: `PUT /api/settings/afip_verificacion` la rechaza. Un paso de
  * checklist que el cliente puede marcar solo no es un paso de checklist.
+ *
+ * ── Y el veredicto también lo manda el servidor ──
+ *
+ * `circuito` es lo que devuelve `GET /afip/status`, calculado por el mismo
+ * `estadoDelCircuito` que decide el bloqueo. Esta pantalla lo re-derivaba, y las
+ * dos derivaciones estaban mal:
+ *
+ *  · **La rama del CAE previo no se veía.** Una empresa que ya emitió un
+ *    comprobante autorizado tiene el paso cumplido —el servidor le contesta 200
+ *    al pase a producción— y acá se leía «pendiente», con un texto que afirmaba
+ *    que hasta verificar no se podía pasar a producción. Falso, y justo para
+ *    quien más factura.
+ *  · **«Se verificó con otro certificado» se adivinaba por fechas**, comparando
+ *    el `validFrom` del certificado contra `verificado_en`. Esa cuenta falla con
+ *    un certificado cuyo `validFrom` es anterior a la verificación pero que se
+ *    cargó después: el paso quedaba en verde afirmando que se verificó con el
+ *    certificado en uso. La huella SHA-256 de la evidencia contesta eso exacto, y
+ *    el navegador no la puede calcular porque el certificado **no sale por la
+ *    API** — que es lo que se quiere.
+ *
+ * Lo que sí se decide acá es la comparación contra el CUIT y el punto de venta
+ * **del formulario**: son los que el usuario está tipeando ahora, y el veredicto
+ * del servidor es el de la última carga.
  */
-function pasoDelCircuito(configuracion, verificacion, certificado) {
+function pasoDelCircuito(configuracion, verificacion, circuito) {
+  const via = circuito && circuito.via
+
+  // La rama (b) de `estadoDelCircuito`. Va primero porque no depende del CUIT ni
+  // del punto de venta —el servidor tampoco los mira ahí— y porque es la que
+  // impide dejar sin facturar a quien ya factura.
+  if (via === 'cae_previo') {
+    if (verificacion && verificacion.resultado !== 'ok') {
+      // Cumplido, pero con algo que mirar: el paso no bloquea nada, y aun así
+      // decir solo «listo» taparía una verificación que falló de verdad.
+      return {
+        estado: 'atencion',
+        detalle:
+          'Esta empresa ya tiene comprobantes autorizados por AFIP, así que el paso está ' +
+          'cumplido y el pase a producción no está bloqueado. Pero la última verificación ' +
+          'falló: conviene resolverla antes de seguir emitiendo.',
+      }
+    }
+
+    return {
+      estado: 'listo',
+      detalle:
+        'Esta empresa ya tiene comprobantes autorizados por AFIP: el circuito funciona. ' +
+        'No hace falta verificar para pasar a producción.',
+    }
+  }
+
   if (!verificacion) {
     return {
       estado: 'pendiente',
@@ -277,18 +326,17 @@ function pasoDelCircuito(configuracion, verificacion, certificado) {
   // certificado, así que invalidar la evidencia al cambiarlo dejaría el paso 4
   // imposible de cumplir justo cuando hace falta (ajuste 3 del plan).
   //
-  // Se detecta sin la huella —que el navegador no tiene, porque el certificado no
-  // sale por la API— comparando fechas: si el certificado en uso empezó a valer
-  // DESPUÉS de la verificación, el que se verificó era otro.
-  const verificadoEn = comoFecha(verificacion.verificado_en)
-  const desde = comoFecha(certificado && certificado.validFrom)
-
-  if (verificadoEn && desde && desde.getTime() > verificadoEn.getTime()) {
+  // Lo contesta el servidor comparando la huella SHA-256 guardada en la evidencia
+  // contra la del certificado en uso. Acá se adivinaba por fechas, y esa cuenta
+  // decía «es el mismo» sobre un certificado que se cargó después de la
+  // verificación pero cuyo `validFrom` es anterior — o sea, en verde, afirmando
+  // algo que nadie comprobó.
+  if (circuito && circuito.otro_certificado) {
     return {
       estado: 'atencion',
       detalle:
         `Se verificó el ${fechaCorta(verificacion.verificado_en)}, con un certificado ` +
-        'anterior al que está cargado hoy. Conviene verificar de nuevo.',
+        'distinto del que está cargado hoy. Conviene verificar de nuevo.',
     }
   }
 
@@ -316,7 +364,7 @@ const DEFINICIONES = [
   {
     codigo: 'circuito',
     titulo: 'Circuito verificado',
-    calcular: (d) => pasoDelCircuito(d.configuracion, d.verificacion, d.certificado),
+    calcular: (d) => pasoDelCircuito(d.configuracion, d.verificacion, d.circuito),
   },
 ]
 
@@ -328,6 +376,9 @@ const DEFINICIONES = [
  *   `afip_cuit`, `afip_pv`, `afip_cert_cargado`, `afip_key_cargado`.
  * @param {object|null} [datos.certificado] Lo que devuelve `GET /api/afip/cert-info`.
  * @param {object|null} [datos.verificacion] La evidencia de `GET /api/afip/status`.
+ * @param {object|null} [datos.circuito] El veredicto del servidor, también de
+ *   `GET /api/afip/status`: `{ cumplido, via, otro_certificado }`. Es lo mismo
+ *   que decide el bloqueo del pase a producción, y por eso no se recalcula acá.
  * @param {Date} [datos.ahora] Inyectable: sin esto el vencimiento no se puede testear.
  * @returns {{pasos: Array<object>, completa: boolean, pendientes: number}}
  */
@@ -335,9 +386,10 @@ export function puestaEnMarchaAfip({
   configuracion = {},
   certificado = null,
   verificacion = null,
+  circuito = null,
   ahora = new Date(),
 } = {}) {
-  const datos = { configuracion: configuracion || {}, certificado, verificacion, ahora }
+  const datos = { configuracion: configuracion || {}, certificado, verificacion, circuito, ahora }
 
   const pasos = DEFINICIONES.map((definicion, i) => {
     const resultado = definicion.calcular(datos) || {}

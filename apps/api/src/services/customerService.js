@@ -7,6 +7,16 @@ const {
   sequelize,
 } = require('../models');
 const { assertEmpresaId } = require('../utils/tenantScope');
+// ── La fecha de referencia del aging es la del NEGOCIO ──
+//
+// Los dos aging de este archivo cortaban con `new Date()`: un instante, en la
+// zona del servidor. El Panel corta con `hoyDelNegocio`, asi que entre las 21:00
+// y las 24:00 hora argentina el MISMO saldo caia en «0 a 30» alla y en «31 a 60»
+// aca. Un cliente que aparece en un tramo distinto segun donde se lo mire no
+// tiene tramo, y es exactamente el defecto que el hito vino a cerrar —«los
+// numeros del Panel son los mismos que muestran las pantallas que los
+// detallan»— sobreviviendo en la pantalla del otro lado (FR-048).
+const { hoyDelNegocio } = require('../utils/fechas');
 // El reparto por antiguedad vivia aca como metodo privado con DOS consumidores
 // internos. El Panel de control es el tercero, y mientras la funcion estuvo
 // escondida en este servicio el Panel escribio su propio aging: los cuatro
@@ -74,10 +84,18 @@ class CustomerService {
     return (parseFloat(totalSales) || 0) - (parseFloat(totalPayments) || 0);
   }
 
-  async calculateAging(customerId, empresaId) {
+  /**
+   * El saldo del cliente repartido por antiguedad.
+   *
+   * @param {number} customerId
+   * @param {number} empresaId
+   * @param {string} [hoy] La fecha del negocio, YYYY-MM-DD. Se puede pasar ya
+   *   resuelta para que todos los cortes de un mismo request usen la misma; si
+   *   no viene, se resuelve aca.
+   */
+  async calculateAging(customerId, empresaId, hoy = null) {
     assertEmpresaId(empresaId);
 
-    const today = new Date();
     const buckets = { '0_30': 0, '31_60': 0, '61_90': 0, '90_plus': 0 };
     const where = { customer_id: customerId, empresa_id: empresaId };
 
@@ -99,7 +117,12 @@ class CustomerService {
     // bucket, que serializado a JSON sale como null.
     if (unpaid <= 0 || totalSalesAmount <= 0) return buckets;
 
-    return repartirPorAntiguedad(sales, today, {
+    // La consulta a la empresa va DESPUES del guard: un cliente sin deuda
+    // devuelve los cuatro tramos en cero sin necesidad de saber en que dia esta
+    // parado el negocio, y esa es la mayoria de los clientes.
+    const referencia = hoy || (await hoyDelNegocio(empresaId));
+
+    return repartirPorAntiguedad(sales, referencia, {
       saldoImpago: unpaid,
       totalFacturado: totalSalesAmount,
       fecha: 'date',
@@ -167,7 +190,18 @@ class CustomerService {
       customer_id: customer.id,
       empresa_id: empresaId,
       amount: data.amount,
-      payment_date: data.payment_date || new Date().toISOString().split('T')[0],
+      // La fecha del NEGOCIO, no la del servidor.
+      //
+      // `new Date().toISOString()` pasa por UTC: una cobranza cargada a las
+      // 22:00 en Argentina quedaba fechada MAÑANA. En un pago eso no es solo
+      // cosmético — la fila entra al aging con fecha futura, y el corte de mes
+      // la cuenta en el mes que no es.
+      //
+      // Molesta más desde que el aging corta con `hoyDelNegocio`: la fecha con
+      // la que se compara pasó a ser la del negocio y la que se guardaba seguía
+      // siendo la del servidor, así que las dos puntas medían con relojes
+      // distintos.
+      payment_date: data.payment_date || (await hoyDelNegocio(empresaId)),
       payment_method: data.payment_method || 'ef',
       reference: data.reference || null,
       notes: data.notes || null,
@@ -218,7 +252,10 @@ class CustomerService {
 
     const totalPayable = parseFloat(payableRow?.total) || 0;
 
-    const today = new Date();
+    // Una sola lectura de la fecha para los DOS aging: si cada uno resolviera la
+    // suya, la pantalla podria repartir el saldo de clientes con un dia y el de
+    // proveedores con otro.
+    const hoy = await hoyDelNegocio(empresaId);
 
     // ── Aging de proveedores ──
     const supplierMovements = await SupplierMovement.findAll({
@@ -235,7 +272,7 @@ class CustomerService {
     ) || 0;
     const unpaidSupplier = Math.max(0, totalDebt - totalPaid);
 
-    const supplierAging = repartirPorAntiguedad(supplierMovements, today, {
+    const supplierAging = repartirPorAntiguedad(supplierMovements, hoy, {
       saldoImpago: unpaidSupplier,
       totalFacturado: totalDebt,
       fecha: 'date',
@@ -251,7 +288,7 @@ class CustomerService {
 
     const totalCustomerSales = allSales.reduce((s, sa) => s + parseFloat(sa.total || 0), 0);
 
-    const customerAging = repartirPorAntiguedad(allSales, today, {
+    const customerAging = repartirPorAntiguedad(allSales, hoy, {
       saldoImpago: totalReceivable,
       totalFacturado: totalCustomerSales,
       fecha: 'date',

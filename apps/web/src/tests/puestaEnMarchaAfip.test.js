@@ -60,6 +60,10 @@ const COMPLETA = {
     ambiente: 'homologation',
     verificado_en: enDias(-2),
   },
+  // El veredicto del servidor (`GET /afip/status` → `circuito`), calculado por el
+  // mismo `estadoDelCircuito` que decide el bloqueo del pase a producción. La
+  // pantalla lo recibe: no lo recalcula ni lo adivina.
+  circuito: { cumplido: true, via: 'verificacion', otro_certificado: false },
   ahora: AHORA,
 }
 
@@ -292,19 +296,113 @@ describe('el paso 4 es del circuito verificado, y de este punto de venta', () =>
     expect(paso(resultado, 'circuito').detalle).toMatch(/verificá de nuevo/i)
   })
 
-  it('un certificado posterior a la verificación avisa, pero NO deja el paso incumplido', () => {
+  it('«se verificó con otro certificado» avisa, pero NO deja el paso incumplido', () => {
     // ⚠ Avisa y no bloquea. El pase a producción implica cambiar el certificado:
     // si la evidencia se invalidara ahí, el paso 4 nunca se podría cumplir justo
     // cuando hace falta (ajuste 3 del plan).
     const resultado = puestaEnMarchaAfip({
       ...COMPLETA,
-      certificado: { ...COMPLETA.certificado, validFrom: enDias(-1) },
+      circuito: { ...COMPLETA.circuito, otro_certificado: true },
     })
 
     const circuito = paso(resultado, 'circuito')
 
     expect(circuito.estado).toBe('atencion')
     expect(circuito.cumplido).toBe(true)
+    expect(circuito.detalle).toMatch(/certificado distinto/i)
+  })
+
+  // ── Las dos fixtures que separan la huella de la heurística de fechas ──
+  //
+  // Esto se deducía acá comparando el `validFrom` del certificado contra
+  // `verificado_en`: «si empezó a valer después, el que se verificó era otro».
+  // Los dos casos de abajo son los que esa cuenta contesta al revés, y por eso
+  // llevan el `validFrom` **peleado** con el veredicto del servidor: con fechas
+  // que acompañaran, los dos pasarían con y sin la corrección.
+
+  it('un certificado que empezó a valer ANTES de la verificación pero se cargó después', () => {
+    // **El caso caro.** El certificado nuevo tiene `validFrom` de hace 200 días
+    // —ARCA los emite con vigencia hacia atrás— y se subió ayer, después de la
+    // verificación de anteayer. La heurística de fechas decía «es el mismo» y
+    // dejaba el paso en VERDE afirmando que se verificó con el certificado en
+    // uso, que es exactamente lo que nadie comprobó. La huella SHA-256 de la
+    // evidencia contesta eso exacto, y el servidor la manda ya calculada.
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      certificado: { ...COMPLETA.certificado, validFrom: enDias(-200) },
+      circuito: { ...COMPLETA.circuito, otro_certificado: true },
+    })
+
+    expect(paso(resultado, 'circuito').estado).toBe('atencion')
+  })
+
+  it('un certificado con validFrom posterior a la verificación NO avisa si es el mismo', () => {
+    // El reverso, y es igual de real: se verificó, y después se recargó **el
+    // mismo** certificado. La heurística ponía el paso en amarillo y mandaba a
+    // repetir un trámite que no hacía falta. El servidor compara huellas y dice
+    // que es el mismo.
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      certificado: { ...COMPLETA.certificado, validFrom: enDias(-1) },
+      circuito: { ...COMPLETA.circuito, otro_certificado: false },
+    })
+
+    expect(paso(resultado, 'circuito').estado).toBe('listo')
+  })
+})
+
+describe('la empresa que YA facturó tiene el paso 4 cumplido, sin verificar nada', () => {
+  it('con la vía del CAE previo el paso está cumplido aunque no haya ninguna evidencia', () => {
+    // **La rama que esta pantalla no veía.** El servidor la calcula —una venta
+    // con `afip_cae` es la prueba más fuerte que existe de que el circuito
+    // funciona— y le contesta 200 al pase a producción. Acá el paso se leía
+    // «pendiente», con un texto que decía que hasta verificar no se podía pasar a
+    // producción: falso, y falso justo para la empresa que más factura.
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      verificacion: null,
+      circuito: { cumplido: true, via: 'cae_previo', otro_certificado: false },
+    })
+
+    const circuito = paso(resultado, 'circuito')
+
+    expect(circuito.estado).toBe('listo')
+    expect(circuito.cumplido).toBe(true)
+    expect(circuito.detalle).toMatch(/comprobantes autorizados/i)
+    expect(circuito.detalle).not.toMatch(/todavía no se probó/i)
+    expect(resultado.completa).toBe(true)
+  })
+
+  it('un CAE previo con la última verificación fallida está cumplido, pero avisa', () => {
+    // Las dos cosas son ciertas a la vez y las dos hay que decirlas: el paso no
+    // bloquea nada —el servidor la deja pasar— y la verificación falló de verdad.
+    // Dibujarlo «listo» a secas taparía la falla; dibujarlo «error» contradiría
+    // al servidor y mandaría a arreglar un bloqueo que no existe.
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      verificacion: { resultado: 'error', paso: 'ticket_wsaa', cuit: '30111111118', pv: 5 },
+      circuito: { cumplido: true, via: 'cae_previo', otro_certificado: false },
+    })
+
+    const circuito = paso(resultado, 'circuito')
+
+    expect(circuito.estado).toBe('atencion')
+    expect(circuito.cumplido).toBe(true)
+    expect(circuito.detalle).toMatch(/verificación\s+falló/i)
+  })
+
+  it('sin la vía del CAE previo, una verificación fallida sigue siendo un paso en rojo', () => {
+    // El contrapeso: sin este caso, una implementación que devolviera «cumplido»
+    // ante cualquier `circuito` pasaría los dos de arriba y el paso 4 dejaría de
+    // bloquear nada.
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      verificacion: { resultado: 'error', paso: 'ticket_wsaa', cuit: '30111111118', pv: 5 },
+      circuito: { cumplido: false, via: null, otro_certificado: false },
+    })
+
+    expect(paso(resultado, 'circuito').estado).toBe('error')
+    expect(paso(resultado, 'circuito').cumplido).toBe(false)
   })
 })
 

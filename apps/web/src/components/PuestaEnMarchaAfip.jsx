@@ -21,6 +21,12 @@ import { puestaEnMarchaAfip } from '@/utils/puestaEnMarchaAfip'
 //  cliente puede marcar solo no es un paso de checklist — y de éste depende poder
 //  pasar a producción.
 //
+//  Y **el veredicto también viene del servidor**, en `circuito`: es el mismo
+//  `estadoDelCircuito` que decide el bloqueo. Cuando esta pantalla lo deducía
+//  sola, no veía la rama del CAE previo —le decía «no podés pasar a producción» a
+//  una empresa a la que el servidor le contesta 200— y adivinaba por fechas si la
+//  verificación era de otro certificado.
+//
 //  Reglas de dibujo: docs/REGLAS-DISENO.md. Referencia viva: pages/Comparador.jsx.
 // ════════════════════════════════════════════
 
@@ -33,6 +39,7 @@ export default function PuestaEnMarchaAfip({
   configuracion,
   certificado,
   verificacion,
+  circuito,
   verificando = false,
   puedeVerificar = true,
   onVerificar,
@@ -41,6 +48,7 @@ export default function PuestaEnMarchaAfip({
     configuracion,
     certificado,
     verificacion,
+    circuito,
   })
 
   return (

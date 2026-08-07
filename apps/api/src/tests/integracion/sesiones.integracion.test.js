@@ -61,6 +61,22 @@ const ESTE = '11111111-1111-4111-8111-111111111111';
 const OTRO = '22222222-2222-4222-8222-222222222222';
 const TERCERO = '33333333-3333-4333-8333-333333333333';
 
+/**
+ * Un identificador MÁS LARGO que la columna, que es `VARCHAR(64)`.
+ *
+ * El UUID lo elige el cliente y el servidor no lo interpreta: nada impide que
+ * mande 96 caracteres. `middleware/registrarSesion.js` recorta a 64 antes de
+ * escribir —si no, el INSERT reventaría en el camino de todos los requests— y
+ * `routes/empresas.js` comparaba el valor **crudo**. Con los 36 caracteres de un
+ * UUID normal el recorte no hace nada y las dos mitades coinciden por
+ * casualidad: por eso este caso necesita un identificador largo, y por eso el
+ * defecto no lo veía ninguno de los tests de arriba.
+ */
+const LARGUISIMO = `${ESTE}-con-una-cola-que-lo-empuja-mas-alla-de-los-64-de-la-columna`;
+
+/** Lo que de ese identificador queda guardado en la fila. */
+const RECORTADO = LARGUISIMO.slice(0, 64);
+
 /** Un token de mentira: la cadena de bypass no lo mira, solo tiene que estar. */
 const TOKEN = 'Bearer da-igual-lo-que-diga';
 
@@ -356,6 +372,78 @@ describe('«cerrar todas menos ésta»', () => {
 
     await deOtro.reload();
     expect(deOtro.cerrada_en).toBeNull();
+  });
+});
+
+// ════════════════════════════════════════════
+//  D4 · el recorte de 64 caracteres, que era asimétrico
+//
+//  `registrarSesion` recorta a 64 antes de escribir; los dos endpoints que
+//  preguntan «¿cuál de estas filas es la mía?» comparaban el valor crudo. Con un
+//  identificador más largo que la columna, **ninguna** fila coincidía: el badge
+//  «Este dispositivo» no aparecía en ninguna —o sea que quien miraba la lista no
+//  tenía forma de saber cuál NO cerrar— y «cerrar todas menos ésta» cerraba
+//  también la propia mientras la respuesta decía «Ésta sigue abierta».
+//
+//  Es de integración porque las dos mitades tienen que ejecutarse: el middleware
+//  escribiendo la fila recortada y el endpoint comparando contra ella. Un doble
+//  devuelve la fila que le pidan y las dos mitades serían la misma suposición.
+// ════════════════════════════════════════════
+
+describe('un identificador más largo que la columna sigue siendo «este dispositivo»', () => {
+  it('la fila guardada es la recortada, y la lista la marca a ELLA y a una sola', async () => {
+    await pedir(LARGUISIMO);
+    await pedir(OTRO);
+
+    // El ancla de la fixture: si esto fallara, el recorte no estaría pasando y
+    // el resto del caso no probaría nada.
+    const mia = await Sesion.findOne({ where: { dispositivo: RECORTADO } });
+    expect(mia).not.toBeNull();
+    expect(LARGUISIMO.length).toBeGreaterThan(64);
+
+    const res = await pedir(LARGUISIMO, '/api/empresas/1/sesiones');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+
+    const marcadas = res.body.data.filter((s) => s.es_este_dispositivo);
+
+    // Una, y la que corresponde. Antes eran CERO: el badge no aparecía en
+    // ninguna fila y las dos se veían igual de cerrables.
+    expect(marcadas).toHaveLength(1);
+    expect(marcadas[0].id).toBe(mia.id);
+  });
+
+  it('«cerrar todas menos ésta» NO cierra ésta, y el navegador sigue entrando', async () => {
+    await pedir(LARGUISIMO);
+    await pedir(OTRO);
+    await pedir(TERCERO);
+
+    const res = await request(app)
+      .delete('/api/empresas/sesiones')
+      .set('Authorization', TOKEN)
+      .set('X-Sesion-Id', LARGUISIMO);
+
+    expect(res.status).toBe(200);
+
+    // Dos, no tres: la propia no entra en «las demás». Antes el `Op.ne` comparaba
+    // contra el crudo, así que las tres filas eran «distintas de ésta».
+    expect(res.body.cerradas).toBe(2);
+    expect(res.body.message).toContain('Ésta sigue abierta');
+
+    const mia = await Sesion.findOne({ where: { dispositivo: RECORTADO } });
+    expect(mia.cerrada_en).toBeNull();
+
+    // Y la mitad que se ve desde afuera: sin esto, una respuesta que dice «Ésta
+    // sigue abierta» sobre una sesión cerrada pasaría igual. El navegador que
+    // apretó el botón recibía 401 en su request siguiente, causado por su propio
+    // pedido.
+    expect((await pedir(LARGUISIMO)).status).toBe(200);
+
+    for (const dispositivo of [OTRO, TERCERO]) {
+      const otra = await Sesion.findOne({ where: { dispositivo } });
+      expect(otra.cerrada_en).not.toBeNull();
+    }
   });
 });
 

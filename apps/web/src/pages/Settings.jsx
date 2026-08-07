@@ -231,6 +231,31 @@ export default function Settings() {
 
   const guardar = async (evento) => {
     evento.preventDefault()
+
+    // ⚠ **La confirmación del pase a producción** (FR-078, US14 escenario 5).
+    //
+    // Es la única cosa de esta pantalla que no se deshace guardando otra vez: a
+    // partir de acá cada comprobante es un hecho fiscal, consume numeración
+    // correlativa de AFIP y darlo de baja exige una nota de crédito, que este
+    // sistema no emite. Volver el desplegable a homologación no anula nada de lo
+    // que ya salió.
+    //
+    // Solo en la TRANSICIÓN: quien ya está en producción guarda su CUIT o su
+    // condición de IVA sin que nada le pregunte nada. Un cartel que sale siempre
+    // es un cartel que nadie lee.
+    const ambienteGuardado = estado?.ambiente || guardado.afip_environment || 'homologation'
+
+    if (config.environment === 'production' && ambienteGuardado !== 'production') {
+      const sigo = await confirm(
+        '¿Pasar a producción? Desde este momento los comprobantes que emitas son REALES: ' +
+        'tienen validez fiscal, se emiten a nombre de tu CUIT y consumen numeración ' +
+        'correlativa de AFIP. Un comprobante emitido no se puede borrar desde acá: darlo ' +
+        'de baja exige una nota de crédito. Volver a homologación no anula los que ya se ' +
+        'emitieron.'
+      )
+      if (!sigo) return
+    }
+
     setGuardando(true)
     try {
       await guardarConfiguracionAfip(config)
@@ -260,7 +285,15 @@ export default function Settings() {
       const res = await verificarCircuitoAfip()
       const evidencia = res.data?.data
 
-      setEstado((actual) => ({ ...(actual || {}), verificacion: evidencia }))
+      // El veredicto del servidor también cambió: se acaba de verificar con el
+      // certificado y el punto de venta que están cargados. Sin actualizarlo, el
+      // paso 4 seguiría mostrando el aviso «se verificó con otro certificado» de
+      // la carga anterior sobre una verificación recién hecha.
+      setEstado((actual) => ({
+        ...(actual || {}),
+        verificacion: evidencia,
+        circuito: { cumplido: true, via: 'verificacion', otro_certificado: false },
+      }))
       toast.success('Circuito verificado: AFIP respondió con el certificado y el punto de venta cargados.')
     } catch (err) {
       toast.error(mensajeDeError(err, 'No se pudo verificar el circuito de facturación.'))
@@ -295,6 +328,15 @@ export default function Settings() {
   const enProduccion = ambiente === 'production'
   const verificacion = estado?.verificacion || null
   const verificado = verificacion?.resultado === 'ok'
+
+  // El veredicto del servidor, que es el mismo que decide el bloqueo del pase a
+  // producción. Lo que hace falta acá es la rama (b): una empresa que ya emitió
+  // un comprobante autorizado **puede** pasar a producción sin verificar nada, y
+  // esta pantalla le decía lo contrario con todas las letras.
+  const circuito = estado?.circuito || null
+  const cumplidoPorCaePrevio = circuito?.via === 'cae_previo'
+  const puedePasarAProduccion = verificado || cumplidoPorCaePrevio
+
   const dias = certificado ? diasHastaVencer(certificado.validTo) : null
 
   return (
@@ -327,11 +369,13 @@ export default function Settings() {
           `servidores_afip` se dibuja abajo y aparte, porque contesta otra
           pregunta: si ARCA está arriba, no si esta empresa puede facturar. */}
       <section
-        data-estado-de-facturacion={verificado ? (enProduccion ? 'produccion' : 'homologacion') : 'sin_verificar'}
+        data-estado-de-facturacion={
+          puedePasarAProduccion ? (enProduccion ? 'produccion' : 'homologacion') : 'sin_verificar'
+        }
         className={`rounded-xl border px-5 py-4 ${
-          verificado && enProduccion
+          puedePasarAProduccion && enProduccion
             ? 'border-ok-line bg-ok-soft'
-            : verificado
+            : puedePasarAProduccion
               ? 'border-warn-line bg-warn-soft'
               : 'border-border bg-surface-2'
         }`}
@@ -339,7 +383,9 @@ export default function Settings() {
         <div className="flex flex-wrap items-start gap-3">
           <ShieldCheck
             className={`mt-0.5 h-[18px] w-[18px] shrink-0 ${
-              verificado && enProduccion ? 'text-ok' : verificado ? 'text-warn' : 'text-fg-3'
+              puedePasarAProduccion && enProduccion
+                ? 'text-ok'
+                : puedePasarAProduccion ? 'text-warn' : 'text-fg-3'
             }`}
           />
 
@@ -360,7 +406,15 @@ export default function Settings() {
               {verificado
                 ? `Circuito verificado el ${fechaCorta(verificacion?.verificado_en)} con el CUIT ` +
                   `${verificacion?.cuit} y el punto de venta ${verificacion?.pv}.`
-                : 'El circuito todavía no se verificó contra AFIP. Hasta que se verifique no se puede pasar a producción.'}
+                : cumplidoPorCaePrevio
+                  /* ⚠ La rama que faltaba, y la frase de abajo era FALSA para
+                     esta empresa: el servidor le contesta 200 al pase a
+                     producción porque ya tiene comprobantes autorizados —un CAE
+                     es la prueba más fuerte que existe de que el circuito
+                     funciona—. Decirle que no puede pasar hasta verificar la
+                     manda a un trámite que no necesita. */
+                  ? 'Esta empresa ya tiene comprobantes autorizados por AFIP, así que el circuito funciona y se puede pasar a producción. Verificar igual sirve para comprobar el certificado y el punto de venta que están cargados hoy.'
+                  : 'El circuito todavía no se verificó contra AFIP. Hasta que se verifique no se puede pasar a producción.'}
             </p>
 
             {certificado && (
@@ -393,6 +447,7 @@ export default function Settings() {
         configuracion={{ ...guardado, afip_cuit: config.cuit, afip_pv: config.pv }}
         certificado={certificado}
         verificacion={verificacion}
+        circuito={circuito}
         verificando={verificando}
         puedeVerificar={puedeEditar}
         onVerificar={verificar}

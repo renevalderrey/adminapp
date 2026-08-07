@@ -6,18 +6,30 @@
 // ════════════════════════════════════════════
 
 const { crearModelo, coincide } = require('./helpers/modelosFalsos');
+const { repartirPorAntiguedad } = require('../utils/antiguedad');
+const { fechaDelNegocio } = require('../utils/fechas');
 
 const mockCustomer = crearModelo([]);
 const mockCustomerPayment = crearModelo([]);
 const mockSale = crearModelo([]);
 const mockSupplierMovement = crearModelo([]);
+const mockSequelize = { query: jest.fn() };
+
+// La zona de la empresa. `hoyDelNegocio` la lee de la base, y de ella sale la
+// fecha con la que se reparte el aging: sin este doble, los tests de tramos
+// probarían el reloj del servidor —que es justamente el defecto—.
+const ZONA_DE_LA_EMPRESA = 'America/Argentina/Buenos_Aires';
+const mockEmpresa = {
+  findByPk: jest.fn(async () => ({ timezone: ZONA_DE_LA_EMPRESA })),
+};
 
 jest.mock('../models', () => ({
   Customer: mockCustomer,
   CustomerPayment: mockCustomerPayment,
   Sale: mockSale,
   SupplierMovement: mockSupplierMovement,
-  sequelize: { query: jest.fn() },
+  Empresa: mockEmpresa,
+  sequelize: mockSequelize,
 }));
 
 const customerService = require('../services/customerService');
@@ -64,6 +76,8 @@ beforeEach(() => {
   mockSale.filas = [];
   mockCustomerPayment.filas = [];
   mockSupplierMovement.filas = [];
+  mockSequelize.query.mockReset();
+  mockEmpresa.findByPk.mockClear();
   for (const m of [mockCustomer, mockSale, mockCustomerPayment, mockSupplierMovement]) m.llamadas = [];
 });
 
@@ -215,5 +229,141 @@ describe('calculateAging', () => {
 
     expect(aging['0_30']).toBe(500);
     expect(aging['31_60']).toBe(500);
+  });
+});
+
+// ════════════════════════════════════════════
+//  El aging corta con la fecha del NEGOCIO, no con la del servidor
+//
+//  El mismo saldo caía en «0 a 30» en el Panel y en «31 a 60» en Clientes: el
+//  Panel reparte con `hoyDelNegocio` y estos dos métodos repartían con
+//  `new Date()`, que es el instante del servidor. Un cliente que aparece en un
+//  tramo distinto según dónde se lo mire no tiene tramo.
+//
+//  ⚠ **La hora de la fixture es la mitad del test.** A las 10:00 de Buenos Aires
+//  la fecha UTC y la del negocio son la misma, el reparto da igual con y sin la
+//  corrección, y el test pasaría siempre. El defecto solo existe entre las 21:00
+//  y las 24:00 locales, que es cuando UTC ya está en el día siguiente.
+// ════════════════════════════════════════════
+
+describe('El aging usa la fecha del negocio y no la del servidor', () => {
+  // 23:25 del 31 de julio en Buenos Aires. En UTC ya es el 1 de agosto.
+  const ANOCHECER_ARGENTINO = new Date('2026-08-01T02:25:00Z');
+
+  // Exactamente 30 días de antigüedad contra la fecha del negocio (31 de julio),
+  // que es el borde del primer tramo: con la fecha del servidor son 31 y cae en
+  // el siguiente. Una venta de en medio del tramo no distinguiría nada.
+  const VENTA_DE_HACE_30_DIAS = {
+    id: 1, customer_id: 100, empresa_id: EMPRESA,
+    status: 'active', is_credit: true, total: '1000', date: '2026-07-01',
+  };
+
+  /** El reparto tal como lo hace el Panel: misma función, fecha del negocio. */
+  function comoLoMuestraElPanel(filas, saldo) {
+    return repartirPorAntiguedad(filas, fechaDelNegocio(ZONA_DE_LA_EMPRESA), {
+      saldoImpago: saldo,
+      totalFacturado: saldo,
+      fecha: 'date',
+      importe: 'total',
+    });
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(ANOCHECER_ARGENTINO);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('a las 23:25 de Buenos Aires la fecha del negocio NO es la fecha UTC del servidor', () => {
+    // Sin esto, alguien puede correr la hora de la fixture y los dos tests de
+    // abajo seguirían en verde sin poder distinguir nada.
+    expect(fechaDelNegocio(ZONA_DE_LA_EMPRESA)).toBe('2026-07-31');
+    expect(new Date().toISOString().split('T')[0]).toBe('2026-08-01');
+  });
+
+  it('calculateAging pone la venta de hace 30 días en «0 a 30», el mismo tramo que el Panel', async () => {
+    mockSale.filas = [VENTA_DE_HACE_30_DIAS];
+
+    const aging = await customerService.calculateAging(100, EMPRESA);
+
+    expect(aging).toEqual(comoLoMuestraElPanel([VENTA_DE_HACE_30_DIAS], 1000));
+    expect(aging['0_30']).toBe(1000);
+    expect(aging['31_60']).toBe(0);
+  });
+
+  it('getSummary reparte el saldo de clientes en el mismo tramo que el Panel', async () => {
+    mockSale.filas = [VENTA_DE_HACE_30_DIAS];
+    // Los dos totales salen de SQL crudo, que acá no corre: el que importa es el
+    // de cuentas por cobrar, y es el que los cuatro tramos tienen que sumar.
+    mockSequelize.query
+      .mockResolvedValueOnce([{ total: '1000' }])
+      .mockResolvedValueOnce([{ total: '0' }]);
+
+    const { aging } = await customerService.getSummary(EMPRESA);
+
+    expect(aging).toEqual(comoLoMuestraElPanel([VENTA_DE_HACE_30_DIAS], 1000));
+    expect(aging['0_30']).toBe(1000);
+    expect(aging['31_60']).toBe(0);
+  });
+});
+
+// ════════════════════════════════════════════
+//  La fecha que se GUARDA es la del negocio, no la del servidor
+//
+//  El aging pasó a cortar con `hoyDelNegocio` en este mismo hito. Pero la fecha
+//  con la que se ESCRIBE una cobranza seguía saliendo de
+//  `new Date().toISOString()`, que pasa por UTC: una cobranza cargada a las
+//  22:00 en Argentina quedaba fechada MAÑANA.
+//
+//  Con las dos puntas midiendo con relojes distintos, la fila entra al aging con
+//  fecha futura y el corte de mes la cuenta en el mes que no es. Lo encontró la
+//  corrección del aging: arreglar el lado de la lectura dejó el de la escritura
+//  más expuesto, no menos.
+// ════════════════════════════════════════════
+
+describe('La cobranza se fecha con el día del negocio', () => {
+  const EMPRESA = 3;
+
+  beforeEach(() => {
+    mockCustomer.filas = [{ id: 40, empresa_id: EMPRESA, name: 'Kiosco Rivadavia' }];
+    mockCustomerPayment.filas = [];
+    mockCustomerPayment.llamadas = [];
+  });
+
+  it('a las 22:00 en Argentina NO se fecha mañana', async () => {
+    // 2026-08-01T01:30:00Z son las 22:30 del 31/7 en Argentina. Es el instante
+    // que DISCRIMINA: con cualquier hora del mediodía las dos fechas coinciden y
+    // el caso pasaría con y sin la corrección.
+    // Relojes falsos y no un espía sobre `Date.now`: `hoyDelNegocio` construye
+    // un `new Date()`, que `Date.now` no intercepta. Con el espía solo, el test
+    // se ejecuta contra la fecha real y pasa o falla según qué día se corra —
+    // que es peor que no tenerlo.
+    jest.useFakeTimers().setSystemTime(new Date('2026-08-01T01:30:00Z'));
+
+    try {
+      await customerService.registerPayment(40, { amount: 5000 }, EMPRESA);
+
+      const guardada = mockCustomerPayment.filas[0].payment_date;
+
+      expect(guardada).toBe('2026-07-31');
+      expect(guardada).not.toBe('2026-08-01');
+
+      // Y que sea exactamente lo que la utilidad compartida diría para ese
+      // instante: si mañana cambia la forma de resolver el día del negocio, este
+      // caso tiene que seguir hablando de lo mismo.
+      expect(guardada).toBe(fechaDelNegocio(ZONA_DE_LA_EMPRESA));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('una fecha explícita del usuario manda sobre la de hoy', async () => {
+    // Sin este caso, una corrección que ignorara `data.payment_date` pasaría el
+    // anterior — y cargar una cobranza atrasada quedaría imposible.
+    await customerService.registerPayment(40, { amount: 5000, payment_date: '2026-05-02' }, EMPRESA);
+
+    expect(mockCustomerPayment.filas[0].payment_date).toBe('2026-05-02');
   });
 });

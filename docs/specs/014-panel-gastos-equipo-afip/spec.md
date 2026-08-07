@@ -2957,7 +2957,40 @@ detalle es trabajo de `sdd-plan`.
     guardias de aislamiento, observabilidad, permisos de rutas, marco de pantalla
     y diseño siguen limpias.
 36. **Cada criterio de aceptación tiene al menos un test que falla si se revierte
-    el cambio que lo implementa.**
+    el cambio que lo implementa**, y esa reversión está **hecha**, no supuesta:
+    revertir la línea, correr, ver el rojo, restaurar. **Con dos excepciones, que
+    son los dos pasos manuales de `tasks.md` y están enumeradas acá**:
+
+    - **M1 — que el circuito funcione contra ARCA.** Exige un trámite con clave
+      fiscal y la respuesta la da un servidor de terceros. Es lo que cubre el
+      escenario 2 de US12 («un certificado que ARCA rechaza»). Todo lo de **este**
+      lado sí está automatizado: qué se guarda, qué mensaje sale, qué status
+      devuelve cada rama, y que la prueba no emita ningún comprobante.
+    - **M2 — avisarle al dueño que los números del Panel se van a mover.** Es una
+      conversación, no una pantalla.
+
+    ⚠ **Este criterio no se da por cumplido leyendo la suite en verde**, y ese es
+    el error que ya se cometió una vez. Una suite verde dice que los tests que
+    existen pasan; **no** dice que exista un test por criterio, y menos que ese
+    test se caiga al revertir el cambio. Lo único que lo cumple es la lista de
+    mutaciones corridas, criterio por criterio.
+
+    **Cuando este hito se declaró cerrado, este criterio era falso.** Medido:
+    **US12 —una historia P1 entera— no tenía un solo criterio con un test que se
+    pusiera en rojo**. El banner de «Circuito verificado el … con el CUIT … y el
+    punto de venta …» se podía reducir a las dos palabras «Circuito verificado.»
+    con `renderDeAjustesAfip.test.jsx` y `puestaEnMarchaAfip.test.js` en verde
+    (escenario 3); la guardia que corta la verificación cuando **no hay
+    certificado cargado** se podía borrar entera con las tres suites de AFIP de la
+    API en verde (escenario 1); y la única fixture de servidores de ARCA tenía los
+    tres campos en `OK` y `error_servidores` en `null`, así que una pantalla que
+    escribiera «OK» fijo o ignorara el error de consulta se leía idéntica a una
+    correcta (escenarios 5 y 6).
+
+    Un criterio de éxito que afirma cobertura universal **es exactamente el que
+    alguien cita para declarar el hito completo**. Escrito sin sus excepciones y
+    sin la exigencia de la mutación hecha, no sostiene ninguna afirmación de
+    completitud: dice lo que se quería, no lo que se verificó.
 
 ---
 

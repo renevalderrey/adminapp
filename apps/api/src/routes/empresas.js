@@ -10,7 +10,7 @@ const path = require('path');
 const logger = require('../utils/logger');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo } = require('../utils/errores');
-const { puedeCambiarRol, esRolValido, ROLES_VALIDOS } = require('../utils/equipo');
+const { puedeCambiarRol, esUltimoAdmin, esRolValido, ROLES_VALIDOS, MOTIVOS } = require('../utils/equipo');
 const sesionesService = require('../services/sesionesService');
 const { dispositivoDeUserAgent } = require('../utils/dispositivo');
 const { CABECERA: CABECERA_DE_SESION } = require('../middleware/registrarSesion');
@@ -440,6 +440,35 @@ router.put('/cambiar-empresa/:id', async (req, res) => {
 //  desde siempre porque `loadEmpresaContext` relee la membresía en cada request.
 // ════════════════════════════════════════════
 
+/**
+ * Hasta dónde se recorta el identificador de sesión antes de compararlo.
+ *
+ * ⚠ Es el MISMO recorte que hace `middleware/registrarSesion.js:134` antes de
+ * escribir, y tiene que serlo: `sesiones.dispositivo` es un `VARCHAR(64)` y el
+ * identificador lo elige el cliente, así que lo que quedó guardado son los
+ * primeros 64 caracteres y nunca el valor crudo.
+ *
+ * Comparar el crudo era asimétrico y rompía las dos cosas que dependen de
+ * «¿cuál de estas filas es la mía?»: con un identificador más largo, ninguna
+ * fila coincidía, el badge «Este dispositivo» no aparecía en ninguna y
+ * `DELETE /sesiones` —«todas menos ésta»— cerraba **también la propia**
+ * mientras la respuesta decía «Ésta sigue abierta». El navegador se quedaba
+ * afuera en el request siguiente, con un 401 que su propio pedido había
+ * causado.
+ *
+ * El largo está escrito acá y allá porque `registrarSesion` no lo exporta; lo
+ * que impide que deriven es el test de integración que manda un identificador
+ * más largo y verifica las dos mitades.
+ */
+const LARGO_DEL_IDENTIFICADOR = 64;
+
+/** El identificador de sesión de este request, recortado como la columna. */
+function identificadorDeSesion(req) {
+  return String(req.headers[CABECERA_DE_SESION] || '')
+    .trim()
+    .slice(0, LARGO_DEL_IDENTIFICADOR);
+}
+
 // GET /api/empresas/:empresaId/sesiones — las abiertas de los miembros activos
 router.get('/:empresaId/sesiones', requireEmpresa, requireEmpresaPropia('empresaId'), checkPermission('equipo.ver'), async (req, res) => {
   try {
@@ -448,7 +477,7 @@ router.get('/:empresaId/sesiones', requireEmpresa, requireEmpresaPropia('empresa
     // El identificador del propio request, para el badge «Este dispositivo». Es
     // lo único que le permite a alguien saber cuál de las filas NO tiene que
     // cerrar. Sale de la cabecera y no de la base: es el dato del request.
-    const mio = String(req.headers[CABECERA_DE_SESION] || '').trim();
+    const mio = identificadorDeSesion(req);
 
     res.json({
       ok: true,
@@ -475,9 +504,24 @@ router.get('/:empresaId/sesiones', requireEmpresa, requireEmpresaPropia('empresa
 
 // DELETE /api/empresas/sesiones — «cerrar todas menos ésta», de las PROPIAS
 //
-// Pide `equipo.ver` y no `equipo.editar`: cualquiera puede cerrar sus propias
-// sesiones —es la puerta de «me quedó abierta en la computadora del local»— y
-// cerrar la de otro es el endpoint de abajo, que sí pide `equipo.editar`.
+// Pide `equipo.ver`, que es **menos** que `equipo.editar` —el de cerrarle la
+// sesión a otro, que es el endpoint de abajo—, y ésa sigue siendo la asimetría
+// correcta: esta acción no toca a nadie más que a uno mismo.
+//
+// ⚠ **Pero `equipo.ver` NO lo tienen los cinco roles.** Según
+// `seedPermissions.js` lo tienen `admin` y `gerente`, y nadie más; el que
+// tienen los cinco es `dashboard.ver`. Acá decía «cualquiera puede cerrar sus
+// propias sesiones» y era falso: un vendedor, alguien de producción o de
+// compras —justamente quienes dejan la sesión abierta en la computadora del
+// local— hoy reciben 403.
+//
+// El texto se corrige y el alcance NO se mueve, y es una decisión, no un
+// olvido: repartir un permiso cambia lo que puede hacer un rol que ya está en
+// producción, y además **no alcanzaría con esta línea**. `Team.jsx:637` dibuja
+// el bloque de sesiones solo con `equipo.ver`, así que un vendedor con el
+// permiso nuevo seguiría sin tener el botón. Entregar la intención escrita acá
+// son tres lados —catálogo, esta ruta y la pantalla— y se decide entero o no se
+// decide. PENDIENTE: «cerrar mis propias sesiones» para los otros tres roles.
 //
 // ⚠ Va declarado ARRIBA de `DELETE /sesiones/:id` por claridad, y las dos ARRIBA
 // de `DELETE /:id`, que es lo que de verdad importa: ver el bloque de arriba.
@@ -485,7 +529,8 @@ router.delete('/sesiones', requireEmpresa, checkPermission('equipo.ver'), async 
   try {
     const cerradas = await sesionesService.cerrarLasDemas({
       usuarioId: req.usuario ? req.usuario.id : null,
-      dispositivoActual: String(req.headers[CABECERA_DE_SESION] || '').trim(),
+      // Recortado, como la columna: sin esto «todas menos ésta» cerraba ésta.
+      dispositivoActual: identificadorDeSesion(req),
     });
 
     res.json({
@@ -781,6 +826,46 @@ router.post('/:empresaId/invitar', checkPermission('equipo.invitar'), requireEmp
       return res.status(400).json({ ok: false, error: 'Ya hay una invitación pendiente para este email' });
     }
 
+    // ── ⚠ Invitar es la OTRA puerta por la que se cambia un rol ──
+    //
+    // Este `where` miraba si había otra invitación pendiente y nada más: nunca
+    // si el email **ya es miembro activo**. Y aceptar una invitación le cambia
+    // el rol a un miembro activo (`routes/auth.js`), así que invitar al único
+    // administrador con rol `vendedor` es «degradar al único administrador»
+    // escrito de otra forma — por este camino no pasaba ninguna de las dos
+    // reglas de `utils/equipo.js` que `PUT /usuarios/:id` sí aplica. Invitar,
+    // aceptar, y la empresa queda con CERO administradores activos: un request
+    // de cada lado, sin carrera, y los dos alcanzables desde la pantalla. De ese
+    // estado no se sale desde la aplicación.
+    //
+    // Acá se corta temprano para que quien invita lo lea ahora, en vez de mandar
+    // un enlace que va a fallar. **La garantía está en `accept-invite`**: esta
+    // invitación puede crearse hoy con dos admins y aceptarse dentro de un mes
+    // con uno solo.
+    const rolPedido = role || 'vendedor';
+
+    const yaMiembro = await UsuarioEmpresa.findOne({
+      where: { empresa_id: req.empresaId, is_active: true },
+      include: [
+        { model: Usuario, as: 'usuario', attributes: ['id', 'email'], where: { email }, required: true },
+      ],
+    });
+
+    if (yaMiembro && rolPedido !== yaMiembro.role) {
+      const miembros = await UsuarioEmpresa.findAll({
+        where: { empresa_id: req.empresaId },
+        attributes: ['id', 'usuario_id', 'role', 'is_active'],
+      });
+
+      if (esUltimoAdmin(yaMiembro, miembros)) {
+        return res.status(400).json({
+          ok: false,
+          error: 'ULTIMO_ADMIN',
+          message: MOTIVOS.ULTIMO_ADMIN,
+        });
+      }
+    }
+
     const invitacion = await Invitacion.create({
       empresa_id: parseInt(req.params.empresaId),
       email,
@@ -837,6 +922,24 @@ router.post('/:empresaId/invitar', checkPermission('equipo.invitar'), requireEmp
 // mandara de nuevo la invitacion al invitado de un cliente ajeno, y ademas leia
 // el nombre de esa empresa por el `include`. Con el `where` acotado, la
 // invitacion de otra empresa da 404, igual que `findScoped`.
+//
+// ── ⚠ Re-enviar RENUEVA el vencimiento, y por eso existe este endpoint ──
+//
+// El `where` no filtra por `expires_at` **a propósito**: la fila que la pantalla
+// pinta «Vencida» es una `pending` con la fecha pasada —nada pasa `status` a
+// `expired`, ni un cron ni nadie— y es exactamente la que alguien quiere volver
+// a mandar. Filtrarla daría 404 sobre el único botón que ofrece esa fila, y
+// volver a invitar a ese email tampoco sale: `POST /:empresaId/invitar` la ve
+// `pending` y responde «Ya hay una invitación pendiente». Sin salida.
+//
+// Lo que faltaba era renovar. Hasta acá se buscaba la vencida, se mandaba el
+// mail **con el enlace muerto** —en producción ese mail sale de verdad— y la
+// pantalla decía «Invitación reenviada» sobre una fila que ella misma pintaba
+// «Vencida». Quien lo recibía abría el enlace y leía «Esa invitación venció».
+//
+// La fecha nueva se calcula igual que la del alta —siete días— y se toma del
+// `defaultValue` del modelo para que las dos no puedan derivar: son la misma
+// regla, no dos.
 router.post('/invitaciones/:token/re-enviar', requireEmpresa, checkPermission('equipo.invitar'), async (req, res) => {
   try {
     const invitacion = await Invitacion.findOne({
@@ -844,6 +947,13 @@ router.post('/invitaciones/:token/re-enviar', requireEmpresa, checkPermission('e
       include: [{ model: Empresa, as: 'empresa' }],
     });
     if (!invitacion) return res.status(404).json({ ok: false, error: 'Invitación no encontrada o ya expiró' });
+
+    // Se renueva ANTES de mandar: el mail que sale tiene que ser el del enlace
+    // que ya sirve. Si el envío después falla, la invitación quedó renovada y
+    // el enlace vive — que es la dirección segura, porque el 502 de abajo le
+    // dice a quien invitó que lo pase a mano.
+    const vencimiento = Invitacion.getAttributes().expires_at.defaultValue;
+    await invitacion.update({ expires_at: vencimiento() });
 
     const envio = await sendEmail({
       to: invitacion.email,
@@ -976,6 +1086,23 @@ router.get('/:empresaId/usuarios', requireEmpresa, requireEmpresaPropia('empresa
 // Se borra y no se restringe: un handler restringido es un `if` que alguien
 // puede sacar. `git revert` lo trae de vuelta si hiciera falta.
 
+/**
+ * Un rechazo de `utils/equipo.js`, empaquetado para poder abortar la transaccion.
+ *
+ * La regla del ultimo administrador se evalua ADENTRO de la transaccion que
+ * escribe —ver el comentario de `PUT /usuarios/:id`—, y lo unico que hace que
+ * una transaccion de Sequelize no commitee es que el callback lance. No es un
+ * `ErrorDeNegocio` porque `fallo` le arma un cuerpo distinto (`error` con el
+ * texto y sin `message`), y la pantalla lee el codigo en `error`.
+ */
+class RechazoDeEquipo extends Error {
+  constructor(veredicto) {
+    super(veredicto.motivo);
+    this.name = 'RechazoDeEquipo';
+    this.veredicto = veredicto;
+  }
+}
+
 // UsuarioEmpresa no tiene columna empresa_id sino empresa_id como FK propia:
 // se filtra por ella igual. Sin el filtro, este endpoint permitia cambiarle el
 // rol o desactivar a cualquier miembro de cualquier empresa cliente.
@@ -1012,43 +1139,62 @@ router.put('/usuarios/:id', requireEmpresa, checkPermission('equipo.editar'), as
       });
     }
 
-    // Solo dos cambios pueden dejar a la empresa sin administrador: mover el rol
-    // y desactivar. Reactivar a alguien, o mandar el mismo rol que ya tiene, no
-    // saca a nadie — y bloquearlos haria que la pantalla no pueda deshacer el
-    // error que acaba de cometer.
-    const cambiaElRol = role !== undefined && role !== ue.role;
-    const desactiva = is_active === false && ue.is_active !== false;
-
-    if (cambiaElRol || desactiva) {
+    await sequelize.transaction(async (t) => {
+      // ── ⚠ La regla se evalúa ADENTRO de la transacción, y CON lock ──
+      //
+      // Antes el equipo se leía acá afuera y la escritura pasaba unas líneas más
+      // abajo, en otra transacción. Entre las dos hay una ventana, y la ventana
+      // se puede ejercitar: una empresa con dos administradores y dos PUT
+      // simultáneos —uno por cada admin— leían los dos «hay otro admin», los dos
+      // pasaban la regla y la empresa quedaba con CERO administradores activos.
+      // Los MISMOS dos requests en secuencia dan 200 y 400, que es lo correcto;
+      // a la vez daban 200 y 200. Reproducido contra Postgres.
+      //
+      // `FOR UPDATE` sobre las filas de la empresa es lo que convierte «leí y
+      // después escribí» en una decisión: el segundo espera al commit del
+      // primero y vuelve a leer, y ahí ve que ya no queda otro admin. Por eso el
+      // `role` y el `is_active` contra los que se compara salen de `actual` —la
+      // fila releída bajo el lock— y no de `ue`, que se leyó antes de tomarlo.
+      //
+      // El `order` no es cosmético: dos transacciones que toman las mismas filas
+      // en orden distinto se traban entre sí y una muere por deadlock.
       const miembros = await UsuarioEmpresa.findAll({
         where: { empresa_id: req.empresaId },
         attributes: ['id', 'usuario_id', 'role', 'is_active'],
+        order: [['id', 'ASC']],
+        transaction: t,
+        lock: t.LOCK.UPDATE,
       });
 
-      const veredicto = puedeCambiarRol({
-        miembro: ue,
-        yo: { usuario_id: req.usuario?.id },
-        miembros,
-      });
+      const actual = miembros.find((m) => String(m.id) === String(ue.id)) || ue;
 
-      if (!veredicto.puede) {
-        return res.status(400).json({
-          ok: false,
-          error: veredicto.codigo,
-          message: veredicto.motivo,
+      // Solo dos cambios pueden dejar a la empresa sin administrador: mover el rol
+      // y desactivar. Reactivar a alguien, o mandar el mismo rol que ya tiene, no
+      // saca a nadie — y bloquearlos haria que la pantalla no pueda deshacer el
+      // error que acaba de cometer.
+      const cambiaElRol = role !== undefined && role !== actual.role;
+      const desactiva = is_active === false && actual.is_active !== false;
+
+      if (cambiaElRol || desactiva) {
+        const veredicto = puedeCambiarRol({
+          miembro: actual,
+          yo: { usuario_id: req.usuario?.id },
+          miembros,
         });
+
+        // Lanzar es la única forma de que la transacción no commitee. El `catch`
+        // de abajo lo traduce al mismo 400 de siempre, con su código y su motivo.
+        if (!veredicto.puede) throw new RechazoDeEquipo(veredicto);
       }
-    }
 
-    // El patch se arma campo por campo: `update({ role, is_active })` con el
-    // cuerpo tal cual manda `undefined` para lo que no vino, y depender de que
-    // Sequelize lo saltee es depender de un detalle de implementacion para no
-    // pisar el rol de alguien al desactivarlo.
-    const patch = {};
-    if (role !== undefined) patch.role = role;
-    if (is_active !== undefined) patch.is_active = is_active;
+      // El patch se arma campo por campo: `update({ role, is_active })` con el
+      // cuerpo tal cual manda `undefined` para lo que no vino, y depender de que
+      // Sequelize lo saltee es depender de un detalle de implementacion para no
+      // pisar el rol de alguien al desactivarlo.
+      const patch = {};
+      if (role !== undefined) patch.role = role;
+      if (is_active !== undefined) patch.is_active = is_active;
 
-    await sequelize.transaction(async (t) => {
       await ue.update(patch, { transaction: t });
 
       // PENDIENTE N15: desactivar a alguien y dejarle las invitaciones
@@ -1072,6 +1218,17 @@ router.put('/usuarios/:id', requireEmpresa, checkPermission('equipo.editar'), as
 
     res.json({ ok: true, data: ue });
   } catch (err) {
+    // El rechazo de `utils/equipo.js` no es una falla del servidor: es la regla
+    // haciendo lo suyo. Se responde con la MISMA forma que antes —`error` con el
+    // código y `message` con el motivo— porque la pantalla los lee así.
+    if (err instanceof RechazoDeEquipo) {
+      return res.status(400).json({
+        ok: false,
+        error: err.veredicto.codigo,
+        message: err.veredicto.motivo,
+      });
+    }
+
     fallo(req, res, err, 'Error al actualizar el usuario');
   }
 });

@@ -29,6 +29,12 @@
 //  verifica que **no vuelva**, ni con ese nombre ni con otro: la guardia es sobre
 //  quién puede llamar a `afipService.createVoucher`.
 //
+//  ⚠ Y sobre **las cuatro carpetas donde vive código**, no solo `routes/`. Hasta
+//  este arreglo leía únicamente las rutas, así que un emisor agregado a un
+//  archivo de `services/` daba las tres suites en verde con el defecto adentro:
+//  la guardia protegía menos de lo que su nombre decía, que es peor que no
+//  tenerla, porque nadie vuelve a mirar lo que ya tiene guardia.
+//
 //  ── Por qué las dos guardias son estáticas ──
 //
 //  `src/tests/setup.js` enciende `BYPASS_AUTH`, así que dentro de esta suite un
@@ -301,8 +307,54 @@ router.post('/verificar', checkPermission('config.editar'), async (req, res) => 
 module.exports = router;
 `;
 
-describe('Ninguna ruta fuera de sales.js emite un comprobante', () => {
-  const rutas = leerCarpeta('routes');
+/**
+ * Las carpetas donde puede vivir un emisor, y por qué son estas cuatro.
+ *
+ * ⚠ **Antes era solo `routes/`, y la guardia decía otra cosa de la que hacía.**
+ * Comprobado: agregando un emisor a un archivo de `services/`, las tres suites
+ * daban 311 en verde con el defecto adentro. Un emisor no necesita ser un
+ * handler: un servicio que alguien llama desde una ruta emite igual, y el
+ * comprobante consume numeración correlativa lo mismo.
+ *
+ * `models/` y `migrations/` quedan afuera porque no llaman a servicios, y
+ * `config/` no tiene lógica. Si mañana alguien pone lógica ahí, esta lista es el
+ * lugar donde se nota.
+ */
+const CARPETAS_CON_CODIGO = ['routes', 'services', 'utils', 'middleware'];
+
+/**
+ * Los DOS archivos que pueden nombrar `createVoucher(`, con su motivo escrito.
+ *
+ * Se afirma por igualdad exacta, como `MENCIONES_DECLARADAS` más abajo: un
+ * archivo nuevo que la nombre pone esto en rojo y quien lo agregue tiene que
+ * escribir acá por qué es inocuo —o darse cuenta de que no lo es—.
+ */
+const EMISORES_DECLARADOS = {
+  'routes/sales.js':
+    'El ÚNICO emisor legítimo. `POST /api/sales/:id/facturar` tiene la venta ya ' +
+    'persistida, es idempotente y toma lock: el CAE que produce cuelga de una venta ' +
+    'y no se puede pedir dos veces. Es lo que `POST /api/afip/invoice` no tenía.',
+  'services/afipService.js':
+    'Es la DEFINICIÓN del método, no una llamada: `async createVoucher(datos)` es la ' +
+    'línea que el detector ve. Refinar el detector para que no la viera —exigiendo un ' +
+    'punto antes— dejaría pasar a quien desestructure el módulo ' +
+    '(`const { createVoucher } = require(...)`), así que se declara en vez de ' +
+    'afinarse: la excepción es visible y la guardia sigue siendo ancha.',
+};
+
+describe('Ningún archivo fuera de sales.js emite un comprobante', () => {
+  const archivos = CARPETAS_CON_CODIGO.flatMap((carpeta) => leerCarpeta(carpeta));
+
+  it('leyó las cuatro carpetas y ninguna vino vacía', () => {
+    // El ancla de la lectura: un `leerCarpeta` con un nombre mal escrito
+    // explotaría, pero una carpeta que quedara vacía dejaría a la guardia
+    // afirmando sobre nada. Es la forma en que dos guardias de este repositorio
+    // ya murieron.
+    for (const carpeta of CARPETAS_CON_CODIGO) {
+      expect(archivos.filter((a) => a.nombre.startsWith(`${carpeta}/`)).length)
+        .toBeGreaterThan(3);
+    }
+  });
 
   it('el detector encuentra la llamada y la nombra con su línea', () => {
     // Sin esta muestra, un detector que dejara de reconocer la forma de la
@@ -326,16 +378,37 @@ describe('Ninguna ruta fuera de sales.js emite un comprobante', () => {
   it('sales.js SÍ la llama, y por eso el detector no está mirando al vacío', () => {
     // **El ancla.** `POST /api/sales/:id/facturar` es el único emisor legítimo:
     // tiene la venta persistida, es idempotente y toma lock. Si esta prueba se
-    // pone en rojo, el detector dejó de reconocer la forma y la de abajo pasó a
-    // ser decorativa.
-    const sales = rutas.find((a) => a.nombre === 'routes/sales.js');
+    // pone en rojo, el detector dejó de reconocer la forma y las de abajo pasaron
+    // a ser decorativas.
+    const sales = archivos.find((a) => a.nombre === 'routes/sales.js');
 
     expect(llamadasACreateVoucher(sales.contenido).length).toBeGreaterThanOrEqual(1);
   });
 
-  it.each(rutas.filter((a) => a.nombre !== 'routes/sales.js'))('$nombre', ({ contenido }) => {
-    expect(llamadasACreateVoucher(contenido)).toEqual([]);
+  it('los archivos que nombran createVoucher son exactamente los dos declarados', () => {
+    // Acá es donde aparece un emisor nuevo en un servicio, que es el caso que la
+    // versión anterior de esta guardia —que solo leía `routes/`— dejaba pasar en
+    // verde.
+    const conLlamada = archivos
+      .filter(({ contenido }) => llamadasACreateVoucher(contenido).length > 0)
+      .map(({ nombre }) => nombre)
+      .sort();
+
+    expect(conLlamada).toEqual(Object.keys(EMISORES_DECLARADOS).sort());
+
+    for (const motivo of Object.values(EMISORES_DECLARADOS)) {
+      expect(motivo.length).toBeGreaterThan(40);
+    }
   });
+
+  // Uno por archivo además de la igualdad de arriba: el fallo trae la LÍNEA con
+  // el texto de la llamada, que es lo que se necesita para ir a mirarla.
+  it.each(archivos.filter((a) => !EMISORES_DECLARADOS[a.nombre]))(
+    '$nombre',
+    ({ contenido }) => {
+      expect(llamadasACreateVoucher(contenido)).toEqual([]);
+    }
+  );
 });
 
 // ════════════════════════════════════════════

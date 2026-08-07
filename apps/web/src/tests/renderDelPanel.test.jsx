@@ -262,7 +262,12 @@ describe('El simulador de punto de equilibrio', () => {
     expect(screen.queryByDisplayValue('2400000')).toBeNull()
   })
 
-  it('sin datos NO simula: dice qué falta y adónde cargarlo', async () => {
+  // ⚠ El nombre decía «sin datos» y `KPIS_PRODUCCION` **no trae la clave**
+  // `fixed_expenses`: lo que se ejercita acá es el camino SIN PERMISO, no el de
+  // una empresa que tiene el permiso y todavía no cargó ningún gasto. Ese otro
+  // caso —la clave presente y en cero— pasaba con y sin corrección y está más
+  // abajo, en «D1 · gastos fijos en $0».
+  it('sin el permiso de gastos NO simula: dice qué falta y adónde cargarlo', async () => {
     await montar({ kpis: KPIS_PRODUCCION, settings: {} })
 
     expect(screen.getByText('Falta un dato para calcular.')).toBeInTheDocument()
@@ -297,6 +302,47 @@ describe('El simulador de punto de equilibrio', () => {
     fireEvent.change(campoGastos(), { target: { value: '1000000' } })
 
     expect(screen.getByText('No hay precio que cierre.')).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('NaN')
+  })
+
+  // ── D1 · gastos fijos en $0 ──
+  //
+  // ⚠ El test de «sin el permiso de gastos NO simula», de acá arriba, **no
+  // cubría este caso**: monta `KPIS_PRODUCCION`, que NO trae la clave
+  // `fixed_expenses`, así que ejercita el camino «sin permiso» y pasa con y sin
+  // esta corrección —de ahí el nombre que ahora lleva—. La
+  // fixture que distingue el defecto es la clave PRESENTE y en cero: es lo que
+  // devuelve el servidor cuando el usuario tiene `gastos.ver` y la empresa
+  // todavía no cargó ningún gasto fijo.
+  it('con fixed_expenses en 0 dice qué falta, y NO que los gastos se llevan todo lo que entra', async () => {
+    await montar({
+      kpis: { ...KPIS_ADMIN, fixed_expenses: 0 },
+      settings: { target_sales: 1000000 },
+    })
+
+    expect(screen.getByText('Falta un dato para calcular.')).toBeInTheDocument()
+    expect(screen.getByText(/Cargá tus gastos fijos en Gastos/)).toBeInTheDocument()
+
+    // La frase que la spec reserva para gastos ≥ facturación. Con los gastos en
+    // cero afirma lo contrario de lo que pasa.
+    expect(screen.queryByText('No hay precio que cierre.')).toBeNull()
+    expect(document.body.textContent).not.toContain('los gastos se llevan todo lo que entra')
+
+    // Y el campo arranca vacío: un cero traído del servidor no es un importe con
+    // el que simular, igual que un `target_sales` en cero.
+    expect(campoGastos().value).toBe('')
+  })
+
+  it('escribir 0 en gastos fijos tampoco dispara «No hay precio que cierre»', async () => {
+    // El campo vacío no alcanza: el usuario puede escribir el cero a mano, y ahí
+    // el número entra por `gastosEscritos` sin pasar por `textoDeImporte`.
+    await montar({ settings: { target_sales: 1000000 } })
+
+    fireEvent.change(campoGastos(), { target: { value: '0' } })
+
+    expect(screen.queryByText('No hay precio que cierre.')).toBeNull()
+    expect(screen.getByText('Falta un dato para calcular.')).toBeInTheDocument()
+    expect(screen.getByText(/Cargá tus gastos fijos en Gastos/)).toBeInTheDocument()
     expect(document.body.textContent).not.toContain('NaN')
   })
 })

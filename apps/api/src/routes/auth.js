@@ -1,7 +1,8 @@
 const express = require('express');
-const { Invitacion, UsuarioEmpresa, Empresa } = require('../models');
+const { Invitacion, UsuarioEmpresa, Empresa, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const { fallo } = require('../utils/errores');
+const { esUltimoAdmin, ETIQUETAS_DE_ROL } = require('../utils/equipo');
 
 // ════════════════════════════════════════════
 //  Invitaciones · dos routers con exposicion distinta
@@ -151,6 +152,84 @@ function motivoDeRechazo(invitacion, usuario) {
   return null;
 }
 
+/**
+ * Le aplica a un miembro YA ACTIVO el rol que trae la invitacion, o dice que no.
+ *
+ * ── ⚠ El segundo camino, que es por donde la regla se perdia ──
+ *
+ * `PUT /api/empresas/usuarios/:id` no deja degradar al unico administrador
+ * activo: la regla esta escrita en `utils/equipo.js` y ese handler la aplica.
+ * Aca no la aplicaba nadie. Habia un `ue.update({ role: invitacion.role, … })` a
+ * secas, y del otro lado `POST /:empresaId/invitar` solo miraba si existia OTRA
+ * invitacion pendiente, nunca si el email ya era miembro activo.
+ *
+ * O sea: invitar al unico administrador con rol `vendedor` y que acepte deja la
+ * empresa con CERO administradores activos. Un request de cada lado, sin
+ * carrera, todo alcanzable desde la pantalla, y de ese estado **no se sale desde
+ * la aplicacion** — hay que escribir en la base. Es la misma forma en que este
+ * repositorio ya perdio la regla dos veces: escrita en un lugar y el otro camino
+ * sin enterarse.
+ *
+ * ── Por que `esUltimoAdmin` y no `puedeCambiarRol` ──
+ *
+ * `puedeCambiarRol` incluye «no te podes tocar a vos mismo», y aca el que acepta
+ * ES el miembro: usarla entera rechazaria TODAS las aceptaciones de alguien que
+ * ya es del equipo, incluida la legitima. La regla que corresponde a este camino
+ * es la otra, y esa es la que se invoca.
+ *
+ * El lock es el mismo molde que el del PUT y por el mismo motivo: leer el equipo
+ * y escribir despues, sin lock, es una decision que dos requests simultaneos
+ * toman dos veces sobre el mismo estado.
+ *
+ * @returns {Promise<object|null>} El cuerpo del 409, o `null` si se aplico.
+ */
+async function aplicarElRolDeLaInvitacion(ue, invitacion) {
+  // Mandar el mismo rol que la persona ya tiene no saca a nadie de ningun lado:
+  // no hace falta ni mirar al equipo, y bloquearlo seria negar una aceptacion
+  // que no cambia nada.
+  if (invitacion.role === ue.role) {
+    await ue.update({ accepted_at: new Date() });
+    return null;
+  }
+
+  let rechazado = false;
+
+  await sequelize.transaction(async (t) => {
+    const miembros = await UsuarioEmpresa.findAll({
+      where: { empresa_id: invitacion.empresa_id },
+      attributes: ['id', 'usuario_id', 'role', 'is_active'],
+      // Mismo orden que el PUT: dos transacciones que toman las mismas filas en
+      // orden distinto se traban entre si y una muere por deadlock.
+      order: [['id', 'ASC']],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+
+    // La fila releida bajo el lock, no la que se leyo antes de tomarlo.
+    const actual = miembros.find((m) => String(m.id) === String(ue.id)) || ue;
+
+    if (invitacion.role !== actual.role && esUltimoAdmin(actual, miembros)) {
+      rechazado = true;
+      return;
+    }
+
+    await ue.update({ role: invitacion.role, accepted_at: new Date() }, { transaction: t });
+  });
+
+  if (!rechazado) return null;
+
+  const etiqueta = ETIQUETAS_DE_ROL[invitacion.role] || invitacion.role;
+
+  return {
+    ok: false,
+    error: 'ULTIMO_ADMIN',
+    message:
+      `Sos el único administrador activo de esta empresa y esa invitación te dejaría como ` +
+      `«${etiqueta}». Si se aplicara, nadie podría invitar, cambiar roles ni tocar la ` +
+      'configuración. Pedí que nombren a otro administrador y volvé a abrir el enlace.',
+  };
+}
+
 // POST /api/auth/accept-invite/:token — Aceptar invitación (usuario autenticado)
 privado.post('/accept-invite/:token', async (req, res) => {
   try {
@@ -200,8 +279,21 @@ privado.post('/accept-invite/:token', async (req, res) => {
       }
 
       // Miembro activo: es una invitacion nueva de un administrador, con el rol
-      // que decidio ahora. Ese si se aplica.
-      await ue.update({ role: invitacion.role, accepted_at: new Date() });
+      // que decidio ahora. Ese si se aplica —salvo que aplicarlo deje a la
+      // empresa sin ningun administrador activo, que es lo que hasta este
+      // corte no miraba nadie por este camino—.
+      //
+      // 409 y no 400: `apps/web/src/utils/invitacion.js` trata 404 y 409 como
+      // definitivos —descarta el token pendiente y explica— y cualquier otro
+      // status como transitorio, o sea que el navegador reintentaria para
+      // siempre contra una invitacion que no va a servir hasta que la empresa
+      // nombre otro administrador. Es el mismo status que MIEMBRO_DESACTIVADO,
+      // que es el mismo caso: no se puede ahora, alguien lo tiene que destrabar.
+      const rechazo = await aplicarElRolDeLaInvitacion(ue, invitacion);
+
+      // La invitacion NO se consume: el dia que nombren otro administrador, el
+      // mismo enlace tiene que seguir sirviendo.
+      if (rechazo) return res.status(409).json(rechazo);
     }
 
     await invitacion.update({ status: 'accepted', accepted_at: new Date() });

@@ -93,6 +93,23 @@ const VERIFICADO = {
   verificado_en: '2026-08-04T12:00:00.000Z',
 }
 
+/**
+ * Una verificación correcta de **otra** configuración que la que está cargada hoy.
+ *
+ * ⚠ **La fixture es el caso.** `VERIFICADO` repite el CUIT y el punto de venta de
+ * `CONFIGURACION`, así que sobre ella un banner que dibujara el formulario en vez
+ * de la evidencia se lee idéntico a uno correcto: los dos números salen iguales.
+ * Acá no coinciden ninguno de los dos, y la fecha tampoco aparece en ningún otro
+ * lugar de la pantalla — que es lo que hace que la afirmación pueda fallar.
+ */
+const VERIFICADO_DE_OTRA_CONFIGURACION = {
+  resultado: 'ok',
+  cuit: '20345678901',
+  pv: 42,
+  ambiente: 'production',
+  verificado_en: '2026-07-15T10:30:00.000Z',
+}
+
 const TODOS = ['config.ver', 'config.editar', 'ventas.ver', 'dashboard.ver']
 
 /**
@@ -133,13 +150,19 @@ async function montar({
   permisos = TODOS,
   alVerificar = { ok: true, data: VERIFICADO },
   alGuardar = { ok: true },
+  // El error con el que falla `GET /settings`. Tiene la forma de un rechazo de
+  // axios —`response.data.error` y `message`— porque es la única con la que se
+  // puede distinguir el mensaje del servidor del de la biblioteca.
+  alCargar = null,
 } = {}) {
   useStore.setState({ permisos })
 
   vi.spyOn(api, 'get').mockImplementation((url) => {
     pedidos.push({ metodo: 'get', url })
 
-    if (url === '/settings') return respuesta({ ok: true, data: configuracion })
+    if (url === '/settings') {
+      return alCargar ? Promise.reject(alCargar) : respuesta({ ok: true, data: configuracion })
+    }
     if (url === '/afip/cert-info') {
       return certificado
         ? respuesta({ ok: true, data: certificado })
@@ -228,6 +251,128 @@ describe('el estado de la facturación no sale de FEDummy', () => {
 
     expect(banner.getAttribute('data-estado-de-facturacion')).toBe('produccion')
     expect(banner.textContent).toMatch(/Circuito verificado/i)
+  })
+
+  it('el banner dice CON QUÉ CUIT, contra qué ambiente y CUÁNDO fue la prueba correcta', async () => {
+    // **US12 escenario 3, y estaba sin red.** «Circuito verificado» a secas no le
+    // sirve a nadie: el dueño que cambió el punto de venta la semana pasada lee
+    // exactamente lo mismo que el que verificó recién, y el banner que sostiene la
+    // decisión de facturar termina hablando de una configuración que ya no existe.
+    //
+    // ⚠ Los tres datos salen de la EVIDENCIA, no del formulario. Por eso la
+    // fixture verifica otro CUIT y otro punto de venta que los que están cargados:
+    // sobre datos que coincidieran, un banner que dibujara el formulario se leería
+    // igual que uno correcto.
+    await montar({
+      certificado: null,
+      configuracion: { ...CONFIGURACION, afip_cert_cargado: false, afip_key_cargado: false },
+      status: {
+        ...SERVIDORES_ARRIBA,
+        verificacion: VERIFICADO_DE_OTRA_CONFIGURACION,
+        ambiente: 'production',
+      },
+    })
+
+    const banner = document.querySelector('[data-estado-de-facturacion]')
+
+    // Cuándo.
+    expect(banner.textContent).toContain('15/07/2026')
+    // Con qué CUIT y con qué punto de venta: los de la prueba, no los del formulario.
+    expect(banner.textContent).toContain('20345678901')
+    expect(banner.textContent).toContain('42')
+    // Contra qué ambiente.
+    expect(banner.textContent).toMatch(/producción/i)
+
+    // Y no el CUIT que está cargado hoy: si el banner lo dibujara, estaría
+    // afirmando que se probó una configuración que nadie probó.
+    expect(banner.textContent).not.toContain('30111111118')
+  })
+})
+
+// ════════════════════════════════════════════
+//  US12 · lo que contesta `FEDummy` se dibuja COMO CONTESTÓ
+//
+//  Los dos casos de abajo estaban sin red, y por la misma razón: la única fixture
+//  de servidores que había —`SERVIDORES_ARRIBA`— tiene los tres campos en `OK` y
+//  `error_servidores` en `null`. Sobre ella, una pantalla que escribiera «OK»
+//  fijo, o que ignorara el error, se lee idéntica a una correcta.
+// ════════════════════════════════════════════
+
+describe('los servidores de ARCA se dibujan como contestaron, no como convendría', () => {
+  it('un servidor caído se dibuja caído, y no como OK', async () => {
+    // **US12 escenario 5.** `FEDummy` contesta tres campos y cualquiera puede
+    // venir mal; el valor sirve justamente para distinguir «ARCA está caído» de
+    // «tu configuración está mal», que es la pregunta real cuando algo falla.
+    //
+    // ⚠ La fixture tiene **un** campo distinto de los otros dos a propósito: con
+    // los tres en `OK` no hay forma de saber si la pantalla lee el valor o lo
+    // escribe.
+    await montar({
+      status: {
+        ...SERVIDORES_ARRIBA,
+        servidores_afip: { AppServer: 'OK', DbServer: 'ERROR', AuthServer: 'OK' },
+      },
+    })
+
+    const servidores = screen.getByRole('heading', { name: 'Servidores de ARCA' })
+      .closest('section')
+
+    expect(servidores.textContent).toContain('DbServer: ERROR')
+    expect(servidores.textContent).toContain('AppServer: OK')
+    expect(servidores.textContent).not.toContain('DbServer: OK')
+  })
+
+  it('si no se pudo consultar, lo dice — y no dibuja «Sin datos» ni «Conectado»', async () => {
+    // **US12 escenario 6.** «No pudimos preguntar» y «no hay nada que mostrar» son
+    // dos cosas distintas: la primera pide reintentar y la segunda, configurar. El
+    // servidor ya las separa —manda `error_servidores` y `servidores_afip: null`—
+    // y hasta acá la pantalla no tenía ningún caso que lo comprobara.
+    await montar({
+      status: {
+        ...SERVIDORES_ARRIBA,
+        servidores_afip: null,
+        error_servidores: 'No se pudo consultar el estado de los servidores de ARCA.',
+      },
+    })
+
+    const servidores = screen.getByRole('heading', { name: 'Servidores de ARCA' })
+      .closest('section')
+
+    expect(servidores.textContent).toContain('No se pudo consultar el estado de los servidores de ARCA.')
+    expect(servidores.textContent).not.toContain('Sin datos.')
+
+    // Y lo que no puede pasar de ninguna manera: que una consulta que falló se
+    // lea como una conexión que anda.
+    expect(screen.queryByText(/Conectado/i)).toBeNull()
+  })
+
+  it('si la carga entera falla, lo dice en castellano y NO con «Request failed»', async () => {
+    // **La otra mitad de US12 escenario 6, y estaba sin red**: hasta acá ningún
+    // caso montaba la pantalla con la carga rota, así que el `catch` de `cargar()`
+    // no lo ejercitaba nada. Dos cosas se caen juntas ahí: el aviso de que no se
+    // pudo leer, y que el texto sea el que la API escribe y no el de axios.
+    //
+    // «Request failed with status code 500» no le dice nada a quien está
+    // configurando su facturación, y es lo que la pantalla mostraba antes del
+    // hito (A10, FR-092, criterio 30).
+    await montar({
+      alCargar: {
+        response: { status: 500, data: { error: 'No se pudo leer la configuración de facturación.' } },
+        message: 'Request failed with status code 500',
+      },
+    })
+
+    const aviso = screen.getByRole('alert')
+
+    expect(aviso.textContent).toMatch(/configuración de facturación/i)
+    expect(document.body.textContent).not.toContain('Request failed')
+
+    // Y no se dibuja nada que afirme que la facturación está lista sobre datos
+    // que no se pudieron leer.
+    expect(screen.queryByText(/Conectado/i)).toBeNull()
+
+    const banner = document.querySelector('[data-estado-de-facturacion]')
+    expect(banner.getAttribute('data-estado-de-facturacion')).toBe('sin_verificar')
   })
 })
 
@@ -523,5 +668,159 @@ describe('la guía y la pantalla dicen lo mismo sobre la clave privada', () => {
     const encabezados = GUIA.split('\n').filter((linea) => linea.trim().startsWith('#'))
 
     expect(encabezados.some((h) => /homologaci[óo]n/i.test(h))).toBe(true)
+  })
+})
+
+// ════════════════════════════════════════════
+//  El veredicto del circuito lo manda el servidor, y la pantalla lo dibuja
+//
+//  `GET /afip/status` devuelve `circuito` —`{ cumplido, via, otro_certificado }`—
+//  calculado por el mismo `estadoDelCircuito` que decide el bloqueo del pase a
+//  producción. La pantalla lo re-derivaba y no veía la rama del CAE previo, así
+//  que le afirmaba «hasta que se verifique no se puede pasar a producción» a una
+//  empresa a la que el servidor le contesta 200.
+// ════════════════════════════════════════════
+
+/**
+ * Una empresa que YA facturó: nunca verificó y no le hace falta.
+ *
+ * ⚠ **La fixture es el caso.** `verificacion` va en `null` —si hubiera evidencia,
+ * la pantalla podría acertar por el camino viejo y el caso no probaría nada— y
+ * `via: 'cae_previo'` es el único dato que dice que el paso está cumplido.
+ */
+const YA_FACTURO_SIN_VERIFICAR = {
+  ...SERVIDORES_ARRIBA,
+  verificacion: null,
+  circuito: { cumplido: true, via: 'cae_previo', otro_certificado: false },
+}
+
+describe('a la empresa que ya facturó no se le dice que no puede pasar a producción', () => {
+  it('el banner NO afirma que hasta verificar no se puede pasar a producción', async () => {
+    // La frase era falsa para esta empresa, y la mandaba a un trámite que no
+    // necesita: un comprobante autorizado es la prueba más fuerte que existe de
+    // que el circuito funciona, y el servidor la deja pasar.
+    await montar({ status: YA_FACTURO_SIN_VERIFICAR })
+
+    const banner = document.querySelector('[data-estado-de-facturacion]')
+
+    expect(banner.textContent).not.toMatch(/Hasta que se verifique no se puede pasar a producción/i)
+    expect(banner.textContent).toMatch(/ya tiene comprobantes autorizados/i)
+  })
+
+  it('el paso 4 del checklist queda cumplido y la puesta en marcha, completa', async () => {
+    // La otra mitad: sin esto, un banner arreglado sobre un checklist que sigue
+    // diciendo «pendiente» deja a la pantalla contradiciéndose sola.
+    await montar({ status: YA_FACTURO_SIN_VERIFICAR })
+
+    expect(document.querySelector('[data-paso="circuito"]').getAttribute('data-estado-del-paso'))
+      .toBe('listo')
+    expect(document.querySelector('[data-puesta-en-marcha]').getAttribute('data-puesta-en-marcha'))
+      .toBe('completa')
+  })
+
+  it('sin CAE previo y sin verificación, la pantalla SÍ dice que falta verificar', async () => {
+    // El contrapeso. Sin este caso, una pantalla que nunca dijera que falta
+    // verificar pasaría los dos de arriba, y el paso 4 —que es el que bloquea—
+    // dejaría de avisar justamente a quien todavía no probó nada.
+    await montar({ status: { ...SERVIDORES_ARRIBA, circuito: { cumplido: false, via: null, otro_certificado: false } } })
+
+    const banner = document.querySelector('[data-estado-de-facturacion]')
+
+    expect(banner.textContent).toMatch(/todavía no se verificó/i)
+    expect(document.querySelector('[data-paso="circuito"]').getAttribute('data-estado-del-paso'))
+      .toBe('pendiente')
+  })
+
+  it('«se verificó con otro certificado» sale de la huella del servidor', async () => {
+    // La pantalla lo adivinaba comparando `validFrom` contra `verificado_en`. Acá
+    // el certificado empezó a valer en 2025 y la verificación es de 2026, así que
+    // esa cuenta diría «es el mismo» — y el servidor, que compara huellas
+    // SHA-256, dice que no lo es.
+    await montar({
+      status: {
+        ...SERVIDORES_ARRIBA,
+        verificacion: VERIFICADO,
+        circuito: { cumplido: true, via: 'verificacion', otro_certificado: true },
+      },
+    })
+
+    expect(document.querySelector('[data-paso="circuito"]').getAttribute('data-estado-del-paso'))
+      .toBe('atencion')
+  })
+})
+
+// ════════════════════════════════════════════
+//  La confirmación del pase a producción (FR-078, US14 escenario 5)
+//
+//  Es la única cosa de esta pantalla que no se deshace guardando otra vez: a
+//  partir de ahí cada comprobante consume numeración correlativa de AFIP y darlo
+//  de baja exige una nota de crédito, que este sistema no emite. La spec lo pide
+//  con esas palabras —«pide confirmación y dice que los comprobantes pasan a ser
+//  reales»— y el único `confirm` que había era el de desvincular.
+// ════════════════════════════════════════════
+
+describe('pasar a producción pide confirmación y dice que los comprobantes son reales', () => {
+  /** Elige «producción» en el desplegable de ambiente y aprieta Guardar. */
+  async function pasarAProduccion() {
+    await interaccion.selectOptions(
+      screen.getByLabelText('Ambiente de facturación'),
+      'production'
+    )
+    await interaccion.click(screen.getByRole('button', { name: /^Guardar$/ }))
+  }
+
+  it('antes de confirmar NO se guardó nada, y el cartel dice qué implica', async () => {
+    await montar({ status: { ...SERVIDORES_ARRIBA, verificacion: VERIFICADO } })
+
+    await pasarAProduccion()
+
+    // Lo que no puede pasar: que el pedido salga y el cartel aparezca después.
+    expect(pedidos.some((p) => p.metodo === 'post' && p.url === '/afip/setup')).toBe(false)
+
+    const cartel = screen.getByText(/los comprobantes que emitas son REALES/i)
+
+    expect(cartel).toBeTruthy()
+    expect(cartel.textContent).toMatch(/numeración/i)
+    expect(cartel.textContent).toMatch(/nota de crédito/i)
+  })
+
+  it('al confirmar sí se guarda, y con el ambiente en producción', async () => {
+    await montar({ status: { ...SERVIDORES_ARRIBA, verificacion: VERIFICADO } })
+
+    await pasarAProduccion()
+    await interaccion.click(screen.getByRole('button', { name: 'Confirmar' }))
+
+    const guardado = pedidos.find((p) => p.metodo === 'post' && p.url === '/afip/setup')
+
+    expect(guardado).toBeTruthy()
+    expect(guardado.cuerpo.environment).toBe('production')
+  })
+
+  it('al cancelar no se guarda NADA, ni el resto del formulario', async () => {
+    // Cancelar tiene que dejar todo como estaba. Un «cancelar» que igual guardara
+    // el CUIT y la condición de IVA —y solo salteara el ambiente— sería peor que
+    // no preguntar: el usuario cree que no pasó nada.
+    await montar({ status: { ...SERVIDORES_ARRIBA, verificacion: VERIFICADO } })
+
+    await pasarAProduccion()
+    await interaccion.click(screen.getByRole('button', { name: 'Cancelar' }))
+
+    expect(pedidos.some((p) => p.metodo === 'post' && p.url === '/afip/setup')).toBe(false)
+  })
+
+  it('la empresa que YA está en producción guarda sin que nada le pregunte', async () => {
+    // ⚠ El contrapeso, y no es opcional: la confirmación es sobre la TRANSICIÓN.
+    // Un cartel que apareciera cada vez que alguien ya en producción cambia su
+    // condición de IVA es un cartel que se aprieta sin leer, y entonces deja de
+    // proteger el caso para el que existe.
+    await montar({
+      configuracion: { ...CONFIGURACION, afip_environment: 'production' },
+      status: { ...SERVIDORES_ARRIBA, verificacion: VERIFICADO, ambiente: 'production' },
+    })
+
+    await interaccion.click(screen.getByRole('button', { name: /^Guardar$/ }))
+
+    expect(screen.queryByText(/los comprobantes que emitas son REALES/i)).toBeNull()
+    expect(pedidos.some((p) => p.metodo === 'post' && p.url === '/afip/setup')).toBe(true)
   })
 })
