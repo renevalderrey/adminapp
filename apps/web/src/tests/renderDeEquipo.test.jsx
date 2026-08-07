@@ -130,6 +130,60 @@ const VENCIDA = {
   expires_at: '2026-04-08T12:00:00.000Z',
 }
 
+/**
+ * Las tres sesiones abiertas, y por qué son tres.
+ *
+ * ⚠ `MI_SESION` es la única con `es_este_dispositivo: true`. Con dos sesiones de
+ * la misma persona y **ninguna** marcada, «el badge cae en la fila correcta» no
+ * se distingue de «el badge no se dibuja»; con las dos marcadas, tampoco se
+ * distingue de «el badge se dibuja siempre». Por eso hay una marcada, una del
+ * mismo usuario sin marcar, y una de otra persona.
+ *
+ * Y los tres `dispositivo` son distintos —computadora, celular, uno que la API
+ * no supo reconocer— porque la etiqueta sale de una tabla y con tres iguales un
+ * `ETIQUETAS[x] || 'Computadora'` mal escrito pasaría en verde.
+ */
+const MI_SESION = {
+  id: 900,
+  usuario_id: 10,
+  nombre: 'Ana Gómez',
+  email: 'ana@comprafit.com',
+  dispositivo: 'computadora',
+  user_agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+  ip: '190.11.22.33',
+  iniciada_en: '2026-08-06T12:00:00.000Z',
+  vista_en: '2026-08-06T14:55:00.000Z',
+  es_este_dispositivo: true,
+}
+
+const MI_CELULAR = {
+  id: 901,
+  usuario_id: 10,
+  nombre: 'Ana Gómez',
+  email: 'ana@comprafit.com',
+  dispositivo: 'celular',
+  user_agent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)',
+  ip: '181.44.55.66',
+  iniciada_en: '2026-08-05T09:00:00.000Z',
+  vista_en: '2026-08-06T10:00:00.000Z',
+  es_este_dispositivo: false,
+}
+
+const LA_DEL_LOCAL = {
+  id: 902,
+  usuario_id: 20,
+  nombre: 'Marcos Ruiz',
+  email: 'marcos@comprafit.com',
+  dispositivo: 'desconocido',
+  user_agent: 'curl/8.4.0',
+  ip: '200.77.88.99',
+  iniciada_en: '2026-08-01T08:00:00.000Z',
+  vista_en: '2026-08-06T09:00:00.000Z',
+  es_este_dispositivo: false,
+}
+
+const SESIONES = [MI_SESION, MI_CELULAR, LA_DEL_LOCAL]
+
 const TODOS = ['equipo.ver', 'equipo.invitar', 'equipo.editar', 'equipo.eliminar']
 
 const ENLACE = 'https://app.adminapp.com/?invite=tok-nuevo'
@@ -160,6 +214,11 @@ const respuesta = (data) => Promise.resolve({ data })
 async function montar({
   equipo = EQUIPO,
   invitaciones = [PENDIENTE, VENCIDA],
+  // ⚠ Por defecto **vacía**, y no es pereza: los nombres de las sesiones son los
+  // mismos que los de los miembros, así que sembrarlas siempre haría que
+  // `filaDe('Ana Gómez')` de los casos de la tabla de miembros encuentre dos
+  // filas y falle por ambigüedad. Los casos de sesiones la piden explícita.
+  sesiones = [],
   permisos = TODOS,
   usuario = YO,
   // Lo que devuelve `POST /empresas/1/invitar`. Es el corazón del archivo.
@@ -181,6 +240,10 @@ async function montar({
 
     if (url === `/empresas/${EMPRESA.id}/invitaciones`) {
       return respuesta({ ok: true, data: invitaciones })
+    }
+
+    if (url === `/empresas/${EMPRESA.id}/sesiones`) {
+      return respuesta({ ok: true, data: sesiones })
     }
 
     return respuesta({ ok: true, data: [] })
@@ -667,5 +730,129 @@ describe('sacar a alguien del equipo, y devolverlo', () => {
     expect(screen.queryByText(/Request failed with status code/)).not.toBeInTheDocument()
     // Y no el código crudo: `mensajeDeError` filtra los códigos de máquina.
     expect(screen.getByRole('alert')).not.toHaveTextContent('ULTIMO_ADMIN')
+  })
+})
+
+// ════════════════════════════════════════════
+//  Las sesiones activas (corte 8)
+//
+//  Lo que se afirma acá es el DIBUJO y el TEXTO. La regla —qué dice «hace 12
+//  minutos», qué etiqueta lleva un dispositivo desconocido— vive en
+//  `utils/sesiones.test.js`, que es cien veces más barato.
+//
+//  Y hay una afirmación que no es cosmética y por eso está en este nivel: **qué
+//  dice el botón y qué dice la confirmación**. Sin la Management API de Auth0 no
+//  se revoca ningún token; lo que se cierra es el navegador que coopera. Quien
+//  lee «revocar el acceso» da por resuelto el caso de alguien que se fue
+//  enojado, y el corte de verdad es otro —desactivar a la persona—, que la API
+//  aplica en el request siguiente.
+// ════════════════════════════════════════════
+
+describe('la lista de sesiones dice la verdad sobre lo que hace cerrar una', () => {
+  it('el botón dice «Cerrar sesión en ese dispositivo» y NO «Revocar acceso»', async () => {
+    await montar({ sesiones: SESIONES })
+
+    // ⚠ Acotado al bloque de sesiones: la tabla de invitaciones tiene su propio
+    // «Revocar la invitación», que es correcto y no tiene nada que ver. Sin el
+    // `within`, este caso pasaría o fallaría por el botón equivocado.
+    const bloque = document.querySelector('[data-bloque="sesiones"]')
+
+    // La mutación que este caso existe para atrapar es literalmente cambiar el
+    // texto del botón por «Revocar acceso».
+    expect(within(bloque).getAllByTitle('Cerrar sesión en ese dispositivo').length).toBeGreaterThan(0)
+    expect(within(bloque).queryByTitle(/Revocar/i)).not.toBeInTheDocument()
+    expect(within(bloque).queryByText(/Revocar/i)).not.toBeInTheDocument()
+  })
+
+  it('la confirmación dice que se cierra en TODAS las empresas y que no revoca nada', async () => {
+    await montar({ sesiones: SESIONES })
+
+    await interaccion.click(screen.getAllByTitle('Cerrar sesión en ese dispositivo')[0])
+
+    const dialogo = await screen.findByRole('dialog')
+
+    // Las dos frases que la decisión 3 del plan y el riesgo 10 exigen que estén.
+    // Una sesión es de un dispositivo y no de una empresa: sin decirlo, alguien
+    // cierra la sesión de un contador que trabaja para tres clientes creyendo
+    // que lo saca de uno.
+    expect(within(dialogo).getByText(/Cerrar sesión en ese dispositivo/i)).toBeInTheDocument()
+    expect(within(dialogo).getByText(/en todas las empresas a las que esta persona tenga acceso/i))
+      .toBeInTheDocument()
+    expect(within(dialogo).getByText(/no revoca su acceso/i)).toBeInTheDocument()
+    expect(within(dialogo).queryByText(/revocar el acceso/i)).not.toBeInTheDocument()
+  })
+
+  it('el bloque explica el techo sin que haya que abrir ningún diálogo', async () => {
+    // La confirmación la lee quien ya decidió. Esta línea la lee quien está
+    // decidiendo, que es el momento en que importa.
+    await montar({ sesiones: SESIONES })
+
+    expect(screen.getByText(/No revoca el acceso de la persona/i)).toBeInTheDocument()
+  })
+})
+
+describe('el badge «Este dispositivo» cae en la fila que corresponde', () => {
+  it('lo lleva la sesión marcada y NINGUNA otra', async () => {
+    await montar({ sesiones: SESIONES })
+
+    const badges = document.querySelectorAll('[data-este-dispositivo="si"]')
+
+    expect(badges).toHaveLength(1)
+
+    // Y está en la fila de la sesión marcada, no en cualquiera: la fila se busca
+    // por su `grid-template-columns`, que es como se buscan las filas de una
+    // tabla que es un grid y no un `<table>`.
+    const fila = badges[0].closest('[style*="grid-template-columns"]')
+
+    expect(within(fila).getByText('190.11.22.33')).toBeInTheDocument()
+    expect(within(fila).getByText('Computadora')).toBeInTheDocument()
+  })
+
+  it('la sesión propia NO se puede cerrar desde su fila', async () => {
+    // Si se pudiera, la respuesta llegaría a un navegador que en su próximo
+    // pedido recibe 401: el botón habría funcionado y la pantalla se habría ido.
+    // Para eso está «Cerrar mis otras sesiones», que nunca toca ésta.
+    await montar({ sesiones: SESIONES })
+
+    const badge = document.querySelector('[data-este-dispositivo="si"]')
+    const fila = badge.closest('[style*="grid-template-columns"]')
+
+    expect(within(fila).getByRole('button')).toBeDisabled()
+  })
+
+  it('cada dispositivo lleva su etiqueta, y el que no se reconoció lo dice', async () => {
+    await montar({ sesiones: SESIONES })
+
+    expect(screen.getByText('Celular')).toBeInTheDocument()
+    // `curl/8.4.0` no es ni computadora ni celular. Inventar «Computadora» acá
+    // sería afirmar algo que nadie sabe.
+    expect(screen.getByText('Desconocido')).toBeInTheDocument()
+  })
+})
+
+describe('cerrar una sesión sin el permiso', () => {
+  it('el botón queda DESHABILITADO con su explicación, no ausente', async () => {
+    // La regla del repositorio: deshabilitado con su motivo. Un botón que no
+    // está no explica por qué no está.
+    await montar({ sesiones: SESIONES, permisos: ['equipo.ver'] })
+
+    const bloque = document.querySelector('[data-bloque="sesiones"]')
+    const botones = within(bloque).getAllByTitle('Necesitás el permiso «equipo.editar»')
+
+    // Las dos sesiones ajenas, no una: con un solo botón, «se deshabilitó el que
+    // miré» y «se deshabilitaron todos» son el mismo resultado.
+    expect(botones).toHaveLength(2)
+    for (const boton of botones) expect(boton).toBeDisabled()
+  })
+})
+
+describe('la lista vacía dice algo distinto según por qué está vacía', () => {
+  it('sin sesiones abiertas, lo dice', async () => {
+    await montar({ sesiones: [] })
+
+    const vacio = document.querySelector('[data-estado-vacio="sin_sesiones"]')
+
+    expect(vacio).not.toBeNull()
+    expect(within(vacio).getByText(/No hay ninguna sesión abierta/i)).toBeInTheDocument()
   })
 })

@@ -1104,7 +1104,7 @@ usando hasta que vence. El corte de verdad es `is_active = false`, que **ya
 funciona hoy**. La pantalla dice **«cerrar sesión en ese dispositivo»**, no
 «revocar el acceso» (decisión 2 del plan, riesgo 10).
 
-- [ ] **T1393** Crear `apps/api/src/migrations/20260812-sesiones-de-usuario.js` con
+- [x] **T1393** Crear `apps/api/src/migrations/20260812-sesiones-de-usuario.js` con
       la tabla `sesiones` del data-model —`usuario_id` FK `ON DELETE CASCADE`,
       `dispositivo VARCHAR(64)`, `user_agent TEXT`, `ip VARCHAR(45)`, `iniciada_en`,
       `vista_en`, `cerrada_en`, `cerrada_por` FK `ON DELETE SET NULL`— con el
@@ -1122,7 +1122,7 @@ funciona hoy**. La pantalla dice **«cerrar sesión en ese dispositivo»**, no
       esquema — sin el índice, la carrera de T1395 no tiene quién la arbitre.
       **Qué se revierte para verlo en rojo**: sacar el `unique` del índice.
 
-- [ ] **T1394** [P] Crear `apps/api/src/utils/dispositivo.js` con
+- [x] **T1394** [P] Crear `apps/api/src/utils/dispositivo.js` con
       `dispositivoDeUserAgent(ua)` → `'computadora' | 'celular' | 'desconocido'`.
       Es **pura a propósito**: la etiqueta se puede corregir sin migrar nada, porque
       lo que se guarda es el user-agent crudo. Su test en
@@ -1132,7 +1132,7 @@ funciona hoy**. La pantalla dice **«cerrar sesión en ese dispositivo»**, no
       “desconocido” y no rompe»*.
       **Qué se revierte para verlo en rojo**: sacar la guarda del nulo.
 
-- [ ] **T1395** Crear `apps/api/src/services/sesionesService.js` con `registrar`,
+- [x] **T1395** Crear `apps/api/src/services/sesionesService.js` con `registrar`,
       `sesionesDeLaEmpresa(empresaId)`, `cerrar(id, porUsuarioId)` y
       `cerrarLasDemas(usuarioId, dispositivoActual)`. **`sesiones` no tiene
       `empresa_id` a propósito** (decisión 3): el aislamiento sale de la membresía,
@@ -1151,7 +1151,7 @@ funciona hoy**. La pantalla dice **«cerrar sesión en ese dispositivo»**, no
       **Qué se revierte para verlo en rojo**: sacar el `catch` del
       `UniqueConstraintError`. El test falla con el error del driver.
 
-- [ ] **T1396** Crear `apps/api/src/middleware/registrarSesion.js` y montarlo en
+- [x] **T1396** Crear `apps/api/src/middleware/registrarSesion.js` y montarlo en
       `apps/api/src/server.js`, **después de `loadEmpresaContext`** en las dos
       cadenas (`authEmpresa` y `authSinEmpresa`). Las cinco reglas de la decisión 2,
       en este orden: sin `Authorization` → **sigue sin tocar nada** (el cron, el
@@ -1184,7 +1184,7 @@ funciona hoy**. La pantalla dice **«cerrar sesión en ese dispositivo»**, no
       ⚠ **Esta es la línea que se saca para revertir el corte entero** (riesgo 1 del
       plan). Que esté sola en `server.js` y no repartida es parte del requisito.
 
-- [ ] **T1397** En `apps/api/src/routes/empresas.js`, los tres endpoints:
+- [x] **T1397** En `apps/api/src/routes/empresas.js`, los tres endpoints:
       `GET /:empresaId/sesiones` (`equipo.ver` + `requireEmpresaPropia`, solo las
       abiertas, con `es_este_dispositivo` comparando contra el `X-Sesion-Id` del
       propio request y `dispositivo` derivado con `utils/dispositivo.js`) ·
@@ -1207,7 +1207,7 @@ funciona hoy**. La pantalla dice **«cerrar sesión en ese dispositivo»**, no
       puede cerrar una de la A» se arma al revés: se siembra la sesión de un usuario
       que **solo** es miembro de la empresa B y se pide cerrarla desde la sesión de A.
 
-- [ ] **T1398** En el mismo archivo, `GET /:empresaId/usuarios` gana, por miembro,
+- [x] **T1398** En el mismo archivo, `GET /:empresaId/usuarios` gana, por miembro,
       `ultimo_acceso` (el máximo de `sesiones.vista_en`) y `sesiones_abiertas`
       (FR-121). Un miembro que **nunca entró** manda `ultimo_acceso: null`
       (FR-122). En una sola consulta agregada, no una por miembro.
@@ -1218,7 +1218,7 @@ funciona hoy**. La pantalla dice **«cerrar sesión en ese dispositivo»**, no
       una fecha vacía»* y *«veinte miembros no cuestan veinte consultas»*.
       **Qué se revierte para verlo en rojo**: devolver `ultimo_acceso: ''`.
 
-- [ ] **T1399** En `apps/web/src/services/api.js`, el interceptor de request
+- [x] **T1399** En `apps/web/src/services/api.js`, el interceptor de request
       (`:127-135`) manda **`X-Sesion-Id`** junto a `X-Empresa-Id` y
       `X-Punto-De-Venta-Id`: un UUID v4 que `apps/web/src/sesion/ProveedorDeSesion.jsx`
       genera **una vez** y guarda en `localStorage`. Y el interceptor de respuesta
@@ -1235,7 +1235,7 @@ funciona hoy**. La pantalla dice **«cerrar sesión en ese dispositivo»**, no
       **Qué se revierte para verlo en rojo**: borrar el identificador con cualquier
       401.
 
-- [ ] **T1400** Crear `apps/web/src/components/SesionesDelEquipo.jsx` y colgarlo de
+- [x] **T1400** Crear `apps/web/src/components/SesionesDelEquipo.jsx` y colgarlo de
       `pages/Team.jsx`: la lista de sesiones abiertas con dispositivo, IP, cuándo
       empezó, cuándo fue el último acceso y el badge **«Este dispositivo»**. El botón
       dice **«Cerrar sesión en ese dispositivo»** y la confirmación dice, con esas
@@ -1290,7 +1290,7 @@ de servidor de esta fase, y va escrita arriba de cada archivo de test:
 > **Lo que ningún nivel contesta** —que el circuito de verdad funcione contra
 > ARCA— es el paso manual **M1**, y es el único de esta fase.
 
-- [ ] **T1401** Crear `apps/api/src/services/afipVerificacion.js` y
+- [x] **T1401** Crear `apps/api/src/services/afipVerificacion.js` y
       `POST /api/afip/verificar` (`config.editar`) en `apps/api/src/routes/afip.js`.
       **Ejecuta** la verificación en dos pasos, en este orden, y el mensaje de error
       dice **cuál de los dos** falló: `afipAuth.getAccessTicket(empresaId)` —prueba
@@ -1312,7 +1312,7 @@ de servidor de esta fase, y va escrita arriba de cada archivo de test:
       T1360: `PUT /api/settings/:key` no la puede escribir. **Un paso de checklist que
       el cliente puede marcar solo no es un paso de checklist.**
 
-- [ ] **T1402** En `apps/api/src/routes/afip.js`, `POST /setup` gana tres
+- [x] **T1402** En `apps/api/src/routes/afip.js`, `POST /setup` gana tres
       validaciones y **conserva las cinco que ya tiene**, incluida **la guarda de la
       cadena vacía de `afip.js:132-141`, que no se toca** (supuesto 8, FR-075):
       **(a)** la **pareja cert-clave** —se firma un blob de prueba con la clave y se
@@ -1329,7 +1329,7 @@ de servidor de esta fase, y va escrita arriba de cada archivo de test:
       CUIT avisa cuál es cuál»*, con un par PEM generado en el test.
       **Qué se revierte para verlo en rojo**: sacar la verificación de firma.
 
-- [ ] **T1403** En el mismo endpoint, **el bloqueo del pase a producción**: si el
+- [x] **T1403** En el mismo endpoint, **el bloqueo del pase a producción**: si el
       cambio lleva `environment` de algo que no es `production` **a** `production` y
       el paso 4 no está cumplido → `400 { error: 'CIRCUITO_NO_VERIFICADO' }` con qué
       hacer (decisión 2 del usuario, decisión 11 del plan). El paso 4 está cumplido si
@@ -1351,7 +1351,7 @@ de servidor de esta fase, y va escrita arriba de cada archivo de test:
       facturando»*.
       **Qué se revierte para verlo en rojo**: sacar la rama (b); el segundo falla.
 
-- [ ] **T1404** En el mismo archivo, `GET /status` (`:31`) deja de ser «probar la
+- [x] **T1404** En el mismo archivo, `GET /status` (`:31`) deja de ser «probar la
       conexión». `FEDummy` **no lleva `Auth`**: contesta si los servidores de ARCA
       están arriba, y responde OK con el certificado vencido, con la clave equivocada
       o sin ningún certificado cargado (A5). Pasa a devolver dos cosas distintas
@@ -1362,7 +1362,7 @@ de servidor de esta fase, y va escrita arriba de cada archivo de test:
       la respuesta NO dice que la facturación de esta empresa esté lista»*.
       **Qué se revierte para verlo en rojo**: devolver un solo booleano `conectado`.
 
-- [ ] **T1405** Crear `DELETE /api/afip/vinculacion` (`config.editar`): borra
+- [x] **T1405** Crear `DELETE /api/afip/vinculacion` (`config.editar`): borra
       `afip_cert`, `afip_key`, `afip_pv`, `afip_environment` y `afip_verificacion`
       **en transacción** e invalida el ticket WSAA por `guardarConfiguracionAfip`.
       **No toca `afip_cuit`** —es un dato de la empresa, no una credencial— y **no
@@ -1375,7 +1375,7 @@ de servidor de esta fase, y va escrita arriba de cada archivo de test:
       **Qué se revierte para verlo en rojo**: agregar `afip_cuit` a la lista de claves
       borradas.
 
-- [ ] **T1406** [P] Crear `apps/web/src/utils/puestaEnMarchaAfip.js` con el estado y
+- [x] **T1406** [P] Crear `apps/web/src/utils/puestaEnMarchaAfip.js` con el estado y
       el **tono** de los cuatro pasos —CUIT cargado, certificado subido y vigente,
       punto de venta declarado, **circuito verificado**— y los días hasta el
       vencimiento del certificado (FR-083, FR-086, FR-089, FR-090). **Nunca devuelve
@@ -1387,7 +1387,7 @@ de servidor de esta fase, y va escrita arriba de cada archivo de test:
       que está completo»* (FR-085).
       **Qué se revierte para verlo en rojo**: comparar la fecha con `>=` en vez de `>`.
 
-- [ ] **T1407** Crear `apps/web/src/components/PuestaEnMarchaAfip.jsx` (ancla a
+- [x] **T1407** Crear `apps/web/src/components/PuestaEnMarchaAfip.jsx` (ancla a
       **29**) y reescribir la sección AFIP de `apps/web/src/pages/Settings.jsx`
       (ancla a **30**, y sale de `PENDIENTES` de `formato.test.js`): el checklist de
       los cuatro pasos con el botón **«Verificar circuito»** · el banner que dice
@@ -1421,7 +1421,7 @@ de servidor de esta fase, y va escrita arriba de cada archivo de test:
       de `PROXIMOS-PROYECTOS.md`, junto con el token de TiendaNube— y **no puede
       agregar ningún lugar nuevo donde ese material quede en claro** (FR-096).
 
-- [ ] **T1408** [P] `docs/GUIA_AFIP.md`: **(a)** la sección nueva del **certificado
+- [x] **T1408** [P] `docs/GUIA_AFIP.md`: **(a)** la sección nueva del **certificado
       de homologación**, que es un trámite distinto del de producción, con otro
       servicio de ARCA, y que hoy **no está documentado ni pedido en ninguna parte** —
       el paso 5 actual presenta el ambiente como un interruptor sobre el mismo
@@ -1450,7 +1450,7 @@ haber verificado devuelve un error que dice qué hacer.
 eligió: **las cuatro rutas quedan sin gate de módulo**. Son cinco líneas y no
 depende de nada; va al final para que el cambio visible no se mezcle con nada.
 
-- [ ] **T1409** **(a)** En `apps/web/src/components/navegacion.js`, sale la clave
+- [x] **T1409** **(a)** En `apps/web/src/components/navegacion.js`, sale la clave
       `modulo` de los cuatro ítems: `/gastos` (`:42`), `/panel` (`:43`),
       `/facturacion` (`:49`) y `/team` (`:61`). **No se les pone `RouteGuard`**: son
       el esqueleto del sistema (decisión 6 del usuario, decisión 14 del plan).

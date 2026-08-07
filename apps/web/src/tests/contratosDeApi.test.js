@@ -29,7 +29,16 @@ const PAGINAS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'p
 // vacío y una paginación de una sola página no dibuja ningún botón que apretar.
 // Vacío se comporta igual que antes —`{ ok: true }`—, así que los casos que ya
 // estaban no cambian.
-const { llamadas, respuestas } = vi.hoisted(() => ({ llamadas: [], respuestas: new Map() }))
+const { llamadas, respuestas, interceptores } = vi.hoisted(() => ({
+  llamadas: [],
+  respuestas: new Map(),
+  // Los interceptores que `services/api.js` registra al importarse. El doble los
+  // guardaba en el vacío (`use: () => 1`), así que las dos cosas que el módulo
+  // hace en TODOS los requests —mandar las cabeceras de contexto y decidir qué
+  // pasa con un 401— no las miraba nada. Guardarlos no cambia el comportamiento
+  // de ningún caso que ya estaba: ninguno los invocaba.
+  interceptores: { request: [], response: [] },
+}))
 
 vi.mock('axios', () => {
   const registrar = (metodo) => (url, ...resto) => {
@@ -43,8 +52,17 @@ vi.mock('axios', () => {
     put: registrar('put'),
     delete: registrar('delete'),
     interceptors: {
-      request: { use: () => 1, eject: () => {} },
-      response: { use: () => 1, eject: () => {} },
+      request: {
+        use: (alPedir) => { interceptores.request.push(alPedir); return interceptores.request.length },
+        eject: () => {},
+      },
+      response: {
+        use: (alResponder, alFallar) => {
+          interceptores.response.push({ alResponder, alFallar })
+          return interceptores.response.length
+        },
+        eject: () => {},
+      },
     },
   }
 
@@ -62,6 +80,11 @@ const {
   getSuppliers,
   getSupplierMovements,
   exportarCuenta,
+  identificadorDeDispositivo,
+  olvidarDispositivo,
+  getSesionesDelEquipo,
+  cerrarSesion,
+  cerrarMisOtrasSesiones,
 } = await import('../services/api.js')
 
 const { default: useStore } = await import('../store/useStore.js')
@@ -459,5 +482,121 @@ describe('el id es del ticket, no del disparo del cobro', () => {
     expect(cuerpos).toHaveLength(2)
     expect(cuerpos[0].id).toMatch(/^sale_\d+_[0-9a-f]{8}$/)
     expect(cuerpos[1].id).toBe(cuerpos[0].id)
+  })
+})
+
+// ════════════════════════════════════════════
+//  El identificador de dispositivo (`X-Sesion-Id`)
+//
+//  Es la cabecera de la que depende la funcionalidad entera de sesiones: sin
+//  ella la API responde 401 `SESION_REQUERIDA`, y con una distinta en cada
+//  request la pantalla de Equipo mostraría una fila por request.
+//
+//  Se ejercitan los **interceptores de verdad**, los que `services/api.js`
+//  registró al importarse. Un test que llamara a `identificadorDeDispositivo()`
+//  a mano diría que la función anda, no que la cabecera salga.
+// ════════════════════════════════════════════
+
+describe('todos los requests llevan X-Sesion-Id, y es el mismo entre dos llamadas', () => {
+  /** El interceptor de request que `services/api.js` registró sin token. */
+  const alPedir = () => interceptores.request[interceptores.request.length - 1]
+
+  it('la cabecera sale, y es la misma en dos requests seguidos', () => {
+    const uno = alPedir()({ headers: {} })
+    const dos = alPedir()({ headers: {} })
+
+    expect(uno.headers['X-Sesion-Id']).toBeTruthy()
+    expect(dos.headers['X-Sesion-Id']).toBe(uno.headers['X-Sesion-Id'])
+  })
+
+  it('es un UUID y no un contador ni el token', () => {
+    // Un identificador adivinable dejaría que alguien cierre la sesión de otro
+    // sin conocerla. No es la garantía principal —el servidor valida la
+    // membresía— pero un `1`, un `2` y un `3` en `localStorage` es una invitación.
+    const { headers } = alPedir()({ headers: {} })
+
+    expect(headers['X-Sesion-Id']).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
+  })
+
+  it('sobrevive a un reinicio del módulo: sale de localStorage', () => {
+    // Sin esto, cada recarga de la página abriría una sesión nueva y la lista
+    // mostraría una fila por pestaña abierta desde que la persona entró.
+    const primero = alPedir()({ headers: {} }).headers['X-Sesion-Id']
+
+    expect(localStorage.getItem('adminapp.dispositivo')).toBe(primero)
+  })
+
+  it('la manda SIEMPRE, incluso sin empresa elegida', () => {
+    // `X-Empresa-Id` y `X-Punto-De-Venta-Id` van con `if` porque hay pantallas
+    // que se dibujan antes de que haya empresa. Ésta no puede: los primeros
+    // requests del arranque son justamente los que traen el contexto, y sin la
+    // cabecera la API los corta con 401.
+    const { headers } = alPedir()({ headers: {} })
+
+    expect(headers['X-Empresa-Id']).toBeUndefined()
+    expect(headers['X-Sesion-Id']).toBeTruthy()
+  })
+})
+
+describe('un 401 SESION_CERRADA borra el identificador; un 401 cualquiera NO', () => {
+  /** El manejador de errores del interceptor de respuesta. */
+  const alFallar = () => interceptores.response[0].alFallar
+
+  const fallo = (status, data) => {
+    const error = { config: {}, response: { status, data } }
+    return alFallar()(error).catch(() => {})
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    olvidarDispositivo()
+  })
+
+  it('con SESION_CERRADA, el próximo ingreso es una sesión nueva', async () => {
+    const antes = identificadorDeDispositivo()
+
+    await fallo(401, { error: 'SESION_CERRADA' })
+
+    // Si volviera con el mismo identificador chocaría contra la fila cerrada y
+    // nadie podría volver a entrar desde esta computadora nunca más.
+    expect(localStorage.getItem('adminapp.dispositivo')).toBeNull()
+    expect(identificadorDeDispositivo()).not.toBe(antes)
+  })
+
+  it('con un 401 cualquiera —un token vencido— el identificador NO se toca', async () => {
+    // Ésta es la mitad que importa. Borrarlo en todo 401 abriría una sesión
+    // nueva por cada expiración de token, y la lista mostraría siete filas del
+    // mismo navegador: exactamente el defecto por el que la sesión NO se
+    // identifica con el hash del access token.
+    const antes = identificadorDeDispositivo()
+
+    await fallo(401, { error: 'Token inválido o expirado' })
+
+    expect(localStorage.getItem('adminapp.dispositivo')).toBe(antes)
+    expect(identificadorDeDispositivo()).toBe(antes)
+  })
+
+  it('un 403 tampoco lo toca', async () => {
+    const antes = identificadorDeDispositivo()
+
+    await fallo(403, { error: 'FORBIDDEN' })
+
+    expect(identificadorDeDispositivo()).toBe(antes)
+  })
+})
+
+describe('los tres helpers de sesiones pegan a las rutas del contrato', () => {
+  it('getSesionesDelEquipo cuelga de la empresa; cerrar, no', async () => {
+    // La asimetría es del contrato y no un descuido: la lista es de una empresa
+    // —salen los miembros de ESA empresa— y una sesión no es de ninguna. El
+    // servidor resuelve si es tuya mirando la membresía.
+    await getSesionesDelEquipo(7)
+    expect(ultima()).toMatchObject({ metodo: 'get', url: '/empresas/7/sesiones' })
+
+    await cerrarSesion(42)
+    expect(ultima()).toMatchObject({ metodo: 'delete', url: '/empresas/sesiones/42' })
+
+    await cerrarMisOtrasSesiones()
+    expect(ultima()).toMatchObject({ metodo: 'delete', url: '/empresas/sesiones' })
   })
 })

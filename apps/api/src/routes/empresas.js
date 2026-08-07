@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
-const { Empresa, PuntoDeVenta, Usuario, UsuarioEmpresa, Suscripcion, Invitacion, Rol, RolPermiso, UsuarioPermiso, Permiso, sequelize } = require('../models');
+const { Empresa, PuntoDeVenta, Usuario, UsuarioEmpresa, Suscripcion, Invitacion, Rol, RolPermiso, UsuarioPermiso, Permiso, Sesion, sequelize } = require('../models');
 const { sendEmail, welcomeEmail, invitationEmail, enlaceDeInvitacion } = require('../services/email');
 const checkPermission = require('../middleware/checkPermission');
 const { requireEmpresa } = require('../middleware/auth');
@@ -11,6 +11,9 @@ const logger = require('../utils/logger');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo } = require('../utils/errores');
 const { puedeCambiarRol, esRolValido, ROLES_VALIDOS } = require('../utils/equipo');
+const sesionesService = require('../services/sesionesService');
+const { dispositivoDeUserAgent } = require('../utils/dispositivo');
+const { CABECERA: CABECERA_DE_SESION } = require('../middleware/registrarSesion');
 
 // ── Logo de empresa ──
 // El logo se guarda como data URI en la columna Empresa.logo (TEXT), no en
@@ -408,6 +411,123 @@ router.put('/cambiar-empresa/:id', async (req, res) => {
   }
 });
 
+// ════════════════════════════════════════════
+//  SESIONES · desde qué dispositivos entró cada miembro, y cómo se cierra uno
+//
+//  ⚠ ── Por qué este bloque está ACÁ ARRIBA y no al final del archivo ──
+//
+//  Por `DELETE /sesiones`, que es **un solo segmento**: declarado más abajo, lo
+//  atrapa primero `router.delete('/:id')` con `id = 'sesiones'`,
+//  `requireEmpresaPropia` hace `parseInt('sesiones')` → `NaN` y el endpoint
+//  responde **403 sin haber existido nunca**. Express resuelve por orden de
+//  declaración. Los otros dos (`/:empresaId/sesiones`, `/sesiones/:id`) tienen dos
+//  segmentos y no chocan con nada, pero se dejan juntos: partir el bloque para
+//  que dos rutas queden acá y una allá es cómo alguien las vuelve a mover.
+//
+//  ── El aislamiento no sale de una columna ──
+//
+//  `sesiones` no tiene `empresa_id` a propósito (decisión 3): una sesión es de un
+//  dispositivo de una persona, y esa persona cambia de empresa con el selector
+//  sin cerrar nada. El filtro por membresía está encapsulado en
+//  `services/sesionesService.js` y una sesión ajena da cero filas → **404**, que
+//  es la misma respuesta que `findScoped` para un recurso de otra empresa: un 403
+//  confirmaría que existe.
+//
+//  ── Y el techo, que la pantalla repite con estas palabras ──
+//
+//  Cerrar una sesión NO revoca el token: cierra al navegador que **coopera**. El
+//  corte de verdad es desactivar al miembro (`PUT /usuarios/:id`), que funciona
+//  desde siempre porque `loadEmpresaContext` relee la membresía en cada request.
+// ════════════════════════════════════════════
+
+// GET /api/empresas/:empresaId/sesiones — las abiertas de los miembros activos
+router.get('/:empresaId/sesiones', requireEmpresa, requireEmpresaPropia('empresaId'), checkPermission('equipo.ver'), async (req, res) => {
+  try {
+    const sesiones = await sesionesService.sesionesDeLaEmpresa(req.empresaId);
+
+    // El identificador del propio request, para el badge «Este dispositivo». Es
+    // lo único que le permite a alguien saber cuál de las filas NO tiene que
+    // cerrar. Sale de la cabecera y no de la base: es el dato del request.
+    const mio = String(req.headers[CABECERA_DE_SESION] || '').trim();
+
+    res.json({
+      ok: true,
+      data: sesiones.map((s) => ({
+        id: s.id,
+        usuario_id: s.usuario_id,
+        nombre: s.usuario ? s.usuario.nombre : null,
+        email: s.usuario ? s.usuario.email : null,
+        // La etiqueta se DERIVA del user-agent crudo, que es lo que se guarda:
+        // así se puede corregir el reconocimiento de un navegador nuevo sin
+        // migrar un solo dato.
+        dispositivo: dispositivoDeUserAgent(s.user_agent),
+        user_agent: s.user_agent,
+        ip: s.ip,
+        iniciada_en: s.iniciada_en,
+        vista_en: s.vista_en,
+        es_este_dispositivo: Boolean(mio) && s.dispositivo === mio,
+      })),
+    });
+  } catch (err) {
+    fallo(req, res, err, 'Error al listar las sesiones del equipo');
+  }
+});
+
+// DELETE /api/empresas/sesiones — «cerrar todas menos ésta», de las PROPIAS
+//
+// Pide `equipo.ver` y no `equipo.editar`: cualquiera puede cerrar sus propias
+// sesiones —es la puerta de «me quedó abierta en la computadora del local»— y
+// cerrar la de otro es el endpoint de abajo, que sí pide `equipo.editar`.
+//
+// ⚠ Va declarado ARRIBA de `DELETE /sesiones/:id` por claridad, y las dos ARRIBA
+// de `DELETE /:id`, que es lo que de verdad importa: ver el bloque de arriba.
+router.delete('/sesiones', requireEmpresa, checkPermission('equipo.ver'), async (req, res) => {
+  try {
+    const cerradas = await sesionesService.cerrarLasDemas({
+      usuarioId: req.usuario ? req.usuario.id : null,
+      dispositivoActual: String(req.headers[CABECERA_DE_SESION] || '').trim(),
+    });
+
+    res.json({
+      ok: true,
+      cerradas,
+      message: cerradas === 1
+        ? 'Se cerró 1 sesión. Ésta sigue abierta.'
+        : `Se cerraron ${cerradas} sesiones. Ésta sigue abierta.`,
+    });
+  } catch (err) {
+    fallo(req, res, err, 'Error al cerrar las otras sesiones');
+  }
+});
+
+// DELETE /api/empresas/sesiones/:id — cerrar la sesión de un miembro
+//
+// ⚠ La cierra en TODAS las empresas a las que esa persona tenga acceso, porque
+// una sesión es de un dispositivo y no de una empresa. La confirmación de la
+// pantalla lo dice con esas palabras.
+router.delete('/sesiones/:id', requireEmpresa, checkPermission('equipo.editar'), async (req, res) => {
+  try {
+    const sesion = await sesionesService.cerrar({
+      id: req.params.id,
+      empresaId: req.empresaId,
+      porUsuarioId: req.usuario ? req.usuario.id : null,
+    });
+
+    // 404 y no 403: un 403 confirmaría que la sesión existe y es de otra
+    // empresa, que es justo lo que permite enumerar ids ajenos.
+    if (!sesion) return res.status(404).json({ ok: false, error: 'Sesión no encontrada' });
+
+    res.json({
+      ok: true,
+      data: { id: sesion.id, cerrada_en: sesion.cerrada_en },
+      message: 'Se cerró la sesión de ese dispositivo. No revoca el acceso: ' +
+        'si esa persona vuelve a entrar, abre una sesión nueva.',
+    });
+  } catch (err) {
+    fallo(req, res, err, 'Error al cerrar la sesión');
+  }
+});
+
 // ── CRUD Empresa ──
 
 router.get('/', checkPermission('config.ver'), async (req, res) => {
@@ -782,7 +902,58 @@ router.get('/:empresaId/usuarios', requireEmpresa, requireEmpresaPropia('empresa
       include: [{ model: Usuario, as: 'usuario', attributes: ['id', 'nombre', 'email'] }],
       order: [['id', 'ASC']],
     });
-    res.json({ ok: true, data: users });
+
+    // ── El último acceso y cuántos dispositivos tiene abiertos, en UNA consulta ──
+    //
+    // Agregada y no una por miembro: un equipo de veinte tiene que costar dos
+    // consultas y no veintiuna. Es el mismo defecto que `_customerStats` tenía en
+    // el Panel, y está anclado con `capturarConsultas` en
+    // `tests/integracion/sesiones.integracion.test.js`.
+    //
+    // El `MAX` mira TODAS las sesiones, cerradas incluidas: una sesión que
+    // alguien cerró igual registra cuándo esa persona estuvo por última vez, y
+    // borrar ese dato al cerrarla haría que echar a alguien también borre la
+    // prueba de cuándo entró.
+    const idsDeUsuarios = users.map((u) => u.usuario_id).filter(Boolean);
+
+    const resumen = idsDeUsuarios.length
+      ? await Sesion.findAll({
+          where: { usuario_id: { [Op.in]: idsDeUsuarios } },
+          attributes: [
+            'usuario_id',
+            [sequelize.fn('MAX', sequelize.col('vista_en')), 'ultimo_acceso'],
+            [
+              sequelize.fn('COUNT', sequelize.literal('CASE WHEN cerrada_en IS NULL THEN 1 END')),
+              'abiertas',
+            ],
+          ],
+          group: ['usuario_id'],
+          raw: true,
+        })
+      : [];
+
+    const porUsuario = new Map(resumen.map((f) => [f.usuario_id, f]));
+
+    res.json({
+      ok: true,
+      data: users.map((u) => {
+        const fila = porUsuario.get(u.usuario_id);
+
+        return {
+          ...u.toJSON(),
+          // ⚠ `null` explícito y no una cadena vacía ni un `0`: quien nunca entró
+          // tiene que poder decir «nunca entró», y `fechaCorta('')` dibuja
+          // «Invalid Date» (FR-122). La diferencia entre «no entró nunca» y «no
+          // sabemos» no existe acá, pero la de «no entró» y «entró el 1/1/1970»
+          // sí, y es la que produce un `0` mal tipado.
+          ultimo_acceso: fila && fila.ultimo_acceso ? fila.ultimo_acceso : null,
+          // `COUNT` vuelve como string desde el driver de Postgres (`int8`):
+          // sin el `Number`, la pantalla compararía `'0' > 0` —que es `false`—
+          // y `'2' + 1` daría `'21'`.
+          sesiones_abiertas: fila ? Number(fila.abiertas) : 0,
+        };
+      }),
+    });
   } catch (err) {
     fallo(req, res, err, 'Error al listar el equipo');
   }

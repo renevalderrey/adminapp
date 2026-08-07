@@ -13,6 +13,33 @@ import {
 //
 //  `modulo` es la clave con la que la empresa habilita o deshabilita la
 //  sección (empresa.settings.enabled_modules).
+//
+//  ── Las cuatro que NO declaran `modulo`, y por qué ──
+//
+//  Gastos, Panel de control, Facturación AFIP y Equipo **no llevan `modulo`, y
+//  eso es una decisión, no un olvido**: son el esqueleto del sistema y no
+//  módulos opcionales. Toda empresa necesita configurar AFIP y manejar su
+//  equipo; una empresa que no pueda entrar a Facturación no puede facturar.
+//
+//  Lo declaraban desde antes de que existiera `RouteGuard`, y el gate nunca
+//  llegó a la ruta: escondían el ítem del menú **sin impedir que la URL escrita
+//  a mano entrara igual**, que es lo mismo que le pasaba a `/proveedores` y es
+//  la mitad inútil del gateo.
+//
+//  Cerrarlo del otro lado —ponerles el guard— exigía revisar `enabled_modules`
+//  empresa por empresa antes del deploy, y una lista mal armada hace
+//  desaparecer cuatro pantallas sin aviso. No es hipotético: el ejemplo de
+//  `docs/implementation_plan_production.md:249` es
+//  `["pos","inventario","proveedores","gastos","equipo","config"]`, que **no
+//  tiene `panel` ni `facturacion`**. Una empresa configurada con esa lista hoy
+//  no ve el Panel de control ni Facturación AFIP en el menú, y nadie se enteró
+//  porque el ítem simplemente no se dibuja.
+//
+//  Decisión 6 del usuario en `docs/specs/014-panel-gastos-equipo-afip/spec.md`
+//  y decisión 14 del plan. **Volver a agregarles `modulo` es reabrir esto**: si
+//  algún día hace falta, va con su `RouteGuard` en el mismo cambio y con la
+//  revisión de `enabled_modules` hecha antes. Lo ancla
+//  `src/tests/marcoDePantalla.test.js`, en los dos lados.
 // ════════════════════════════════════════════
 
 export const GRUPOS = [
@@ -39,14 +66,19 @@ export const GRUPOS = [
   {
     label: 'Finanzas',
     items: [
-      { to: '/gastos', icon: Wallet, label: 'Gastos', permission: 'gastos.ver', modulo: 'gastos' },
-      { to: '/panel', icon: BarChart3, label: 'Panel de control', permission: 'dashboard.ver', modulo: 'panel' },
+      // ⚠ Los dos van SIN `modulo` a propósito: son el esqueleto, no módulos
+      // opcionales. El porqué completo está en «Las cuatro que NO declaran
+      // `modulo`», arriba. Leerlo antes de agregárselo.
+      { to: '/gastos', icon: Wallet, label: 'Gastos', permission: 'gastos.ver' },
+      { to: '/panel', icon: BarChart3, label: 'Panel de control', permission: 'dashboard.ver' },
     ],
   },
   {
     label: 'Configuración',
     items: [
-      { to: '/facturacion', icon: FileCheck, label: 'Facturación AFIP', permission: 'config.ver', modulo: 'facturacion' },
+      // ⚠ Sin `modulo` a propósito: sin esta pantalla una empresa no puede
+      // facturar. Ver «Las cuatro que NO declaran `modulo`», arriba.
+      { to: '/facturacion', icon: FileCheck, label: 'Facturación AFIP', permission: 'config.ver' },
       // ⚠ El módulo y el permiso son los MISMOS que declaran la `<Route>` de
       // App.jsx y las once rutas privadas de `routes/tiendanube.js`. Si difieren,
       // el gateo deja de servir: el menú esconde el ítem y la URL escrita a mano
@@ -58,7 +90,9 @@ export const GRUPOS = [
       // P4 de `docs/specs/013-tiendanube/tasks.md` y el riesgo 2 del plan; NO se
       // arregla sacando el guard.
       { to: '/tiendanube', icon: Store, label: 'TiendaNube', permission: 'config.ver', modulo: 'tiendanube' },
-      { to: '/team', icon: UserCog, label: 'Equipo', permission: 'equipo.ver', modulo: 'equipo' },
+      // ⚠ Sin `modulo` a propósito: es donde se invita y se da de baja gente.
+      // Ver «Las cuatro que NO declaran `modulo`», arriba.
+      { to: '/team', icon: UserCog, label: 'Equipo', permission: 'equipo.ver' },
       { to: '/suscripcion', icon: CreditCard, label: 'Suscripción', permission: 'config.ver', modulo: 'suscripcion' },
     ],
   },

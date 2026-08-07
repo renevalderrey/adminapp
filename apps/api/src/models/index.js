@@ -54,6 +54,7 @@ const TiendanubeCorrida = require('./TiendanubeCorrida');
 const ActualizacionPrecio = require('./ActualizacionPrecio');
 const GastoVariable = require('./GastoVariable');
 const ListaProveedor = require('./ListaProveedor');
+const Sesion = require('./Sesion');
 
 // ── Relaciones ──
 
@@ -132,6 +133,22 @@ UsuarioEmpresa.belongsTo(Empresa, { foreignKey: 'empresa_id', as: 'empresa' });
 // ── Usuario ──
 Usuario.hasMany(UsuarioEmpresa, { foreignKey: 'usuario_id', as: 'empresas' });
 UsuarioEmpresa.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
+
+// ── Sesion ──
+//
+// `sesiones` NO tiene `empresa_id` a propósito (decisión 3 de la 014): una sesión
+// es de un dispositivo de una persona, y esa persona cambia de empresa con el
+// selector sin cerrar nada. El aislamiento sale de la membresía, encapsulado en
+// `services/sesionesService.js`.
+//
+// Las dos asociaciones existen para que el listado pueda decir **de quién** es
+// cada sesión y **quién** la cerró sin una segunda consulta por fila. Las dos
+// apuntan a `usuarios`, que no tiene `empresa_id`, así que ninguna mueve el ancla
+// `toBe(4)` de `analizarIncludes` (`tests/aislamientoEmpresas.test.js`): ese
+// detector cuenta includes de hijos **con** `empresa_id`, y acá no hay ninguno.
+Usuario.hasMany(Sesion, { foreignKey: 'usuario_id', as: 'sesiones', onDelete: 'CASCADE' });
+Sesion.belongsTo(Usuario, { foreignKey: 'usuario_id', as: 'usuario' });
+Sesion.belongsTo(Usuario, { foreignKey: 'cerrada_por', as: 'cerradaPor' });
 
 // ── Suscripcion ──
 Empresa.hasOne(Suscripcion, { foreignKey: 'empresa_id', as: 'suscripcion' });
@@ -222,4 +239,5 @@ module.exports = {
   ActualizacionPrecio,
   GastoVariable,
   ListaProveedor,
+  Sesion,
 };

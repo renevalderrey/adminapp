@@ -75,6 +75,16 @@ jest.mock('../models', () => ({
       return { name: 'Panadería del Centro', cuit: '30111111118' };
     },
   },
+  // Desde el corte 9, `POST /setup` consulta si la empresa tiene alguna venta
+  // con CAE antes de dejarla pasar a producción: un comprobante autorizado es
+  // prueba de que el circuito funciona. Acá siempre devuelve `null` —esta
+  // empresa nunca facturó— para que lo que decida el bloqueo sea la evidencia
+  // sembrada y no un CAE de fondo.
+  Sale: {
+    async findOne() {
+      return null;
+    },
+  },
   // La transacción real no aporta nada acá —lo que se afirma es la invalidación
   // del ticket, no el commit— y montarla exigiría una base.
   sequelize: {
@@ -100,6 +110,38 @@ function levantarApi() {
   return api;
 }
 
+/**
+ * La empresa con el circuito ya verificado contra AFIP.
+ *
+ * ⚠ **Hace falta desde el corte 9 y no es preparación de más.** Pasar a
+ * producción sin haber verificado responde `400 CIRCUITO_NO_VERIFICADO`
+ * (decisión 2 del usuario), así que los casos de este archivo —que son sobre la
+ * invalidación del ticket, no sobre el bloqueo— tienen que partir de una empresa
+ * que ya lo cumplió. El bloqueo tiene sus propios casos, en
+ * `afipVerificacion.test.js` y en `afip.integracion.test.js`.
+ *
+ * El CUIT y el punto de venta de la evidencia son los mismos que los de las
+ * filas: `estadoDelCircuito` compara los tres, y una evidencia de otro punto de
+ * venta NO cumple el paso.
+ */
+function sembrarCircuitoVerificado(empresaId) {
+  mockFilasDeSettings.push(
+    { key: 'afip_cuit', empresa_id: empresaId, value: '30111111118' },
+    { key: 'afip_pv', empresa_id: empresaId, value: '5' },
+    {
+      key: 'afip_verificacion',
+      empresa_id: empresaId,
+      value: {
+        resultado: 'ok',
+        cuit: '30111111118',
+        pv: 5,
+        ambiente: 'homologation',
+        verificado_en: '2026-08-06T14:20:11.000Z',
+      },
+    }
+  );
+}
+
 /** Un ticket WSAA cacheado, con una hora de vida por delante. */
 function cachearTicket(empresaId) {
   afipAuth.taCache.set(empresaId, {
@@ -121,6 +163,7 @@ describe('Cambiar el ambiente invalida el ticket WSAA cacheado', () => {
     // próximas horas se firman contra el servidor de pruebas mientras la
     // pantalla dice «producción» — o sea, no tienen validez fiscal y nadie se
     // entera hasta que alguien pide su factura.
+    sembrarCircuitoVerificado(EMPRESA);
     cachearTicket(EMPRESA);
     expect(afipAuth.taCache.has(EMPRESA)).toBe(true);
 
@@ -148,6 +191,8 @@ describe('Cambiar el ambiente invalida el ticket WSAA cacheado', () => {
   it('el ambiente se guarda de verdad, no solo se invalida el cache', async () => {
     // Sin este caso, una implementación que invalidara el ticket y no escribiera
     // nada pasaría los dos de arriba.
+    sembrarCircuitoVerificado(EMPRESA);
+
     await request(levantarApi()).post('/api/afip/setup').send({ environment: 'production' });
 
     const guardado = mockFilasDeSettings.find((f) => f.key === 'afip_environment');
@@ -162,6 +207,7 @@ describe('Cambiar el ambiente invalida el ticket WSAA cacheado', () => {
     // ejecutaba `upsert({ value: '' })` sobre el certificado y la clave. Como la
     // clave del CSR no se guarda del lado del servidor, no había copia y había
     // que rehacer el trámite entero en ARCA.
+    sembrarCircuitoVerificado(EMPRESA);
     mockFilasDeSettings.push({ key: 'afip_cert', empresa_id: EMPRESA, value: '-----BEGIN CERTIFICATE-----' });
     mockFilasDeSettings.push({ key: 'afip_key', empresa_id: EMPRESA, value: '-----BEGIN PRIVATE KEY-----' });
 
@@ -317,9 +363,15 @@ function mencionesDe(contenido, clave) {
 
 const MENCIONES_DECLARADAS = {
   'routes/afip.js':
-    'Es la lista CLAVES_AFIP, la que recorre guardarConfiguracionAfip: el único ' +
-    'lugar que escribe la configuración de AFIP, y el que invalida el ticket WSAA ' +
-    'en la misma función. Que la clave aparezca acá es el diseño, no la falla.',
+    'Son DOS listas y ninguna es un escritor suelto. CLAVES_AFIP es la que recorre ' +
+    'guardarConfiguracionAfip —el único lugar que escribe la configuración de AFIP, ' +
+    'y el que invalida el ticket WSAA en la misma función—, y CLAVES_DE_LA_VINCULACION ' +
+    'es lo que borra DELETE /vinculacion, que pasa por esa misma función para ' +
+    'invalidar el ticket. Que la clave aparezca acá es el diseño, no la falla. Nótese ' +
+    'que ni GET /status ni POST /verificar la nombran: leen el ambiente por ' +
+    'afipAuth.isProduction, que es el mismo que decide contra qué servidor de AFIP se ' +
+    'autentica, así que la evidencia no puede decir un ambiente y la llamada haber ' +
+    'ido al otro.',
   'services/afipAuth.js':
     'Es una LECTURA: isProduction() consulta el ambiente para elegir contra qué ' +
     'WSDL de WSAA autenticarse. No escribe nada.',

@@ -6,6 +6,7 @@ import {
 import PageHeader from '@/components/PageHeader'
 import { BotonDeFila, Encabezado, Fila, TablaGrid } from '@/components/TablaGrid'
 import PanelDeMiembro from '@/components/PanelDeMiembro'
+import SesionesDelEquipo from '@/components/SesionesDelEquipo'
 import { Can } from '@/components/Can'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { usePermission } from '@/hooks/usePermission'
@@ -628,6 +629,18 @@ export default function Team() {
           </TablaGrid>
         )}
       </section>
+
+      {/* ── Las sesiones abiertas ──
+
+          Va debajo de las invitaciones y no arriba: lo primero que se contesta
+          en esta pantalla es quién tiene acceso, y recién después desde dónde
+          está entrando. El bloque se dibuja solo con `equipo.ver`, que es el
+          mismo permiso que ya exige la pantalla entera.
+
+          ⚠ Cerrar una sesión NO revoca el acceso de nadie: eso lo dice el propio
+          bloque con esas palabras, porque el corte de verdad es desactivar al
+          miembro en la lista de arriba. */}
+      <SesionesDelEquipo empresaId={empresaActiva?.id} onCambio={cargar} />
 
       <PanelDeMiembro
         miembro={miembroAbierto}

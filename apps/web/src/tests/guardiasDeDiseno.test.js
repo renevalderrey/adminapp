@@ -196,6 +196,9 @@ const NOMBRES = [
   'pages/Dashboard.jsx',
   'components/PanelDeMiembro.jsx',
   'pages/Team.jsx',
+  'components/PuestaEnMarchaAfip.jsx',
+  'pages/Settings.jsx',
+  'components/SesionesDelEquipo.jsx',
 ]
 
 /**
@@ -361,7 +364,7 @@ describe('Los dos rojos de esta guardia se leen distinto', () => {
 
 // Si esta lista queda vacía, la guardia pasa a ser un test que siempre pasa.
 describe('La guardia mira los archivos que dice mirar', () => {
-  it('los veintisiete archivos existen y tienen contenido', () => {
+  it('los veintinueve archivos existen y tienen contenido', () => {
     // Diecinueve = los dieciséis de los hitos 4, 5 y 6 —el uno de InvoicesList,
     // los seis de Inventario, los cinco del punto de venta y los cuatro de
     // proveedores y órdenes— más los TRES de TiendaNube: `pages/Tiendanube.jsx`
@@ -414,10 +417,41 @@ describe('La guardia mira los archivos que dice mirar', () => {
     // otra: el día que se borre, el hallazgo «el archivo NO existe» lo dice con
     // el nombre completo.
     //
+    // **Veintinueve** con el corte 9: entran `components/PuestaEnMarchaAfip.jsx`
+    // (T1407) —el checklist de los cuatro pasos, con el botón «Verificar
+    // circuito»— y `pages/Settings.jsx` (T1407), que entra en el mismo commit que
+    // la reescribe. Antes de la reescritura tenía **cinco** hallazgos: cuatro
+    // clases de la paleta de Tailwind (L152, L154, L170 y el
+    // `border-green-500/30` de L321, que es literalmente el ejemplo que usa el
+    // encabezado de esta guardia) y un formateo en línea (L311,
+    // `new Date(certInfo.validTo).toLocaleDateString()`), comprobado corriendo
+    // los patrones contra `git show HEAD:apps/web/src/pages/Settings.jsx`: la
+    // guardia estaba mirando ese archivo de verdad. `PuestaEnMarchaAfip.jsx` es
+    // nuevo y su comprobación es la otra: el día que se borre, el hallazgo «el
+    // archivo NO existe» lo dice con el nombre completo.
+    //
+    // ⚠ **Este número lo comparten dos cortes que van en paralelo.** `tasks.md`
+    // (punto 7) reparte los tres últimos así: T1400 suma
+    // `components/SesionesDelEquipo.jsx` (corte 8) y T1407 suma los dos de acá.
+    // **Treinta** con el corte 8: entra `components/SesionesDelEquipo.jsx`
+    // (T1400), la lista de sesiones abiertas del equipo con su badge «Este
+    // dispositivo» y su botón «Cerrar sesión en ese dispositivo». Es un archivo
+    // **nuevo**, así que su comprobación no es la de `pages/Team.jsx` —correr la
+    // guardia antes de reescribir y ver que da hallazgos > 0— sino la otra:
+    // agregar el nombre ANTES de escribir el archivo y verificar que los cuatro
+    // patrones digan «el archivo NO existe». Hecho: dio los cuatro hallazgos con
+    // ese texto, o sea que la ruta está bien escrita y la guardia lo está
+    // mirando de verdad. Recién después se escribió el componente.
+    //
+    // ⚠ Los cortes 8 y 9 entraron en el orden inverso al de la tabla de
+    // `tasks.md` —allá `SesionesDelEquipo.jsx` era 28 y los dos de AFIP 29 y
+    // 30—. El estado final es el mismo y los tres archivos están; el ancla es la
+    // cuenta real de `NOMBRES`, no un número reservado por tarea.
+    //
     // El número está escrito y no se calcula de `NOMBRES.length`: contra la
     // lista que se está verificando, el ancla pasaría igual el día que alguien
     // saque un archivo para que la guardia deje de molestar.
-    expect(ARCHIVOS).toHaveLength(27)
+    expect(ARCHIVOS).toHaveLength(30)
 
     // Primero los que faltan, y con su propio texto: un archivo que todavía no
     // se escribió es una tarea pendiente y se lee distinto de un color fuera

@@ -141,7 +141,12 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Empresa-Id', 'X-Punto-De-Venta-Id', 'X-Request-Id'],
+  // ⚠ `X-Sesion-Id` tiene que estar acá o el navegador **no la manda**: una
+  // cabecera que no figura en `allowedHeaders` hace fallar el preflight y el
+  // request ni sale. El síntoma sería un 401 SESION_REQUERIDA en cada pantalla
+  // del que despliega —y en ninguno de los tests, porque supertest habla con la
+  // app sin preflight—.
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Empresa-Id', 'X-Punto-De-Venta-Id', 'X-Request-Id', 'X-Sesion-Id'],
   // X-Request-Id se expone para que el frontend pueda leerlo: sin esto el
   // navegador se lo oculta al codigo de la app y el usuario no tiene que
   // copiar a mano.
@@ -366,6 +371,29 @@ const authMiddleware = process.env.BYPASS_AUTH === 'true'
         .catch(() => { req.usuarioPermisos = []; next(); });
     }]
   : [checkJwt, extractUser, loadEmpresaContext];
+
+// ⚠ ── LA LÍNEA DEL CORTE 8: sacarla revierte las sesiones y nada más ──
+//
+// `registrarSesion` corre en TODOS los requests: registra desde qué dispositivo
+// entró cada persona y corta con 401 si esa sesión la cerraron desde la pantalla
+// de Equipo. Es el único cambio del hito que puede dejar la aplicación entera sin
+// funcionar, así que tiene que poder revertirse quitando **una línea**, sin tocar
+// las cadenas ni los treinta montajes de abajo. Por eso se empuja sobre
+// `authMiddleware` en vez de escribirse en las dos cadenas: `authEmpresa` y
+// `authSinEmpresa` se arman con `[...authMiddleware, …]` diez líneas más abajo,
+// así que las dos lo heredan y hay un solo lugar que sacar. La tabla `sesiones`
+// se puede quedar.
+//
+// Queda DESPUÉS de `loadEmpresaContext` —que es lo último de `authMiddleware`—
+// porque necesita `req.usuario`, y ANTES de `requireEmpresa`, que es lo correcto:
+// una sesión es de una persona y no de una empresa (la tabla no tiene
+// `empresa_id`), así que registrarla no depende de que haya empresa activa.
+//
+// Sin `Authorization` no hace nada, y eso es lo que hace que el cron, el webhook
+// de TiendaNube, las pruebas de navegador y los ~1400 tests con `BYPASS_AUTH` no
+// se enteren de que existe. El `require` va en la misma línea a propósito: una
+// línea de import arriba sería una segunda cosa que sacar el día del rollback.
+authMiddleware.push(require('./middleware/registrarSesion'));
 
 // ── Cadena para rutas con datos de una empresa ──
 // requireEmpresa va DESPUES de loadEmpresaContext y ANTES de

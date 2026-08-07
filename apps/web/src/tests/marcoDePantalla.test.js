@@ -120,22 +120,31 @@ describe('El marco de 1320px se aplica ruta por ruta', () => {
 // ════════════════════════════════════════════
 
 /**
- * Los ítems del menú que declaran un módulo, con su ruta.
+ * Los ítems del menú, con su ruta y el módulo que declaran (o `undefined`).
  *
  * `navegacion.js` escribe un ítem por línea, así que alcanza con leer línea por
  * línea. Los comentarios se saltean: el encabezado del archivo explica qué es
- * `modulo` y no es una declaración.
+ * `modulo` —y por qué cuatro ítems no lo declaran— y eso no es una declaración.
+ *
+ * Recibe el texto en vez de leer la constante para poder ejercitarlo contra una
+ * muestra sintética: un detector que solo se corre sobre el archivo que está
+ * bien pasa en verde tanto si encuentra el defecto como si no lo sabe buscar.
  */
-function itemsConModulo() {
-  return NAVEGACION
+function itemsDelMenu(texto) {
+  return texto
     .split('\n')
     .map((linea) => linea.trim())
-    .filter((texto) => !texto.startsWith('//') && !texto.startsWith('*'))
-    .map((texto) => ({
-      ruta: (texto.match(/to:\s*'([^']+)'/) || [])[1],
-      modulo: (texto.match(/modulo:\s*'([^']+)'/) || [])[1],
+    .filter((linea) => !linea.startsWith('//') && !linea.startsWith('*'))
+    .map((linea) => ({
+      ruta: (linea.match(/to:\s*'([^']+)'/) || [])[1],
+      modulo: (linea.match(/modulo:\s*'([^']+)'/) || [])[1],
     }))
-    .filter(({ ruta, modulo }) => ruta && modulo)
+    .filter(({ ruta }) => ruta)
+}
+
+/** Los ítems del menú que declaran un módulo, con su ruta. */
+function itemsConModulo() {
+  return itemsDelMenu(NAVEGACION).filter(({ modulo }) => modulo)
 }
 
 /** La línea de la `<Route>` de esa ruta en App.jsx, o `undefined`. */
@@ -171,9 +180,14 @@ function rutasSinGuard() {
  * es exactamente lo que esa fase separa para poder revertir de a una.
  *
  * `enabled_modules` las alcanza a todas: el ejemplo de
- * `docs/implementation_plan_production.md:249` incluye `pos`, `inventario`,
- * `gastos` y `equipo`, así que ninguna de estas es un módulo que toda empresa
- * tenga por definición.
+ * `docs/implementation_plan_production.md:249` incluye `pos` e `inventario`,
+ * así que ninguna de estas es un módulo que toda empresa tenga por definición.
+ *
+ * ⚠ **Esta lista es deuda, y hay una sola forma de salir de acá que NO es
+ * ponerle el guard**: que la ruta deje de declarar módulo en los dos lados, que
+ * es una decisión distinta y está escrita aparte, en `SIN_MODULO_A_PROPOSITO`.
+ * Las dos listas no se pisan y hay un caso que lo verifica: una ruta no puede
+ * ser deuda pendiente y decisión tomada a la vez.
  *
  * Sacar una de acá sin ponerle el guard pone la guardia en rojo, y ponerle el
  * guard sin sacarla de acá también.
@@ -182,12 +196,71 @@ const SIN_GUARD_TODAVIA = [
   '/pos',
   '/ventas',
   '/inventario',
+  '/suscripcion',
+]
+
+/**
+ * Las cuatro que NO tienen gate de módulo **porque se decidió que no lo tengan**.
+ *
+ * No son deuda: son el esqueleto del sistema. Toda empresa necesita configurar
+ * AFIP, manejar su equipo, cargar sus gastos y mirar sus números; no son
+ * módulos que se contraten o se dejen de contratar.
+ *
+ * ── Por qué está escrito acá y no solo en `navegacion.js` ──
+ *
+ * Porque una guardia que dice «estas rutas no tienen guard» **sin decir por
+ * qué** es una lista que alguien va a completar de buena fe. Las cuatro
+ * declaraban `modulo` en el menú y ninguna lo exigía en la ruta: escondían el
+ * ítem sin impedir que la URL escrita a mano entrara igual —lo mismo que
+ * `/proveedores`—, o sea que el gate no protegía nada y sí escondía pantallas.
+ *
+ * Y esconderlas no es teórico: el ejemplo de `enabled_modules` de
+ * `docs/implementation_plan_production.md:249` no tiene `panel` ni
+ * `facturacion`, así que una empresa configurada con esa lista **hoy no ve el
+ * Panel ni Facturación AFIP en el menú**. Ponerles el guard habría exigido
+ * revisar `enabled_modules` empresa por empresa antes del deploy, y una lista
+ * mal armada hace desaparecer cuatro pantallas sin aviso.
+ *
+ * Decisión 6 del usuario en `docs/specs/014-panel-gastos-equipo-afip/spec.md`,
+ * decisión 14 del plan. Se cierra **quitando** el gate, no poniéndolo.
+ *
+ * Los dos sentidos se verifican: que el ítem del menú no declare `modulo` y que
+ * la `<Route>` no exija `requiredModule`. Con uno solo alcanzaría para el
+ * defecto inverso —la ruta gatea y el menú muestra el ítem—, que le dibuja al
+ * usuario un ítem que al hacer clic lo manda a `/pos`.
+ */
+const SIN_MODULO_A_PROPOSITO = [
   '/gastos',
   '/panel',
   '/facturacion',
   '/team',
-  '/suscripcion',
 ]
+
+/**
+ * Los ítems de esas rutas que SÍ declaran módulo, con el módulo que declaran.
+ *
+ * Toma el texto de `navegacion.js` como parámetro para poder ejercitarlo contra
+ * una muestra sintética con el defecto adentro.
+ */
+function declaranModulo(textoDeNavegacion, rutas) {
+  return itemsDelMenu(textoDeNavegacion)
+    .filter(({ ruta, modulo }) => rutas.includes(ruta) && modulo)
+    .map(({ ruta, modulo }) => `${ruta} — el ítem del menú volvió a declarar modulo "${modulo}"`)
+}
+
+/** Las `<Route>` de esas rutas que SÍ exigen un módulo. Ídem: recibe el texto. */
+function exigenModulo(textoDeApp, rutas) {
+  return textoDeApp
+    .split('\n')
+    .map((linea) => linea.trim())
+    .filter((texto) => /^<Route\s/.test(texto))
+    .map((texto) => ({
+      ruta: (texto.match(/path="([^"]+)"/) || [])[1],
+      modulo: (texto.match(/requiredModule="([^"]+)"/) || [])[1],
+    }))
+    .filter(({ ruta, modulo }) => rutas.includes(ruta) && modulo)
+    .map(({ ruta, modulo }) => `${ruta} — la <Route> exige requiredModule="${modulo}"`)
+}
 
 describe('El gate de módulo está en la ruta y no solo en el menú', () => {
   it('toda ruta cuyo ítem de menú declara un módulo lleva RouteGuard con ese mismo módulo', () => {
@@ -195,7 +268,14 @@ describe('El gate de módulo está en la ruta y no solo en el menú', () => {
 
     // Si el parseo de cualquiera de los dos archivos fallara, esto pasaría sin
     // mirar nada: cero ítems es cero incumplimientos.
-    expect(items.length).toBeGreaterThanOrEqual(13)
+    //
+    // El número bajó de 14 a 10 en el corte 10 de la 014, y bajó por una
+    // decisión: `/gastos`, `/panel`, `/facturacion` y `/team` dejaron de
+    // declarar módulo a propósito y están enumerados en
+    // `SIN_MODULO_A_PROPOSITO`, con el motivo. Si bajara de diez, se perdió uno
+    // más que **nadie decidió** — y ajustar este número sin leer qué cambió es
+    // exactamente cómo una guardia deja de servir.
+    expect(items.length).toBeGreaterThanOrEqual(10)
     expect(items.map((i) => i.ruta)).toContain('/proveedores')
     expect(elementoDeLaRuta('/proveedores')).toBeDefined()
 
@@ -215,6 +295,61 @@ describe('El gate de módulo está en la ruta y no solo en el menú', () => {
     // ruta que ya recibió su guard puede quedarse en la lista para siempre, y a
     // partir de ahí nadie se enteraría si alguien se lo saca.
     expect(rutasSinGuard().sort()).toEqual([...SIN_GUARD_TODAVIA].sort())
+  })
+})
+
+describe('Las cuatro del esqueleto no tienen gate de módulo, y eso está decidido', () => {
+  it('ninguna de las cuatro declara modulo en el menú', () => {
+    // Primero, que las cuatro sigan existiendo como ítems. Si alguien renombra
+    // una ruta o el parseo se rompe, «ningún ítem declara módulo» sería cierto
+    // por vacío y esto pasaría en verde sin haber mirado nada.
+    const enElMenu = itemsDelMenu(NAVEGACION)
+      .map(({ ruta }) => ruta)
+      .filter((ruta) => SIN_MODULO_A_PROPOSITO.includes(ruta))
+
+    expect([...new Set(enElMenu)].sort()).toEqual([...SIN_MODULO_A_PROPOSITO].sort())
+
+    expect(declaranModulo(NAVEGACION, SIN_MODULO_A_PROPOSITO)).toEqual([])
+  })
+
+  it('el detector encuentra el modulo que alguien le vuelva a poner al ítem', () => {
+    // La muestra sintética es la única forma de saber que el caso de arriba
+    // pasa porque el archivo está bien y no porque el detector no sepa mirar.
+    const conModulo = "{ to: '/gastos', icon: Wallet, label: 'Gastos', permission: 'gastos.ver', modulo: 'gastos' },"
+
+    expect(declaranModulo(conModulo, SIN_MODULO_A_PROPOSITO)).toEqual([
+      '/gastos — el ítem del menú volvió a declarar modulo "gastos"',
+    ])
+  })
+
+  it('ninguna de las cuatro rutas exige un módulo en App.jsx', () => {
+    // El otro sentido, y el que nadie miraba: la guardia de arriba recorre los
+    // ítems CON módulo, así que una `<Route>` que gatea sin que el menú declare
+    // nada le queda invisible. Ese caso dibuja el ítem para todo el mundo y
+    // manda a `/pos` al que hace clic.
+    const enApp = rutasConPantalla()
+      .map(({ ruta }) => ruta)
+      .filter((ruta) => SIN_MODULO_A_PROPOSITO.includes(ruta))
+
+    expect(enApp.sort()).toEqual([...SIN_MODULO_A_PROPOSITO].sort())
+
+    expect(exigenModulo(APP, SIN_MODULO_A_PROPOSITO)).toEqual([])
+  })
+
+  it('el detector encuentra el RouteGuard que alguien le agregue a la ruta', () => {
+    const conGuard = '<Route path="/gastos" element={<MarcoDePantalla><RouteGuard requiredModule="gastos"><Expenses /></RouteGuard></MarcoDePantalla>} />'
+
+    expect(exigenModulo(conGuard, SIN_MODULO_A_PROPOSITO)).toEqual([
+      '/gastos — la <Route> exige requiredModule="gastos"',
+    ])
+  })
+
+  it('una ruta no puede ser deuda pendiente y decisión tomada a la vez', () => {
+    // Las dos listas dicen «esta ruta no tiene guard» y dicen por qué, y los
+    // porqués son incompatibles: una espera que alguien revise `enabled_modules`
+    // y le ponga el guard, la otra dice que no se lo ponga nunca. Con una ruta
+    // en las dos, cuál de los dos motivos vale depende de cuál lea el que pasa.
+    expect(SIN_GUARD_TODAVIA.filter((ruta) => SIN_MODULO_A_PROPOSITO.includes(ruta))).toEqual([])
   })
 })
 

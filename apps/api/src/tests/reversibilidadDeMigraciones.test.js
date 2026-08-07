@@ -298,6 +298,75 @@ describe('La semilla toca las tablas que la migración de datos de TiendaNube ne
   });
 });
 
+describe('`sesiones` nace con el UNIQUE que arbitra la carrera del alta', () => {
+  // ⚠ Este índice **no es una optimización**, y por eso tiene guardia propia.
+  //
+  // `registrarSesion` corre en todos los requests y el Panel dispara varios al
+  // montar: los primeros dos del mismo navegador entran los dos por «esta sesión
+  // no existe» y los dos insertan. Lo único que hace que quede UNA fila es el
+  // único de la base — el `catch` del `SequelizeUniqueConstraintError` de
+  // `sesionesService.registrar` no tiene sentido sin él.
+  //
+  // Sin el `UNIQUE`, un `CREATE INDEX` a secas deja la migración aplicándose sin
+  // error, la carrera pasa a producir dos filas por navegador, la lista muestra
+  // el mismo dispositivo dos veces y **cerrar una deja la otra abierta**. Nada
+  // de eso falla: simplemente no funciona.
+  //
+  // El caso de integración que lo ejercita —dos requests en paralelo, una sola
+  // fila— vive en `integracion/sesiones.integracion.test.js`. Éste es la mitad
+  // que corre siempre y no necesita Postgres.
+  const MIGRACION = '20260812-sesiones-de-usuario.js';
+
+  const Sesion = require('../models/Sesion');
+
+  it('la migración existe y declara sus índices', () => {
+    // Ancla: sin esto, renombrar el archivo dejaría las dos pruebas de abajo
+    // reventando con un ENOENT que no nombra el problema.
+    expect(ARCHIVOS).toContain(MIGRACION);
+    expect(Array.isArray(cargar(MIGRACION).INDICES)).toBe(true);
+  });
+
+  it('el índice de (usuario_id, dispositivo) es UNIQUE', () => {
+    const { INDICES } = cargar(MIGRACION);
+    const indice = INDICES.find((i) => i.columnas === 'usuario_id, dispositivo');
+
+    expect(indice).toBeDefined();
+    expect(indice.unico).toBe(true);
+  });
+
+  it('el SQL que la migración ejecuta dice UNIQUE, y no solo la lista', () => {
+    // La otra mitad, y muerde al revés: la lista puede decir `unico: true` y el
+    // bucle que la recorre ignorarlo. Lo que llega a la base es el string.
+    const fuente = fs.readFileSync(path.join(CARPETA, MIGRACION), 'utf8');
+
+    expect(fuente).toContain("CREATE ${unico ? 'UNIQUE ' : ''}INDEX");
+  });
+
+  it('el modelo declara el MISMO índice, con el mismo nombre', () => {
+    // Sin el `name` explícito, Sequelize lo llamaría
+    // `sesiones_usuario_id_dispositivo` y un `sync({ alter: true })` en
+    // desarrollo crearía un SEGUNDO índice sobre las mismas columnas.
+    const { INDICES } = cargar(MIGRACION);
+
+    // Sequelize normaliza la lista al definir el modelo y le agrega `parser` y
+    // `type`: se comparan las tres claves que importan y no el objeto entero,
+    // que traería basura del framework a la aserción.
+    const delModelo = (Sesion.options.indexes || [])
+      .map(({ unique, name, fields }) => ({ unique, name, fields }));
+
+    expect(delModelo).toEqual([
+      { unique: true, name: INDICES[0].nombre, fields: ['usuario_id', 'dispositivo'] },
+    ]);
+  });
+
+  it('`sesiones` NO tiene empresa_id, y eso es la decisión y no un olvido', () => {
+    // Ponerlo obligaría a elegir cuál —¿la de cuando entró?— y la columna
+    // quedaría mintiendo apenas la persona use el selector de empresa. El
+    // aislamiento sale de `usuario_empresas`, en `sesionesDeLaEmpresa`.
+    expect(Object.keys(Sesion.rawAttributes)).not.toContain('empresa_id');
+  });
+});
+
 describe('El comparador de fotos, del que depende todo el resultado', () => {
   // ⚠ Un comparador que devolviera siempre `[]` dejaría el script en verde para
   // siempre, y la salida se vería idéntica a la de una base que revierte

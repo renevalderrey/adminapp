@@ -19,6 +19,106 @@ const api = axios.create({
   timeout: API_TIMEOUT,
 });
 
+// ════════════════════════════════════════════
+//  El identificador de ESTE navegador (`X-Sesion-Id`)
+//
+//  ── Qué es, y por qué no es el token ──
+//
+//  Un UUID v4 que se genera una vez y vive en `localStorage`. Identifica al
+//  **dispositivo**, no a la sesión de Auth0: el access token se rota cada pocas
+//  horas, así que usar su hash abriría una fila nueva por rotación, la pantalla
+//  de Equipo mostraría siete filas del mismo navegador y cerrar una no serviría
+//  —la rotación siguiente vuelve a entrar—.
+//
+//  ── ⚠ Por qué vive ACÁ y no en `sesion/ProveedorDeSesion.jsx` ──
+//
+//  El plan lo ubicaba allá. No puede ir allá: `vite.config.js` **reemplaza ese
+//  archivo entero** por `pruebas-de-navegador/ProveedorDeSesionDePrueba.jsx`
+//  cuando `command === 'serve'`, y esa sesión falsa sí manda `Authorization`. O
+//  sea que las pruebas de navegador quedarían mandando token **sin**
+//  `X-Sesion-Id`, que es exactamente el caso que la API responde con 401
+//  `SESION_REQUERIDA`.
+//
+//  Acá, en cambio, pasa por el mismo lugar por el que pasan **todos** los
+//  requests de la aplicación, en cualquier entorno, y no hay ninguna
+//  configuración que lo saque del grafo.
+//
+//  ── El techo, escrito ──
+//
+//  Esto no autentica nada: quien tenga el token puede mandar un UUID inventado y
+//  entrar igual. Cierra al navegador que **coopera**, que es el caso real —la
+//  notebook que quedó abierta en el local—. El corte de verdad es desactivar al
+//  miembro, que la API aplica en el request siguiente.
+// ════════════════════════════════════════════
+
+const CLAVE_DE_DISPOSITIVO = 'adminapp.dispositivo';
+
+/** Un UUID v4. `crypto.randomUUID` no existe fuera de contextos seguros. */
+function nuevoIdentificador() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+/**
+ * En memoria además de en `localStorage`.
+ *
+ * ⚠ No es una optimización: en modo incógnito —o con las cookies de terceros
+ * bloqueadas— `localStorage` **tira** al leer y al escribir. Sin esta variable,
+ * cada request generaría un UUID nuevo, y la pantalla de Equipo mostraría una
+ * fila por request en vez de una por navegador.
+ */
+let dispositivoEnMemoria = null;
+
+/** El identificador de este navegador, generándolo la primera vez. */
+export function identificadorDeDispositivo() {
+  if (dispositivoEnMemoria) return dispositivoEnMemoria;
+
+  try {
+    dispositivoEnMemoria = localStorage.getItem(CLAVE_DE_DISPOSITIVO) || null;
+  } catch {
+    // Sin `localStorage` la sesión dura lo que dure la pestaña, y eso es
+    // preferible a no mandar la cabecera: mandarla es lo que hace que la sesión
+    // aparezca en la lista y se pueda cerrar.
+    dispositivoEnMemoria = null;
+  }
+
+  if (!dispositivoEnMemoria) {
+    dispositivoEnMemoria = nuevoIdentificador();
+
+    try {
+      localStorage.setItem(CLAVE_DE_DISPOSITIVO, dispositivoEnMemoria);
+    } catch {
+      // Ídem.
+    }
+  }
+
+  return dispositivoEnMemoria;
+}
+
+/**
+ * Olvida el identificador para que el próximo ingreso sea una sesión nueva.
+ *
+ * Se llama **solo** con `SESION_CERRADA`. Con cualquier otro 401 —un token
+ * vencido, que pasa cada vez que alguien deja una pestaña abierta— borrarlo
+ * abriría una sesión nueva por cada expiración y la lista mostraría siete filas
+ * del mismo navegador, que es justamente el defecto que este diseño evita.
+ */
+export function olvidarDispositivo() {
+  dispositivoEnMemoria = null;
+
+  try {
+    localStorage.removeItem(CLAVE_DE_DISPOSITIVO);
+  } catch {
+    // Si no se puede escribir tampoco se pudo haber guardado.
+  }
+}
+
 let currentEmpresaId = null;
 let currentPuntoDeVentaId = null;
 
@@ -47,8 +147,23 @@ api.interceptors.response.use(
     if (error.config?.skipUnauthorized) {
       return Promise.reject(error);
     }
-    if (error.response?.status === 401 && onUnauthorizedCallback) {
-      onUnauthorizedCallback();
+    if (error.response?.status === 401) {
+      // ⚠ Solo con SESION_CERRADA se olvida el identificador, y la distinción es
+      // la mitad del diseño: un 401 cualquiera —un token vencido, que pasa cada
+      // vez que alguien deja una pestaña abierta— borraría el UUID y abriría una
+      // sesión nueva en cada expiración. La pantalla de Equipo mostraría siete
+      // filas del mismo navegador y cerrar una no serviría de nada.
+      //
+      // Con SESION_CERRADA sí hay que olvidarlo: si volviera con el mismo, el
+      // próximo ingreso chocaría contra la fila cerrada y nadie podría volver a
+      // entrar desde esta computadora nunca más.
+      if (error.response?.data?.error === 'SESION_CERRADA') {
+        olvidarDispositivo();
+      }
+
+      if (onUnauthorizedCallback) {
+        onUnauthorizedCallback();
+      }
     }
     // 402 = suscripcion vencida. Sin este manejo, cada pantalla mostraba su
     // propio error generico y el usuario veia la aplicacion rota en vez de un
@@ -131,6 +246,13 @@ api.interceptors.request.use((config) => {
   if (currentPuntoDeVentaId) {
     config.headers['X-Punto-De-Venta-Id'] = currentPuntoDeVentaId;
   }
+  // Sin `if`: las otras dos son opcionales —hay pantallas que se dibujan antes
+  // de que haya empresa elegida— y ésta no. La API responde 401
+  // `SESION_REQUERIDA` a un request con token y sin esta cabecera, así que
+  // mandarla «cuando ya se conoce» dejaría afuera justo a los primeros requests
+  // del arranque, que son los que traen el contexto.
+  config.headers['X-Sesion-Id'] = identificadorDeDispositivo();
+
   return config;
 });
 
@@ -317,6 +439,35 @@ export const getSettings = () => api.get('/settings');
 export const getSetting = (key) => api.get(`/settings/${key}`);
 export const setSetting = (key, value) => api.put(`/settings/${key}`, { value });
 
+// ═══════ AFIP ═══════
+
+export const getAfipStatus = () => api.get('/afip/status');
+export const getAfipCertInfo = () => api.get('/afip/cert-info');
+export const guardarConfiguracionAfip = (config) => api.post('/afip/setup', config);
+export const generarCsrAfip = (alias) => api.post('/afip/generate-csr', { alias });
+
+/**
+ * Ejercita el circuito de facturación **sin emitir nada**.
+ *
+ * Pide el ticket de acceso (WSAA) y consulta el último comprobante autorizado
+ * del punto de venta configurado. No consume numeración y no genera ningún CAE:
+ * es lo que reemplaza al botón «Emitir Factura de Prueba» y al `POST
+ * /afip/invoice` que este hito borró.
+ *
+ * La evidencia la escribe el servidor —`PUT /api/settings/afip_verificacion` la
+ * rechaza— y es la que habilita el pase a producción.
+ */
+export const verificarCircuitoAfip = () => api.post('/afip/verificar');
+
+/**
+ * Borra el certificado, la clave, el punto de venta, el ambiente y la evidencia.
+ *
+ * ⚠ **No borra el CUIT ni ninguna venta ya facturada.** Y la clave privada no se
+ * puede recuperar de acá: no sale por la API y la del CSR nunca se guardó del
+ * lado del servidor.
+ */
+export const desvincularAfip = () => api.delete('/afip/vinculacion');
+
 // ═══════ HEALTH ═══════
 
 export const ping = () => api.get('/ping');
@@ -457,6 +608,30 @@ export const desactivarMiembro = (id) =>
 
 export const reactivarMiembro = (id) =>
   api.put(`/empresas/usuarios/${id}`, { is_active: true });
+
+// ═══════ SESIONES ═══════
+//
+// ⚠ Las tres piden permisos distintos y la asimetría es la decisión: ver la
+// lista y cerrar **las propias** son `equipo.ver`; cerrar la de **otro** es
+// `equipo.editar`, porque le corta el acceso en todas las empresas a las que esa
+// persona tenga acceso.
+//
+// Y ninguna revoca nada: cierran al navegador que coopera —recibe 401, borra su
+// identificador y sale—. El corte de verdad es `desactivarMiembro`.
+
+export const getSesionesDelEquipo = (empresaId) =>
+  api.get(`/empresas/${empresaId}/sesiones`);
+
+/**
+ * Cierra la sesión de un dispositivo.
+ *
+ * No lleva `empresaId` en la URL: la sesión no es de una empresa. El servidor
+ * resuelve si es tuya de mirar la membresía, y responde 404 si no lo es.
+ */
+export const cerrarSesion = (id) => api.delete(`/empresas/sesiones/${id}`);
+
+/** «Cerrar todas menos ésta», de las propias. Nunca cierra la de este navegador. */
+export const cerrarMisOtrasSesiones = () => api.delete('/empresas/sesiones');
 
 // ═══════ SUSCRIPCIÓN ═══════
 

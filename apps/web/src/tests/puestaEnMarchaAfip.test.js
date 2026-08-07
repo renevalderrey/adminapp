@@ -1,0 +1,356 @@
+import { describe, it, expect } from 'vitest'
+import {
+  DIAS_DE_AVISO,
+  diasHastaVencer,
+  etiquetaDePaso,
+  puestaEnMarchaAfip,
+  tonoDePaso,
+} from '@/utils/puestaEnMarchaAfip'
+
+// ════════════════════════════════════════════
+//  La puesta en marcha de AFIP · las reglas
+//
+//  Lo que se afirma acá son REGLAS, no dibujo: qué estado tiene cada paso, cuándo
+//  el checklist está completo, y cuántos días faltan para que venza el
+//  certificado. El dibujo —que el badge esté en la fila que corresponde— es
+//  `renderDeAjustesAfip.test.jsx`, que es diez veces más lento.
+//
+//  ── Los tres defectos que este archivo existe para que no vuelvan ──
+//
+//   1. **El certificado vencido se veía como una fecha más.** La tarjeta decía
+//      «Vencimiento: 12/03/2026» en gris, igual que si faltaran dos años. Un
+//      certificado vencido es la causa número uno de que un comercio deje de
+//      poder facturar de un día para el otro, y AFIP no avisa antes.
+//   2. **No había checklist**, así que no había forma de que dijera que estaba
+//      completo cuando no lo estaba — ni de que lo dijera cuando sí.
+//   3. **El paso 4 no existía**: el circuito nunca se había probado y no había
+//      dónde registrar que se probó.
+// ════════════════════════════════════════════
+
+const AHORA = new Date('2026-08-06T12:00:00.000Z')
+
+/** Una fecha a N días de `AHORA`. Negativo = en el pasado. */
+const enDias = (n) => new Date(AHORA.getTime() + n * 24 * 60 * 60 * 1000).toISOString()
+
+/**
+ * Una empresa con todo en orden.
+ *
+ * ⚠ La fixture tiene los cuatro pasos cumplidos **de verdad**, y con datos que
+ * se distinguen entre sí: el CUIT del certificado es el mismo que el
+ * configurado, la verificación es del mismo punto de venta, y el certificado
+ * empezó a valer ANTES de la verificación. Con una fixture a medias, media
+ * docena de casos de abajo pasarían por el motivo equivocado.
+ */
+const COMPLETA = {
+  configuracion: {
+    afip_cuit: '30111111118',
+    afip_pv: '5',
+    afip_cert_cargado: true,
+    afip_key_cargado: true,
+  },
+  certificado: {
+    cuit: 'CUIT 30111111118',
+    validFrom: enDias(-200),
+    validTo: enDias(400),
+  },
+  verificacion: {
+    resultado: 'ok',
+    cuit: '30111111118',
+    pv: 5,
+    ambiente: 'homologation',
+    verificado_en: enDias(-2),
+  },
+  ahora: AHORA,
+}
+
+/** El paso con ese código, del resultado. */
+const paso = (resultado, codigo) => resultado.pasos.find((p) => p.codigo === codigo)
+
+describe('los cuatro pasos salen siempre, y nunca con undefined', () => {
+  it('devuelve los cuatro pasos, en el orden del trámite', () => {
+    // El orden importa: es el del trámite en ARCA. Verificar el circuito antes de
+    // tener el punto de venta no se puede, y el checklist tiene que leerse de
+    // arriba abajo como una lista de cosas por hacer.
+    const { pasos } = puestaEnMarchaAfip(COMPLETA)
+
+    expect(pasos.map((p) => p.codigo)).toEqual([
+      'cuit', 'certificado', 'punto_de_venta', 'circuito',
+    ])
+    expect(pasos.map((p) => p.numero)).toEqual([1, 2, 3, 4])
+  })
+
+  it('sin ningún dato NO devuelve undefined en ningún campo de ningún paso', () => {
+    // FR-086. Un paso sin tono es un badge sin color; un paso sin detalle es una
+    // fila que dice qué falta sin decir qué hacer. Y la empresa que todavía no
+    // configuró nada es justamente la que más necesita leer los cuatro.
+    const { pasos } = puestaEnMarchaAfip()
+
+    expect(pasos).toHaveLength(4)
+
+    for (const p of pasos) {
+      expect(p.estado).toBeTruthy()
+      expect(p.tono).toMatch(/border-.+ bg-.+ text-/)
+      expect(p.etiqueta).toBeTruthy()
+      expect(p.detalle.length).toBeGreaterThan(10)
+      expect(typeof p.cumplido).toBe('boolean')
+    }
+  })
+
+  it('un estado que no existe cae en «pendiente» y no en un tono vacío', () => {
+    // La red de seguridad del badge: `tonoDePaso(undefined)` tiene que devolver
+    // las tres clases igual. Sin esto, un estado nuevo mal escrito dibuja un
+    // badge transparente y nadie lo nota.
+    expect(tonoDePaso('inventado')).toBe(tonoDePaso('pendiente'))
+    expect(tonoDePaso(undefined)).toContain('border-border')
+    expect(etiquetaDePaso(undefined)).toBe('Pendiente')
+  })
+})
+
+describe('el certificado vencido es un paso en rojo', () => {
+  it('un certificado vencido ayer es un paso en rojo y no «vence en -1 días»', () => {
+    // **El defecto 1.** La pantalla vieja imprimía `validTo` y nada más: un
+    // certificado vencido ayer se veía igual que uno que vence en dos años, con
+    // otra fecha. Lo que decide acá es el ESTADO, no el texto.
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      certificado: { ...COMPLETA.certificado, validTo: enDias(-1) },
+    })
+
+    const cert = paso(resultado, 'certificado')
+
+    expect(cert.estado).toBe('error')
+    expect(cert.cumplido).toBe(false)
+    expect(cert.tono).toContain('text-danger')
+    expect(cert.detalle).toMatch(/venció/i)
+    expect(cert.detalle).not.toMatch(/-1 día/)
+  })
+
+  it('el certificado que vence en este mismo instante YA no sirve', () => {
+    // La comparación es estricta a propósito. Con `>=`, el que vence justo ahora
+    // se dibujaría verde y quien lo mire no va a renovar nada — hasta que el
+    // primer comprobante del día siguiente sea rechazado.
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      certificado: { ...COMPLETA.certificado, validTo: AHORA.toISOString() },
+    })
+
+    expect(paso(resultado, 'certificado').estado).toBe('error')
+  })
+
+  it('un certificado que vence dentro del mes es amarillo, y dice cuántos días', () => {
+    // FR-089. Amarillo y no rojo: todavía se puede facturar. Lo que hay que
+    // hacer es sacar uno nuevo, y para eso hay que saber cuánto tiempo queda.
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      certificado: { ...COMPLETA.certificado, validTo: enDias(12) },
+    })
+
+    const cert = paso(resultado, 'certificado')
+
+    expect(cert.estado).toBe('atencion')
+    expect(cert.cumplido).toBe(true)
+    expect(cert.dias).toBe(12)
+    expect(cert.detalle).toContain('12 días')
+  })
+
+  it('un certificado con más de un mes por delante es verde', () => {
+    // El contrapeso: sin este caso, una regla que pusiera todo en amarillo
+    // pasaría los dos de arriba y la pantalla avisaría siempre — que es lo mismo
+    // que no avisar nunca.
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      certificado: { ...COMPLETA.certificado, validTo: enDias(DIAS_DE_AVISO + 1) },
+    })
+
+    expect(paso(resultado, 'certificado').estado).toBe('listo')
+  })
+
+  it('«subido» y «vencido» son dos estados distintos, no el mismo', () => {
+    // Sin el certificado cargado el paso es PENDIENTE (todavía no lo hiciste);
+    // con uno vencido es ERROR (lo hiciste y no sirve). Piden cosas distintas y
+    // por eso no se pueden ver igual.
+    const sinSubir = puestaEnMarchaAfip({
+      ...COMPLETA,
+      configuracion: { ...COMPLETA.configuracion, afip_cert_cargado: false, afip_key_cargado: false },
+      certificado: null,
+    })
+
+    expect(paso(sinSubir, 'certificado').estado).toBe('pendiente')
+    expect(paso(sinSubir, 'certificado').detalle).toMatch(/Subí/)
+  })
+
+  it('la clave sin el certificado tampoco cuenta como subido', () => {
+    // Los dos van juntos: con uno solo no se puede firmar nada, y es el caso que
+    // el servidor rechaza con «se cargan juntos».
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      configuracion: { ...COMPLETA.configuracion, afip_key_cargado: false },
+    })
+
+    expect(paso(resultado, 'certificado').estado).toBe('pendiente')
+  })
+})
+
+describe('diasHastaVencer', () => {
+  it('redondea hacia arriba: veinte horas es un día, no cero', () => {
+    // Redondear hacia abajo diría «vence en 0 días» sobre un certificado que
+    // todavía sirve, y esa es la lectura que hace que alguien no lo renueve.
+    const enVeinteHoras = new Date(AHORA.getTime() + 20 * 60 * 60 * 1000)
+
+    expect(diasHastaVencer(enVeinteHoras, AHORA)).toBe(1)
+  })
+
+  it('una fecha ilegible da null y NO 1970', () => {
+    // `new Date('cualquier cosa')` da `Invalid Date`, y restarle una fecha da
+    // `NaN`: sin esta guarda, el detalle diría «vence en NaN días».
+    expect(diasHastaVencer('no es una fecha', AHORA)).toBeNull()
+    expect(diasHastaVencer(null, AHORA)).toBeNull()
+  })
+})
+
+describe('el CUIT del certificado se compara con el configurado', () => {
+  it('un certificado de otro CUIT pone el paso 1 en rojo y nombra los dos números', () => {
+    // FR-088 del lado de la pantalla. El dato ya salía por `GET /afip/cert-info`
+    // y ya se mostraba: lo que faltaba era alguien que los comparara. Sin esto
+    // falla recién al pedir el ticket, con un mensaje de AFIP que no nombra
+    // ningún número y manda a revisar el certificado equivocado.
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      certificado: { ...COMPLETA.certificado, cuit: 'CUIT 20999999997' },
+    })
+
+    const cuit = paso(resultado, 'cuit')
+
+    expect(cuit.estado).toBe('error')
+    expect(cuit.detalle).toContain('20999999997')
+    expect(cuit.detalle).toContain('30111111118')
+  })
+
+  it('un CUIT de diez dígitos es un problema, no un paso cumplido', () => {
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      configuracion: { ...COMPLETA.configuracion, afip_cuit: '3011111111' },
+      certificado: null,
+    })
+
+    expect(paso(resultado, 'cuit').estado).toBe('error')
+  })
+
+  it('el CUIT con guiones se cuenta igual que sin ellos', () => {
+    // La ficha lo guarda como lo tipeó el usuario. Contar los guiones dejaría el
+    // paso en rojo por un formato que el servidor limpia solo.
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      configuracion: { ...COMPLETA.configuracion, afip_cuit: '30-11111111-8' },
+    })
+
+    expect(paso(resultado, 'cuit').estado).toBe('listo')
+  })
+})
+
+describe('el paso 4 es del circuito verificado, y de este punto de venta', () => {
+  it('sin ninguna verificación el paso está pendiente y dice que no emite nada', () => {
+    const resultado = puestaEnMarchaAfip({ ...COMPLETA, verificacion: null })
+    const circuito = paso(resultado, 'circuito')
+
+    expect(circuito.estado).toBe('pendiente')
+    expect(circuito.detalle).toMatch(/no emite nada/i)
+  })
+
+  it('una verificación con error se ve distinta de no haber verificado nunca', () => {
+    // «Probé y no anduvo» es un estado, no la ausencia de uno: pide arreglar algo
+    // en ARCA, no apretar el botón por primera vez.
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      verificacion: { resultado: 'error', paso: 'punto_de_venta', cuit: '30111111118', pv: 5 },
+    })
+
+    expect(paso(resultado, 'circuito').estado).toBe('error')
+    expect(paso(resultado, 'circuito').detalle).toMatch(/punto de venta/i)
+  })
+
+  it('el mensaje distingue cuál de los dos pasos falló', () => {
+    const wsaa = puestaEnMarchaAfip({
+      ...COMPLETA,
+      verificacion: { resultado: 'error', paso: 'ticket_wsaa', cuit: '30111111118', pv: 5 },
+    })
+
+    expect(paso(wsaa, 'circuito').detalle).toMatch(/ticket de acceso/i)
+    expect(paso(wsaa, 'circuito').detalle).not.toMatch(/punto de venta/i)
+  })
+
+  it('una verificación de OTRO punto de venta no cumple el paso', () => {
+    // Es la mitad del circuito que el paso 2 de la verificación prueba: cambiar
+    // el punto de venta después de verificar deja sin probar justamente lo que
+    // origina la mitad de las llamadas «no puedo facturar».
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      verificacion: { ...COMPLETA.verificacion, pv: 3 },
+    })
+
+    expect(paso(resultado, 'circuito').estado).toBe('pendiente')
+    expect(paso(resultado, 'circuito').detalle).toMatch(/verificá de nuevo/i)
+  })
+
+  it('un certificado posterior a la verificación avisa, pero NO deja el paso incumplido', () => {
+    // ⚠ Avisa y no bloquea. El pase a producción implica cambiar el certificado:
+    // si la evidencia se invalidara ahí, el paso 4 nunca se podría cumplir justo
+    // cuando hace falta (ajuste 3 del plan).
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      certificado: { ...COMPLETA.certificado, validFrom: enDias(-1) },
+    })
+
+    const circuito = paso(resultado, 'circuito')
+
+    expect(circuito.estado).toBe('atencion')
+    expect(circuito.cumplido).toBe(true)
+  })
+})
+
+describe('el checklist no dice que está completo si no lo está', () => {
+  it('con los cuatro pasos cumplidos, dice que está completo', () => {
+    const resultado = puestaEnMarchaAfip(COMPLETA)
+
+    expect(resultado.completa).toBe(true)
+    expect(resultado.pendientes).toBe(0)
+  })
+
+  it('con un paso pendiente, el checklist NO dice que está completo', () => {
+    // FR-085. Y se prueba con el paso 4 justamente porque es el que se agregó: un
+    // `completa` calculado sobre los tres viejos diría que sí.
+    const resultado = puestaEnMarchaAfip({ ...COMPLETA, verificacion: null })
+
+    expect(resultado.completa).toBe(false)
+    expect(resultado.pendientes).toBe(1)
+  })
+
+  it('un paso en rojo tampoco lo deja completo', () => {
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      certificado: { ...COMPLETA.certificado, validTo: enDias(-1) },
+    })
+
+    expect(resultado.completa).toBe(false)
+  })
+
+  it('el amarillo NO deja el checklist incompleto', () => {
+    // «Vence en veinte días» es algo que hay que hacer, no algo que falta hacer:
+    // la empresa está facturando. Contarlo como pendiente diría que la puesta en
+    // marcha no terminó cuando hace meses que terminó.
+    const resultado = puestaEnMarchaAfip({
+      ...COMPLETA,
+      certificado: { ...COMPLETA.certificado, validTo: enDias(20) },
+    })
+
+    expect(resultado.completa).toBe(true)
+    expect(resultado.pendientes).toBe(0)
+  })
+
+  it('sin nada configurado, los cuatro están pendientes', () => {
+    const resultado = puestaEnMarchaAfip()
+
+    expect(resultado.completa).toBe(false)
+    expect(resultado.pendientes).toBe(4)
+  })
+})

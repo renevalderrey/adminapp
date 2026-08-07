@@ -761,6 +761,73 @@ describe('routes/suppliers.js · cada ruta con el permiso que le corresponde', (
 });
 
 // ════════════════════════════════════════════
+//  routes/afip.js · la superficie que produce hechos fiscales irreversibles
+//
+//  Es la segunda tabla ruta→permiso de este archivo, y entra por el mismo motivo
+//  que la de suppliers: la regla de más arriba dice que hay ALGÚN
+//  `checkPermission`, no cuál. Acá eso no alcanza, y no por prolijidad:
+//
+//   · `POST /verificar` **escribe** la evidencia que habilita el pase a
+//     producción. Con `config.ver` —que tiene el rol `gerente`— el paso 4 del
+//     checklist lo podría cumplir alguien que no puede tocar la configuración.
+//   · `DELETE /vinculacion` borra el certificado y la clave privada, y **la clave
+//     no se puede recuperar de acá**: no sale por la API y la del CSR nunca se
+//     guardó del lado del servidor. Degradarlo a `config.ver` sería dejar que
+//     medio equipo destruya material fiscal que hay que volver a tramitar en
+//     ARCA.
+//   · `POST /invoice` **no está en la tabla porque no existe**: se borró en el
+//     corte 3 (emitía un comprobante fiscal real con `ventas.crear`, el permiso
+//     del rol `vendedor`, sin crear ninguna `Sale`). La igualdad exacta de acá
+//     abajo es lo que hace que volver a agregarlo obligue a escribirle su fila —y
+//     a que alguien mire por qué.
+//
+//  La tabla no se puede desactualizar en silencio: se compara por igualdad exacta
+//  contra lo que el detector encontró.
+// ════════════════════════════════════════════
+
+describe('routes/afip.js · cada ruta con el permiso que le corresponde', () => {
+  const ESPERADO = {
+    'GET /status': 'config.ver',
+    'GET /cert-info': 'config.ver',
+    'POST /setup': 'config.editar',
+    'POST /generate-csr': 'config.editar',
+    'POST /verificar': 'config.editar',
+    'DELETE /vinculacion': 'config.editar',
+    // Lee un comprobante YA emitido para imprimirlo (`pages/InvoicesList.jsx`).
+    // No emite nada, y por eso pide el permiso de ventas y no el de configurar.
+    'GET /invoice/:type/:pv/:number/data': 'ventas.ver',
+  };
+
+  const DEL_ARCHIVO = TODAS_LAS_RUTAS.filter((r) => r.archivo === 'routes/afip.js');
+
+  it('la tabla cubre las 7 rutas del archivo, ni una más ni una menos', () => {
+    const encontradas = DEL_ARCHIVO.map((r) => `${r.metodo} ${r.ruta}`).sort();
+
+    expect(encontradas).toEqual(Object.keys(ESPERADO).sort());
+    expect(DEL_ARCHIVO).toHaveLength(7);
+  });
+
+  it.each(Object.entries(ESPERADO))('%s exige %s', (clave, permiso) => {
+    const [metodo, ...resto] = clave.split(' ');
+    const ruta = DEL_ARCHIVO.find((r) => r.metodo === metodo && r.ruta === resto.join(' '));
+
+    expect(ruta).toBeDefined();
+    expect(ruta.permiso).toBe(permiso);
+  });
+
+  it('las dos rutas que escriben material fiscal piden config.editar, no config.ver', () => {
+    // El caso específico. Degradar cualquiera de las dos a `config.ver` deja la
+    // regla general en verde y esta prueba en rojo, que es exactamente la
+    // diferencia que la tabla existe para marcar.
+    const escritoras = DEL_ARCHIVO
+      .filter((r) => ['/verificar', '/vinculacion'].includes(r.ruta))
+      .map((r) => r.permiso);
+
+    expect(escritoras).toEqual(['config.editar', 'config.editar']);
+  });
+});
+
+// ════════════════════════════════════════════
 //  Quién tiene cada permiso, leído de seedPermissions.js
 //
 //  Hace falta para poder afirmar algo sobre las CONSECUENCIAS de un
@@ -920,6 +987,57 @@ describe('routes/empresas.js · el rol de un miembro se cambia con equipo.editar
     expect(CATALOGO).toContain('equipo.editar');
     expect(rolesCon('equipo.editar')).toEqual(['admin']);
     expect(rolesCon('equipo.editar')).toEqual(rolesCon('config.editar'));
+  });
+});
+
+// ════════════════════════════════════════════
+//  routes/empresas.js · las tres rutas de sesiones, y por qué NO piden lo mismo
+//
+//  La regla general de este archivo —«toda ruta autenticada declara algún
+//  permiso»— las dejaría las tres en verde con cualquier código. Acá lo que
+//  importa es **cuál**, y la asimetría es la decisión:
+//
+//   · Ver la lista y cerrar LAS PROPIAS piden `equipo.ver`. Cerrar la sesión que
+//     me quedó abierta en la computadora del local no puede exigir el permiso de
+//     administrar el equipo: es mi sesión, y quien no lo tuviera no tendría forma
+//     de cerrarla.
+//   · Cerrar la sesión de OTRO pide `equipo.editar`, que solo tiene `admin`. Es
+//     una acción sobre otra persona —le corta el acceso en TODAS las empresas a
+//     las que tenga acceso— y va con el mismo permiso que cambiarle el rol.
+//
+//  Degradar el DELETE de la sesión ajena a `equipo.ver` —que tienen los cinco
+//  roles— dejaría a un vendedor cerrándole la sesión al dueño, y la regla general
+//  no lo vería.
+// ════════════════════════════════════════════
+
+describe('routes/empresas.js · las tres rutas de sesiones y su permiso exacto', () => {
+  const DEL_ARCHIVO = TODAS_LAS_RUTAS.filter((r) => r.archivo === 'routes/empresas.js');
+
+  const buscar = (metodo, ruta) => DEL_ARCHIVO.find((r) => r.metodo === metodo && r.ruta === ruta);
+
+  it.each([
+    ['GET', '/:empresaId/sesiones', 'equipo.ver'],
+    ['DELETE', '/sesiones', 'equipo.ver'],
+    ['DELETE', '/sesiones/:id', 'equipo.editar'],
+  ])('%s %s pide %s', (metodo, ruta, permiso) => {
+    const encontrada = buscar(metodo, ruta);
+
+    expect(encontrada).toBeDefined();
+    expect(encontrada.permiso).toBe(permiso);
+  });
+
+  it('las tres se declaran ARRIBA de DELETE /:id, o una de ellas no existe', () => {
+    // ⚠ No es orden estético: `DELETE /sesiones` es **un solo segmento**, así que
+    // `router.delete('/:id')` lo atrapa primero con `id = 'sesiones'`,
+    // `requireEmpresaPropia` hace `parseInt('sesiones')` → NaN y el endpoint
+    // responde 403 sin haber existido nunca. Express resuelve por orden de
+    // declaración, y eso no se ve en ninguna otra guardia: la ruta está escrita,
+    // declara su permiso, y no la alcanza ningún request.
+    const generica = buscar('DELETE', '/:id');
+
+    expect(generica).toBeDefined();
+    expect(buscar('DELETE', '/sesiones').linea).toBeLessThan(generica.linea);
+    expect(buscar('DELETE', '/sesiones/:id').linea).toBeLessThan(generica.linea);
   });
 });
 

@@ -48,6 +48,29 @@ const MARCAS = [
   'token-de-prueba-sin-firma',
 ]
 
+/**
+ * El texto sin comentarios.
+ *
+ * Las MARCAS se buscan sobre esto y no sobre el archivo crudo, por el mismo
+ * motivo que el regex `IMPORTA` de abajo busca la sentencia y no la palabra: un
+ * archivo puede **nombrar** el bypass para explicar de qué se trata, y prohibir
+ * la mención hace que la salida barata sea borrar la explicación.
+ *
+ * Paso de verdad: `services/api.js` nombra el archivo del bypass en su
+ * encabezado —para explicar por qué el proveedor de sesión es reemplazable— y
+ * esta guardia lo denunció como si lo estuviera importando. El comentario no
+ * mete una sola línea en el bundle.
+ *
+ * Es la tercera vez en este repositorio que una guardia lee un comentario como
+ * si fuera código: ya pasó con la posición de `resolverSucursal(` y con la
+ * guardia que exige importar `fallo()`.
+ */
+function sinComentarios(texto) {
+  return texto
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/^\s*\/\/.*$/gm, ' ')
+}
+
 function todosLosArchivos(dir, filtro = () => true) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const completo = path.join(dir, e.name)
@@ -103,7 +126,7 @@ describe('El bypass de sesión no puede compilarse', () => {
 
     const culpables = codigo
       .filter((f) => {
-        const t = fs.readFileSync(f, 'utf8')
+        const t = sinComentarios(fs.readFileSync(f, 'utf8'))
         return IMPORTA.test(t) || MARCAS.some((m) => t.includes(m))
       })
       .map((f) => path.relative(WEB, f))

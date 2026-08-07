@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const forge = require('node-forge');
+const { Op } = require('sequelize');
 const afipService = require('../services/afipService');
 const afipAuth = require('../services/afipAuth');
+const afipVerificacion = require('../services/afipVerificacion');
 const { Setting, Empresa, sequelize } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
 const { fallo } = require('../utils/errores');
@@ -78,14 +80,120 @@ async function guardarConfiguracionAfip(empresaId, cambios, { transaction } = {}
   afipAuth.invalidarCache(empresaId);
 }
 
-// GET /api/afip/status — Verificar conexión
+/**
+ * El CUIT que ARCA escribe en el subject del certificado, solo dígitos.
+ *
+ * Viene como `serialNumber` y con la forma `CUIT 20111111112`, así que se saca
+ * todo lo que no sea dígito antes de comparar. Es el mismo dato que
+ * `GET /afip/cert-info` ya devuelve y que la pantalla ya muestra: lo que no había
+ * era **alguien que los comparara**.
+ */
+function cuitDelCertificado(pem) {
+  const cert = forge.pki.certificateFromPem(pem);
+  const serie = cert.subject.attributes.find((a) => a.name === 'serialNumber');
+
+  return String((serie && serie.value) || '').replace(/\D/g, '');
+}
+
+/**
+ * Si esta clave privada es la del certificado.
+ *
+ * Se firma un blob de prueba con la clave y se verifica la firma con la clave
+ * **pública** del certificado. Es la única forma de saberlo sin llamar a AFIP.
+ *
+ * ── Por qué hace falta ──
+ *
+ * Hasta este corte los dos PEM se validaban **por separado**: que cada uno fuera
+ * un PEM legible. Subir el certificado de ARCA junto con la clave privada de un
+ * CSR viejo —que es lo que pasa cuando alguien rehace el trámite y le quedan dos
+ * archivos `.key` en Descargas— pasaba las dos validaciones, se guardaba, la
+ * pantalla decía «guardada correctamente», y el error aparecía recién al
+ * facturar, como «Error al firmar el ticket de acceso» (`afipAuth.js:154`) — con
+ * alguien esperando su factura del otro lado del mostrador.
+ */
+function sonPareja(certPem, keyPem) {
+  try {
+    const cert = forge.pki.certificateFromPem(certPem);
+    const clave = forge.pki.privateKeyFromPem(keyPem);
+
+    const md = forge.md.sha256.create();
+    md.update('adminapp: verificación de la pareja certificado-clave', 'utf8');
+
+    return cert.publicKey.verify(md.digest().bytes(), clave.sign(md));
+  } catch {
+    // Una clave que no corresponde puede hacer explotar la verificación en vez
+    // de devolver `false`, y las dos cosas significan lo mismo acá.
+    return false;
+  }
+}
+
+/** Solo los dígitos: un CUIT se compara así venga con guiones o sin ellos. */
+function soloDigitos(valor) {
+  return String(valor === null || valor === undefined ? '' : valor).replace(/\D/g, '');
+}
+
+/** El valor guardado de una clave de configuración de esta empresa, o `null`. */
+async function valorGuardado(clave, empresaId) {
+  const fila = await Setting.findOne({ where: { key: clave, empresa_id: empresaId } });
+  return fila && fila.value !== undefined ? fila.value : null;
+}
+
+// ════════════════════════════════════════════
+//  GET /api/afip/status — DOS cosas distintas, y por eso no es un booleano
+//
+//  Hasta este corte esto era «Probar conexión» y devolvía lo que contestara
+//  `FEDummy`. **`FEDummy` no lleva `Auth`** (`afipService.js:114-122`): no firma
+//  con el certificado de nadie, así que contesta OK con el certificado vencido,
+//  con la clave equivocada, con el punto de venta inexistente y sin ningún
+//  certificado cargado. La pantalla dibujaba «Conectado: API operativa» sobre
+//  eso, que es una afirmación sobre la facturación de ESTA empresa hecha con un
+//  dato que no la mira.
+//
+//  Ahora se devuelven las dos cosas por separado, porque son dos:
+//
+//   · `servidores_afip` — lo que dice `FEDummy`: si los servidores de ARCA están
+//     arriba. Sirve para distinguir «AFIP está caído» de «tu configuración está
+//     mal», que es la pregunta real cuando algo falla.
+//   · `verificacion` — la evidencia de `POST /afip/verificar`: si el circuito de
+//     esta empresa, con SU certificado y SU punto de venta, se ejercitó alguna
+//     vez y cómo salió.
+//
+//  El banner verde de la pantalla sale de la segunda y **nunca** de la primera
+//  (FR-080). Y `ambiente` va acá porque el aviso de «los comprobantes no tienen
+//  validez fiscal» depende de él (FR-081).
+//
+//  ⚠ Que `FEDummy` no conteste **no** es un 502 de este endpoint: la evidencia y
+//  el ambiente salen igual, y son justamente lo que la pantalla necesita para
+//  dibujarse cuando AFIP está caído.
+// ════════════════════════════════════════════
 router.get('/status', checkPermission('config.ver'), async (req, res) => {
   try {
-    const status = await afipService.getStatus(req.empresaId);
-    res.json({ ok: true, data: status });
+    const [enProduccion, verificacion] = await Promise.all([
+      afipAuth.isProduction(req.empresaId),
+      afipVerificacion.leerEvidencia(req.empresaId),
+    ]);
+
+    let servidoresAfip = null;
+    let errorDeServidores = null;
+
+    try {
+      servidoresAfip = await afipService.getStatus(req.empresaId);
+    } catch (err) {
+      logger.warn({ err: err.message, empresaId: req.empresaId }, 'afip:status — FEDummy no contestó');
+      errorDeServidores = 'No se pudo consultar el estado de los servidores de ARCA.';
+    }
+
+    res.json({
+      ok: true,
+      data: {
+        servidores_afip: servidoresAfip,
+        error_servidores: errorDeServidores,
+        verificacion,
+        ambiente: enProduccion ? 'production' : 'homologation',
+      },
+    });
   } catch (err) {
-    logger.error({ err, empresaId: req.empresaId }, 'afip:status');
-    res.status(502).json({ ok: false, error: 'No se pudo consultar el estado de AFIP' });
+    fallo(req, res, err, 'No se pudo leer el estado de la facturación electrónica');
   }
 });
 
@@ -176,6 +284,127 @@ router.post('/setup', checkPermission('config.editar'), async (req, res) => {
       });
     }
 
+    // ── La pareja cert-clave (FR-087) ──
+    if (cert && key && !sonPareja(cert, key)) {
+      return res.status(400).json({
+        ok: false,
+        error:
+          'El certificado y la clave privada no son pareja: esa clave no firma ese ' +
+          'certificado. Subí el .key que generaste junto con el pedido (.csr) del que ' +
+          'salió este .crt.',
+      });
+    }
+
+    // ── El CUIT del certificado contra el configurado (FR-088) ──
+    //
+    // Es el defecto que hace que una empresa cargue el certificado de su
+    // contador —o el de la otra sociedad— y no se entere hasta que AFIP rechaza
+    // el ticket con un mensaje que no nombra ningún CUIT.
+    const cuitEfectivo = soloDigitos(cuit || (await valorGuardado('afip_cuit', req.empresaId)));
+
+    if (cert && cuitEfectivo) {
+      const delCertificado = cuitDelCertificado(cert);
+
+      if (delCertificado && delCertificado !== cuitEfectivo) {
+        return res.status(400).json({
+          ok: false,
+          error:
+            `El certificado está emitido para el CUIT ${delCertificado} y acá está ` +
+            `configurado el ${cuitEfectivo}. Corregí el CUIT o subí el certificado de ` +
+            'esta empresa: AFIP firma con el del certificado.',
+        });
+      }
+    }
+
+    // ════════════════════════════════════════════
+    //  El bloqueo del pase a producción (decisión 2 del usuario)
+    //
+    //  El circuito de facturación **nunca se probó**. Sin este bloqueo, el primer
+    //  comprobante fiscal real de un cliente sería también la primera prueba del
+    //  circuito — y un comprobante emitido consume numeración correlativa y para
+    //  darlo de baja hace falta una nota de crédito, que este sistema no emite.
+    //
+    //  ⚠⚠ **El bloqueo va SOLO sobre la transición a producción, no sobre
+    //  emitir.** `POST /api/sales/:id/facturar` no consulta nada de esto: una
+    //  empresa que ya está en producción sigue facturando. Quien ya factura hoy
+    //  no puede quedarse sin facturar por un requisito nuevo, y esa es la línea
+    //  que no se cruza.
+    //
+    //  Por eso mismo el paso se cumple también con un CAE previo: un comprobante
+    //  autorizado es la prueba más fuerte que existe de que el circuito funciona.
+    // ════════════════════════════════════════════
+    if (environment === 'production') {
+      const yaEstabaEnProduccion = await afipAuth.isProduction(req.empresaId);
+
+      if (!yaEstabaEnProduccion) {
+        const circuito = await afipVerificacion.estadoDelCircuito(req.empresaId);
+
+        if (!circuito.cumplido) {
+          return res.status(400).json({
+            ok: false,
+            error: 'CIRCUITO_NO_VERIFICADO',
+            message:
+              'Antes de pasar a producción hay que verificar el circuito contra AFIP. ' +
+              'Guardá esta configuración en homologación, tocá «Verificar circuito» y, ' +
+              'cuando dé bien, volvé a pasar a producción. Es una consulta: no emite ' +
+              'ningún comprobante ni consume numeración.',
+          });
+        }
+      }
+    }
+
+    // ════════════════════════════════════════════
+    //  El punto de venta, contra AFIP y ANTES de guardar (FR-091)
+    //
+    //  Un punto de venta que ARCA no tiene declarado como «Factura Electrónica -
+    //  Web Services» no falla al guardarlo: falla al emitir, y ahí ya hay alguien
+    //  esperando su comprobante. `FECompUltimoAutorizado` lo contesta sin emitir
+    //  nada y sin consumir numeración.
+    //
+    //  ⚠ **Solo se puede consultar con las credenciales que YA están guardadas**,
+    //  y eso acota cuándo corre. `afipService` lee el certificado y la clave de
+    //  `settings`: si vinieran en este mismo request todavía no están escritas, y
+    //  escribirlas antes para poder consultar sería guardar justo lo que se está
+    //  por validar. Peor: la consulta se haría con el certificado **viejo** —o
+    //  sin ninguno—, así que fallaría y bloquearía una carga legítima de material
+    //  nuevo, que es exactamente el caso del primer setup de un cliente.
+    //
+    //  Entonces: se valida cuando cambia el punto de venta y las credenciales en
+    //  vigor son las que ya están. Lo demás lo cubre «Verificar circuito»
+    //  (`POST /afip/verificar`), que ejecuta los dos pasos con la configuración
+    //  ya guardada, y el bloqueo del pase a producción, que exige haberlo hecho.
+    // ════════════════════════════════════════════
+    const pvPedido = String(pv === undefined || pv === null ? '' : pv).trim();
+    const pvActual = String(await valorGuardado('afip_pv', req.empresaId) || '').trim();
+    const credencialesNuevas = Boolean(cert && key);
+
+    if (pvPedido && pvPedido !== pvActual && !credencialesNuevas) {
+      const certGuardado = await valorGuardado('afip_cert', req.empresaId);
+
+      if (certGuardado) {
+        try {
+          await afipService.getLastVoucher(
+            Number(pvPedido),
+            afipVerificacion.TIPO_PARA_CONSULTAR,
+            req.empresaId
+          );
+        } catch (err) {
+          logger.warn(
+            { empresaId: req.empresaId, pv: pvPedido, err: err.message },
+            'afip: AFIP rechazó el punto de venta al guardarlo'
+          );
+
+          return res.status(400).json({
+            ok: false,
+            error:
+              `AFIP no reconoce el punto de venta ${pvPedido} para este CUIT. Declaralo en ` +
+              'ARCA como «Factura Electrónica - Web Services» y volvé a guardarlo. ' +
+              `Respuesta de AFIP: ${err.message}`,
+          });
+        }
+      }
+    }
+
     await sequelize.transaction(async (transaction) => {
       await guardarConfiguracionAfip(req.empresaId, valores, { transaction });
     });
@@ -223,6 +452,93 @@ router.post('/generate-csr', checkPermission('config.editar'), async (req, res) 
       return res.status(400).json({ ok: false, error: err.message });
     }
     fallo(req, res, err, 'Error al generar el pedido de certificado');
+  }
+});
+
+// ════════════════════════════════════════════
+//  POST /api/afip/verificar — probar el circuito SIN emitir nada
+//
+//  Es lo que reemplaza al botón «Emitir Factura de Prueba» y a `POST
+//  /afip/invoice`: ejercita el circuito entero —ticket WSAA y punto de venta—
+//  sin generar un hecho fiscal irreversible.
+//
+//  Pide `config.editar` y no `config.ver` porque **escribe**: deja la evidencia
+//  que cumple el paso 4 del checklist y que habilita el pase a producción.
+// ════════════════════════════════════════════
+router.post('/verificar', checkPermission('config.editar'), async (req, res) => {
+  try {
+    const evidencia = await afipVerificacion.verificarCircuito(
+      req.empresaId,
+      (req.usuario && req.usuario.id) || null
+    );
+
+    res.json({ ok: true, data: evidencia });
+  } catch (err) {
+    // Un `ErrorDeNegocio` sale con su propio texto y su 400: el mensaje dice
+    // cuál de los dos pasos falló y qué hacer, y eso es lo que el usuario
+    // necesita leer. `fallo` ya lo distingue de un error de servidor.
+    fallo(req, res, err, 'No se pudo verificar el circuito de facturación');
+  }
+});
+
+/**
+ * Lo que se borra al desvincular AFIP.
+ *
+ * ⚠ **`afip_cuit` NO está**, y no es un olvido: el CUIT es un dato de la empresa
+ * —el mismo que va en los remitos y en la cuenta corriente—, no una credencial.
+ * Borrarlo obligaría a volver a tipearlo para reconectar y dejaría a la pantalla
+ * sin poder mostrar de quién era la vinculación que se acaba de cortar.
+ *
+ * `tax_condition` tampoco: es la condición fiscal de la empresa y decide qué
+ * tipo de comprobante emite. Sobrevive a la desvinculación igual que el CUIT.
+ */
+const CLAVES_DE_LA_VINCULACION = [
+  'afip_cert',
+  'afip_key',
+  'afip_pv',
+  'afip_environment',
+  'afip_verificacion',
+];
+
+// ════════════════════════════════════════════
+//  DELETE /api/afip/vinculacion — «Desvincular AFIP»
+//
+//  ⚠ **No toca ninguna venta ya facturada.** Los CAE emitidos son hechos
+//  fiscales: existen en AFIP, están impresos en comprobantes que alguien tiene, y
+//  borrarlos de acá no los deshace — solo deja al sistema sin poder mostrar el
+//  comprobante que su cliente le muestra en el mostrador.
+//
+//  ⚠⚠ **La clave privada no se puede recuperar de acá.** No sale por la API
+//  (`utils/settingsSecretos.js`) y la del CSR nunca se guardó del lado del
+//  servidor. Después de esto hay que volver a subir el par, o rehacer el trámite
+//  en ARCA. La confirmación de la pantalla lo dice con esas palabras.
+// ════════════════════════════════════════════
+router.delete('/vinculacion', checkPermission('config.editar'), async (req, res) => {
+  try {
+    await sequelize.transaction(async (transaction) => {
+      await Setting.destroy({
+        where: { key: { [Op.in]: CLAVES_DE_LA_VINCULACION }, empresa_id: req.empresaId },
+        transaction,
+      });
+
+      // Sin cambios que escribir —el objeto vacío no toca ninguna fila— pero SÍ
+      // hay que invalidar el ticket WSAA: sigue en memoria, emitido con el
+      // certificado que se acaba de borrar, y valdría hasta doce horas más. La
+      // invalidación vive adentro de `guardarConfiguracionAfip` justamente para
+      // que ningún camino que cambie el material fiscal pueda saltearla.
+      await guardarConfiguracionAfip(req.empresaId, {}, { transaction });
+    });
+
+    logger.info({ empresaId: req.empresaId }, 'afip: vinculación eliminada');
+
+    res.json({
+      ok: true,
+      message:
+        'Se desvinculó AFIP. Las ventas ya facturadas conservan su CAE; para volver a ' +
+        'facturar hay que subir de nuevo el certificado y la clave.',
+    });
+  } catch (err) {
+    fallo(req, res, err, 'No se pudo desvincular AFIP');
   }
 });
 

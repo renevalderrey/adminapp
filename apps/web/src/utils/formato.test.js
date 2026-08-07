@@ -416,7 +416,11 @@ const PENDIENTES = [
   //  T1372) y quedan limpios en el mismo commit. `pages/Team.jsx` no infringe
   //  esta regla.
   // ════════════════════════════════════════════
-  ['pages/Settings.jsx', 'FR-005: el vencimiento del certificado en línea. Lo saca T1407 (corte 9)', ['el formateo en línea de un importe o una fecha']],
+  //  ✔ **`pages/Settings.jsx` ya salió** (T1407, corte 9): el vencimiento del
+  //  certificado se dibujaba con `new Date(certInfo.validTo).toLocaleDateString()`
+  //  —un `DATEONLY` leído como medianoche UTC, o sea el día anterior en
+  //  Argentina— y ahora sale de `fechaCorta`. La línea se borra y no se comenta:
+  //  la lista es el registro de lo que falta, no de lo que faltó.
   ['pages/Billing.jsx', 'la fecha del ticket impreso, en línea; fuera del alcance de este cambio', ['el formateo en línea de un importe o una fecha']],
   ['pages/Faltantes.jsx', 'dos importes del pedido a pedir, en línea', ['el formateo en línea de un importe o una fecha']],
   ['pages/Inventory.jsx', '`unidades()` —que NO es plata— y la fecha de una transferencia', ['el formateo en línea de un importe o una fecha']],
@@ -597,6 +601,11 @@ const IMPORTAN = [
   ['pages/Comparador.jsx', ['pesosDeLista']],
   ['pages/Inventory.jsx', ['pesos', 'pesosRedondos']],
   ['pages/InvoicesList.jsx', ['pesos']],
+  // El vencimiento del certificado y la fecha de la verificación. Sin esta
+  // entrada, borrar el `toLocaleDateString` y dejar de mostrar la fecha también
+  // pasaría la guardia — y la fecha del vencimiento es justamente el dato que
+  // evita que un comercio deje de poder facturar de un día para el otro.
+  ['pages/Settings.jsx', ['fechaCorta']],
   ['pages/Orders.jsx', ['pesos', 'fechaCorta', 'fechaDeHoy']],
   ['pages/PurchaseOrders.jsx', ['pesos', 'fechaCorta', 'fechaDeHoy']],
   ['components/HistorialDeCostos.jsx', ['pesos']],
