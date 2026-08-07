@@ -26,7 +26,7 @@ const path = require('path');
 //  otras cinco de este directorio.
 // ════════════════════════════════════════════
 
-const { invitationEmail } = require('../services/email');
+const { invitationEmail, enlaceDeInvitacion } = require('../services/email');
 
 const RAIZ_WEB = path.join(__dirname, '..', '..', '..', 'web', 'src');
 
@@ -84,5 +84,32 @@ describe('el enlace del mail apunta a una ruta que App.jsx atiende, y /accept-in
 
     expect(app).not.toContain('accept-invite/:token');
     expect(app).not.toContain('path="/accept-invite');
+  });
+
+  it('el mail y la respuesta de la API arman el enlace con la MISMA función', () => {
+    // T1390. `POST /:empresaId/invitar` devuelve el enlace para que la pantalla
+    // lo pueda copiar cuando el mail no salió, y ése es justamente el camino que
+    // nadie ejercita hasta que hace falta: si la URL estuviera escrita dos
+    // veces, el que quedaría desactualizado es el de emergencia.
+    //
+    // Se afirma que el HTML del mail CONTIENE lo que devuelve el constructor —no
+    // que los dos textos coincidan— porque el mail es una plantilla entera y lo
+    // que tiene que ser el mismo es el enlace.
+    const html = invitationEmail('Renée', 'Panadería del Centro', TOKEN);
+
+    expect(enlaceDeInvitacion(TOKEN)).toBe(`https://app.adminapp.test/?invite=${TOKEN}`);
+    expect(html).toContain(enlaceDeInvitacion(TOKEN));
+  });
+
+  it('la ruta de empresas.js no arma el enlace a mano', () => {
+    // La otra mitad: importar la función y además concatenar la URL en el
+    // handler dejaría las dos formas conviviendo, que es como se llegó al
+    // `/accept-invite/` de antes.
+    const ruta = fs.readFileSync(
+      path.join(__dirname, '..', 'routes', 'empresas.js'), 'utf8'
+    );
+
+    expect(ruta).toContain('enlaceDeInvitacion(');
+    expect(ruta).not.toContain('?invite=');
   });
 });

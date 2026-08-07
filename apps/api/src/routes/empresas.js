@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
 const { Empresa, PuntoDeVenta, Usuario, UsuarioEmpresa, Suscripcion, Invitacion, Rol, RolPermiso, UsuarioPermiso, Permiso, sequelize } = require('../models');
-const { sendEmail, welcomeEmail, invitationEmail } = require('../services/email');
+const { sendEmail, welcomeEmail, invitationEmail, enlaceDeInvitacion } = require('../services/email');
 const checkPermission = require('../middleware/checkPermission');
 const { requireEmpresa } = require('../middleware/auth');
 const multer = require('multer');
@@ -10,6 +10,7 @@ const path = require('path');
 const logger = require('../utils/logger');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo } = require('../utils/errores');
+const { puedeCambiarRol, esRolValido, ROLES_VALIDOS } = require('../utils/equipo');
 
 // ── Logo de empresa ──
 // El logo se guarda como data URI en la columna Empresa.logo (TEXT), no en
@@ -684,10 +685,19 @@ router.post('/:empresaId/invitar', checkPermission('equipo.invitar'), requireEmp
       );
     }
 
+    // ⚠ El `enlace` viaja SIEMPRE, no solo cuando el mail falla (FR-106).
+    //
+    // Si viajara solo en el caso de fallo, la pantalla no tendria nada que
+    // mostrar cuando el mail salio pero no llegó —spam, dominio mal escrito,
+    // buzon lleno—, que es el caso frecuente y el que hoy termina en un llamado.
+    // Y se arma con `enlaceDeInvitacion`, la misma funcion que usa el mail: dos
+    // copias de la URL derivan, y la que queda mal es justamente la del camino
+    // que nadie ejercita hasta que hace falta.
     res.status(201).json({
       ok: true,
       data: invitacion,
       email_enviado: envio.ok,
+      enlace: enlaceDeInvitacion(invitacion.token),
       message: envio.ok
         ? undefined
         : 'La invitación se creó pero no se pudo enviar el email. Pasale el enlace de invitación a mano.',
@@ -698,10 +708,19 @@ router.post('/:empresaId/invitar', checkPermission('equipo.invitar'), requireEmp
 });
 
 // POST /api/empresas/invitaciones/:token/re-enviar — Re-enviar invitación
-router.post('/invitaciones/:token/re-enviar', checkPermission('equipo.invitar'), async (req, res) => {
+//
+// ⚠ `requireEmpresa` y el `empresa_id` del `where` NO son de adorno: hasta la
+// 014 esta ruta buscaba el token **sin acotar a ninguna empresa**. El token es
+// aleatorio de 32 bytes, asi que adivinarlo no es el riesgo; el riesgo es que
+// cualquiera con `equipo.invitar` en SU empresa que consiguiera un token de otra
+// —de un mail reenviado, de un log, de una captura— podia hacer que AdminApp le
+// mandara de nuevo la invitacion al invitado de un cliente ajeno, y ademas leia
+// el nombre de esa empresa por el `include`. Con el `where` acotado, la
+// invitacion de otra empresa da 404, igual que `findScoped`.
+router.post('/invitaciones/:token/re-enviar', requireEmpresa, checkPermission('equipo.invitar'), async (req, res) => {
   try {
     const invitacion = await Invitacion.findOne({
-      where: { token: req.params.token, status: 'pending' },
+      where: { token: req.params.token, status: 'pending', empresa_id: req.empresaId },
       include: [{ model: Empresa, as: 'empresa' }],
     });
     if (!invitacion) return res.status(404).json({ ok: false, error: 'Invitación no encontrada o ya expiró' });
@@ -746,11 +765,22 @@ router.delete('/invitaciones/:id', requireEmpresa, checkPermission('equipo.elimi
 
 // ── USUARIOS (miembros del equipo) ──
 
+// El `include` lleva `attributes` a proposito, y es el mismo molde que
+// `GET /:empresaId/invitaciones` usa cincuenta lineas mas arriba para el
+// invitador. Sin ellos, Sequelize copia la fila ENTERA de `usuarios`: el
+// `auth0_sub` —el identificador del usuario en Auth0— y `es_superadmin` salian
+// por el cable a cualquiera con `equipo.ver`. Ninguno de los dos lo usa la
+// pantalla, y `es_superadmin` ademas revela quien es operador de la plataforma.
+//
+// ⚠ `is_active: true` en el `where` se QUITA: la pantalla ahora dibuja la
+// columna Estado leyendo `is_active` y necesita ver a los desactivados para
+// poder reactivarlos. Filtrarlos aca los hacia invisibles y sin forma de volver.
 router.get('/:empresaId/usuarios', requireEmpresa, requireEmpresaPropia('empresaId'), checkPermission('equipo.ver'), async (req, res) => {
   try {
     const users = await UsuarioEmpresa.findAll({
-      where: { empresa_id: req.params.empresaId, is_active: true },
-      include: [{ model: Usuario, as: 'usuario' }],
+      where: { empresa_id: req.params.empresaId },
+      include: [{ model: Usuario, as: 'usuario', attributes: ['id', 'nombre', 'email'] }],
+      order: [['id', 'ASC']],
     });
     res.json({ ok: true, data: users });
   } catch (err) {
@@ -758,43 +788,117 @@ router.get('/:empresaId/usuarios', requireEmpresa, requireEmpresaPropia('empresa
   }
 });
 
-// La peor de las cinco: permitia agregar un usuario —incluido uno mismo— al
-// equipo de otra empresa cliente, con el rol que se pidiera.
-router.post('/:empresaId/usuarios', requireEmpresa, requireEmpresaPropia('empresaId'), checkPermission('equipo.invitar'), async (req, res) => {
-  try {
-    const { auth0_sub, email, nombre, role } = req.body;
-
-    let usuario = await Usuario.findOne({ where: { auth0_sub } });
-    if (!usuario) {
-      usuario = await Usuario.create({ auth0_sub, email, nombre });
-    }
-
-    const [ue] = await UsuarioEmpresa.findOrCreate({
-      where: { usuario_id: usuario.id, empresa_id: req.params.empresaId },
-      defaults: { role: role || 'vendedor' },
-    });
-
-    if (role) await ue.update({ role, is_active: true });
-
-    res.status(201).json({ ok: true, data: { ...ue.toJSON(), usuario } });
-  } catch (err) {
-    fallo(req, res, err, 'Error al agregar el usuario a la empresa');
-  }
-});
+// ⚠ `POST /:empresaId/usuarios` se BORRO en la 014 (E11, PENDIENTE N13).
+//
+// Incorporaba a alguien al equipo por su `auth0_sub` **sin invitacion y sin
+// consentimiento**: creaba el `Usuario` si no existia, le armaba la membresia
+// con el rol que viniera en el cuerpo —sin validarlo contra el catalogo, con lo
+// cual un rol mal escrito creaba un miembro con cero permisos— y lo reactivaba
+// si estaba desactivado, que es exactamente la puerta que
+// `POST /accept-invite/:token` cerro.
+//
+// No lo llamaba nadie: ni la pantalla ni `services/api.js`. Si hace falta
+// incorporar a alguien sin que le llegue el mail, el camino es el enlace de
+// invitacion, que `POST /:empresaId/invitar` devuelve en `enlace` para copiarlo
+// a mano.
+//
+// Se borra y no se restringe: un handler restringido es un `if` que alguien
+// puede sacar. `git revert` lo trae de vuelta si hiciera falta.
 
 // UsuarioEmpresa no tiene columna empresa_id sino empresa_id como FK propia:
 // se filtra por ella igual. Sin el filtro, este endpoint permitia cambiarle el
 // rol o desactivar a cualquier miembro de cualquier empresa cliente.
-router.put('/usuarios/:id', requireEmpresa, checkPermission('config.editar'), async (req, res) => {
+//
+// ── Las dos reglas que hasta la 014 no aplicaba nadie ──
+//
+// Se podia degradar al UNICO administrador activo de la empresa —y quedarse sin
+// nadie que pueda invitar, cambiar roles ni tocar la configuracion, de lo cual
+// no se sale desde la aplicacion— y uno podia cambiarse el rol a si mismo.
+// Salen de `utils/equipo.js`, que la pantalla ESPEJA para deshabilitar el
+// selector con su explicacion: la pantalla explica, el servidor garantiza.
+//
+// ── Y la tercera, que es de tipo ──
+//
+// `usuario_empresas.role` es un STRING(20) libre: un rol mal escrito no falla,
+// crea un miembro con CERO permisos y nadie se entera hasta que esa persona no
+// puede hacer nada. Se valida contra el catalogo y el 400 dice cuales son los
+// validos.
+router.put('/usuarios/:id', requireEmpresa, checkPermission('equipo.editar'), async (req, res) => {
   try {
     const { role, is_active } = req.body;
 
     const ue = await UsuarioEmpresa.findOne({
       where: { id: req.params.id, empresa_id: req.empresaId },
+      include: [{ model: Usuario, as: 'usuario', attributes: ['id', 'nombre', 'email'] }],
     });
     if (!ue) return res.status(404).json({ ok: false, error: 'Relación no encontrada' });
 
-    await ue.update({ role, is_active });
+    if (role !== undefined && !esRolValido(role)) {
+      return res.status(400).json({
+        ok: false,
+        error: 'ROL_INVALIDO',
+        message: `El rol «${role}» no existe. Los válidos son: ${ROLES_VALIDOS.join(', ')}.`,
+      });
+    }
+
+    // Solo dos cambios pueden dejar a la empresa sin administrador: mover el rol
+    // y desactivar. Reactivar a alguien, o mandar el mismo rol que ya tiene, no
+    // saca a nadie — y bloquearlos haria que la pantalla no pueda deshacer el
+    // error que acaba de cometer.
+    const cambiaElRol = role !== undefined && role !== ue.role;
+    const desactiva = is_active === false && ue.is_active !== false;
+
+    if (cambiaElRol || desactiva) {
+      const miembros = await UsuarioEmpresa.findAll({
+        where: { empresa_id: req.empresaId },
+        attributes: ['id', 'usuario_id', 'role', 'is_active'],
+      });
+
+      const veredicto = puedeCambiarRol({
+        miembro: ue,
+        yo: { usuario_id: req.usuario?.id },
+        miembros,
+      });
+
+      if (!veredicto.puede) {
+        return res.status(400).json({
+          ok: false,
+          error: veredicto.codigo,
+          message: veredicto.motivo,
+        });
+      }
+    }
+
+    // El patch se arma campo por campo: `update({ role, is_active })` con el
+    // cuerpo tal cual manda `undefined` para lo que no vino, y depender de que
+    // Sequelize lo saltee es depender de un detalle de implementacion para no
+    // pisar el rol de alguien al desactivarlo.
+    const patch = {};
+    if (role !== undefined) patch.role = role;
+    if (is_active !== undefined) patch.is_active = is_active;
+
+    await sequelize.transaction(async (t) => {
+      await ue.update(patch, { transaction: t });
+
+      // PENDIENTE N15: desactivar a alguien y dejarle las invitaciones
+      // `pending` vivas es dejar abierta la puerta por la que salio. Un mail de
+      // hace tres meses lo devuelve al equipo —y `POST /accept-invite` ya
+      // rechaza reactivar a un miembro desactivado (T1350), pero la invitacion
+      // seguia figurando como pendiente en la pantalla del equipo—.
+      // Va en la MISMA transaccion: si la revocacion falla, la desactivacion no
+      // se aplica, y no queda un estado intermedio donde alguien esta afuera
+      // con su invitacion todavia buena.
+      if (patch.is_active === false && ue.usuario?.email) {
+        await Invitacion.update(
+          { status: 'revoked' },
+          {
+            where: { empresa_id: req.empresaId, email: ue.usuario.email, status: 'pending' },
+            transaction: t,
+          }
+        );
+      }
+    });
+
     res.json({ ok: true, data: ue });
   } catch (err) {
     fallo(req, res, err, 'Error al actualizar el usuario');

@@ -105,16 +105,29 @@ describe('Ningún componente tiene su propia copia de las etiquetas', () => {
     // medios, el dueño ve «tc3n» en el panel que mira todos los días.
     const contenido = leer('pages/Dashboard.jsx')
 
-    // Lo que se busca es `method` DIBUJADO —`>{…method…}`—, no el `key={method}`
+    // Lo que se busca es la clave DIBUJADA —`>{…medio…}`—, no el `key={medio}`
     // de la fila, que es correcto y no se ve. Anclar al patrón real y no al
     // nombre suelto es lo que hace que la guardia siga sirviendo: un token que
     // aparece también en el comentario que explica el defecto pasa con y sin el
     // cambio.
+    //
+    // ⚠ **Los DOS nombres, y no es simetría decorativa.** La variable se llamaba
+    // `method` y la reescritura del Panel la pasó a `medio`, siguiendo la
+    // convención del repositorio de escribir en castellano. Con el patrón atado
+    // solo a `method`, esta guardia dejó de encontrar líneas: no falló, no
+    // avisó, simplemente **dejó de revisar**. Lo agarró el `toBeGreaterThan(0)`
+    // de abajo, que es justo para eso.
+    //
+    // Por eso van los dos: la próxima traducción de un identificador no puede
+    // apagar una guardia en silencio.
     const lineasQueImprimenElMetodo = contenido
       .split('\n')
       .map((linea, i) => ({ n: i + 1, texto: linea.trim() }))
-      .filter(({ texto }) => />\s*\{[^}]*\bmethod\b/.test(texto) && !texto.startsWith('//') && !texto.startsWith('*'))
+      .filter(({ texto }) => />\s*\{[^}]*\b(method|medio)\b/.test(texto) && !texto.startsWith('//') && !texto.startsWith('*'))
 
+    // El ancla. Sin esto, la guardia pasa en verde el día que el patrón deja de
+    // existir —por un refactor, por un renombre, o porque el bloque se borró— y
+    // nadie se entera de que dejó de proteger nada.
     expect(lineasQueImprimenElMetodo.length).toBeGreaterThan(0)
 
     const sinEtiqueta = lineasQueImprimenElMetodo

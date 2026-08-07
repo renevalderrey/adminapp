@@ -393,6 +393,63 @@ function origenDelIdentificador(clave, contenido) {
 }
 
 /**
+ * El objeto literal que se le asigno a una variable, si lo hay.
+ *
+ * Hace falta para la forma `const data = { ...req.body, empresa_id }` seguida
+ * de `Model.create(data)`. Sin resolverla, `clavesForaneas` recibe el texto
+ * `(data)`, no encuentra ninguna clave `<algo>_id` y el bucle hace `continue`
+ * **antes de mirar nada**: el create ni siquiera entra en la poblacion que la
+ * guardia dice revisar.
+ *
+ * Se busca primero adentro del ambito y despues en el archivo entero, con el
+ * mismo criterio que `origenDelIdentificador`: ante la duda se revisa de mas.
+ *
+ * @returns {string|null} El bloque `{ … }`, o null si la variable no sale de un
+ *   objeto literal (un `map`, un helper, un parametro).
+ */
+function objetoDeLaVariable(nombre, contenido, scope) {
+  const declaracion = new RegExp(`(?:const|let|var)\\s+${nombre}\\s*=\\s*\\{`);
+
+  for (const trozo of [scope ? contenido.slice(scope.ini, scope.fin + 1) : '', contenido]) {
+    const encontrado = trozo.match(declaracion);
+    if (!encontrado) continue;
+
+    const abre = trozo.indexOf('{', encontrado.index);
+    return trozo.slice(abre, cierreDe(trozo, abre, '{', '}') + 1);
+  }
+
+  return null;
+}
+
+/**
+ * Las claves foraneas que declara un modelo: `<algo>_id` con `references` o con
+ * una asociacion que las use como clave.
+ *
+ * Es lo que hace falta para poder decir que trae un `...req.body`: el spread no
+ * nombra ninguna clave, pero **puede escribir cualquiera de estas**, que es
+ * exactamente el agujero. `empresa_id` queda afuera porque el create lo pone el
+ * servidor, y las columnas `<algo>_id` que NO son claves foraneas tampoco
+ * entran: `customers.tax_id` es el CUIT, no el padre de nada, y marcarlo seria
+ * un falso positivo que se cierra agregando una excepcion.
+ */
+function clavesForaneasDelModelo(nombreDeModelo) {
+  const Modelo = models[nombreDeModelo];
+  if (!Modelo || !Modelo.rawAttributes) return [];
+
+  const porAsociacion = new Set(
+    Object.values(Modelo.associations || {}).map((a) => a.foreignKey).filter(Boolean)
+  );
+
+  return Object.entries(Modelo.rawAttributes)
+    .filter(([clave, definicion]) => (
+      clave !== 'empresa_id' &&
+      /_id$/.test(clave) &&
+      (!!definicion.references || porAsociacion.has(clave))
+    ))
+    .map(([clave]) => clave);
+}
+
+/**
  * Las claves `<algo>_id` que recibe un create, con el valor de cada una.
  *
  * Reconoce las DOS formas de escribir lo mismo: `product_id: valor` y la forma
@@ -405,14 +462,39 @@ function origenDelIdentificador(clave, contenido) {
  * El `(?<![.\w])` deja afuera lo que viene despues de un punto: en
  * `total: fila.product_id` la clave es `total`, y sin ese filtro `product_id`
  * entraria como si fuera una clave del objeto.
+ *
+ * ── Y la TERCERA forma: el spread del cuerpo ──
+ *
+ * `{ ...req.body, empresa_id }` no nombra ninguna clave y las escribe **todas**.
+ * Se trata como «trae todas las claves foraneas posibles del modelo», que es lo
+ * unico honesto: `routes/general.js` colgaba el gasto fijo de un
+ * `punto_de_venta_id` de otra empresa cliente por ahi, y la fila quedaba con el
+ * `empresa_id` correcto, asi que no parecia una fuga.
+ *
+ * Una clave escrita **explicitamente** gana sobre el spread: en
+ * `{ ...req.body, punto_de_venta_id: sucursal.id }` el valor que se escribe es
+ * el validado, y marcarla igual seria un falso positivo — y un falso positivo se
+ * cierra agregando una excepcion, que es como una guardia deja de servir.
  */
-function clavesForaneas(argumentos, contenido) {
-  return [...argumentos.matchAll(/(?<![.\w])(\w+_id)\s*(?::\s*([^,\n}]+)|(?=\s*[,}]))/g)]
+function clavesForaneas(argumentos, contenido, modelo) {
+  const encontradas = [...argumentos.matchAll(/(?<![.\w])(\w+_id)\s*(?::\s*([^,\n}]+)|(?=\s*[,}]))/g)]
     .filter(([, clave]) => clave !== 'empresa_id')
     .map(([, clave, valor]) => ({
       clave,
       valor: valor === undefined ? origenDelIdentificador(clave, contenido) : valor.trim(),
     }));
+
+  const spread = argumentos.match(/\.\.\.\s*(req\.(?:body|params|query))\b/);
+  if (!spread) return encontradas;
+
+  const explicitas = new Set(encontradas.map((c) => c.clave));
+
+  for (const clave of clavesForaneasDelModelo(modelo)) {
+    if (explicitas.has(clave)) continue;
+    encontradas.push({ clave, valor: `${spread[1]}.${clave}` });
+  }
+
+  return encontradas;
 }
 
 /**
@@ -431,9 +513,22 @@ function analizarCreates(nombre, contenido) {
 
     const abre = contenido.indexOf('(', m.index + m[0].length - 1);
     const fin = cierreDe(contenido, abre, '(', ')');
-    const argumentos = contenido.slice(abre, fin + 1);
+    let argumentos = contenido.slice(abre, fin + 1);
 
-    const claves = clavesForaneas(argumentos, contenido);
+    // El ambito se resuelve ANTES de extraer las claves: hace falta para poder
+    // ir a buscar la declaracion de la variable que recibe el create.
+    const scope = queEnvuelve(scopes, m.index, fin);
+    const parametros = scope ? scope.parametros : [];
+
+    // `Model.create(data)` — el objeto se armo antes. Se resuelve a su
+    // declaracion; si no sale de un objeto literal se deja como estaba y el
+    // extractor devolvera cero claves, como hasta ahora.
+    const porVariable = argumentos.match(/^\(\s*([A-Za-z_$][\w$]*)\s*(?:,[\s\S]*)?\)$/);
+    if (porVariable) {
+      argumentos = objetoDeLaVariable(porVariable[1], contenido, scope) || argumentos;
+    }
+
+    const claves = clavesForaneas(argumentos, contenido, m[1]);
     if (claves.length === 0) continue;
 
     const hallazgo = {
@@ -443,8 +538,6 @@ function analizarCreates(nombre, contenido) {
     };
     conClaveForanea.push(hallazgo);
 
-    const scope = queEnvuelve(scopes, m.index, fin);
-    const parametros = scope ? scope.parametros : [];
     const esConsciente = parametros.some((p) => /^empresa_?[Ii]d$/.test(p));
 
     const sospechosas = claves.filter(({ valor }) => {
@@ -457,7 +550,17 @@ function analizarCreates(nombre, contenido) {
       const base = valor.replace(/\s*\|\|[\s\S]*$/, '').trim();
       if (base === 'puntoDeVentaId' || base === 'req.puntoDeVentaId') return false;
 
-      if (/^req\.(params|body|query)\./.test(valor)) return true;
+      if (/^req\.(params|body|query)\./.test(base)) return true;
+
+      // El valor destructurado del cuerpo: `const { punto_de_venta_id } =
+      // req.body; … create({ punto_de_venta_id: punto_de_venta_id || null })`.
+      // La normalizacion del `||` ya existia, pero despues quedaba el nombre
+      // pelado y NINGUNA de las dos ramas de abajo lo marcaba: el id lo eligio
+      // el cliente y el detector decia que no. Es la forma de
+      // `routes/gastosVariables.js`, y por ahi un gasto variable se colgaba de
+      // la sucursal de otra empresa cliente.
+      if (/^[A-Za-z_$][\w$]*$/.test(base) && origenDelIdentificador(base, contenido) !== base) return true;
+
       return esConsciente && parametros.includes(base);
     });
     if (sospechosas.length === 0) continue;
@@ -661,6 +764,88 @@ privado.post('/mapping', checkPermission('config.editar'), async (req, res) => {
 });
 `;
 
+// ── Las DOS formas que el detector NO veia hasta el hito 014 ──
+//
+// Las dos salen de archivos reales —`routes/general.js:331` y
+// `routes/gastosVariables.js:130`— y las dos dejaban al detector en verde sobre
+// un create que colgaba una fila de la sucursal de OTRA empresa cliente:
+//
+//  · el objeto armado antes (`const data = { ...req.body, empresa_id }`) no
+//    nombra ninguna clave `<algo>_id`, asi que `clavesForaneas` devolvia cero y
+//    el bucle hacia `continue` antes de mirar nada;
+//  · el valor destructurado con `|| null` quedaba como `punto_de_venta_id` a
+//    secas despues de normalizar el `||`, y ninguna de las dos ramas del
+//    clasificador lo marcaba como venido del cliente.
+//
+// La fila que se creaba llevaba el `empresa_id` correcto: por eso no parece una
+// fuga y por eso hace falta que la guardia la vea.
+
+const MUESTRA_CREATE_SPREAD_MALA = `
+router.post('/expenses', checkPermission('gastos.crear'), async (req, res) => {
+  const data = { ...req.body, empresa_id: req.empresaId };
+
+  const expense = await FixedExpense.create(data);
+
+  res.status(201).json({ ok: true, data: expense });
+});
+`;
+
+const MUESTRA_CREATE_SPREAD_BUENA = `
+router.post('/expenses', checkPermission('gastos.crear'), async (req, res) => {
+  const { name, amount, punto_de_venta_id } = req.body;
+
+  const sucursal = await findScoped(PuntoDeVenta, punto_de_venta_id, req.empresaId);
+  if (punto_de_venta_id && !sucursal) return res.status(404).json({ ok: false });
+
+  const datos = {
+    empresa_id: req.empresaId,
+    name,
+    amount,
+    punto_de_venta_id: sucursal ? sucursal.id : null,
+  };
+
+  const expense = await FixedExpense.create(datos);
+
+  res.status(201).json({ ok: true, data: expense });
+});
+`;
+
+const MUESTRA_CREATE_OR_NULL_MALA = `
+router.post('/', checkPermission('gastos.crear'), async (req, res) => {
+  const { persona, mes, nombre, monto, punto_de_venta_id } = req.body;
+
+  const gasto = await GastoVariable.create({
+    empresa_id: req.empresaId,
+    persona,
+    mes,
+    nombre,
+    monto,
+    punto_de_venta_id: punto_de_venta_id || null,
+  });
+
+  res.status(201).json({ ok: true, data: gasto });
+});
+`;
+
+const MUESTRA_CREATE_OR_NULL_BUENA = `
+router.post('/', checkPermission('gastos.crear'), async (req, res) => {
+  const { persona, mes, nombre, monto, punto_de_venta_id } = req.body;
+
+  const sucursal = await findScoped(PuntoDeVenta, punto_de_venta_id, req.empresaId);
+
+  const gasto = await GastoVariable.create({
+    empresa_id: req.empresaId,
+    persona,
+    mes,
+    nombre,
+    monto,
+    punto_de_venta_id: sucursal ? sucursal.id : null,
+  });
+
+  res.status(201).json({ ok: true, data: gasto });
+});
+`;
+
 const MUESTRA_INCLUDE_MALA = `
 const suppliers = await Supplier.findAll({
   where: { empresa_id: req.empresaId },
@@ -720,6 +905,57 @@ describe('Un create no cuelga una fila de un padre que no se valido', () => {
     // Y no pasa por vacio: el create SI se miro, con sus claves foraneas.
     const { conClaveForanea } = analizarCreates('muestra/corta-buena.js', MUESTRA_CREATE_CORTA_BUENA);
     expect(conClaveForanea).toHaveLength(1);
+  });
+
+  it('ve el create que cuelga de un objeto armado antes con spread del cuerpo', () => {
+    // La forma de `routes/general.js:331`. El texto que le llegaba al extractor
+    // era `(data)`: cero claves, `continue`, y el create ni siquiera entraba en
+    // la poblacion revisada. Ahora la variable se resuelve a su declaracion y el
+    // `...req.body` se lee como «trae todas las claves foraneas del modelo».
+    const { sinValidar, conClaveForanea } = analizarCreates('muestra/spread.js', MUESTRA_CREATE_SPREAD_MALA);
+
+    expect(conClaveForanea).toHaveLength(1);
+    expect(sinValidar).toHaveLength(1);
+    expect(sinValidar[0]).toContain('muestra/spread.js:5');
+    expect(sinValidar[0]).toContain('punto_de_venta_id: req.body.punto_de_venta_id');
+  });
+
+  it('el detector NO se queja del objeto armado antes cuando la sucursal se valido', () => {
+    // Sin esto, la forma corregida seguiria dando hallazgo y la salida barata
+    // seria agregar una excepcion — que es como una guardia deja de servir.
+    const { sinValidar, conClaveForanea } = analizarCreates('muestra/spread-buena.js', MUESTRA_CREATE_SPREAD_BUENA);
+
+    expect(sinValidar).toEqual([]);
+    // Y no pasa por vacio: el create SI se miro, con su clave foranea.
+    expect(conClaveForanea).toHaveLength(1);
+  });
+
+  it('ve el punto_de_venta_id destructurado del cuerpo con || null', () => {
+    // La forma de `routes/gastosVariables.js:130`. La normalizacion del `||` ya
+    // existia; lo que faltaba era resolver el nombre pelado que queda despues a
+    // su origen en `req.body`.
+    const { sinValidar } = analizarCreates('muestra/ornull.js', MUESTRA_CREATE_OR_NULL_MALA);
+
+    expect(sinValidar).toHaveLength(1);
+    expect(sinValidar[0]).toContain('muestra/ornull.js:5');
+    expect(sinValidar[0]).toContain('punto_de_venta_id: punto_de_venta_id || null');
+  });
+
+  it('el detector NO se queja del destructurado cuando paso por findScoped', () => {
+    const { sinValidar, conClaveForanea } = analizarCreates('muestra/ornull-buena.js', MUESTRA_CREATE_OR_NULL_BUENA);
+
+    expect(sinValidar).toEqual([]);
+    expect(conClaveForanea).toHaveLength(1);
+  });
+
+  it('un `<algo>_id` que NO es clave foranea no entra por el spread', () => {
+    // `customers.tax_id` es el CUIT del cliente, no el padre de nada.
+    // `Customer.create({ ...req.body, empresa_id })` es legitimo y marcarlo
+    // seria un falso positivo — el primero que alguien cierra agregando una
+    // excepcion, y la excepcion siguiente ya tapa una fuga de verdad.
+    expect(clavesForaneasDelModelo('Customer')).not.toContain('tax_id');
+    expect(clavesForaneasDelModelo('FixedExpense')).toEqual(['punto_de_venta_id']);
+    expect(clavesForaneasDelModelo('GastoVariable')).toEqual(['punto_de_venta_id']);
   });
 
   it('leyo los archivos que dice leer', () => {

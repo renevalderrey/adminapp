@@ -217,10 +217,29 @@ export const createBrand = (data) => api.post('/brands', data);
 
 // ═══════ GASTOS FIJOS ═══════
 
-export const getExpenses = (group) => api.get('/expenses', { params: { group } });
+/**
+ * Los gastos fijos de la empresa, con sus totales ya sumados por el servidor.
+ *
+ * Devuelve `{ data, totales: { general, sin_sucursal, por_sucursal }, alcance }`.
+ * La pantalla NO suma nada: `amount` es un DECIMAL que vuelve como string y
+ * acumular `parseFloat` deja residuo en el número del que cuelga el punto de
+ * equilibrio (FR-026, FR-027).
+ *
+ * ⚠ **Ya no recibe `group`.** Aceptaba `?group=gf1` y el servidor dejó de
+ * aceptarlo: la columna es el resto de la migración del legacy —«gf1» es
+ * «Ortiz de Ocampo» en Comprafit y nada en cualquier otra empresa— y el
+ * agrupado sale de `punto_de_venta_id`.
+ */
+export const getExpenses = () => api.get('/expenses');
 export const createExpense = (data) => api.post('/expenses', data);
 export const updateExpense = (id, data) => api.put(`/expenses/${id}`, data);
 export const deleteExpense = (id) => api.delete(`/expenses/${id}`);
+
+// ═══════ GASTOS VARIABLES ═══════
+
+export const getGastosVariables = (mes) => api.get('/gastos-variables', { params: { mes } });
+export const createGastoVariable = (data) => api.post('/gastos-variables', data);
+export const deleteGastoVariable = (id) => api.delete(`/gastos-variables/${id}`);
 
 // ═══════ PROVEEDORES ═══════
 
@@ -301,7 +320,10 @@ export const setSetting = (key, value) => api.put(`/settings/${key}`, { value })
 // ═══════ HEALTH ═══════
 
 export const ping = () => api.get('/ping');
-export const getAlerts = () => api.get('/alerts');
+// `getAlerts` se borró con `GET /api/alerts` (T1382). Tenía UN solo consumidor
+// —el Panel—, pedía `stock.ver` mientras `/kpis` pide `dashboard.ver`, y un rol
+// con uno y sin el otro rechazaba el `Promise.all` de la pantalla y la dejaba
+// entera en `-` y `0` sin un cartel. Los avisos salen de `kpis` (FR-058).
 
 // ═══════ RECETAS E HISTORIAL DE COSTOS ═══════
 
@@ -408,6 +430,33 @@ export const revokeInvitation = (id) => api.delete(`/empresas/invitaciones/${id}
 export const updateMemberRole = (id, role) => api.put(`/empresas/usuarios/${id}`, { role });
 export const acceptInvite = (token) => api.post(`/auth/accept-invite/${token}`);
 export const getInviteInfo = (token) => api.get(`/auth/invite/${token}`);
+
+/**
+ * Vuelve a mandar el mail de una invitación pendiente.
+ *
+ * La ruta cuelga del **token** y no del id: es como está escrita del otro lado
+ * (`routes/empresas.js`), y el token es lo que identifica la invitación en el
+ * enlace. Existía desde siempre y **no la llamaba nadie**, así que quien no
+ * recibía el mail no tenía forma de pedir otro salvo revocar e invitar de nuevo.
+ */
+export const reenviarInvitacion = (token) =>
+  api.post(`/empresas/invitaciones/${token}/re-enviar`);
+
+/**
+ * Saca a alguien del equipo, o lo devuelve.
+ *
+ * Son dos helpers y no uno con un booleano porque son dos acciones distintas en
+ * la pantalla, y el nombre de la que se llama tiene que leerse en el `onClick`.
+ *
+ * ⚠ Desactivar **ya es instantáneo**: `loadEmpresaContext` relee la membresía en
+ * cada request, así que la persona recibe 403 en el siguiente. Lo que faltaba no
+ * era el efecto sino el botón.
+ */
+export const desactivarMiembro = (id) =>
+  api.put(`/empresas/usuarios/${id}`, { is_active: false });
+
+export const reactivarMiembro = (id) =>
+  api.put(`/empresas/usuarios/${id}`, { is_active: true });
 
 // ═══════ SUSCRIPCIÓN ═══════
 

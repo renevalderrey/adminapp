@@ -312,6 +312,71 @@ async function sembrarProveedores(productos, hoy) {
 }
 
 // ════════════════════════════════════════════
+//  Los gastos fijos de /gastos
+// ════════════════════════════════════════════
+
+/**
+ * El nombre de gasto que no entra en su columna.
+ *
+ * Es el caso de borde de `maquetadoDeGastos.navegador.js`: la descripción es la
+ * única columna elástica de la tabla —`minmax(0,1fr)`— y sin `min-w-0` ni
+ * `truncate` un texto largo la ensancha y empuja la de importe. jsdom no lo
+ * puede contestar: `getBoundingClientRect` devuelve ceros.
+ *
+ * **Con espacios, a diferencia de `NOMBRE_LARGO`**, y es deliberado: un gasto se
+ * escribe como una frase —«Alquiler del depósito de Ortiz de Ocampo y
+ * expensas»— y con `truncate` puesto lo que hay que comprobar es que la frase
+ * se corte con puntos suspensivos, no que un token indivisible desborde. El
+ * token indivisible ya lo cubre el producto del catálogo, en otra tabla.
+ */
+const NOMBRE_DE_GASTO_LARGO =
+  'Alquiler del depósito de Ortiz de Ocampo y expensas, más el seguro contra incendio del galpón'
+
+/**
+ * Cuatro gastos fijos: dos con sucursal, dos sin ella.
+ *
+ * ⚠ **Uno tiene que ser SIN sucursal**, y ése es el punto: es el que la pantalla
+ * vieja perdía —`group='gf1'` y `punto_de_venta_id` nulo—, y el que hace que
+ * «General» tenga tarjeta. Una siembra con todos los gastos asignados dejaría la
+ * prueba midiendo una pantalla que no tiene el caso.
+ *
+ * Los importes llevan centavos que no cierran en punto flotante (0,10 + 0,20),
+ * así que la fila más ancha de la columna de importe es la que de verdad se
+ * dibuja y no una redondeada.
+ */
+const GASTOS_FIJOS = [
+  { name: `${PREFIJO}${NOMBRE_DE_GASTO_LARGO}`, amount: 1875430.1, conSucursal: true },
+  { name: `${PREFIJO}Sueldos`, amount: 2400000.2, conSucursal: false },
+  { name: `${PREFIJO}Internet y telefonía`, amount: 48750.55, conSucursal: true },
+  { name: `${PREFIJO}Contador`, amount: 190000, conSucursal: false },
+]
+
+/**
+ * Siembra los gastos fijos si no están.
+ *
+ * Idempotente por nombre, como los proveedores: correr esto dos veces no
+ * duplica nada y una corrida cortada a la mitad se completa sola.
+ */
+async function sembrarGastosFijos(puntoDeVentaId) {
+  const { data } = await pedir('/expenses')
+  const porNombre = new Set((data || []).map((g) => g.name))
+
+  for (const gasto of GASTOS_FIJOS) {
+    if (porNombre.has(gasto.name)) continue
+
+    await pedir('/expenses', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: gasto.name,
+        amount: gasto.amount,
+        // `null` es un caso legítimo: el gasto se dibuja en «General».
+        punto_de_venta_id: gasto.conSucursal ? puntoDeVentaId : null,
+      }),
+    })
+  }
+}
+
+// ════════════════════════════════════════════
 //  Los módulos habilitados, que es lo que decide qué pantallas existen
 // ════════════════════════════════════════════
 
@@ -577,6 +642,19 @@ export default async function preparar() {
     )
   }
 
+  // ── Los gastos fijos de /gastos ──
+  //
+  // Van después del catálogo porque necesitan la sucursal, y antes de los
+  // módulos por nada en particular: no dependen de ninguno.
+  try {
+    await sembrarGastosFijos(sucursal)
+  } catch (err) {
+    throw new Error(
+      'No se pudieron sembrar los gastos fijos, así que la prueba de maquetado de /gastos '
+      + `mediría una pantalla vacía.\n\n${COMO_LEVANTAR_LA_API}\n\nMotivo: ${err.message}`
+    )
+  }
+
   // ── Los módulos, ANTES de cualquier pantalla nueva ──
   //
   // Va acá abajo y no arriba porque no lo necesita nada de lo anterior; y va
@@ -588,4 +666,4 @@ export default async function preparar() {
   await sembrarTiendanube(empresa.id, sucursal, comunes)
 }
 
-export { NOMBRE_LARGO, PREFIJO, CUANTOS, PROVEEDORES }
+export { NOMBRE_LARGO, PREFIJO, CUANTOS, PROVEEDORES, NOMBRE_DE_GASTO_LARGO, GASTOS_FIJOS }

@@ -503,7 +503,7 @@ centavos, y un gasto no se puede colgar de la sucursal de otra empresa. Va
 **antes** que la migración: si la migración se revierte, el gasto tiene que
 seguir viéndose (ajuste 5(a) del plan).
 
-- [ ] **T1363** [P] Crear `apps/web/src/utils/gastos.js` con
+- [x] **T1363** [P] Crear `apps/web/src/utils/gastos.js` con
       `agruparGastosPorSucursal(gastos, sucursales)`, que reparte **solo por
       `punto_de_venta_id`**: con sucursal, a esa sucursal; sin sucursal, a
       «General». **La columna `group` no se mira** (FR-022, FR-024, decisión 6) —
@@ -519,7 +519,7 @@ seguir viéndose (ajuste 5(a) del plan).
       **Qué se revierte para verlo en rojo**: hacer que la función descarte los
       gastos con `punto_de_venta_id` nulo. El invariante de suma falla.
 
-- [ ] **T1364** En `apps/api/src/routes/general.js`, `GET /expenses` (`:311-325`)
+- [x] **T1364** En `apps/api/src/routes/general.js`, `GET /expenses` (`:311-325`)
       devuelve `{ data, totales: { general, sin_sucursal, por_sucursal }, alcance }`,
       sumado con `sumaEnCentavos` de `utils/centavos.js` sobre `amount` —que es
       `DECIMAL(12,2)` y **vuelve como string**— y **de la misma lectura** que las
@@ -538,7 +538,7 @@ seguir viéndose (ajuste 5(a) del plan).
       **Qué se revierte para verlo en rojo**: sumar con
       `data.reduce((a, g) => a + parseFloat(g.amount), 0)`.
 
-- [ ] **T1365** En el mismo archivo, `POST /expenses` (`:328-338`) y
+- [x] **T1365** En el mismo archivo, `POST /expenses` (`:328-338`) y
       `PUT /expenses/:id` (`:341-353`): **(a)** se va el
       `const data = { ...req.body, empresa_id }` y quedan **campos explícitos**
       —`name`, `amount`, `punto_de_venta_id`— (FR-030); **(b)** `group`, `empresa_id`
@@ -559,7 +559,7 @@ seguir viéndose (ajuste 5(a) del plan).
       cambia de dueño el gasto»*.
       **Qué se revierte para verlo en rojo**: volver al spread del cuerpo.
 
-- [ ] **T1366** En `apps/api/src/routes/gastosVariables.js`, `POST /` (`:107-135`)
+- [x] **T1366** En `apps/api/src/routes/gastosVariables.js`, `POST /` (`:107-135`)
       y `PUT /:id` (`:138-165`): el `punto_de_venta_id || null` pasa por
       `findScoped(PuntoDeVenta, …)` cuando no es nulo (G4, FR-029), y `mesActual()`
       pasa a salir de `hoyDelNegocio(empresaId)` en vez de `toISOString()` (G6,
@@ -571,7 +571,7 @@ seguir viéndose (ajuste 5(a) del plan).
       **Qué se revierte para verlo en rojo**: volver
       `cambios.punto_de_venta_id = req.body.punto_de_venta_id || null`.
 
-- [ ] **T1367** En `apps/api/src/tests/aislamientoEmpresas.test.js`, el detector
+- [x] **T1367** En `apps/api/src/tests/aislamientoEmpresas.test.js`, el detector
       `analizarCreates` (`:423-483`) gana las **dos formas nuevas** (FR-033,
       decisión 21):
       - **(a) el objeto armado antes**: `const data = { ...req.body, empresa_id };
@@ -606,7 +606,7 @@ seguir viéndose (ajuste 5(a) del plan).
       Es una **tercera** forma, no está en FR-033 y agregarla es un relevamiento
       propio sobre todos los `update` del repositorio.
 
-- [ ] **T1368** [P] En `apps/api/src/models/FixedExpense.js:33`, la columna `group`
+- [x] **T1368** [P] En `apps/api/src/models/FixedExpense.js:33`, la columna `group`
       pierde el `defaultValue: 'gf1'`. **La columna se queda** y el `DEFAULT` de la
       base también, así que un `create` sin `group` no falla (data-model, «La
       columna es `STRING(10) NOT NULL`»). Borrarla no es reversible y no gana nada
@@ -619,7 +619,7 @@ seguir viéndose (ajuste 5(a) del plan).
       **Qué se revierte para verlo en rojo**: no aplica al revés; el test protege
       contra el efecto colateral, no contra el cambio.
 
-- [ ] **T1369** [P] En `apps/web/src/utils/formato.test.js`, la constante
+- [x] **T1369** [P] En `apps/web/src/utils/formato.test.js`, la constante
       `PROHIBIDO` (`:311-329`) gana una quinta regla: **el formateo en línea**
       —`.toLocaleString(`, `.toLocaleDateString(`, `new Intl.NumberFormat(`— en
       cualquier archivo de `pages/` o `components/` (FR-013). Hoy la guardia solo
@@ -639,7 +639,7 @@ seguir viéndose (ajuste 5(a) del plan).
       **Qué se revierte para verlo en rojo**: sacar la quinta regla de `PROHIBIDO`;
       la muestra sintética deja de dar hallazgos.
 
-- [ ] **T1370** Crear `apps/web/src/components/PanelDeGasto.jsx`: panel lateral de
+- [x] **T1370** Crear `apps/web/src/components/PanelDeGasto.jsx`: panel lateral de
       **520px con `max-w-[92vw]`** sobre `ui/sheet` (FR-039), con el alta y la
       edición de un gasto fijo — la edición es lo que FR-034 pide y hoy no existe
       (`services/api.js:222` declara `updateExpense` y **ningún componente lo
@@ -652,7 +652,7 @@ seguir viéndose (ajuste 5(a) del plan).
       **Qué se revierte para verlo en rojo**: hacer que el botón de guardar llame
       siempre a `createExpense`.
 
-- [ ] **T1371** Reescribir `apps/web/src/pages/Expenses.jsx` con el patrón del
+- [x] **T1371** Reescribir `apps/web/src/pages/Expenses.jsx` con el patrón del
       sistema: `PageHeader` (FR-018) · las dos solapas como **segmentos** con la
       forma de `AdminApp-Rediseno.dc.html:645-648` (FR-038) · `TablaGrid` /
       `Encabezado` / `Fila` / `BotonDeFila` con el **mismo string** de
@@ -684,7 +684,7 @@ seguir viéndose (ajuste 5(a) del plan).
       **Qué se revierte para verlo en rojo**: cambiar `mensajeDeError(err)` por
       `err.message` en un `catch`; el cuarto test falla con el texto de axios.
 
-- [ ] **T1372** Reescribir `apps/web/src/components/GastosVariables.jsx` con el
+- [x] **T1372** Reescribir `apps/web/src/components/GastosVariables.jsx` con el
       mismo patrón (FR-006 a FR-012, FR-017, FR-019), leyendo el mes de
       `utils/formato.js` y no de `toISOString()`. Entra en `NOMBRES`, ancla a
       **22**, y sale de `PENDIENTES` de `formato.test.js`. Sus casos van en
@@ -695,7 +695,7 @@ seguir viéndose (ajuste 5(a) del plan).
       variables no adelanta el día»*.
       **Qué se revierte para verlo en rojo**: volver a `new Date().toISOString()`.
 
-- [ ] **T1373** [P] Crear el caso de navegador en
+- [x] **T1373** [P] Crear el caso de navegador en
       `apps/web/pruebas-de-navegador/maquetadoDeGastos.navegador.js`: **el nombre de
       un gasto largo no se mete en la columna de importe**. Es geometría —el `right`
       de la caja del nombre contra el `left` de la del importe— y jsdom devuelve
@@ -723,7 +723,7 @@ defecto de su empresa, con el informe fila por fila. **Depende de la fase 4**: l
 pantalla ya es correcta con los datos como están, así que revertir esta migración
 no vuelve a esconder la plata.
 
-- [ ] **T1374** [P] En `apps/api/scripts/verificar-reversibilidad.js`, la función
+- [x] **T1374** [P] En `apps/api/scripts/verificar-reversibilidad.js`, la función
       `sembrar()` (`:493`) gana **gastos fijos**: al menos uno **sin sucursal** en la
       empresa 1 —que tiene dos sucursales y donde `code='principal'` **no** es la de
       menor id—, uno **con** sucursal (que la migración no debe tocar), y uno sin
@@ -741,7 +741,7 @@ no vuelve a esconder la plata.
       de `sembrar()` — la comparación de datos del script deja de distinguir el `down`
       correcto del que no restaura nada.
 
-- [ ] **T1375** Crear `planificarAsignaciones(gastos, puntosDeVenta)` —exportada
+- [x] **T1375** Crear `planificarAsignaciones(gastos, puntosDeVenta)` —exportada
       desde `apps/api/src/migrations/20260813-gastos-fijos-a-su-sucursal.js`— que
       **importa `elegirPorDefecto` de `utils/sucursalDeStock.js:59-69`** en vez de
       reescribir la regla en SQL: son tres escalones (`code = 'principal'`, el activo
@@ -758,7 +758,7 @@ no vuelve a esconder la plata.
       **Qué se revierte para verlo en rojo**: cambiar `elegirPorDefecto` por
       `puntos[0]`. El primero falla.
 
-- [ ] **T1376** Crear `apps/api/src/migrations/20260813-gastos-fijos-a-su-sucursal.js`
+- [x] **T1376** Crear `apps/api/src/migrations/20260813-gastos-fijos-a-su-sucursal.js`
       con el molde de `20260809-unico-de-insumo-por-receta.js` **entero**: la tabla
       de archivo `fixed_expenses_sin_sucursal` creada **siempre**, también con cero
       filas movidas · la fila entera antes del cambio en `JSONB` con **las fechas
@@ -797,7 +797,7 @@ filas movidas una por una, y el `down` las devuelve a `NULL`.
 dejó bien. **Depende de la fase 2**: la pantalla nueva sobre los números viejos
 mostraría prolijamente cinco cosas mal.
 
-- [ ] **T1377** En `apps/api/src/services/dashboardService.js`, los campos nuevos de
+- [x] **T1377** En `apps/api/src/services/dashboardService.js`, los campos nuevos de
       `GET /api/dashboard/kpis`: **(a)** `series` con **cuatro** claves —`ventas`,
       `cashflow`, `receivables`, `payables`—, doce períodos reales cada una, y **si
       no hay doce, la clave del indicador no viene** (FR-068, PENDIENTE N3). **No hay
@@ -821,7 +821,7 @@ mostraría prolijamente cinco cosas mal.
       **Qué se revierte para verlo en rojo**: rellenar con ceros los meses que
       faltan. El primero falla porque la clave viene.
 
-- [ ] **T1378** [P] Crear `apps/web/src/utils/panel.js` con las reglas puras
+- [x] **T1378** [P] Crear `apps/web/src/utils/panel.js` con las reglas puras
       (FR-015, FR-066): `severidadDeAviso(aviso)`, `ordenarAvisos(avisos)`,
       `etiquetaDeAviso(aviso)` —que dice el alcance: «en esta sucursal» / «en toda la
       empresa» (FR-059)— y `alturasDelSparkline(serie)`, que tiene que contestar algo
@@ -834,7 +834,7 @@ mostraría prolijamente cinco cosas mal.
       **Qué se revierte para verlo en rojo**: sacar la guarda del máximo cero en
       `alturasDelSparkline`; sale `NaN`.
 
-- [ ] **T1379** Crear `apps/web/src/components/TarjetaDeIndicador.jsx`: la tarjeta
+- [x] **T1379** Crear `apps/web/src/components/TarjetaDeIndicador.jsx`: la tarjeta
       con su valor, su nota al pie con **la definición del número** —que es la parte
       durable de la decisión 7: un número que el dueño puede explicar no se lee como
       un bug la próxima vez— y el sparkline de **doce barras sin ninguna librería de
@@ -851,7 +851,7 @@ mostraría prolijamente cinco cosas mal.
       **Qué se revierte para verlo en rojo**: dibujar el sparkline con
       `serie ?? Array(12).fill(0)`.
 
-- [ ] **T1380** Crear `apps/web/src/components/RequiereTuAtencion.jsx`, que ordena y
+- [x] **T1380** Crear `apps/web/src/components/RequiereTuAtencion.jsx`, que ordena y
       pinta los avisos con `utils/panel.js` y lleva a la pantalla que detalla cada
       uno. Entra en `NOMBRES`, ancla a **24**. Casos en `renderDelPanel.test.jsx`.
       **Verificación**: `npm run test:web -- guardiasDeDiseno renderDelPanel`.
@@ -860,7 +860,7 @@ mostraría prolijamente cinco cosas mal.
       **Qué se revierte para verlo en rojo**: dibujar el encabezado del bloque con la
       lista vacía.
 
-- [ ] **T1381** Reescribir `apps/web/src/pages/Dashboard.jsx`: **cuatro** tarjetas de
+- [x] **T1381** Reescribir `apps/web/src/pages/Dashboard.jsx`: **cuatro** tarjetas de
       indicador —**Ventas, Saldo de caja, Por cobrar y Por pagar**, que son las que
       tienen serie reconstruible— y los **gastos fijos en su propia franja, sin
       sparkline, al lado del simulador que los usa** (decisión 18) · la grilla se
@@ -892,7 +892,7 @@ mostraría prolijamente cinco cosas mal.
       `const balance = kpis.cashflow?.balance || 0`. El primer test falla porque
       aparece una tarjeta en `$0,00`.
 
-- [ ] **T1382** Borrar `GET /api/alerts` (`apps/api/src/routes/general.js:488` en
+- [x] **T1382** Borrar `GET /api/alerts` (`apps/api/src/routes/general.js:488` en
       adelante) **en el mismo commit** en que `Dashboard.jsx` deja de llamarlo, y
       borrar `getAlerts` de `apps/web/src/services/api.js` (FR-058, decisión 17).
       Tiene **un solo consumidor** en todo el repositorio (`Dashboard.jsx:58`),
@@ -911,7 +911,7 @@ mostraría prolijamente cinco cosas mal.
       **Qué se revierte para verlo en rojo**: volver a poner el `Promise.all` con
       `getAlerts()`.
 
-- [ ] **T1383** [P] En `apps/web/pruebas-de-navegador/maquetadoDelPanel.navegador.js`,
+- [x] **T1383** [P] En `apps/web/pruebas-de-navegador/maquetadoDelPanel.navegador.js`,
       **dos** medidas: que el sparkline de doce barras **no desborde su tarjeta**
       (`scrollWidth` contra `clientWidth` del contenedor) y que las cuatro tarjetas
       **arranquen en el mismo píxel** (`left` de las cuatro cajas). Las dos son
@@ -943,7 +943,7 @@ en **cada** request: con `is_active = false`, `req.empresaId` queda sin definir 
 `requireEmpresa` responde 403 **en el request siguiente**. Sacar a alguien ya es
 instantáneo hoy; lo que falta es el botón, y son estas dos tareas.
 
-- [ ] **T1384** En `apps/api/src/seedPermissions.js`, un `Permiso` más:
+- [x] **T1384** En `apps/api/src/seedPermissions.js`, un `Permiso` más:
       `{ codigo: 'equipo.editar', nombre: 'Cambiar roles del equipo', modulo: 'equipo' }`.
       **No hace falta agregarlo al rol `admin`**: `ROLE_PERMISOS.admin` es
       `PERMISOS.map(p => p.codigo)` (`seedPermissions.js:75`) y lo toma solo. **Y
@@ -962,7 +962,7 @@ instantáneo hoy; lo que falta es el botón, y son estas dos tareas.
       **Qué se revierte para verlo en rojo**: cambiar el `checkPermission` de la ruta
       sin agregar el permiso al seed.
 
-- [ ] **T1385** [P] Crear `apps/api/src/utils/equipo.js` con
+- [x] **T1385** [P] Crear `apps/api/src/utils/equipo.js` con
       `puedeCambiarRol({ miembro, yo, miembros })` → `{ puede, motivo }` —que **nunca
       devuelve `undefined`**—, `esUltimoAdmin(miembro, miembros)` y `ETIQUETAS_DE_ROL`
       con los cinco roles del catálogo, **`gerente` incluido** (E9, FR-117: hoy
@@ -981,7 +981,7 @@ instantáneo hoy; lo que falta es el botón, y son estas dos tareas.
       **Qué se revierte para verlo en rojo**: sacar `gerente` de una de las dos
       copias; la guardia de espejo falla nombrando la clave que falta.
 
-- [ ] **T1386** En `apps/api/src/routes/empresas.js`, `PUT /usuarios/:id`: importa
+- [x] **T1386** En `apps/api/src/routes/empresas.js`, `PUT /usuarios/:id`: importa
       `utils/equipo.js` y aplica las dos reglas **en el servidor** (FR-109, FR-110,
       FR-111) — último admin activo → `400 { error: 'ULTIMO_ADMIN' }` con el motivo;
       uno mismo → `400 { error: 'NO_TE_PODES_TOCAR' }`; `role` fuera del catálogo →
@@ -999,7 +999,7 @@ instantáneo hoy; lo que falta es el botón, y son estas dos tareas.
       ⚠ Con `BYPASS_AUTH` la sesión es siempre `admin` de la empresa 1: el caso «uno
       mismo» hay que armarlo pidiendo el cambio sobre **su propia** `UsuarioEmpresa`.
 
-- [ ] **T1387** En el mismo archivo, `GET /:empresaId/usuarios`: el `include` de
+- [x] **T1387** En el mismo archivo, `GET /:empresaId/usuarios`: el `include` de
       `Usuario` gana `attributes: ['id', 'nombre', 'email']` — hoy devuelve la fila
       entera, con `auth0_sub` y `es_superadmin` (E7, FR-115). El molde correcto está
       cincuenta líneas más abajo, en `:633`, que ya lo hace bien para el invitador.
@@ -1011,7 +1011,7 @@ instantáneo hoy; lo que falta es el botón, y son estas dos tareas.
       📌 `ultimo_acceso` y `sesiones_abiertas` **no entran acá**: la tabla `sesiones`
       todavía no existe. Llegan en T1398.
 
-- [ ] **T1388** En el mismo archivo,
+- [x] **T1388** En el mismo archivo,
       `POST /invitaciones/:token/re-enviar`: se le agrega `requireEmpresa` y el
       `where` con `empresa_id` —hoy busca el token **sin acotar a la empresa** y hace
       `include` de `Empresa` sin filtrar (E6, FR-114)—. Casos en
@@ -1021,7 +1021,7 @@ instantáneo hoy; lo que falta es el botón, y son estas dos tareas.
       invitación de la empresa B: responde 404, no 200»*.
       **Qué se revierte para verlo en rojo**: sacar `empresa_id` del `where`.
 
-- [ ] **T1389** Borrar `POST /:empresaId/usuarios` de
+- [x] **T1389** Borrar `POST /:empresaId/usuarios` de
       `apps/api/src/routes/empresas.js` (E11, PENDIENTE N13): incorpora por
       `auth0_sub` **sin invitación ni consentimiento**, no valida el rol contra el
       catálogo y **no lo usa nadie** —ni la UI ni `services/api.js`—. Si hace falta
@@ -1034,7 +1034,7 @@ instantáneo hoy; lo que falta es el botón, y son estas dos tareas.
       en rojo si la ruta vuelve sin su fila.
       **Qué se revierte para verlo en rojo**: pegar el handler de vuelta.
 
-- [ ] **T1390** En el mismo archivo, `POST /:empresaId/invitar` agrega el `enlace` de
+- [x] **T1390** En el mismo archivo, `POST /:empresaId/invitar` agrega el `enlace` de
       invitación armado a la respuesta —que ya devuelve `email_enviado` y `message`—
       para que la pantalla lo pueda mostrar y copiar cuando el mail no salió (FR-106).
       **Verificación**: `npm --prefix apps/api run test:integracion -- invitaciones`.
@@ -1043,7 +1043,7 @@ instantáneo hoy; lo que falta es el botón, y son estas dos tareas.
       es el caso que `observabilidad.test.js:125` ya cubre del otro lado—.
       **Qué se revierte para verlo en rojo**: sacar `enlace` de la respuesta.
 
-- [ ] **T1391** Crear `apps/web/src/components/PanelDeMiembro.jsx`: panel lateral de
+- [x] **T1391** Crear `apps/web/src/components/PanelDeMiembro.jsx`: panel lateral de
       520px con `max-w-[92vw]` con el detalle de un miembro, el `Select` de rol
       **deshabilitado con su explicación** cuando `puedeCambiarRol` dice que no
       (FR-111, FR-017) y los dos botones de **desactivar / reactivar** (FR-113, E12).
@@ -1056,7 +1056,7 @@ instantáneo hoy; lo que falta es el botón, y son estas dos tareas.
       **Qué se revierte para verlo en rojo**: sacar el `disabled` que sale de
       `puedeCambiarRol`.
 
-- [ ] **T1392** Reescribir `apps/web/src/pages/Team.jsx`: `PageHeader` · `TablaGrid`
+- [x] **T1392** Reescribir `apps/web/src/pages/Team.jsx`: `PageHeader` · `TablaGrid`
       con el mismo `grid-template-columns` en encabezado y filas (FR-007) · la
       columna **Estado lee `is_active`** y distingue una invitación pendiente de una
       vencida (E10, FR-118) — hoy `Team.jsx:171-175` la pinta clavada en «Activo» ·

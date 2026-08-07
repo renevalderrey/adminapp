@@ -107,9 +107,27 @@ function welcomeEmail(usuarioNombre, empresaNombre) {
  * hay usuario. Funciona igual si la persona todavia se tiene que registrar,
  * porque el token sobrevive al ida y vuelta con Auth0.
  */
+/**
+ * El enlace de invitacion, armado en UN solo lugar.
+ *
+ * Lo necesitan dos: el mail, y la respuesta de `POST /:empresaId/invitar`, que
+ * lo devuelve para que la pantalla lo pueda copiar cuando el mail **no** salio
+ * (FR-106). Escrito dos veces, el dia que la forma cambie —como acaba de pasar,
+ * de `/accept-invite/<token>` a `/?invite=<token>`— uno de los dos queda
+ * apuntando a una ruta que no existe, y el que queda mal es justamente el que se
+ * usa cuando el mail fallo: el camino que nadie ejercita hasta que hace falta.
+ *
+ * @param {string} token El token de la invitacion.
+ * @returns {string} La URL absoluta, o una relativa si falta `FRONTEND_URL`.
+ */
+function enlaceDeInvitacion(token) {
+  const frontendUrl = process.env.FRONTEND_URL || '';
+
+  return `${frontendUrl}/?invite=${token}`;
+}
+
 function invitationEmail(invitadorNombre, empresaNombre, token) {
-  const frontendUrl = process.env.FRONTEND_URL || '#';
-  const acceptUrl = `${frontendUrl}/?invite=${token}`;
+  const acceptUrl = enlaceDeInvitacion(token);
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h1 style="color: #6d28d9;">Te invitaron a unirte a ${empresaNombre}</h1>
@@ -239,6 +257,7 @@ module.exports = {
   sendEmail,
   welcomeEmail,
   invitationEmail,
+  enlaceDeInvitacion,
   trialPorVencerEmail,
   trialVencidoEmail,
   suscripcionActivadaEmail,

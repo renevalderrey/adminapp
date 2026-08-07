@@ -1,498 +1,556 @@
-import React, { useState, useEffect } from 'react'
-import useStore from '@/store/useStore'
-import { getAlerts, getDashboardKpis } from '@/services/api'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { useIsMounted } from '@/lib/useAsyncEffect'
-import { calcularBep, estrategiasDePrecio } from '@/utils/bep'
-import { etiquetaDePago } from '@/utils/mediosDePago'
-// Las dos que estaban acá: `formatCurrency` (abreviada, para las tarjetas de
-// indicadores) y `formatFull`, que fijaba `minimumFractionDigits: 2` y no el
-// máximo —3 por defecto— así que los gastos fijos de 1234.567 salían
-// «$1.234,567». La abreviatura no se aplanó: es una diferencia deliberada y se
-// mudó con su nombre y su motivo.
-import { importeAbreviado, importeOGuion } from '@/utils/formato'
+import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
-  TrendingUp,
+  AlertTriangle,
   Calculator,
-  Target,
-  AlertCircle,
-  Zap,
-  DollarSign,
-  ShoppingCart,
-  Users,
-  Package,
-  TrendingDown,
-  Wallet,
+  LayoutDashboard,
   Loader2,
+  PackageSearch,
+  Receipt,
+  ShoppingCart,
+  Truck,
 } from 'lucide-react'
+import PageHeader from '@/components/PageHeader'
+import RequiereTuAtencion from '@/components/RequiereTuAtencion'
+import TarjetaDeIndicador from '@/components/TarjetaDeIndicador'
+import { useIsMounted } from '@/lib/useAsyncEffect'
+import { getDashboardKpis } from '@/services/api'
+import useStore from '@/store/useStore'
+import { calcularBep, estrategiasDePrecio } from '@/utils/bep'
+import { mensajeDeError } from '@/utils/erroresDeApi'
+import { importeAbreviado, importeOGuion, pesos } from '@/utils/formato'
+import { etiquetaDePago } from '@/utils/mediosDePago'
 
-const Dashboard = () => {
+// ════════════════════════════════════════════
+//  ADMINAPP · Panel de control
+//
+//  ── Las tres cosas que esta pantalla dejó de hacer ──
+//
+//  1. **Leer `kpis.cashflow?.balance || 0`.** Estaba en SEIS lugares, y convertía
+//     «no tenés permiso» en «cero pesos», que es una respuesta falsa a una
+//     pregunta sobre plata. Desde el corte 2 el servidor **omite la clave** del
+//     bloque que el usuario no puede ver —no la manda en `null`, porque `null` y
+//     `0` se confunden en cuanto alguien escribe `|| 0`—, así que acá se
+//     pregunta `'cashflow' in kpis` y la tarjeta que no vino **no se dibuja**
+//     (FR-050). Que faltan tarjetas se dice UNA vez, abajo de la grilla, con los
+//     nombres: un panel con una sola tarjeta y sin explicación se lee como que
+//     el sistema se rompió.
+//
+//  2. **Pedir `GET /api/alerts`.** Ese endpoint pedía `stock.ver` mientras
+//     `/kpis` pide `dashboard.ver`: un rol con uno y sin el otro rechazaba el
+//     `Promise.all` y dejaba el Panel entero en `-` y `0`, **sin un solo
+//     cartel** (hallazgo P9). El endpoint se borró en este mismo corte y los
+//     avisos salen de `kpis` (FR-058).
+//
+//  3. **Arrancar el simulador con 7.000.000 y 2.400.000.** Eran dos literales:
+//     `settings.target_sales` no existía en ningún default, y
+//     `fixed_expenses_total` tenía default `0`, que es falsy. Toda empresa que
+//     no lo hubiera cargado veía **precios recomendados calculados sobre plata
+//     inventada**, con la misma cara con la que mostraría los reales. Ahora los
+//     gastos fijos salen de `kpis.fixed_expenses` —la misma suma que la franja
+//     de arriba (FR-052)— y sin los dos datos el simulador **no simula**: dice
+//     qué falta y adónde cargarlo (FR-051).
+//
+//  ── Y una que empezó a hacer ──
+//
+//  **Cada tarjeta lleva su nota al pie con la definición del número.** Es la
+//  parte durable de la decisión 7: cinco números se movieron el día del deploy
+//  del corte 2, y la tabla de `OPERACION.md` la lee alguien una vez mientras la
+//  nota al pie la lee todos los días el que mira el número.
+//
+//  ── Qué NO tiene, y por qué ──
+//
+//  El selector «Últimos 30 días» y el botón «Exportar» de la maqueta (`:226-234`)
+//  no existen: son una funcionalidad propia y están anotados como pendiente. Y
+//  el bloque de abajo se rotula **«Últimas ventas»** y no «Actividad reciente»
+//  (decisión 19): no hay tabla de auditoría, y de los cuatro tipos de evento que
+//  la maqueta dibuja solo las ventas tienen autor guardado. Prometer un registro
+//  que no existe es lo mismo que dibujar un sparkline con `Math.sin`.
+//
+//  Reglas de dibujo: docs/REGLAS-DISENO.md. Referencia viva: pages/Comparador.jsx.
+// ════════════════════════════════════════════
+
+/** Cuántas columnas usa la grilla según cuántas tarjetas vinieron (FR-050). */
+const COLUMNAS = {
+  1: 'lg:grid-cols-1',
+  2: 'lg:grid-cols-2',
+  3: 'lg:grid-cols-3',
+  4: 'lg:grid-cols-4',
+}
+
+/** Qué permiso le falta a quien no ve cada bloque, en castellano. */
+const BLOQUES_DE_PLATA = [
+  ['cashflow', 'el saldo de caja', 'caja'],
+  ['receivables', 'las cuentas por cobrar', 'clientes'],
+  ['payables', 'las cuentas por pagar', 'proveedores'],
+  ['fixed_expenses', 'los gastos fijos', 'gastos'],
+]
+
+/** Los cuatro accesos rápidos de la maqueta (`:320-330`). */
+const ACCESOS_RAPIDOS = [
+  { ruta: '/pos', etiqueta: 'Nueva venta', icono: ShoppingCart },
+  { ruta: '/faltantes', etiqueta: 'Qué hay que reponer', icono: PackageSearch },
+  { ruta: '/ordenes-compra', etiqueta: 'Orden de compra', icono: Truck },
+  { ruta: '/ventas', etiqueta: 'Historial de ventas', icono: Receipt },
+]
+
+/**
+ * Un importe del negocio, listo para el campo. Vacío si no hay dato.
+ *
+ * El `> 0` no es cosmético: `target_sales` puede venir en cero, y un cero en la
+ * facturación no es un dato con el que se pueda simular —el margen sería una
+ * división por cero—. Vacío dice «falta cargarlo», que es lo que pasa.
+ */
+function textoDeImporte(valor) {
+  const n = Number(valor)
+
+  return Number.isFinite(n) && n > 0 ? String(n) : ''
+}
+
+/** Un número que el usuario escribe: vacío es «no hay dato», no cero. */
+function numeroDelCampo(texto) {
+  const limpio = String(texto ?? '').trim()
+
+  if (limpio === '') return null
+
+  const n = Number(limpio)
+
+  return Number.isFinite(n) ? n : null
+}
+
+/** Una sección con su encabezado, como las de la maqueta (`:258-282`). */
+function Bloque({ titulo, accion, children }) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-nivel-1">
+      <div className="flex items-center gap-2.5 border-b border-border px-5 py-4">
+        <h2>{titulo}</h2>
+        <div className="flex-1" />
+        {accion}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+export default function Dashboard() {
   const isMounted = useIsMounted()
   const { settings, initialize } = useStore()
-  const [targetSales, setTargetSales] = useState(7000000)
-  const [fixedExpenses, setFixedExpenses] = useState(2400000)
-  const [alerts, setAlerts] = useState({ lowStock: [], expiringStock: [] })
+
   const [kpis, setKpis] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [cargando, setCargando] = useState(true)
 
-  useEffect(() => {
-    const ctrl = new AbortController()
-    initialize()
-    fetchData()
-    return () => ctrl.abort()
-  }, [initialize])
+  // ── Los dos campos del simulador ──
+  //
+  // `null` significa «el usuario no lo tocó», y entonces vale lo que el negocio
+  // tiene cargado. Es estado DERIVADO y no una copia sincronizada con un
+  // `useEffect`: una copia se desincroniza —el pedido llega después del primer
+  // dibujo— y el defecto que produce es que el simulador calcule sobre el valor
+  // viejo mientras la franja de arriba muestra el nuevo, que es exactamente el
+  // problema de los dos «gastos fijos» que este corte cierra.
+  const [metaEscrita, setMetaEscrita] = useState(null)
+  const [gastosEscritos, setGastosEscritos] = useState(null)
 
-  useEffect(() => {
-    if (settings) {
-      setTargetSales(settings.target_sales || 7000000)
-      setFixedExpenses(settings.fixed_expenses_total || 2400000)
-    }
-  }, [settings])
-
-  const fetchData = async () => {
+  const pedir = useCallback(async () => {
+    setCargando(true)
     try {
-      const [kpiRes, alertsRes] = await Promise.all([
-        getDashboardKpis(),
-        getAlerts(),
-      ])
+      const res = await getDashboardKpis()
+
       if (!isMounted()) return
-      if (kpiRes.data?.ok) setKpis(kpiRes.data.data)
-      if (alertsRes.data?.ok) setAlerts(alertsRes.data.data)
+
+      setKpis(res.data?.data || null)
+      setError(null)
     } catch (err) {
-      console.error('[Dashboard]', err)
+      if (!isMounted()) return
+
+      // Antes esto era un `console.error`: el Panel se dibujaba entero con
+      // `kpis = null` —seis tarjetas en `-` y `0`— y nadie se enteraba de que
+      // había fallado algo (FR-009, FR-055).
+      setKpis(null)
+      setError(mensajeDeError(err, 'No se pudieron cargar los indicadores del panel.'))
     } finally {
-      if (isMounted()) setLoading(false)
+      if (isMounted()) setCargando(false)
     }
-  }
+  }, [isMounted])
 
-  // El punto de equilibrio se plantea sobre la VENTA (que fraccion de lo
-  // facturado tiene que ser margen), pero los precios se fijan aplicando un
-  // recargo al COSTO. No son el mismo numero y hay que mostrar los dos.
-  // Ver apps/web/src/utils/bep.js.
-  const bep = calcularBep(fixedExpenses, targetSales)
-  const estrategias = estrategiasDePrecio(fixedExpenses, targetSales)
+  useEffect(() => {
+    initialize()
+    pedir()
+  }, [initialize, pedir])
 
-  const calcGrowth = (current, previous) => {
-    if (!previous || previous === 0) return null
-    return ((current - previous) / previous) * 100
-  }
-
-  if (loading) {
+  if (cargando) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-fg-3" />
       </div>
     )
   }
 
+  const tiene = (clave) => !!kpis && clave in kpis
+  const serie = (clave) => kpis?.series?.[clave]
+
+  const tarjetas = []
+
+  if (kpis) {
+    tarjetas.push({
+      etiqueta: 'Ventas del mes',
+      valor: importeAbreviado(kpis.sales_current_month?.total),
+      serie: serie('ventas'),
+      variacion: variacionDeVentas(kpis),
+      notaDeVariacion: kpis.comparacion_parcial
+        ? 'El mes en curso está incompleto: se compara contra un mes entero.'
+        : undefined,
+      nota: kpis.comparacion_parcial
+        ? 'Ventas no anuladas del mes en curso, de toda la empresa. La variación compara un mes parcial contra uno completo.'
+        : 'Ventas no anuladas del mes, de toda la empresa.',
+    })
+  }
+
+  if (tiene('cashflow')) {
+    tarjetas.push({
+      etiqueta: 'Saldo de caja',
+      valor: importeAbreviado(kpis.cashflow.balance),
+      serie: serie('cashflow'),
+      nota: 'Lo que entró menos lo que salió, de toda la empresa. Los gastos fijos se descuentan enteros: no tienen fecha.',
+    })
+  }
+
+  if (tiene('receivables')) {
+    tarjetas.push({
+      etiqueta: 'Por cobrar',
+      valor: importeAbreviado(kpis.receivables.total),
+      serie: serie('receivables'),
+      nota: 'Ventas a cuenta corriente menos lo cobrado. Las ventas de contado no cuentan, aunque tengan cliente.',
+    })
+  }
+
+  if (tiene('payables')) {
+    tarjetas.push({
+      etiqueta: 'Por pagar',
+      valor: importeAbreviado(kpis.payables.total),
+      serie: serie('payables'),
+      nota: 'Lo que se les debe a los proveedores: deuda menos pagos. Registrar un pago lo baja.',
+    })
+  }
+
+  const ocultos = kpis
+    ? BLOQUES_DE_PLATA.filter(([clave]) => !(clave in kpis)).map(([, texto]) => texto)
+    : []
+
+  // Los gastos fijos del simulador salen de la MISMA fuente que la franja de
+  // arriba (FR-052). `settings.fixed_expenses_total` ya no se lee: eran dos
+  // números con la misma etiqueta a cuarenta píxeles, y el de abajo decidía el
+  // precio (decisión 13).
+  const metaDeVentas = metaEscrita ?? textoDeImporte(settings?.target_sales)
+  const gastosFijos = gastosEscritos
+    ?? (tiene('fixed_expenses') ? String(kpis.fixed_expenses) : '')
+
+  const meta = numeroDelCampo(metaDeVentas)
+  const fijos = numeroDelCampo(gastosFijos)
+  const puedeSimular = meta !== null && fijos !== null && meta > 0
+  const bep = puedeSimular ? calcularBep(fijos, meta) : null
+  const estrategias = puedeSimular ? estrategiasDePrecio(fijos, meta) : []
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1>Panel de Control</h1>
-        <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
-          Indicadores clave del negocio en tiempo real.
+    <div className="flex flex-col gap-7">
+      <PageHeader
+        titulo="Panel de control"
+        descripcion="Cómo viene el negocio y qué necesita tu intervención. Los indicadores son de toda la empresa."
+        icono={LayoutDashboard}
+      />
+
+      {error && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-danger-line bg-danger-soft px-4 py-3">
+          <AlertTriangle className="mt-0.5 h-[18px] w-[18px] shrink-0 text-danger" />
+          <div className="min-w-0">
+            <p className="text-[13px] text-danger">{error}</p>
+            <button
+              type="button"
+              className="mt-2 text-[12.5px] font-medium text-fg-2 underline hover:text-foreground"
+              onClick={pedir}
+            >
+              Reintentar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {tarjetas.length > 0 && (
+        <div className={`grid gap-4 sm:grid-cols-2 ${COLUMNAS[tarjetas.length] || COLUMNAS[4]}`}>
+          {tarjetas.map((t) => (
+            <TarjetaDeIndicador key={t.etiqueta} {...t} />
+          ))}
+        </div>
+      )}
+
+      {/* Se dice UNA vez y con los nombres. Sin esto, un rol de producción abre
+          el Panel, ve una sola tarjeta y no tiene forma de saber si le falta un
+          permiso o si el sistema se rompió (FR-056). */}
+      {ocultos.length > 0 && (
+        <p data-bloques-ocultos="true" className="text-[12.5px] text-fg-2">
+          No ves {ocultos.join(', ')} porque te faltan permisos. No es que estén en cero:
+          es que no se te muestran.
         </p>
-      </div>
+      )}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-        <Card>
-          <CardContent className="p-3 text-center">
-            <ShoppingCart className="h-4 w-4 mx-auto mb-1 text-primary" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Ventas 30d</p>
-            <p className="text-lg font-black font-mono mt-1">{importeAbreviado(kpis?.sales_30d?.total)}</p>
-            <p className="text-[10px] text-muted-foreground">{kpis?.sales_30d?.count} ops</p>
-          </CardContent>
-        </Card>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <RequiereTuAtencion avisos={kpis?.requiere_atencion || []} />
 
-        <Card>
-          <CardContent className="p-3 text-center">
-            <TrendingUp className="h-4 w-4 mx-auto mb-1 text-ok" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Ticket Prom.</p>
-            <p className="text-lg font-black font-mono mt-1">{importeAbreviado(kpis?.sales_30d?.avg_ticket)}</p>
-            <p className="text-[10px] text-muted-foreground">promedio 30d</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 text-center">
-            <DollarSign className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Saldo Caja</p>
-            <p className={`text-lg font-black font-mono mt-1 ${kpis?.cashflow?.balance >= 0 ? 'text-ok' : 'text-destructive'}`}>
-              {importeAbreviado(kpis?.cashflow?.balance)}
-            </p>
-            <p className="text-[10px] text-muted-foreground">actual</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 text-center">
-            <Wallet className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Proy. 30d</p>
-            <p className={`text-lg font-black font-mono mt-1 ${kpis?.cashflow?.projected_30d >= 0 ? 'text-ok' : 'text-destructive'}`}>
-              {importeAbreviado(kpis?.cashflow?.projected_30d)}
-            </p>
-            <p className="text-[10px] text-muted-foreground">proyección</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 text-center">
-            <Users className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Clientes</p>
-            <p className="text-lg font-black font-mono mt-1">{kpis?.customers?.active || 0}</p>
-            <p className="text-[10px] text-muted-foreground">
-              {kpis?.customers?.with_debt || 0} con deuda
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 text-center">
-            <Package className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Productos</p>
-            <p className="text-lg font-black font-mono mt-1">{kpis?.products?.active || 0}</p>
-            <p className="text-[10px] text-warn">
-              {kpis?.products?.low_stock || 0} stock bajo
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Sales Section */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-primary" />
-                <CardTitle className="text-sm">Ventas</CardTitle>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>Este mes: <strong className="text-foreground">{importeAbreviado(kpis?.sales_current_month?.total)}</strong></span>
-                {kpis?.sales_previous_month?.total > 0 && (
-                  <Badge variant={calcGrowth(kpis?.sales_current_month?.total, kpis?.sales_previous_month?.total) >= 0 ? 'default' : 'destructive'} className="text-[10px]">
-                    {calcGrowth(kpis?.sales_current_month?.total, kpis?.sales_previous_month?.total) >= 0 ? '+' : ''}
-                    {calcGrowth(kpis?.sales_current_month?.total, kpis?.sales_previous_month?.total)?.toFixed(1)}%
-                  </Badge>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-muted/40 rounded-lg p-3">
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Mes Anterior</p>
-                <p className="text-lg font-bold font-mono mt-1">{importeAbreviado(kpis?.sales_previous_month?.total)}</p>
-                <p className="text-[10px] text-muted-foreground">{kpis?.sales_previous_month?.count} ventas</p>
-              </div>
-              <div className="bg-primary/5 rounded-lg p-3">
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Mes Actual</p>
-                <p className="text-lg font-bold font-mono mt-1">{importeAbreviado(kpis?.sales_current_month?.total)}</p>
-                <p className="text-[10px] text-muted-foreground">{kpis?.sales_current_month?.count} ventas</p>
-              </div>
-            </div>
-
-            {kpis?.sales_30d?.by_method && Object.keys(kpis.sales_30d.by_method).length > 0 && (
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Por Método de Pago (30d)</p>
-                <div className="space-y-1.5">
-                  {Object.entries(kpis.sales_30d.by_method).map(([method, total]) => (
-                    <div key={method} className="flex justify-between items-center text-xs">
-                      {/* La clave cruda que devuelve `_salesByMethod` no es
-                          para mostrar: con tres valores ya era feo, y a partir
-                          de que el punto de venta ofrezca los nueve medios le
-                          mostraría «tc3n» al dueño. `capitalize` tampoco va: la
-                          etiqueta ya viene con sus mayúsculas y la regla de CSS
-                          convertía «Naranja 3c» en «Naranja 3C». */}
-                      <span>{etiquetaDePago(method)}</span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-24 bg-muted rounded-full h-1.5">
-                          <div
-                            className="bg-primary h-1.5 rounded-full"
-                            style={{ width: `${Math.min(100, (total / kpis.sales_30d.total) * 100)}%` }}
-                          />
-                        </div>
-                        <span className="font-mono w-20 text-right">{importeAbreviado(total)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          {/* «Últimas ventas», no «Actividad reciente». Ver el encabezado. */}
+          <Bloque
+            titulo="Últimas ventas"
+            accion={
+              <Link to="/ventas" className="text-[12.5px] font-medium text-fg-2 hover:text-brand">
+                Historial completo
+              </Link>
+            }
+          >
+            {kpis?.ultimas_ventas?.length ? (
+              <ul className="flex flex-col px-5 py-2">
+                {kpis.ultimas_ventas.map((venta) => (
+                  <li key={venta.id} className="flex items-baseline gap-3.5 py-2.5">
+                    <span className="num w-11 shrink-0 text-[11.5px] text-fg-3">{venta.hora}</span>
+                    <span className="min-w-0 flex-1 text-[13px] text-fg-2">
+                      <strong className="font-medium text-foreground">
+                        {venta.vendedor || 'Sin vendedor'}
+                      </strong>{' '}
+                      cobró la venta {venta.id}
+                    </span>
+                    <span className="num shrink-0 text-[12.5px] font-medium">
+                      ${pesos(venta.total)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="px-5 py-8 text-center">
+                <p className="font-semibold">Todavía no hay ventas registradas.</p>
+                <p className="mx-auto mt-1 max-w-[52ch] text-sm text-fg-2">
+                  Acá van a aparecer las últimas, con la hora y quién las cobró.
+                </p>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </Bloque>
 
-        {/* Cuentas Corrientes */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Wallet className="h-4 w-4 text-muted-foreground" />
-              <CardTitle className="text-sm">Cuentas Corrientes</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-3">
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Por Cobrar</p>
-                <p className="text-lg font-bold font-mono mt-1 text-ok">{importeAbreviado(kpis?.receivables?.total)}</p>
-              </div>
-              <div className="bg-red-50 dark:bg-red-950/20 rounded-lg p-3">
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Por Pagar</p>
-                <p className="text-lg font-bold font-mono mt-1 text-destructive">{importeAbreviado(kpis?.payables?.total)}</p>
-              </div>
-            </div>
+          {kpis?.sales_30d?.by_method && Object.keys(kpis.sales_30d.by_method).length > 0 && (
+            <Bloque titulo="Cómo te pagaron (30 días)">
+              <ul className="flex flex-col gap-2 px-5 py-4">
+                {Object.entries(kpis.sales_30d.by_method).map(([medio, total]) => (
+                  <li key={medio} className="flex items-center justify-between gap-3 text-[13px]">
+                    {/* La clave cruda no es para mostrar: le diría «tc3n» al
+                        dueño. La etiqueta sale de `utils/mediosDePago.js`. */}
+                    <span className="min-w-0 truncate">{etiquetaDePago(medio)}</span>
+                    <span className="num shrink-0 font-medium">{importeAbreviado(total)}</span>
+                  </li>
+                ))}
+              </ul>
+            </Bloque>
+          )}
+        </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Aging Cobrar</p>
-                {kpis?.receivables?.aging && (
-                  <div className="space-y-1">
-                    {[['0_30', '0-30d'], ['31_60', '31-60d'], ['61_90', '61-90d'], ['90_plus', '90+d']].map(([key, label]) => (
-                      <div key={key} className="flex justify-between text-[11px]">
-                        <span className="text-muted-foreground">{label}</span>
-                        <span className="font-mono font-medium">{importeAbreviado(kpis.receivables.aging[key])}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Aging Pagar</p>
-                {kpis?.payables?.aging && (
-                  <div className="space-y-1">
-                    {[['0_30', '0-30d'], ['31_60', '31-60d'], ['61_90', '61-90d'], ['90_plus', '90+d']].map(([key, label]) => (
-                      <div key={key} className="flex justify-between text-[11px]">
-                        <span className="text-muted-foreground">{label}</span>
-                        <span className="font-mono font-medium">{importeAbreviado(kpis.payables.aging[key])}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 bg-muted/40 rounded-lg p-2.5 text-xs">
-              <TrendingDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="text-muted-foreground">
-                Gastos Fijos: <strong className="text-foreground">{importeOGuion(kpis?.fixed_expenses)}</strong>
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* BEP Simulator + Strategies */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <Calculator className="h-4 w-4 text-primary" />
-              <CardTitle className="text-sm">Simulador de Punto de Equilibrio</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Meta de Ventas ($)
-                </label>
-                <Input
-                  type="number"
-                  value={targetSales}
-                  onChange={(e) => setTargetSales(parseFloat(e.target.value))}
-                  className="text-lg font-bold font-mono"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Gastos Fijos Mensuales ($)
-                </label>
-                <Input
-                  type="number"
-                  value={fixedExpenses}
-                  onChange={(e) => setFixedExpenses(parseFloat(e.target.value))}
-                  className="text-lg font-bold font-mono"
-                />
-              </div>
-            </div>
-
-            <Card className="bg-muted/50">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Target className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold">Resultado de Viabilidad</p>
-                    <p className="text-[11px] text-muted-foreground">Basado en tus costos operativos actuales.</p>
-                  </div>
+        <div className="flex min-w-0 flex-col gap-6">
+          {/* Los gastos fijos van en su propia franja y SIN sparkline: son un
+              estado, no una serie —no tienen fecha—, así que no hay historia que
+              reconstruir (decisión 18). Y van al lado del simulador, que es lo
+              único que los usa. */}
+          <Bloque titulo="Gastos fijos y precios">
+            <div className="flex flex-col gap-5 px-5 py-4">
+              {tiene('fixed_expenses') ? (
+                <div>
+                  <p className="eyebrow">Gastos fijos por mes</p>
+                  <p className="num mt-1 text-[22px] font-semibold">
+                    {importeOGuion(kpis.fixed_expenses)}
+                  </p>
+                  <p className="mt-0.5 text-[12px] leading-snug text-fg-3">
+                    La suma de los gastos fijos cargados en{' '}
+                    <Link to="/gastos" className="underline hover:text-brand">Gastos</Link>. No
+                    lleva sparkline: un gasto fijo no tiene fecha.
+                  </p>
                 </div>
-                {bep.viable ? (
-                  <>
-                    <p className="text-3xl font-black font-mono text-ok">
-                      {bep.recargoSobreCosto}%{' '}
-                      <span className="text-sm font-semibold text-muted-foreground ml-2">
-                        de recargo sobre el costo
-                      </span>
+              ) : (
+                <p className="text-[13px] text-fg-2">
+                  No ves los gastos fijos porque te falta el permiso de gastos.
+                </p>
+              )}
+
+              <div className="flex flex-col gap-3 border-t border-border pt-4">
+                <div className="flex items-center gap-2">
+                  <Calculator className="h-4 w-4 text-brand" />
+                  <h3 className="text-[13.5px] font-semibold">Simulador de punto de equilibrio</h3>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="eyebrow">Facturación mensual</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      aria-label="Facturación mensual"
+                      value={metaDeVentas}
+                      onChange={(e) => setMetaEscrita(e.target.value)}
+                      className="num h-9 rounded-lg border border-border bg-surface px-2.5 text-[14px]
+                                 focus-visible:border-brand focus-visible:outline-none"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="eyebrow">Gastos fijos por mes</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      aria-label="Gastos fijos por mes"
+                      value={gastosFijos}
+                      onChange={(e) => setGastosEscritos(e.target.value)}
+                      className="num h-9 rounded-lg border border-border bg-surface px-2.5 text-[14px]
+                                 focus-visible:border-brand focus-visible:outline-none"
+                    />
+                  </label>
+                </div>
+
+                {!puedeSimular ? (
+                  // No simula con datos inventados. Un simulador que se abre con
+                  // números de ejemplo y no lo dice es una calculadora que da un
+                  // resultado falso con cara de real (FR-051, FR-053).
+                  <div className="rounded-lg border border-border bg-surface-2 px-4 py-3">
+                    <p className="text-[13px] font-medium">Falta un dato para calcular.</p>
+                    <p className="mt-1 text-[12.5px] leading-snug text-fg-2">
+                      {faltaParaSimular(meta, fijos, tiene('fixed_expenses'))}
                     </p>
-                    <p className="text-sm leading-relaxed text-foreground mt-2">
-                      Para cubrir tus gastos fijos de <strong>${fixedExpenses.toLocaleString()}</strong> con
-                      una facturación de <strong>${targetSales.toLocaleString()}</strong>,
-                      necesitás aplicar un recargo mínimo del <strong>{bep.recargoSobreCosto}%</strong> sobre
-                      el costo de tus productos.
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Equivale a que el <strong>{bep.margenSobreVenta}%</strong> de lo que facturás sea
-                      margen bruto. Ojo: no es lo mismo un recargo del {bep.recargoSobreCosto}% sobre el
-                      costo que un margen del {bep.recargoSobreCosto}% sobre la venta.
-                    </p>
-                  </>
+                  </div>
                 ) : (
-                  <>
-                    <p className="text-3xl font-black font-mono text-warn">
-                      Sin solución
-                    </p>
-                    <p className="text-sm leading-relaxed text-foreground mt-2">
-                      Con gastos fijos de <strong>${fixedExpenses.toLocaleString()}</strong> y una meta de
-                      <strong> ${targetSales.toLocaleString()}</strong>, no hay precio que cierre: los
-                      gastos se llevan toda la facturación. Hay que subir la meta de ventas o bajar
-                      los gastos fijos.
-                    </p>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-warn" />
-              <CardTitle className="text-sm">Estrategias de Precio</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {/*
-              Antes cada estrategia mostraba bepMargin, bepMargin + 10 y
-              bepMargin + 25, sumando puntos porcentuales a un numero que se
-              describia como recargo sobre el costo. Sumar 10 puntos a un
-              recargo no produce 10% de utilidad neta. Ahora la utilidad se
-              suma al margen sobre la venta y recien despues se convierte a
-              recargo sobre el costo, que es lo que el comerciante aplica.
-            */}
-            {estrategias.map((e) => {
-              const estilos = {
-                equilibrio: { borde: 'border-green-500/20 bg-green-500/5', texto: 'text-ok', badge: 'text-ok border-green-500/30' },
-                recomendado: { borde: 'border-primary/20 bg-primary/5', texto: 'text-primary', badge: '' },
-                agresivo: { borde: 'border-orange-500/20 bg-orange-500/5', texto: 'text-warn', badge: 'text-warn border-orange-500/30' },
-              }[e.clave]
-
-              return (
-                <Card key={e.clave} className={estilos.borde}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={`font-bold text-sm uppercase ${estilos.texto}`}>{e.titulo}</span>
-                      {e.recargoSobreCosto === null ? (
-                        <Badge variant="outline" className="text-muted-foreground">No alcanzable</Badge>
-                      ) : (
-                        <Badge variant={e.clave === 'recomendado' ? 'default' : 'outline'} className={estilos.badge}>
-                          +{e.recargoSobreCosto}% sobre costo
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">{e.descripcion}</p>
-                    {e.recargoSobreCosto !== null && (
-                      <p className="text-[11px] text-muted-foreground mt-1">
-                        Margen sobre la venta: {e.margenSobreVenta}%
-                      </p>
+                  <div className="rounded-lg border border-border bg-surface-2 px-4 py-3">
+                    {bep.viable ? (
+                      <>
+                        <p className="num text-[26px] font-semibold text-ok">
+                          {bep.recargoSobreCosto}%
+                        </p>
+                        <p className="mt-1 text-[13px] leading-relaxed text-fg-2">
+                          Para cubrir gastos fijos de <strong>${pesos(fijos)}</strong> con una
+                          facturación de <strong>${pesos(meta)}</strong>, el recargo mínimo sobre el
+                          costo es del <strong>{bep.recargoSobreCosto}%</strong>. Equivale a que el{' '}
+                          <strong>{bep.margenSobreVenta}%</strong> de lo que facturás sea margen
+                          bruto: no es lo mismo un recargo del {bep.recargoSobreCosto}% sobre el
+                          costo que un margen del {bep.recargoSobreCosto}% sobre la venta.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-[15px] font-semibold text-warn">No hay precio que cierre.</p>
+                        <p className="mt-1 text-[13px] leading-relaxed text-fg-2">
+                          Con gastos fijos de <strong>${pesos(fijos)}</strong> y una facturación de{' '}
+                          <strong>${pesos(meta)}</strong>, los gastos se llevan todo lo que entra.
+                          Hay que subir la facturación o bajar los gastos fijos.
+                        </p>
+                      </>
                     )}
-                  </CardContent>
-                </Card>
-              )
-            })}
+                  </div>
+                )}
 
-            <Card className="bg-muted/50">
-              <CardContent className="p-3 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-muted-foreground shrink-0" />
-                <span className="text-[11px] text-muted-foreground font-medium">
-                  El recargo por tarjeta sugerido es del <strong>{settings?.recargo_tarjeta || 0}%</strong> para mantener estos márgenes.
-                </span>
-              </CardContent>
-            </Card>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Alertas */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        <Card className={alerts.lowStock?.length > 0 ? 'border-orange-500/30' : ''}>
-          <CardHeader className="pb-3 flex flex-row items-center justify-between">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-warn" />
-              <CardTitle className="text-sm font-bold">Alertas de Stock Mínimo</CardTitle>
+                {puedeSimular && bep.viable && (
+                  <ul className="flex flex-col gap-2">
+                    {estrategias.map((e) => (
+                      <li
+                        key={e.clave}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2"
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-[13px] font-medium">{e.titulo}</span>
+                          <span className="block text-[12px] text-fg-3">{e.descripcion}</span>
+                        </span>
+                        <span className="num shrink-0 text-[13px] font-semibold">
+                          {e.recargoSobreCosto === null
+                            ? 'No alcanzable'
+                            : `+${e.recargoSobreCosto}%`}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
-            {alerts.lowStock?.length > 0 && (
-              <Badge variant="destructive">{alerts.lowStock.length} productos</Badge>
-            )}
-          </CardHeader>
-          <CardContent className="max-h-[280px] overflow-y-auto space-y-2">
-            {alerts.lowStock?.map(item => (
-              <div key={item.id} className="flex justify-between items-center bg-muted/40 p-2.5 rounded-lg text-xs">
-                <div>
-                  <p className="font-semibold text-foreground">{item.product_name}</p>
-                  <p className="text-[10px] text-muted-foreground capitalize">Sucursal: {item.location}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold font-mono text-warn">{item.quantity} u.</p>
-                  <p className="text-[9px] text-muted-foreground">Mínimo: {item.min_stock} u.</p>
-                </div>
-              </div>
-            ))}
-            {(!alerts.lowStock || alerts.lowStock.length === 0) && (
-              <div className="text-center text-xs text-muted-foreground py-8">
-                Cero alertas. Todo el stock está por encima del mínimo.
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </Bloque>
 
-        <Card className={alerts.expiringStock?.length > 0 ? 'border-red-500/30' : ''}>
-          <CardHeader className="pb-3 flex flex-row items-center justify-between">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-red-500" />
-              <CardTitle className="text-sm font-bold">Vencimientos Próximos (30 días)</CardTitle>
-            </div>
-            {alerts.expiringStock?.length > 0 && (
-              <Badge variant="destructive" className="bg-red-500 hover:bg-red-600">{alerts.expiringStock.length} lotes</Badge>
-            )}
-          </CardHeader>
-          <CardContent className="max-h-[280px] overflow-y-auto space-y-2">
-            {alerts.expiringStock?.map(item => (
-              <div key={item.id} className="flex justify-between items-center bg-muted/40 p-2.5 rounded-lg text-xs">
+          {tiene('cashflow') && (
+            <Bloque titulo="Proyección de caja">
+              <div className="flex flex-col gap-3 px-5 py-4">
                 <div>
-                  <p className="font-semibold text-foreground">{item.product_name}</p>
-                  <p className="text-[10px] text-muted-foreground">Lote: {item.current_batch || 'Sin Lote'} | Sucursal: {item.location}</p>
+                  <p className="eyebrow">Proyección a 30 días</p>
+                  <p className="num mt-1 text-[20px] font-semibold">
+                    {importeOGuion(kpis.cashflow.projected_30d)}
+                  </p>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold text-red-500">{new Date(item.expiration_date).toLocaleDateString()}</p>
-                  <p className="text-[9px] text-muted-foreground">Vence pronto</p>
-                </div>
+                {/* El supuesto, dicho. Antes el número salía 10 % inflado y la
+                    pantalla no lo mencionaba (FR-060). */}
+                <p className="text-[12px] leading-snug text-fg-3">
+                  Supone que el próximo mes repite el anterior con un{' '}
+                  {porcentajeDeCrecimiento(kpis.supuesto_crecimiento)} de crecimiento. No es un dato
+                  histórico.
+                </p>
               </div>
-            ))}
-            {(!alerts.expiringStock || alerts.expiringStock.length === 0) && (
-              <div className="text-center text-xs text-muted-foreground py-8">
-                Cero alertas. No hay lotes próximos a vencer.
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </Bloque>
+          )}
+
+          <Bloque titulo="Accesos rápidos">
+            <div className="grid grid-cols-2 gap-2.5 px-5 py-4">
+              {ACCESOS_RAPIDOS.map((acceso) => {
+                const Icono = acceso.icono
+
+                return (
+                  <Link
+                    key={acceso.ruta}
+                    to={acceso.ruta}
+                    className="flex flex-col items-start gap-2 rounded-[10px] border border-border
+                               bg-surface-2 p-3 text-[12.5px] font-medium leading-tight
+                               transition-colors hover:border-brand-line hover:bg-brand-soft"
+                  >
+                    <Icono className="h-[17px] w-[17px] text-brand" />
+                    {acceso.etiqueta}
+                  </Link>
+                )
+              })}
+            </div>
+          </Bloque>
+        </div>
       </div>
     </div>
   )
 }
 
-export default Dashboard
+/**
+ * La variación del mes contra el anterior, o `null` cuando no se puede comparar.
+ *
+ * `null` **no es cero**: con el mes anterior en cero no hay porcentaje que
+ * calcular, y dibujar «+0 %» afirmaría que el negocio quedó igual.
+ */
+function variacionDeVentas(kpis) {
+  const actual = Number(kpis?.sales_current_month?.total)
+  const anterior = Number(kpis?.sales_previous_month?.total)
+
+  if (!Number.isFinite(actual) || !Number.isFinite(anterior) || anterior === 0) return null
+
+  return ((actual - anterior) / anterior) * 100
+}
+
+/** Qué falta para poder simular, dicho con el lugar donde se carga (FR-051). */
+function faltaParaSimular(meta, fijos, puedeVerGastos) {
+  if (fijos === null && !puedeVerGastos) {
+    return 'No podemos traer tus gastos fijos porque te falta el permiso de gastos. ' +
+      'Podés escribirlos a mano acá arriba.'
+  }
+
+  if (fijos === null) {
+    return 'Cargá tus gastos fijos en Gastos, o escribí un importe acá arriba para probar.'
+  }
+
+  return 'Escribí tu facturación mensual promedio acá arriba. ' +
+    'Es la que el simulador usa para calcular el recargo mínimo.'
+}
+
+/** `1.1` → «10 %». Un factor crudo no le dice nada a nadie. */
+function porcentajeDeCrecimiento(factor) {
+  const n = Number(factor)
+
+  if (!Number.isFinite(n)) return '0 %'
+
+  return `${Math.round((n - 1) * 100)} %`
+}

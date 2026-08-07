@@ -2,10 +2,11 @@ const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
 
-const { GastoVariable } = require('../models');
+const { GastoVariable, PuntoDeVenta } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo, ErrorDeNegocio } = require('../utils/errores');
+const { hoyDelNegocio } = require('../utils/fechas');
 
 // ════════════════════════════════════════════
 //  Gastos variables
@@ -22,9 +23,45 @@ const { fallo, ErrorDeNegocio } = require('../utils/errores');
 
 const MES_VALIDO = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-/** El mes que corresponde hoy, si no piden otro. */
-function mesActual() {
-  return new Date().toISOString().slice(0, 7);
+/**
+ * El mes que corresponde hoy en el negocio, si no piden otro.
+ *
+ * ⚠ **No es `new Date().toISOString().slice(0, 7)`**, que era lo que había.
+ * `toISOString` da la fecha en UTC y Argentina es UTC−3: a partir de las 21:00
+ * hora local, UTC ya está en el día siguiente. El último día del mes, entonces,
+ * un gasto cargado a las 21:30 se archivaba en el mes SIGUIENTE —y el listado
+ * abría en un mes vacío— todos los meses y solo a esa hora, que es cuando nadie
+ * mira el campo. Sale de `hoyDelNegocio`, que respeta `Empresa.timezone`.
+ *
+ * @param {number} empresaId
+ * @returns {Promise<string>} YYYY-MM en la zona horaria de la empresa.
+ */
+async function mesActual(empresaId) {
+  return (await hoyDelNegocio(empresaId)).slice(0, 7);
+}
+
+/**
+ * El `punto_de_venta_id` que mandó el cliente, validado contra su empresa.
+ *
+ * Antes llegaba como `punto_de_venta_id || null` directo al `create`: un id de
+ * otra empresa cliente quedaba escrito, y la fila llevaba el `empresa_id`
+ * correcto, así que ninguna guardia de aislamiento la veía. Es el «padre
+ * ajeno», y esta forma —el `|| null`— es una de las dos que el detector de
+ * `aislamientoEmpresas.test.js` no reconocía (FR-029, FR-033).
+ *
+ * El `null` es un caso legítimo: un gasto variable puede no ser de ninguna
+ * sucursal.
+ *
+ * @returns {Promise<number|null>}
+ * @throws {ErrorDeNegocio} Cuando la sucursal no es de la empresa.
+ */
+async function sucursalDelCuerpo(valor, empresaId) {
+  if (valor === undefined || valor === null || valor === '') return null;
+
+  const sucursal = await findScoped(PuntoDeVenta, valor, empresaId);
+  if (!sucursal) throw new ErrorDeNegocio('Punto de venta no encontrado', 404);
+
+  return sucursal.id;
 }
 
 function validarMes(mes) {
@@ -38,7 +75,7 @@ function validarMes(mes) {
 // GET /api/gastos-variables?mes=YYYY-MM[&persona=]
 router.get('/', checkPermission('gastos.ver'), async (req, res) => {
   try {
-    const mes = validarMes(req.query.mes || mesActual());
+    const mes = validarMes(req.query.mes || await mesActual(req.empresaId));
 
     const where = { empresa_id: req.empresaId, mes };
     if (req.query.persona) where.persona = req.query.persona;
@@ -95,7 +132,7 @@ router.get('/meses', checkPermission('gastos.ver'), async (req, res) => {
 
     // El mes actual siempre esta, aunque todavia no tenga nada: es donde se
     // va a cargar.
-    const actual = mesActual();
+    const actual = await mesActual(req.empresaId);
     if (!meses.includes(actual)) meses.unshift(actual);
 
     res.json({ ok: true, data: meses });
@@ -121,13 +158,15 @@ router.post('/', checkPermission('gastos.crear'), async (req, res) => {
       throw new ErrorDeNegocio('El monto tiene que ser un numero.');
     }
 
+    const sucursalId = await sucursalDelCuerpo(punto_de_venta_id, req.empresaId);
+
     const gasto = await GastoVariable.create({
       empresa_id: req.empresaId,
       persona: String(persona).trim(),
-      mes: validarMes(mes || mesActual()),
+      mes: validarMes(mes || await mesActual(req.empresaId)),
       nombre: String(nombre).trim(),
       monto: importe,
-      punto_de_venta_id: punto_de_venta_id || null,
+      punto_de_venta_id: sucursalId,
     });
 
     res.status(201).json({ ok: true, data: gasto });
@@ -147,7 +186,9 @@ router.put('/:id', checkPermission('gastos.editar'), async (req, res) => {
     if (req.body.persona !== undefined) cambios.persona = String(req.body.persona).trim();
     if (req.body.nombre !== undefined) cambios.nombre = String(req.body.nombre).trim();
     if (req.body.mes !== undefined) cambios.mes = validarMes(req.body.mes);
-    if (req.body.punto_de_venta_id !== undefined) cambios.punto_de_venta_id = req.body.punto_de_venta_id || null;
+    if (req.body.punto_de_venta_id !== undefined) {
+      cambios.punto_de_venta_id = await sucursalDelCuerpo(req.body.punto_de_venta_id, req.empresaId);
+    }
 
     if (req.body.monto !== undefined) {
       const importe = Number(req.body.monto);
@@ -183,7 +224,7 @@ router.delete('/:id', checkPermission('gastos.eliminar'), async (req, res) => {
 // GET /api/gastos-variables/resumen?desde=YYYY-MM&hasta=YYYY-MM
 router.get('/resumen', checkPermission('gastos.ver'), async (req, res) => {
   try {
-    const hasta = validarMes(req.query.hasta || mesActual());
+    const hasta = validarMes(req.query.hasta || await mesActual(req.empresaId));
     const desde = validarMes(req.query.desde || hasta);
 
     const gastos = await GastoVariable.findAll({

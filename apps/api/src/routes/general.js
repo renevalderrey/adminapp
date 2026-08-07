@@ -5,10 +5,11 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
-const { Stock, Brand, Product, FixedExpense, Setting, Supplier } = require('../models');
+const { Stock, Brand, Product, FixedExpense, Setting, Supplier, PuntoDeVenta } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo } = require('../utils/errores');
+const { sumaEnCentavos } = require('../utils/centavos');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
 const { UMBRAL_POR_DEFECTO, limiteDeStockBajo, esStockBajo } = require('../utils/stockBajo');
 const { esSecreto, sinSecretos, esDeSoloLectura } = require('../utils/settingsSecretos');
@@ -308,7 +309,72 @@ router.post('/brands', checkPermission('products.crear'), async (req, res) => {
 
 // ═══════ GASTOS FIJOS ═══════
 
-// GET /api/expenses?group=gf1
+// ════════════════════════════════════════════
+//  Los gastos fijos, y las tres cosas que cambiaron acá
+//
+//  1. **Los totales los calcula el servidor** (FR-026 a FR-028). `amount` es
+//     DECIMAL(12,2) y el driver lo devuelve como STRING: sumarlo en el
+//     navegador con `parseFloat` acumulado deja residuo —0,1 + 0,2 da
+//     0,30000000000000004— en el número del que cuelga el punto de equilibrio.
+//     Se suma en centavos enteros, con `sumaEnCentavos`, y **de la misma
+//     lectura** que las filas: el total general y el de cada grupo salen del
+//     mismo `findAll`, así que no pueden no cerrar.
+//
+//  2. **`group` deja de significar algo.** Es el resto de la migración del
+//     legacy (`scripts/migrar-legacy.js:379` escribe 'gf1' y 'gf2'). El
+//     agrupado sale de `punto_de_venta_id` y nadie lee la columna; el cuerpo
+//     del request tampoco la puede escribir (FR-031). El filtro `?group=`
+//     deja de aceptarse.
+//
+//  3. **`punto_de_venta_id` del cuerpo se valida contra la empresa** antes de
+//     escribir (FR-029). Sin eso, un gasto queda colgado de la sucursal de
+//     otra empresa cliente: la fila lleva el `empresa_id` correcto, así que no
+//     parece una fuga, y aparece en cualquier pantalla que una por la clave
+//     foránea.
+// ════════════════════════════════════════════
+
+/**
+ * El `punto_de_venta_id` que el cliente mandó, ya validado contra su empresa.
+ *
+ * ⚠ **No se usa `resolverSucursal` de `utils/sucursalDeStock.js` aunque valide
+ * exactamente esto**: esa función NUNCA devuelve null —cae a la sucursal por
+ * defecto— y acá un gasto sin sucursal es un caso legítimo, el que se dibuja
+ * en «General» (FR-022). Con `resolverSucursal`, elegir «General» pasaría a
+ * guardar la sucursal por defecto y el bucket quedaría vacío para siempre.
+ *
+ * @returns {Promise<{ ok: true, id: number|null } | { ok: false }>}
+ *   `ok:false` cuando el id es de otra empresa. La ruta responde **404 y no
+ *   403**: un recurso ajeno no existe, y un 403 confirmaría que existe.
+ */
+async function sucursalDelCuerpo(valor, empresaId) {
+  if (valor === undefined || valor === null || valor === '') return { ok: true, id: null };
+
+  const sucursal = await findScoped(PuntoDeVenta, valor, empresaId);
+  if (!sucursal) return { ok: false };
+
+  return { ok: true, id: sucursal.id };
+}
+
+/**
+ * El valor de la columna muerta `group`, que el servidor escribe SIEMPRE.
+ *
+ * ⚠ **`data-model.md` dice que sin `defaultValue` en el modelo un `create` sin
+ * `group` «usa el DEFAULT de la base y no falla». Eso NO es cierto**, y se
+ * verificó ejecutándolo: la columna es `allowNull: false` en el modelo, así que
+ * Sequelize valida ANTES de armar el INSERT y tira
+ * `notNull Violation: FixedExpense.group cannot be null`. El `DEFAULT 'gf1'`
+ * de Postgres nunca llega a intervenir, porque la sentencia no se emite.
+ *
+ * O sea que sacarle el `defaultValue` al modelo —sin esto— convertiría el
+ * primer alta de gasto fijo después del deploy en un 500. Por eso el servidor
+ * escribe la columna en los dos casos: `'pv_<id>'` cuando hay sucursal y
+ * `'general'` cuando no. Nadie la lee; lo único que se le pide es no ser nula.
+ */
+function grupoDe(puntoDeVentaId) {
+  return puntoDeVentaId ? `pv_${puntoDeVentaId}` : 'general';
+}
+
+// GET /api/expenses
 router.get('/expenses', checkPermission('gastos.ver'), async (req, res) => {
   try {
     const empresaId = req.empresaId;
@@ -316,10 +382,56 @@ router.get('/expenses', checkPermission('gastos.ver'), async (req, res) => {
     // empresa_id IS NULL era codigo muerto, y se volveria una fuga el dia que
     // alguien haga la columna nullable.
     const where = { empresa_id: empresaId };
-    if (req.query.group) where.group = req.query.group;
     if (req.query.punto_de_venta_id) where.punto_de_venta_id = req.query.punto_de_venta_id;
+
     const expenses = await FixedExpense.findAll({ where, order: [['id', 'ASC']] });
-    res.json({ ok: true, data: expenses });
+
+    // Un solo recorrido sobre LAS MISMAS filas que se devuelven. Un endpoint
+    // aparte —o un SUM con GROUP BY— serían dos lecturas, y dos lecturas es
+    // que las tarjetas y las filas se puedan dibujar con datos de momentos
+    // distintos.
+    const sinSucursal = [];
+    const porGrupo = new Map();
+
+    for (const gasto of expenses) {
+      if (gasto.punto_de_venta_id === null || gasto.punto_de_venta_id === undefined) {
+        sinSucursal.push(gasto.amount);
+        continue;
+      }
+
+      const clave = String(gasto.punto_de_venta_id);
+      if (!porGrupo.has(clave)) porGrupo.set(clave, []);
+      porGrupo.get(clave).push(gasto.amount);
+    }
+
+    // ⚠ Los totales viajan como NÚMERO y no como el string del ejemplo de
+    // `contracts/api-endpoints.md`. El motivo es que un `.toFixed(2)` redondea
+    // el residuo del punto flotante justo antes de escribirlo, así que sumar en
+    // centavos y sumar con `parseFloat` acumulado darían el mismo texto: la
+    // corrección se podría sacar entera sin que ningún test se ponga en rojo.
+    // Es la misma forma que ya devuelven `GET /api/suppliers` y
+    // `GET /api/gastos-variables`, y `deCentavos` garantiza los dos decimales.
+    const porSucursal = {};
+    for (const [clave, importes] of porGrupo) porSucursal[clave] = sumaEnCentavos(importes);
+
+    res.json({
+      ok: true,
+      data: expenses,
+      totales: {
+        // `general` es la suma de TODO, incluido lo que no tiene sucursal: la
+        // tarjeta de «General» existe (FR-023) y la suma de las tarjetas tiene
+        // que ser el total.
+        general: sumaEnCentavos(expenses.map((g) => g.amount)),
+        sin_sucursal: sumaEnCentavos(sinSucursal),
+        por_sucursal: porSucursal,
+      },
+      // Siempre la empresa entera. `req.puntoDeVentaId` NO se aplica como
+      // caída —a diferencia de `/faltantes`— porque el agrupado por sucursal es
+      // la razón de ser de esta pantalla: recortar por la sucursal activa
+      // dejaría los otros grupos vacíos sin decir por qué. FR-037 pide que
+      // quede escrito cuál de las dos es, y la pantalla lo muestra.
+      alcance: 'empresa',
+    });
   } catch (err) {
     fallo(req, res, err, 'Error al listar los gastos fijos');
   }
@@ -328,11 +440,25 @@ router.get('/expenses', checkPermission('gastos.ver'), async (req, res) => {
 // POST /api/expenses
 router.post('/expenses', checkPermission('gastos.crear'), async (req, res) => {
   try {
-    const data = { ...req.body, empresa_id: req.empresaId };
-    if (!data.group && data.punto_de_venta_id) {
-      data.group = 'pv_' + data.punto_de_venta_id;
-    }
-    const expense = await FixedExpense.create(data);
+    // Campos explícitos, no `{ ...req.body }`. Con el spread, `group`,
+    // `empresa_id` e `id` viajaban desde el cuerpo: el primero volvía a
+    // escribir la columna muerta del legacy y los otros dos podían cambiarle
+    // el dueño a la fila (FR-030, FR-031, FR-032).
+    const { name, amount, punto_de_venta_id } = req.body;
+
+    const sucursal = await sucursalDelCuerpo(punto_de_venta_id, req.empresaId);
+    if (!sucursal.ok) return res.status(404).json({ ok: false, error: 'Punto de venta no encontrado' });
+
+    const datos = {
+      empresa_id: req.empresaId,
+      name,
+      amount,
+      punto_de_venta_id: sucursal.id,
+      // El servidor la escribe SIEMPRE, con o sin sucursal. Ver `grupoDe`.
+      group: grupoDe(sucursal.id),
+    };
+
+    const expense = await FixedExpense.create(datos);
     res.status(201).json({ ok: true, data: expense });
   } catch (err) {
     fallo(req, res, err, 'Error al crear el gasto fijo');
@@ -345,7 +471,25 @@ router.put('/expenses/:id', checkPermission('gastos.editar'), async (req, res) =
     const expense = await findScoped(FixedExpense, req.params.id, req.empresaId);
     if (!expense) return res.status(404).json({ ok: false, error: 'Gasto no encontrado' });
 
-    const { empresa_id, id, ...cambios } = req.body;
+    // La misma lista blanca que el POST. Antes era `const { empresa_id, id,
+    // ...cambios } = req.body`, que saca dos claves y deja pasar todas las
+    // demás: `group` y `punto_de_venta_id` entraban crudos.
+    const cambios = {};
+
+    if (req.body.name !== undefined) cambios.name = req.body.name;
+    if (req.body.amount !== undefined) cambios.amount = req.body.amount;
+
+    if (req.body.punto_de_venta_id !== undefined) {
+      const sucursal = await sucursalDelCuerpo(req.body.punto_de_venta_id, req.empresaId);
+      if (!sucursal.ok) return res.status(404).json({ ok: false, error: 'Punto de venta no encontrado' });
+
+      cambios.punto_de_venta_id = sucursal.id;
+      // La columna muerta se mantiene coherente con la fila: si quedara el
+      // `pv_3` viejo en un gasto que pasó a «General», el resto del legacy
+      // diría lo contrario que el dato que sí se lee.
+      cambios.group = grupoDe(sucursal.id);
+    }
+
     await expense.update(cambios);
     res.json({ ok: true, data: expense });
   } catch (err) {
@@ -502,66 +646,6 @@ router.put('/settings/:key', checkPermission('config.editar'), async (req, res) 
     res.json({ ok: true, data: setting });
   } catch (err) {
     fallo(req, res, err, 'Error al guardar la configuración');
-  }
-});
-
-// GET /api/alerts — Alertas de stock mínimo y vencimientos próximos
-router.get('/alerts', checkPermission('stock.ver'), async (req, res) => {
-  try {
-    const sequelize = require('../config/database');
-    const today = new Date().toISOString().split('T')[0];
-    const next30Days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const empresaId = req.empresaId;
-    // empresa_id es NOT NULL en todo el schema; el OR con null era codigo muerto.
-    const empresaOrNull = { empresa_id: empresaId };
-
-    // Alertas de stock mínimo
-    const lowStock = await Stock.findAll({
-      where: {
-        ...empresaOrNull,
-        quantity: { [Op.lte]: sequelize.col('min_stock') },
-        min_stock: { [Op.gt]: 0 },
-      },
-      include: [{ model: Product, as: 'product' }]
-    });
-
-    // Alertas de vencimiento (próximos 30 días)
-    const expiringStock = await Stock.findAll({
-      where: {
-        ...empresaOrNull,
-        expiration_date: {
-          [Op.between]: [today, next30Days]
-        },
-      },
-      include: [{ model: Product, as: 'product' }]
-    });
-
-    res.json({
-      ok: true,
-      data: {
-        lowStock: lowStock.map(s => ({
-          id: s.id,
-          product_id: s.product_id,
-          product_name: s.product ? s.product.name : 'Desconocido',
-          location: s.location,
-          punto_de_venta_id: s.punto_de_venta_id,
-          quantity: s.quantity,
-          min_stock: s.min_stock
-        })),
-        expiringStock: expiringStock.map(s => ({
-          id: s.id,
-          product_id: s.product_id,
-          product_name: s.product ? s.product.name : 'Desconocido',
-          location: s.location,
-          punto_de_venta_id: s.punto_de_venta_id,
-          quantity: s.quantity,
-          expiration_date: s.expiration_date,
-          current_batch: s.current_batch
-        }))
-      }
-    });
-  } catch (err) {
-    fallo(req, res, err, 'Error al calcular las alertas de stock');
   }
 });
 

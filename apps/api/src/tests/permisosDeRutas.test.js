@@ -882,6 +882,48 @@ describe('routes/empresas.js · la suscripción se lee con config.ver', () => {
 });
 
 // ════════════════════════════════════════════
+//  routes/empresas.js · cambiar un rol pide equipo.editar, no config.editar
+//
+//  Hasta la 014, `PUT /usuarios/:id` —el endpoint que cambia el rol de un
+//  miembro y lo activa o desactiva— pedía `config.editar`, que es el permiso de
+//  la configuración de la empresa. El endpoint estaba bien protegido y mal
+//  nombrado: quien leía el catálogo no tenía cómo saber que ese código también
+//  repartía roles, y quien quisiera darle a alguien la administración del equipo
+//  sin darle la configuración fiscal no podía.
+//
+//  **El cambio es de nombre y no de alcance**, y esta guardia lo afirma con los
+//  dos números al lado: los roles que tienen `equipo.editar` tienen que ser
+//  exactamente los mismos que tenían `config.editar`. Si mañana alguien reparte
+//  el permiso nuevo a otro rol «porque es del equipo», acá se ve.
+//
+//  Y hay un modo de falla propio que la otra guardia —«ningún checkPermission
+//  pide un permiso que no existe en el catálogo»— ya cubre y conviene nombrar:
+//  cambiar la ruta sin sembrar el código deja el endpoint respondiendo 403 para
+//  SIEMPRE y para TODOS, porque un permiso que no está en el catálogo no lo
+//  tiene nadie.
+// ════════════════════════════════════════════
+
+describe('routes/empresas.js · el rol de un miembro se cambia con equipo.editar', () => {
+  const DEL_ARCHIVO = TODAS_LAS_RUTAS.filter((r) => r.archivo === 'routes/empresas.js');
+
+  it('PUT /usuarios/:id pide equipo.editar', () => {
+    const ruta = DEL_ARCHIVO.find((r) => r.metodo === 'PUT' && r.ruta === '/usuarios/:id');
+
+    expect(ruta).toBeDefined();
+    expect(ruta.permiso).toBe('equipo.editar');
+  });
+
+  it('equipo.editar existe en el catálogo, y lo tiene admin y nadie más', () => {
+    // Las dos mitades juntas: el código sembrado (si falta, el endpoint queda
+    // cerrado para todo el mundo) y a quién le llega (si llega a más gente que
+    // `config.editar`, el cambio dejó de ser de nombre).
+    expect(CATALOGO).toContain('equipo.editar');
+    expect(rolesCon('equipo.editar')).toEqual(['admin']);
+    expect(rolesCon('equipo.editar')).toEqual(rolesCon('config.editar'));
+  });
+});
+
+// ════════════════════════════════════════════
 //  ⚠ El mismo pago pide dos permisos distintos según a quién se le pague
 //
 //  **Esto es un análisis escrito, no una corrección.** Mover un permiso cambia

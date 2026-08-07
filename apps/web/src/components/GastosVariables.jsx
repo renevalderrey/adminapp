@@ -1,63 +1,100 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import api from '@/services/api'
+import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, Plus, Trash2, Users } from 'lucide-react'
 import useStore from '@/store/useStore'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
-import { Plus, Trash2, User, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
-import { useConfirmDialog } from '@/components/ConfirmDialog'
+import { createGastoVariable, deleteGastoVariable, getGastosVariables } from '@/services/api'
+import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid'
 import { Can } from '@/components/Can'
+import { useConfirmDialog } from '@/components/ConfirmDialog'
+import { desplazarMes, nombreDelMes } from '@/utils/gastos'
+import { fechaDeHoy, pesos } from '@/utils/formato'
+import { mensajeDeError } from '@/utils/erroresDeApi'
 
 // ════════════════════════════════════════════
-//  Gastos variables
+//  ADMINAPP · Gastos variables
 //
 //  Los que cambian mes a mes y tienen un responsable: viáticos, combustible,
-//  adelantos, compras sueltas. El sistema anterior los cargaba así —por
-//  persona y por mes— y era rutina de fin de mes.
+//  adelantos, compras sueltas. El sistema anterior los cargaba así —por persona
+//  y por mes— y era rutina de fin de mes.
 //
-//  Están separados de los fijos a propósito: el punto de equilibrio se calcula
-//  con los FIJOS. Si entraran en la misma bolsa, cargar un viático le
+//  Están separados de los fijos a propósito: **el punto de equilibrio se calcula
+//  con los FIJOS.** Si entraran en la misma bolsa, cargar un viático le
 //  cambiaría el precio recomendado a todo el catálogo.
+//
+//  ── Qué cambió en esta pasada ──
+//
+//   · **El mes por defecto ya no se calcula en UTC.** Era
+//     `new Date().toISOString().slice(0, 7)`: el 31 a las 21:30 hora argentina
+//     la pantalla abría en el mes siguiente, vacío, y el gasto que se cargaba
+//     esa noche entraba en el mes equivocado. Sale de `fechaDeHoy` y el nombre
+//     del mes de `utils/gastos.js`, que no depende de la localización del
+//     navegador (FR-035, FR-012).
+//   · **Los tres `err.response?.data?.error || err.message`.** El primero
+//     dibujaba el código crudo —`checkPermission` responde `{error:'FORBIDDEN'}`
+//     y el toast decía «FORBIDDEN»— y el segundo, «Request failed with status
+//     code 400». Los dos salen ahora de `mensajeDeError`, que filtra los códigos
+//     de máquina (FR-008).
+//   · **El fallo de carga se ve en la pantalla**, no solo en un toast que se va
+//     a los cinco segundos y deja una lista vacía indistinguible de un mes sin
+//     gastos (FR-009, FR-019).
+//   · **Los `Table*` de shadcn y los `toLocaleString('es-AR')` sueltos**, que
+//     mostraban «1.234,5» al lado de «1.234,50» porque fijaban el locale y no
+//     los decimales. Tabla en grid con el mismo string de columnas en el
+//     encabezado y en las filas, e importes por `pesos` (FR-007, FR-010, FR-011).
+//   · **El alta gateada con `Can` y con su explicación**, no ausente: un
+//     formulario que desaparece sin decir por qué se lee como que la pantalla
+//     está rota (FR-017).
 // ════════════════════════════════════════════
 
-const mesActual = () => new Date().toISOString().slice(0, 7)
+/**
+ * Las cuatro columnas, idénticas en el encabezado y en las filas (FR-007).
+ *
+ * La persona va primero porque es por lo que se busca: «cuánto gastó Marina
+ * este mes» es la pregunta, y el concepto es el detalle.
+ */
+const COLUMNAS = '200px minmax(0,1fr) 150px 52px'
 
-/** '2026-07' → 'julio 2026'. */
-function nombreDelMes(mes) {
-  const [anio, m] = mes.split('-')
-  const fecha = new Date(Number(anio), Number(m) - 1, 1)
-  return fecha.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+const ANCHO_MINIMO = 700
+
+const CAMPO =
+  'h-9 w-full rounded-lg border border-border bg-surface px-3 text-[13px] transition-colors ' +
+  'focus-visible:border-brand focus-visible:outline-none'
+
+/** El mes en curso según la fecha local, nunca según UTC. */
+function mesDeHoy() {
+  return fechaDeHoy().slice(0, 7)
 }
 
-function desplazarMes(mes, delta) {
-  const [anio, m] = mes.split('-').map(Number)
-  const fecha = new Date(anio, m - 1 + delta, 1)
-  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`
-}
+const NUEVO_VACIO = { persona: '', nombre: '', monto: '', punto_de_venta_id: '' }
 
 export default function GastosVariables() {
-  const empresaActiva = useStore(s => s.empresaActiva)
+  const empresaActiva = useStore((s) => s.empresaActiva)
   const puntosDeVenta = empresaActiva?.puntosDeVenta || []
 
-  const [mes, setMes] = useState(mesActual())
+  const [mes, setMes] = useState(mesDeHoy())
   const [datos, setDatos] = useState(null)
-  const [cargando, setCargando] = useState(false)
+  const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
+  const [errorDeCarga, setErrorDeCarga] = useState('')
 
   const { confirm, ConfirmDialog } = useConfirmDialog()
 
-  const [nuevo, setNuevo] = useState({ persona: '', nombre: '', monto: '', punto_de_venta_id: '' })
+  const [nuevo, setNuevo] = useState(NUEVO_VACIO)
 
   const cargar = useCallback(async () => {
     setCargando(true)
     try {
-      const res = await api.get(`/gastos-variables?mes=${mes}`)
+      const res = await getGastosVariables(mes)
+
       setDatos(res.data?.data || null)
+      setErrorDeCarga('')
     } catch (err) {
-      toast.error(err.response?.data?.error || err.message)
+      setErrorDeCarga(
+        err?.response?.status === 403
+          ? 'No podés ver los gastos variables: te falta el permiso «gastos.ver».'
+          : mensajeDeError(err, 'No se pudieron cargar los gastos variables del mes.')
+      )
+      setDatos(null)
     } finally {
       setCargando(false)
     }
@@ -65,8 +102,8 @@ export default function GastosVariables() {
 
   useEffect(() => { cargar() }, [cargar])
 
-  const agregar = async (e) => {
-    e.preventDefault()
+  const agregar = async (evento) => {
+    evento.preventDefault()
 
     if (!nuevo.persona.trim() || !nuevo.nombre.trim()) {
       toast.error('Falta la persona o el concepto.')
@@ -75,7 +112,7 @@ export default function GastosVariables() {
 
     setGuardando(true)
     try {
-      await api.post('/gastos-variables', {
+      await createGastoVariable({
         persona: nuevo.persona.trim(),
         nombre: nuevo.nombre.trim(),
         monto: Number(nuevo.monto) || 0,
@@ -83,188 +120,241 @@ export default function GastosVariables() {
         punto_de_venta_id: nuevo.punto_de_venta_id ? Number(nuevo.punto_de_venta_id) : null,
       })
 
-      // La persona queda cargada: lo normal es cargar varios gastos seguidos
-      // de la misma persona.
-      setNuevo(prev => ({ ...prev, nombre: '', monto: '' }))
+      // La persona queda cargada: lo normal es cargar varios gastos seguidos de
+      // la misma persona.
+      setNuevo((previo) => ({ ...previo, nombre: '', monto: '' }))
       cargar()
     } catch (err) {
-      toast.error(err.response?.data?.error || err.message)
+      toast.error(mensajeDeError(err, 'No se pudo cargar el gasto.'))
     } finally {
       setGuardando(false)
     }
   }
 
-  const eliminar = async (gasto) => {
-    const ok = await confirm(`¿Eliminar "${gasto.nombre}"?`)
+  const eliminar = async (item) => {
+    const ok = await confirm(`¿Eliminar «${item.nombre}»?`)
     if (!ok) return
 
     try {
-      await api.delete(`/gastos-variables/${gasto.id}`)
+      await deleteGastoVariable(item.id)
       cargar()
     } catch (err) {
-      toast.error(err.response?.data?.error || err.message)
+      toast.error(mensajeDeError(err, 'No se pudo eliminar el gasto.'))
     }
   }
 
   const personas = datos?.personas || []
 
+  // Las filas salen del agrupado del servidor, aplanado con su persona al lado:
+  // es una sola lectura y no puede discrepar con los subtotales de arriba.
+  const filas = personas.flatMap((grupo) => grupo.items.map((item) => ({ item, persona: grupo.persona })))
+
+  const esMesActual = mes >= mesDeHoy()
+
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
+      {/* ── El mes, y el total del mes ── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" className="h-8 w-8"
-            onClick={() => setMes(desplazarMes(mes, -1))}>
+          <button
+            type="button"
+            aria-label="Mes anterior"
+            onClick={() => setMes(desplazarMes(mes, -1))}
+            className="grid h-8 w-8 place-items-center rounded-lg border border-border bg-surface
+                       text-fg-2 transition-colors hover:bg-surface-3"
+          >
             <ChevronLeft className="h-4 w-4" />
-          </Button>
+          </button>
 
-          <span className="min-w-[9rem] text-center text-sm font-bold capitalize">
+          <span className="min-w-[9.5rem] text-center text-[13.5px] font-semibold capitalize">
             {nombreDelMes(mes)}
           </span>
 
-          <Button variant="outline" size="icon" className="h-8 w-8"
-            disabled={mes >= mesActual()}
+          <button
+            type="button"
+            aria-label="Mes siguiente"
+            disabled={esMesActual}
+            title={esMesActual ? 'No se cargan gastos de meses que todavía no empezaron' : undefined}
             onClick={() => setMes(desplazarMes(mes, 1))}
-            title={mes >= mesActual() ? 'No se cargan gastos de meses que no empezaron' : ''}>
+            className="grid h-8 w-8 place-items-center rounded-lg border border-border bg-surface
+                       text-fg-2 transition-colors hover:bg-surface-3
+                       disabled:pointer-events-none disabled:opacity-50"
+          >
             <ChevronRight className="h-4 w-4" />
-          </Button>
+          </button>
 
-          {cargando && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          {cargando && <Loader2 className="h-4 w-4 animate-spin text-fg-3" />}
         </div>
 
         <div className="text-right">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            Total del mes
-          </p>
-          <p className="text-2xl font-black font-mono text-destructive tabular-nums">
-            ${(datos?.total || 0).toLocaleString('es-AR')}
-          </p>
+          <p className="eyebrow">Total del mes</p>
+          <p className="num text-[22px] font-semibold">${pesos(datos?.total ?? 0)}</p>
         </div>
       </div>
 
-      <Can codigo="gastos.crear">
-        <Card>
-          <CardContent className="py-4">
-            <form onSubmit={agregar} className="grid grid-cols-1 md:grid-cols-[1fr_1.5fr_auto_auto_auto] gap-2 items-end">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Persona
-                </label>
-                <Input
-                  list="personas-cargadas"
-                  value={nuevo.persona}
-                  onChange={e => setNuevo({ ...nuevo, persona: e.target.value })}
-                  placeholder="Nombre"
-                  className="h-9"
-                />
-                {/* Sugiere las que ya se cargaron este mes: evita que la misma
-                    persona quede escrita de tres formas distintas. */}
-                <datalist id="personas-cargadas">
-                  {personas.map(p => <option key={p.persona} value={p.persona} />)}
-                </datalist>
-              </div>
+      {errorDeCarga && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-danger-line bg-danger-soft px-5 py-4"
+        >
+          <AlertTriangle className="mt-0.5 h-[18px] w-[18px] shrink-0 text-danger" />
+          <p className="text-[13.5px] font-medium">{errorDeCarga}</p>
+        </div>
+      )}
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Concepto
-                </label>
-                <Input
-                  value={nuevo.nombre}
-                  onChange={e => setNuevo({ ...nuevo, nombre: e.target.value })}
-                  placeholder="Ej: nafta, viático, adelanto"
-                  className="h-9"
-                />
-              </div>
+      {/* ── El alta ── */}
+      <Can
+        codigo="gastos.crear"
+        fallback={
+          <p className="rounded-xl border border-border bg-surface-2 px-5 py-3.5 text-[12.5px] text-fg-2">
+            No podés cargar gastos variables: te falta el permiso «gastos.crear». Lo que hay cargado
+            se ve igual.
+          </p>
+        }
+      >
+        <form
+          onSubmit={agregar}
+          className="grid grid-cols-1 items-end gap-2 rounded-xl border border-border bg-surface
+                     px-5 py-4 shadow-nivel-1 md:grid-cols-[1fr_1.5fr_140px_auto_auto]"
+        >
+          <label className="flex min-w-0 flex-col gap-1.5">
+            <span className="eyebrow">Persona</span>
+            <input
+              className={CAMPO}
+              list="personas-cargadas"
+              value={nuevo.persona}
+              placeholder="Nombre"
+              onChange={(e) => setNuevo({ ...nuevo, persona: e.target.value })}
+            />
+            {/* Sugiere las que ya se cargaron este mes: evita que la misma
+                persona quede escrita de tres formas distintas. */}
+            <datalist id="personas-cargadas">
+              {personas.map((p) => <option key={p.persona} value={p.persona} />)}
+            </datalist>
+          </label>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Monto
-                </label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={nuevo.monto}
-                  onChange={e => setNuevo({ ...nuevo, monto: e.target.value })}
-                  placeholder="0"
-                  className="h-9 w-32 font-mono"
-                />
-              </div>
+          <label className="flex min-w-0 flex-col gap-1.5">
+            <span className="eyebrow">Concepto</span>
+            <input
+              className={CAMPO}
+              value={nuevo.nombre}
+              placeholder="Ej: nafta, viático, adelanto"
+              onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })}
+            />
+          </label>
 
-              {puntosDeVenta.length > 1 && (
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Sucursal
-                  </label>
-                  <select
-                    value={nuevo.punto_de_venta_id}
-                    onChange={e => setNuevo({ ...nuevo, punto_de_venta_id: e.target.value })}
-                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                  >
-                    <option value="">General</option>
-                    {puntosDeVenta.map(pv => (
-                      <option key={pv.id} value={pv.id}>{pv.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+          <label className="flex min-w-0 flex-col gap-1.5">
+            <span className="eyebrow">Monto</span>
+            <input
+              className={`${CAMPO} num`}
+              type="number"
+              step="0.01"
+              value={nuevo.monto}
+              placeholder="0"
+              onChange={(e) => setNuevo({ ...nuevo, monto: e.target.value })}
+            />
+          </label>
 
-              <Button type="submit" disabled={guardando} className="h-9">
-                {guardando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                <span className="ml-1">Agregar</span>
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+          {puntosDeVenta.length > 1 && (
+            <label className="flex min-w-0 flex-col gap-1.5">
+              <span className="eyebrow">Sucursal</span>
+              <select
+                className={CAMPO}
+                aria-label="Sucursal"
+                value={nuevo.punto_de_venta_id}
+                onChange={(e) => setNuevo({ ...nuevo, punto_de_venta_id: e.target.value })}
+              >
+                <option value="">General</option>
+                {puntosDeVenta.map((pv) => (
+                  <option key={pv.id} value={pv.id}>{pv.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          <button
+            type="submit"
+            disabled={guardando}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-[13px]
+                       font-semibold text-white shadow-nivel-1 transition-colors hover:bg-brand-dark
+                       disabled:pointer-events-none disabled:opacity-60"
+          >
+            {guardando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Agregar
+          </button>
+        </form>
       </Can>
 
-      {personas.length === 0 && !cargando ? (
-        <Card>
-          <CardContent className="py-10 text-center">
-            <p className="font-semibold">Sin gastos variables en {nombreDelMes(mes)}.</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Cargá el primero con el formulario de arriba.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid lg:grid-cols-2 gap-4">
-          {personas.map(grupo => (
-            <Card key={grupo.persona}>
-              <CardHeader className="pb-3 border-b">
-                <CardTitle className="text-sm flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-2">
-                    <User className="h-4 w-4" /> {grupo.persona}
-                  </span>
-                  <Badge variant="secondary" className="font-mono">
-                    ${grupo.total.toLocaleString('es-AR')}
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-
-              <Table>
-                <TableBody>
-                  {grupo.items.map(item => (
-                    <TableRow key={item.id}>
-                      <TableCell className="text-sm">{item.nombre}</TableCell>
-                      <TableCell className="text-right font-bold font-mono text-destructive tabular-nums">
-                        -${item.monto.toLocaleString('es-AR')}
-                      </TableCell>
-                      <TableCell className="w-10">
-                        <Can codigo="gastos.eliminar">
-                          <Button variant="ghost" size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                            onClick={() => eliminar(item)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </Can>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
+      {/* ── Los subtotales por persona, que es como se mira ── */}
+      {personas.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {personas.map((grupo) => (
+            <span
+              key={grupo.persona}
+              className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-2
+                         px-3 py-1 text-[12.5px]"
+            >
+              <span className="font-medium">{grupo.persona}</span>
+              <span className="num font-semibold">${pesos(grupo.total)}</span>
+            </span>
           ))}
         </div>
       )}
+
+      {/* ── La tabla ── */}
+      <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-nivel-1">
+        {filas.length === 0 && !cargando ? (
+          <div className="py-12 text-center">
+            <Users className="mx-auto h-7 w-7 text-fg-3" />
+            <p className="mt-3 font-semibold capitalize">Sin gastos variables en {nombreDelMes(mes)}.</p>
+            <p className="mt-1 text-sm text-fg-2">
+              Los viáticos, la nafta y los adelantos de este mes van acá, con el nombre de quien los
+              hizo. No entran en el punto de equilibrio.
+            </p>
+          </div>
+        ) : (
+          <TablaGrid anchoMinimo={ANCHO_MINIMO}>
+            <Encabezado columnas={COLUMNAS}>
+              <span>Persona</span>
+              <span>Concepto</span>
+              <span className="text-right">Importe</span>
+              <span className="text-right">Acciones</span>
+            </Encabezado>
+
+            {filas.map(({ item, persona }) => (
+              <Fila key={item.id} columnas={COLUMNAS} className="cursor-default">
+                <span className="truncate text-[13.5px] font-medium">{persona}</span>
+
+                <span className="min-w-0 truncate text-[13px] text-fg-2">{item.nombre}</span>
+
+                <span className="num text-right text-[13.5px] font-semibold">${pesos(item.monto)}</span>
+
+                <span className="flex justify-end">
+                  <Can
+                    codigo="gastos.eliminar"
+                    fallback={
+                      <BotonDeFila
+                        disabled
+                        title="No podés eliminar gastos: te falta el permiso «gastos.eliminar»."
+                      >
+                        <Trash2 />
+                      </BotonDeFila>
+                    }
+                  >
+                    <BotonDeFila
+                      title="Eliminar"
+                      className="hover:bg-danger-soft hover:text-danger"
+                      onClick={() => eliminar(item)}
+                    >
+                      <Trash2 />
+                    </BotonDeFila>
+                  </Can>
+                </span>
+              </Fila>
+            ))}
+          </TablaGrid>
+        )}
+      </section>
 
       <ConfirmDialog />
     </div>

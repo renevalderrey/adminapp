@@ -327,6 +327,25 @@ const PROHIBIDO = [
     que: 'los decimales de un importe decididos en la pantalla',
     patron: /(?:minimum|maximum)FractionDigits/,
   },
+  // ── La quinta: el formateo EN LÍNEA (FR-013) ──
+  //
+  // Las cuatro de arriba miran **funciones declaradas** y las opciones de
+  // decimales. Ese es exactamente el camino por el que las cuatro pantallas de
+  // la 014 esquivan la guardia: no declaran ninguna función y escriben
+  // `${total.toLocaleString()}` adentro del JSX.
+  //
+  // Y no es un descuido cosmético. `toLocaleString()` **sin argumentos** usa la
+  // configuración regional del navegador: en un navegador en inglés el gasto de
+  // $1.234 sale «1,234», que es el error de lectura que convierte mil doscientos
+  // treinta y cuatro en uno coma dos. `Dashboard.jsx:328` lo hace sobre los
+  // gastos fijos con los que el simulador calcula el precio de venta.
+  //
+  // `toLocaleDateString` entra por lo mismo: `new Date('2026-08-01')` se lee
+  // como medianoche UTC y en Argentina muestra el 31 de julio.
+  {
+    que: 'el formateo en línea de un importe o una fecha',
+    patron: /\.toLocaleString\(|\.toLocaleDateString\(|new Intl\.NumberFormat\(/,
+  },
 ]
 
 /**
@@ -337,6 +356,19 @@ const PROHIBIDO = [
  * guardia verifica que cada uno SIGA teniendo su copia, así que cuando alguien
  * lo migre el test se pone rojo y la línea hay que borrarla — la lista solo
  * puede achicarse.
+ *
+ * ── El tercer campo, y por qué se agregó con la quinta regla ──
+ *
+ * Una entrada sin tercer campo excusa al archivo de **todas** las reglas, que
+ * es como estaba escrita la lista. Eso alcanzaba con nueve entradas; con la
+ * quinta regla entran once más, y varias son pantallas recién reescritas
+ * —`Inventory.jsx`, `PanelVenta.jsx`— que hoy cumplen las otras cuatro. Excusar
+ * el archivo entero por un `toLocaleDateString` significaría que mañana alguien
+ * puede escribir ahí su propio `formatCurrency` y la guardia no diría nada.
+ *
+ * Por eso el tercer campo enumera **de qué reglas** se excusa, por el texto del
+ * campo `que`. Las nueve entradas viejas no lo llevan y siguen valiendo para
+ * todas, que es lo que decían antes.
  */
 const PENDIENTES = [
   ['pages/CashFlow.jsx', 'formatCurrency propio, idéntico a los otros tres; fuera del alcance de este cambio'],
@@ -355,7 +387,61 @@ const PENDIENTES = [
   // máximo. Es peor que el defecto que este cambio vino a corregir y está
   // fuera de su alcance; queda anotado acá y reportado.
   ['pages/Recipes.jsx', 'formatea plata en línea, sin locale y sin máximo; fuera del alcance de este cambio'],
+
+  // ════════════════════════════════════════════
+  //  La deuda que destapó la quinta regla (T1369, hito 014)
+  //
+  //  Los once salieron de CORRER el detector, no de adivinar. Cada uno se
+  //  excusa **solo** del formateo en línea y sigue sujeto a las otras cuatro.
+  //
+  //  ⚠ **Dos de ellos son de FR-005 y `tasks.md` dice que no pueden entrar.**
+  //  `pages/Dashboard.jsx` y `pages/Settings.jsx` infringen la regla hoy y se
+  //  reescriben en los cortes 6 y 9, o sea cinco cortes más tarde. Dejarlos
+  //  afuera pone `npm run test:web` en rojo desde este commit y durante todo ese
+  //  tramo, que es exactamente lo que el punto 7 del preámbulo de `tasks.md`
+  //  prohíbe («ninguna guardia queda en rojo a propósito en este hito») y por el
+  //  motivo que ahí se explica: con la suite roja, la próxima infracción de
+  //  verdad entra sin que nadie la vea. Entran acá, con la tarea que los saca
+  //  escrita al lado, y el `it('la lista de pendientes no junta polvo')` obliga
+  //  a borrar la línea el día que se migren.
+  //
+  //  ✔ **`pages/Dashboard.jsx` ya salió** (T1381, corte 6): los cuatro importes
+  //  en línea del simulador —`fixedExpenses.toLocaleString()` y
+  //  `targetSales.toLocaleString()`, sin locale, o sea «1,234.5» en un navegador
+  //  en inglés— ahora salen de `pesos`. La línea se borra y no se comenta: la
+  //  lista es el registro de lo que falta, no de lo que faltó.
+  //
+  //  Los otros dos archivos de FR-005 NO están: `pages/Expenses.jsx` y
+  //  `components/GastosVariables.jsx` se reescriben en ESTE corte (T1371 y
+  //  T1372) y quedan limpios en el mismo commit. `pages/Team.jsx` no infringe
+  //  esta regla.
+  // ════════════════════════════════════════════
+  ['pages/Settings.jsx', 'FR-005: el vencimiento del certificado en línea. Lo saca T1407 (corte 9)', ['el formateo en línea de un importe o una fecha']],
+  ['pages/Billing.jsx', 'la fecha del ticket impreso, en línea; fuera del alcance de este cambio', ['el formateo en línea de un importe o una fecha']],
+  ['pages/Faltantes.jsx', 'dos importes del pedido a pedir, en línea', ['el formateo en línea de un importe o una fecha']],
+  ['pages/Inventory.jsx', '`unidades()` —que NO es plata— y la fecha de una transferencia', ['el formateo en línea de un importe o una fecha']],
+  ['pages/InvoicesList.jsx', 'la fecha y hora del comprobante impreso, en línea', ['el formateo en línea de un importe o una fecha']],
+  ['pages/SubscriptionSettings.jsx', 'las dos fechas de la prueba gratis, en línea', ['el formateo en línea de un importe o una fecha']],
+  ['components/HistorialDeCostos.jsx', 'su `fechaCorta` propia es deliberada —recibe un timestamp CON hora— y usa toLocaleDateString', ['el formateo en línea de un importe o una fecha']],
+  ['components/PanelTransferencia.jsx', '`unidades()`, que no es plata', ['el formateo en línea de un importe o una fecha']],
+  ['components/PanelVenta.jsx', 'la fecha y hora de la venta, en línea', ['el formateo en línea de un importe o una fecha']],
+  ['components/PreciosMasivos.jsx', 'la fecha del último cambio y un importe de resumen', ['el formateo en línea de un importe o una fecha']],
 ]
+
+/**
+ * De qué reglas se excusa cada archivo pendiente.
+ *
+ * `null` significa «de todas», que es lo que decían las nueve entradas viejas.
+ */
+const EXCUSAS = new Map(PENDIENTES.map(([archivo, , reglas]) => [archivo, reglas || null]))
+
+/** ¿Este archivo está excusado de esta regla? */
+function estaExcusado(archivo, regla) {
+  if (!EXCUSAS.has(archivo)) return false
+
+  const reglas = EXCUSAS.get(archivo)
+  return reglas === null || reglas.includes(regla)
+}
 
 const REVISADOS = [...archivosDeCodigo('pages'), ...archivosDeCodigo('components')]
 
@@ -382,16 +468,14 @@ describe('ninguna pantalla ni componente escribe su propio formateo', () => {
     expect(vacios).toEqual([])
   })
 
-  it('nadie declara su propio pesos, formatCurrency ni fechaDeHoy', () => {
-    const pendientes = new Set(PENDIENTES.map(([archivo]) => archivo))
+  it('nadie declara su propio pesos, formatCurrency ni fechaDeHoy, ni formatea en línea', () => {
     const infractores = []
 
     for (const rel of REVISADOS) {
-      if (pendientes.has(rel)) continue
-
       const codigo = sinComentarios(leer(rel))
 
       for (const { que, patron } of PROHIBIDO) {
+        if (estaExcusado(rel, que)) continue
         if (patron.test(codigo)) infractores.push(`${rel}: ${que}`)
       }
     }
@@ -403,13 +487,101 @@ describe('ninguna pantalla ni componente escribe su propio formateo', () => {
     // Sin esto, la lista se convierte en un permiso permanente: alguien migra
     // el archivo, la línea queda, y el próximo que escriba su `pesos` ahí pasa
     // la guardia sin que nadie lo note.
-    const yaMigrados = PENDIENTES.filter(([archivo]) => {
+    //
+    // Se mira contra las reglas de las que la entrada se excusa, y no contra
+    // las cinco: `pages/Inventory.jsx` está por el formateo en línea y no
+    // declara ningún `pesos`, así que preguntar por las cinco lo dejaría
+    // «vigente» para siempre por una regla que nunca infringió.
+    const yaMigrados = PENDIENTES.filter(([archivo, , reglas]) => {
       const codigo = sinComentarios(leer(archivo))
+      const suyas = reglas
+        ? PROHIBIDO.filter(({ que }) => reglas.includes(que))
+        : PROHIBIDO
 
-      return !PROHIBIDO.some(({ patron }) => patron.test(codigo))
+      return !suyas.some(({ patron }) => patron.test(codigo))
     })
 
     expect(yaMigrados).toEqual([])
+  })
+
+  it('cada regla nombrada en un pendiente existe de verdad', () => {
+    // Un nombre de regla mal escrito en el tercer campo excusaría de NADA —el
+    // `includes` no matchea— o, peor, se leería como que el archivo está
+    // cubierto cuando la guardia lo sigue mirando. Las dos lecturas son falsas
+    // y el error es un typo.
+    const nombres = PROHIBIDO.map(({ que }) => que)
+
+    for (const [archivo, , reglas] of PENDIENTES) {
+      for (const regla of reglas || []) {
+        expect(nombres, `${archivo} nombra una regla que no existe: ${regla}`).toContain(regla)
+      }
+    }
+  })
+})
+
+// ════════════════════════════════════════════
+//  La quinta regla, contra una muestra sintética
+//
+//  El resto de este archivo verifica la guardia contra el repositorio, y el
+//  repositorio va a dejar de tener el defecto: cuando los once pendientes se
+//  migren, «no encontró nada» y «no está mirando nada» se leerán igual.
+//
+//  La muestra es lo que sostiene la regla ese día. Es exactamente la forma que
+//  tenían las cuatro pantallas de la 014: **ninguna función declarada**, así que
+//  las cuatro reglas anteriores pasan en verde sobre ella.
+// ════════════════════════════════════════════
+
+const MUESTRA_EN_LINEA_MALA = `
+export default function Panel({ gastosFijos, vencimiento }) {
+  return (
+    <>
+      <strong>\${gastosFijos.toLocaleString()}</strong>
+      <span>{new Date(vencimiento).toLocaleDateString()}</span>
+    </>
+  )
+}
+`
+
+const MUESTRA_EN_LINEA_BUENA = `
+import { pesos, fechaCorta } from '@/utils/formato'
+
+export default function Panel({ gastosFijos, vencimiento }) {
+  return (
+    <>
+      <strong>\${pesos(gastosFijos)}</strong>
+      <span>{fechaCorta(vencimiento)}</span>
+    </>
+  )
+}
+`
+
+/** Qué reglas infringe un texto. */
+function reglasQueInfringe(texto) {
+  return PROHIBIDO.filter(({ patron }) => patron.test(sinComentarios(texto))).map(({ que }) => que)
+}
+
+describe('la guardia ve el formateo en línea, que es por donde se le escapaba', () => {
+  it('un importe formateado en línea con toLocaleString, sin declarar ninguna función, no esquiva la guardia', () => {
+    expect(reglasQueInfringe(MUESTRA_EN_LINEA_MALA)).toEqual([
+      'el formateo en línea de un importe o una fecha',
+    ])
+  })
+
+  it('las cuatro reglas viejas NO ven esa muestra: por eso hacía falta la quinta', () => {
+    // Es la mitad que explica por qué la regla existe. Sin este caso, alguien
+    // podría creer que la muestra ya la cubría `*FractionDigits` —no la cubre:
+    // `toLocaleString()` sin argumentos no nombra ninguna opción— y borrar la
+    // quinta por redundante.
+    const viejas = PROHIBIDO.slice(0, 4)
+
+    expect(viejas.filter(({ patron }) => patron.test(MUESTRA_EN_LINEA_MALA))).toEqual([])
+  })
+
+  it('la muestra que usa utils/formato no da ningún hallazgo', () => {
+    // Sin esto la regla podría estar fallando siempre, que es tan inútil como
+    // no fallar nunca: nadie convive con una guardia que no se puede poner en
+    // verde.
+    expect(reglasQueInfringe(MUESTRA_EN_LINEA_BUENA)).toEqual([])
   })
 })
 

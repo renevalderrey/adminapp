@@ -188,6 +188,14 @@ const NOMBRES = [
   'pages/Tiendanube.jsx',
   'components/PanelDeMapeo.jsx',
   'components/EstadoDeTiendanube.jsx',
+  'components/PanelDeGasto.jsx',
+  'pages/Expenses.jsx',
+  'components/GastosVariables.jsx',
+  'components/TarjetaDeIndicador.jsx',
+  'components/RequiereTuAtencion.jsx',
+  'pages/Dashboard.jsx',
+  'components/PanelDeMiembro.jsx',
+  'pages/Team.jsx',
 ]
 
 /**
@@ -353,17 +361,63 @@ describe('Los dos rojos de esta guardia se leen distinto', () => {
 
 // Si esta lista queda vacía, la guardia pasa a ser un test que siempre pasa.
 describe('La guardia mira los archivos que dice mirar', () => {
-  it('los diecinueve archivos existen y tienen contenido', () => {
+  it('los veintisiete archivos existen y tienen contenido', () => {
     // Diecinueve = los dieciséis de los hitos 4, 5 y 6 —el uno de InvoicesList,
     // los seis de Inventario, los cinco del punto de venta y los cuatro de
     // proveedores y órdenes— más los TRES de TiendaNube: `pages/Tiendanube.jsx`
     // (T1342), `components/PanelDeMapeo.jsx` (T1341) y
     // `components/EstadoDeTiendanube.jsx` (T1340).
     //
+    // **Veintiuno** desde el hito 014, corte 4: entran
+    // `components/PanelDeGasto.jsx` (T1370) —el panel lateral del alta y la
+    // edición de un gasto fijo— y `pages/Expenses.jsx` (T1371). El ancla sube
+    // once veces en este hito, de a una por tarea, hasta 30; la tabla completa
+    // está en `tasks.md`, punto 7.
+    //
+    // **Veinticuatro** con el corte 6: entran `components/TarjetaDeIndicador.jsx`
+    // (T1379), la tarjeta de indicador del Panel con su sparkline de doce
+    // barras, `components/RequiereTuAtencion.jsx` (T1380), el bloque de avisos
+    // que lleva a la pantalla que detalla cada uno, y `pages/Dashboard.jsx`
+    // (T1381), que entra en el mismo commit que la reescribe. Antes de la
+    // reescritura tenía **once** hallazgos —dos reglas `dark:` (L238, L242) y
+    // nueve clases de la paleta de Tailwind—, comprobado corriendo los cuatro
+    // patrones contra `git show HEAD:apps/web/src/pages/Dashboard.jsx`: la
+    // guardia estaba mirando ese archivo de verdad.
+    // **Veinticinco** con `components/GastosVariables.jsx` (T1372), que entra en
+    // el mismo commit que lo reescribe. Antes tenía **doce** hallazgos —ocho de
+    // los `Table*` de shadcn (L9 y siete usos) y cuatro de formateo en línea
+    // (L32, L139, L238, L249)—, comprobado corriendo los cinco patrones contra
+    // `git show HEAD:apps/web/src/components/GastosVariables.jsx`: la guardia
+    // estaba mirando ese archivo de verdad. `pages/Expenses.jsx` tenía catorce
+    // por lo mismo (doce `Table*` y dos formateos en línea, L135 y L163).
+    //
+    // ⚠ **Acá los dos archivos entran en el MISMO commit que los escribe**, y
+    // es un cambio deliberado respecto de los hitos 4, 5 y 6, que dejaban la
+    // guardia en rojo a propósito. El mecanismo de allá se apoyaba en el
+    // hallazgo «el archivo NO existe», que se lee distinto de un color fuera
+    // del sistema; `pages/Expenses.jsx` **existe** y sus hallazgos son de
+    // color y de `<table>` — o sea justamente los que el encabezado advierte
+    // que no hay que confundir con una tarea pendiente. Lo que se conserva es
+    // la comprobación que importa, hecha antes de reescribir: agregar el
+    // nombre, correr, y verificar que da hallazgos > 0. Si diera cero, la
+    // guardia no estaría mirando ese archivo y reescribirlo no demostraría
+    // nada. Está escrito en `tasks.md`, punto 7.
+    //
+    // **Veintisiete** con el corte 7: entran `components/PanelDeMiembro.jsx`
+    // (T1391) —el panel lateral que deshabilita el selector de rol con su
+    // explicación y deja sacar a alguien del equipo— y `pages/Team.jsx` (T1392),
+    // que entra en el mismo commit que la reescribe. Antes de la reescritura
+    // tenía **treinta** hallazgos, los treinta de los `Table*` de shadcn (L9-L16
+    // y veintidós usos), comprobado corriendo los cuatro patrones contra
+    // `git show HEAD:apps/web/src/pages/Team.jsx`: la guardia estaba mirando ese
+    // archivo de verdad. `PanelDeMiembro.jsx` es nuevo y su comprobación es la
+    // otra: el día que se borre, el hallazgo «el archivo NO existe» lo dice con
+    // el nombre completo.
+    //
     // El número está escrito y no se calcula de `NOMBRES.length`: contra la
     // lista que se está verificando, el ancla pasaría igual el día que alguien
     // saque un archivo para que la guardia deje de molestar.
-    expect(ARCHIVOS).toHaveLength(19)
+    expect(ARCHIVOS).toHaveLength(27)
 
     // Primero los que faltan, y con su propio texto: un archivo que todavía no
     // se escribió es una tarea pendiente y se lee distinto de un color fuera
@@ -852,6 +906,62 @@ describe('Los componentes del punto de venta no tienen su propio estado global',
 
   it.each(archivos)('$nombre no lee el store por su cuenta', ({ contenido }) => {
     const hallazgos = lineasQueMatchean(contenido, /\buseStore\b/)
+      .map(({ n, texto }) => `L${n}: ${texto}`)
+
+    expect(hallazgos).toEqual([])
+  })
+})
+
+// ════════════════════════════════════════════
+//  Guardia contra el segundo «gastos fijos»
+//
+//  Había DOS en la misma pantalla, a cuarenta píxeles: la tarjeta del Panel
+//  mostraba `kpis.fixed_expenses` —la suma real de la tabla `fixed_expenses`— y
+//  el simulador de precios usaba `settings.fixed_expenses_total`, un valor
+//  escrito a mano que ninguna pantalla mantenía. Nada los conciliaba, así que
+//  podían decir dos números distintos con la misma etiqueta, **y el de abajo era
+//  el que decidía el precio de venta**.
+//
+//  Peor todavía: `fixed_expenses_total` tiene default `0`, que es falsy, así que
+//  `settings.fixed_expenses_total || 2400000` hacía que toda empresa que no lo
+//  hubiera cargado simulara sobre $2.400.000 inventados (hallazgos P7 y P8).
+//
+//  ── Por qué una guardia y no «ya lo saqué» ──
+//
+//  La fila de `settings` **se queda**: borrarla con una migración no es
+//  reversible y dejar de leerla sí (decisión 13 del plan). O sea que la clave
+//  sigue existiendo en la base y en el estado inicial del store, esperando que
+//  alguien la vuelva a leer porque «ya está ahí». Lo que se ancla no es que el
+//  dato no exista: es que **ninguna pantalla lo mire**.
+//
+//  El store queda afuera del barrido a propósito: `store/useStore.js` la declara
+//  en su objeto de defaults y eso es lo que hace que `GET /settings` la siga
+//  trayendo sin romper nada. Lo que no puede volver es que decida un precio.
+// ════════════════════════════════════════════
+
+describe('Ninguna pantalla lee settings.fixed_expenses_total', () => {
+  const archivos = ['pages', 'components'].flatMap(jsxDeLaCarpeta)
+
+  it('la guardia barrió pages y components de verdad', () => {
+    // Sin esto, un `jsxDeLaCarpeta` que devolviera cero archivos dejaría la
+    // afirmación de abajo comparando una lista vacía contra otra lista vacía.
+    expect(archivos.length).toBeGreaterThan(30)
+    expect(archivos.map((a) => a.nombre)).toContain('pages/Dashboard.jsx')
+  })
+
+  it('el detector encuentra la lectura y la nombra con su línea', () => {
+    // La muestra sintética es la línea exacta que tenía `Dashboard.jsx:50`.
+    const muestra = [
+      'export default function Panel() {',
+      '  const [fijos] = useState(settings.fixed_expenses_total || 2400000)',
+      '}',
+    ].join('\n')
+
+    expect(lineasQueMatchean(muestra, /fixed_expenses_total/).map((h) => h.n)).toEqual([2])
+  })
+
+  it.each(archivos)('$nombre no lee fixed_expenses_total', ({ contenido }) => {
+    const hallazgos = lineasQueMatchean(contenido, /fixed_expenses_total/)
       .map(({ n, texto }) => `L${n}: ${texto}`)
 
     expect(hallazgos).toEqual([])

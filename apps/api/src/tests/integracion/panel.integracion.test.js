@@ -3,6 +3,7 @@ const {
   app, modelos, sequelize, limpiarLaBase, conectarOFallar, cerrar,
 } = require('./baseDePruebas');
 const request = require('supertest');
+const forge = require('node-forge');
 const { sembrarDosEmpresas } = require('./fixtures');
 const { capturarConsultas } = require('./espiaDeConsultas');
 const dashboardService = require('../../services/dashboardService');
@@ -38,7 +39,7 @@ const { fechaDelNegocio } = require('../../utils/fechas');
 
 const {
   Empresa, Customer, CustomerPayment, Sale, SaleItem, SupplierMovement,
-  Product, Stock, Permiso, Rol, RolPermiso, UsuarioEmpresa,
+  Product, Stock, Permiso, Rol, RolPermiso, UsuarioEmpresa, Setting, FixedExpense,
 } = modelos;
 
 const MILISEGUNDOS_POR_DIA = 1000 * 60 * 60 * 24;
@@ -54,6 +55,47 @@ function primerDiaDelMes(fechaISO, meses = 0) {
 
   return new Date(Date.UTC(f.getUTCFullYear(), f.getUTCMonth() + meses, 1))
     .toISOString().split('T')[0];
+}
+
+/** El día 15 del mes corrido `meses` desde el de `fechaISO`. */
+function mediadosDelMes(fechaISO, meses = 0) {
+  return `${primerDiaDelMes(fechaISO, meses).slice(0, 7)}-15`;
+}
+
+/**
+ * Un certificado X.509 de verdad que vence dentro de `dias`.
+ *
+ * ⚠ Tiene que ser un PEM que `node-forge` sepa parsear: el aviso del certificado
+ * sale de leer `validity.notAfter`, así que un string inventado haría que el
+ * caso pasara por el `catch` y no por el camino que dice verificar.
+ *
+ * El par de claves se genera **una sola vez** y de 512 bits: no se firma nada
+ * con él, solo se lee la fecha, y generar uno de 2048 por caso suma segundos a
+ * la suite.
+ */
+let parDeClaves;
+
+function certificadoQueVenceEn(dias) {
+  if (!parDeClaves) parDeClaves = forge.pki.rsa.generateKeyPair({ bits: 512 });
+
+  const cert = forge.pki.createCertificate();
+  const vence = new Date(Date.now() + dias * MILISEGUNDOS_POR_DIA);
+
+  cert.publicKey = parDeClaves.publicKey;
+  cert.serialNumber = '01';
+  cert.validity.notBefore = new Date(Date.now() - MILISEGUNDOS_POR_DIA);
+  cert.validity.notAfter = vence;
+
+  const atributos = [{ name: 'commonName', value: 'adminapp-prueba' }];
+
+  cert.setSubject(atributos);
+  cert.setIssuer(atributos);
+  cert.sign(parDeClaves.privateKey);
+
+  return {
+    pem: forge.pki.certificateToPem(cert),
+    vence: vence.toISOString().split('T')[0],
+  };
 }
 
 /**
@@ -520,6 +562,296 @@ describe('El recorte por permiso', () => {
     expect('cashflow' in data).toBe(true);
     expect('payables' in data).toBe(true);
     expect('fixed_expenses' in data).toBe(true);
+  });
+});
+
+// ════════════════════════════════════════════
+//  T1377 · Las cuatro series de los sparklines
+//
+//  Lo que estos casos protegen es una sola cosa: que la línea que dibuja la
+//  tarjeta salga de lo que pasó. La maqueta la dibuja con `Math.sin` (`:1166`) y
+//  el defecto barato de reemplazarla es rellenar con ceros los meses que faltan
+//  —una empresa de cinco meses quedaría con siete meses de «caída»—.
+//
+//  Y la otra mitad: **cuánto cuesta**. Doce consultas por tarjeta serían
+//  cuarenta y ocho por carga del Panel, encima de las doce que ya hace. Eso no
+//  lo puede contestar un doble y no lo puede contestar el reloj.
+// ════════════════════════════════════════════
+
+describe('Las series de los sparklines', () => {
+  /** Una venta en cada uno de los últimos `cuantos` meses, 100 pesos cada una. */
+  async function sembrarMesesDeVentas(cuantos) {
+    for (let i = 0; i < cuantos; i++) {
+      // El mes en curso se siembra con HOY: los otros con el día 15, que existe
+      // en los doce meses. Sembrar el mes actual con el 15 pondría la venta
+      // adelante del corte cuando la suite corre antes del 15, y la última barra
+      // dejaría de poder compararse contra `sales_current_month`.
+      await venta(`V-SERIE-${i}`, { date: i === 0 ? HOY : mediadosDelMes(HOY, -i), total: 100 });
+    }
+  }
+
+  it('con once meses de historia la clave de la serie NO viene, y la tarjeta no dibuja una línea inventada', async () => {
+    await sembrarMesesDeVentas(11);
+
+    const { series } = await dashboardService.getKpis(1, { hoy: HOY });
+
+    // La empresa existe hace once meses. Rellenar el duodécimo con un cero
+    // dibujaría un mes sin ventas que en realidad es un mes sin empresa.
+    expect('ventas' in series).toBe(false);
+  });
+
+  it('con doce meses de historia la serie viene con doce puntos', async () => {
+    await sembrarMesesDeVentas(12);
+
+    const { series } = await dashboardService.getKpis(1, { hoy: HOY });
+
+    expect(series.ventas).toHaveLength(12);
+    expect(series.ventas.every((p) => typeof p === 'number')).toBe(true);
+  });
+
+  it('un mes sin ventas en el medio es un CERO real y no corta la serie', async () => {
+    await sembrarMesesDeVentas(12);
+    await Sale.destroy({ where: { id: 'V-SERIE-5' } });
+
+    const { series } = await dashboardService.getKpis(1, { hoy: HOY });
+
+    expect(series.ventas).toHaveLength(12);
+    // Los meses van del más viejo al más nuevo: el índice 5 desde el final.
+    expect(series.ventas[12 - 1 - 5]).toBe(0);
+  });
+
+  it('la última barra de Ventas es el número que muestra la tarjeta', async () => {
+    await sembrarMesesDeVentas(12);
+    await venta('V-EXTRA-DE-HOY', { date: HOY, total: 33.33 });
+
+    const kpis = await dashboardService.getKpis(1, { hoy: HOY });
+
+    // Sin esto la serie puede ser correcta y contar otra cosa que el número de
+    // arriba: dos respuestas a la misma pregunta a cuarenta píxeles.
+    expect(kpis.series.ventas[11]).toBe(kpis.sales_current_month.total);
+    expect(kpis.series.ventas[11]).toBe(133.33);
+  });
+
+  it('la última barra de Saldo de caja es el saldo, aunque los gastos fijos no tengan fecha', async () => {
+    await sembrarMesesDeVentas(12);
+
+    // ⚠ El gasto fijo es la fila SIN LA CUAL este caso no prueba nada: es lo
+    // único que el saldo descuenta y la serie no puede fechar, o sea el desfase
+    // entero. Sin él, anclar y no anclar dan el mismo número.
+    // `group` va explícito porque el modelo lo declara `allowNull: false` y le
+    // sacaron el `defaultValue`: la validación de Sequelize corre ANTES de que
+    // Postgres pueda aplicar su `DEFAULT 'gf1'`. Es dato muerto y acá no
+    // significa nada; se pone para que el `create` no rebote.
+    await FixedExpense.create({ empresa_id: 1, name: 'Alquiler', amount: 4321.50, group: 'gf1' });
+
+    const kpis = await dashboardService.getKpis(1, { hoy: HOY });
+
+    expect(kpis.fixed_expenses).toBe(4321.50);
+    expect(kpis.series.cashflow[11]).toBe(kpis.cashflow.balance);
+    // Y el desfase existe de verdad: la serie sin anclar terminaría 4321,50 más
+    // arriba, que es exactamente el número que la tarjeta de al lado muestra.
+    expect(kpis.series.cashflow[11]).not.toBe(
+      Math.round((kpis.cashflow.balance + kpis.fixed_expenses) * 100) / 100
+    );
+  });
+
+  it('la última barra de Por cobrar y la de Por pagar son los totales de sus tarjetas', async () => {
+    const cliente = await Customer.create({ empresa_id: 1, name: 'Cuenta corriente' });
+
+    for (let i = 0; i < 12; i++) {
+      await venta(`V-CC-${i}`, {
+        customer_id: cliente.id,
+        is_credit: true,
+        date: i === 0 ? HOY : mediadosDelMes(HOY, -i),
+        total: 100.10,
+      });
+    }
+    await CustomerPayment.create({
+      empresa_id: 1, customer_id: cliente.id, amount: 200.20, payment_date: sumarDias(HOY, -1),
+    });
+
+    // La fixture ya trae movimientos de proveedor de julio de 2026, que no
+    // alcanzan para doce meses: se agrega uno viejo para que la serie exista.
+    await SupplierMovement.create({
+      empresa_id: 1, supplier_id: datos.zeta.id, type: 'deuda',
+      date: mediadosDelMes(HOY, -13), amount: 10.00,
+    });
+
+    const kpis = await dashboardService.getKpis(1, { hoy: HOY });
+
+    expect(kpis.series.receivables[11]).toBe(kpis.receivables.total);
+    expect(kpis.series.payables[11]).toBe(kpis.payables.total);
+  });
+
+  it('las cuatro series cuestan CUATRO consultas, no cuarenta y ocho', async () => {
+    await sembrarMesesDeVentas(12);
+
+    const { consultas } = await capturarConsultas(
+      sequelize,
+      () => dashboardService._series(1, HOY, () => true)
+    );
+
+    // Una por serie. Doce por serie serían cuarenta y ocho por carga del Panel,
+    // encima de las doce que `getKpis` ya hace.
+    expect(consultas.length).toBe(4);
+  });
+
+  it('sin caja.ver no viene la serie de caja: el saldo mes a mes ES el saldo', async () => {
+    await sembrarMesesDeVentas(12);
+
+    const data = await dashboardService.getKpis(1, {
+      hoy: HOY,
+      permisos: await permisosDelRol('produccion'),
+    });
+
+    expect('cashflow' in data.series).toBe(false);
+    expect('receivables' in data.series).toBe(false);
+    expect('payables' in data.series).toBe(false);
+    // Ventas sigue para todos, igual que `sales_*`.
+    expect(data.series.ventas).toHaveLength(12);
+  });
+});
+
+// ════════════════════════════════════════════
+//  T1377 · «Requiere tu atención» y «Últimas ventas»
+// ════════════════════════════════════════════
+
+describe('Requiere tu atención', () => {
+  const deTipo = (avisos, tipo) => avisos.find((a) => a.tipo === tipo);
+
+  beforeEach(async () => {
+    const azucar = await Product.create({
+      empresa_id: 1, name: 'Azúcar', sku: 'AZU-001', cost: 900, unit_type: 'kg',
+    });
+
+    // Uno en falta en CADA sucursal: con uno solo, «de la sucursal activa» y «de
+    // toda la empresa» darían el mismo número y el alcance no se podría
+    // distinguir.
+    await Stock.create({
+      empresa_id: 1, product_id: azucar.id, punto_de_venta_id: datos.centroA.id,
+      location: 'centro', quantity: 0, available: 0, min_stock: 0,
+    });
+    await Stock.create({
+      empresa_id: 1, product_id: azucar.id, punto_de_venta_id: datos.norteA.id,
+      location: 'norte', quantity: 1, available: 1, min_stock: 10,
+    });
+  });
+
+  it('el aviso de faltantes cuenta lo mismo que /faltantes: la sucursal activa', async () => {
+    const deLaEmpresa = await dashboardService.getKpis(1, { hoy: HOY });
+    const deLaSucursal = await dashboardService.getKpis(1, {
+      hoy: HOY, puntoDeVentaId: datos.centroA.id,
+    });
+
+    expect(deTipo(deLaEmpresa.requiere_atencion, 'faltantes').cantidad).toBe(2);
+    expect(deTipo(deLaEmpresa.requiere_atencion, 'faltantes').alcance).toBe('empresa');
+
+    expect(deTipo(deLaSucursal.requiere_atencion, 'faltantes').cantidad).toBe(1);
+    expect(deTipo(deLaSucursal.requiere_atencion, 'faltantes').alcance).toBe('sucursal');
+  });
+
+  it('el número del aviso es EL MISMO que muestra /faltantes en la misma sesión', async () => {
+    // Las dos rutas, ejecutadas, con la misma sesión y la misma sucursal activa.
+    // Es la única forma de afirmar lo que esta funcionalidad promete: que el
+    // Panel no diga 2 y la pantalla a la que lleva muestre 1.
+    const panel = await request(app).get('/api/dashboard/kpis');
+    const faltantes = await request(app).get('/api/faltantes');
+
+    expect(panel.status).toBe(200);
+    expect(faltantes.status).toBe(200);
+
+    const aviso = deTipo(panel.body.data.requiere_atencion, 'faltantes');
+
+    expect(aviso.cantidad).toBe(faltantes.body.data.total_items);
+    // Y no es un empate en cero: la fixture tiene faltantes de verdad.
+    expect(aviso.cantidad).toBeGreaterThan(0);
+  });
+
+  it('un aviso con cero casos NO viene', async () => {
+    await Stock.update({ quantity: 999, min_stock: 1 }, { where: { empresa_id: 1 } });
+
+    const { requiere_atencion: avisos } = await dashboardService.getKpis(1, { hoy: HOY });
+
+    expect(deTipo(avisos, 'faltantes')).toBeUndefined();
+    expect(deTipo(avisos, 'vencimientos')).toBeUndefined();
+    expect(deTipo(avisos, 'sin_cae')).toBeUndefined();
+  });
+
+  it('«sin CAE» cuenta las que AFIP rechazó, no las que nadie quiso facturar', async () => {
+    // Una venta interna sin comprobante: nadie la mandó a AFIP. Contarla haría
+    // que un comercio que no factura electrónicamente abriera el Panel con un
+    // aviso permanente, y un aviso que sale siempre es uno que nadie mira.
+    await venta('V-INTERNA', { date: HOY, total: 100 });
+    await venta('V-RECHAZADA', {
+      date: HOY, total: 200, afip_ultimo_error: 'Rechazo 10015: CUIT inexistente',
+    });
+
+    const { requiere_atencion: avisos } = await dashboardService.getKpis(1, { hoy: HOY });
+
+    expect(deTipo(avisos, 'sin_cae').cantidad).toBe(1);
+    expect(deTipo(avisos, 'sin_cae').alcance).toBe('empresa');
+  });
+
+  it('el certificado de AFIP avisa cuando le quedan menos de 30 días, y NUNCA devuelve el PEM', async () => {
+    const { pem, vence } = certificadoQueVenceEn(20);
+
+    await Setting.create({ key: 'afip_cert', empresa_id: 1, value: pem });
+
+    const { requiere_atencion: avisos } = await dashboardService.getKpis(1, { hoy: HOY });
+    const aviso = deTipo(avisos, 'certificado_afip');
+
+    expect(aviso.dias).toBeLessThanOrEqual(21);
+    expect(aviso.dias).toBeGreaterThanOrEqual(19);
+    expect(aviso.vence).toBe(vence);
+    expect(JSON.stringify(avisos)).not.toContain('BEGIN');
+  });
+
+  it('un certificado con un año por delante no genera aviso', async () => {
+    await Setting.create({ key: 'afip_cert', empresa_id: 1, value: certificadoQueVenceEn(365).pem });
+
+    const { requiere_atencion: avisos } = await dashboardService.getKpis(1, { hoy: HOY });
+
+    expect(deTipo(avisos, 'certificado_afip')).toBeUndefined();
+  });
+
+  it('cada aviso exige el permiso de la pantalla a la que lleva', async () => {
+    await venta('V-RECHAZADA', { date: HOY, total: 200, afip_ultimo_error: 'Rechazo' });
+    await Setting.create({ key: 'afip_cert', empresa_id: 1, value: certificadoQueVenceEn(10).pem });
+
+    // `produccion` tiene `stock.ver` y no tiene ni `ventas.ver` ni `config.ver`.
+    const data = await dashboardService.getKpis(1, {
+      hoy: HOY, permisos: await permisosDelRol('produccion'),
+    });
+
+    expect(deTipo(data.requiere_atencion, 'faltantes')).toBeDefined();
+    expect(deTipo(data.requiere_atencion, 'sin_cae')).toBeUndefined();
+    expect(deTipo(data.requiere_atencion, 'certificado_afip')).toBeUndefined();
+    expect('ultimas_ventas' in data).toBe(false);
+  });
+
+  it('el stock de la otra empresa no entra en ningún aviso', async () => {
+    await Stock.update({ quantity: 0, min_stock: 0 }, { where: { empresa_id: datos.empresaB.id } });
+
+    const { requiere_atencion: avisos } = await dashboardService.getKpis(1, { hoy: HOY });
+
+    expect(deTipo(avisos, 'faltantes').cantidad).toBe(2);
+  });
+});
+
+describe('Últimas ventas', () => {
+  it('trae las últimas con su hora, su vendedor y su importe como número', async () => {
+    await venta('V-VIEJA', { date: sumarDias(HOY, -2), time: '18:00', total: 10, seller: 'Ana' });
+    await venta('V-TEMPRANO', { date: HOY, time: '09:15', total: 20, seller: 'Ana' });
+    await venta('V-TARDE', { date: HOY, time: '20:40', total: 30.50, seller: 'Beto' });
+
+    const { ultimas_ventas: ventas } = await dashboardService.getKpis(1, { hoy: HOY });
+
+    // Ordenadas por fecha Y hora: sin el desempate por hora, el orden lo elige
+    // Postgres y el bloque cambia de contenido entre dos cargas iguales.
+    expect(ventas.map((v) => v.id)).toEqual(['V-TARDE', 'V-TEMPRANO', 'V-VIEJA']);
+    expect(ventas[0]).toMatchObject({ hora: '20:40', vendedor: 'Beto' });
+    expect(typeof ventas[0].total).toBe('number');
+    expect(ventas[0].total).toBe(30.50);
   });
 });
 

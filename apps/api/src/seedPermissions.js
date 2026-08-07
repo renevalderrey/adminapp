@@ -61,6 +61,14 @@ const PERMISOS = [
   // Equipo
   { codigo: 'equipo.ver', nombre: 'Ver equipo', modulo: 'equipo' },
   { codigo: 'equipo.invitar', nombre: 'Invitar usuarios', modulo: 'equipo' },
+  // Cambiar el rol de un miembro y activarlo o desactivarlo. Hasta la 014 eso
+  // pedia `config.editar`, que es el permiso de la CONFIGURACION de la empresa:
+  // el nombre no decia lo que abria, y quien revisaba el catalogo no tenia como
+  // saber que ese codigo tambien repartia roles. El cambio es de NOMBRE y no de
+  // alcance — `config.editar` hoy lo tiene solo `admin`, y `equipo.editar`
+  // tambien, porque `ROLE_PERMISOS.admin` es el catalogo entero y ningun otro
+  // rol lo enumera.
+  { codigo: 'equipo.editar', nombre: 'Cambiar roles del equipo', modulo: 'equipo' },
   { codigo: 'equipo.eliminar', nombre: 'Eliminar usuarios', modulo: 'equipo' },
   // Sucursales
   { codigo: 'sucursales.ver', nombre: 'Ver sucursales', modulo: 'sucursales' },

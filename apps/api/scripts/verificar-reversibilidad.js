@@ -413,6 +413,40 @@ async function fotoDeLosDatos(cliente) {
         FROM tiendanube_tiendas
        ORDER BY empresa_id
     `),
+
+    // `20260813-gastos-fijos-a-su-sucursal` **mueve datos sin cambiarle la forma
+    // a esta tabla**: con un `down` que no restaure nada el esquema queda
+    // idéntico y el script saldría en verde igual. Lo único que distingue los dos
+    // casos es el `punto_de_venta_id` de cada fila, y solo se compara si está
+    // acá. Es el mismo punto ciego que la fila de `settings`, con otra tabla.
+    //
+    // ⚠ `updated_at` queda AFUERA a propósito, igual que en `recipe_items`: el
+    // `up` lo pone en `NOW()`, así que la segunda aplicación cae en otro instante
+    // y compararlo pondría en rojo un `up` idéntico. `created_at` sí entra: la
+    // migración no lo toca, y una fila que vuelve con otra fecha de alta no es la
+    // misma fila. `"group"` va entre comillas porque GROUP es palabra reservada.
+    fixed_expenses: await lineas(cliente, `
+      SELECT id || ' empresa=' || empresa_id
+             || ' sucursal=' || coalesce(punto_de_venta_id::text, '∅')
+             || ' importe=' || amount::text
+             || ' grupo=' || "group"
+             || ' alta=' || created_at::text AS linea
+        FROM fixed_expenses
+       ORDER BY id
+    `),
+
+    // Lo que el `up` archivó. Antes de la migración la tabla no existe y después
+    // del `down` tampoco, así que esas dos fotos dan la lista vacía y el viaje de
+    // ida y vuelta se verifica arriba. Lo que agrega esta sección es la
+    // comparación entre la PRIMERA aplicación y la segunda: un `up` cuyo plan
+    // dependiera del estado que él mismo dejó archivaría distinto la segunda vez,
+    // y sin esto las dos corridas se verían iguales.
+    fixed_expenses_sin_sucursal: await lineasSiExiste(cliente, 'fixed_expenses_sin_sucursal', `
+      SELECT 'empresa=' || empresa_id || ' gasto=' || fixed_expense_id
+             || ' → sucursal=' || punto_de_venta_id_asignado AS linea
+        FROM fixed_expenses_sin_sucursal
+       ORDER BY fixed_expense_id
+    `),
   };
 
   for (const { tabla, columna } of COLUMNAS_ENUM) {
@@ -590,6 +624,41 @@ async function sembrar(cliente) {
     -- exactamente el tope de int4, que es el caso que más cerca está de romperse.
     INSERT INTO tiendanube_mappings (empresa_id, product_id, tiendanube_variant_id, tiendanube_product_id, created_at, updated_at)
       VALUES (1, 1, 2147483647, 2147483646, NOW(), NOW());
+
+    -- ════════ Lo que la migración de gastos fijos necesita ════════
+    --
+    -- \`20260813-gastos-fijos-a-su-sucursal\` asigna los gastos sin sucursal a la
+    -- sucursal por defecto de su empresa. **Sin filas acá su \`up\` no movería
+    -- ninguna, su \`down\` no restauraría ninguna, y las dos fotos darían iguales
+    -- por la razón equivocada**: el mismo verde vacío que el encabezado de este
+    -- archivo advierte para los ENUM y para la fusión de recetas, y que la
+    -- migración de TiendaNube ya pagó una vez.
+    --
+    -- Las cuatro filas son las cuatro ramas, y ninguna es decorativa:
+    --
+    --   · id 1 · empresa 1, SIN sucursal: se mueve, y tiene que terminar en la 2
+    --     ('principal'), no en la 1. Es lo que distingue \`elegirPorDefecto\` de un
+    --     \`ORDER BY id LIMIT 1\`.
+    --   · id 2 · empresa 1, SIN sucursal y con \`group = 'gf2'\`: se mueve IGUAL.
+    --     El \`group\` no se mira —'gf2' solo significa una sucursal concreta para
+    --     Comprafit— y sin esta fila un \`up\` que lo interpretara pasaría en verde.
+    --   · id 3 · empresa 1, CON sucursal: la migración NO la toca. Es lo que
+    --     detecta un \`UPDATE\` sin \`WHERE punto_de_venta_id IS NULL\`, y un \`down\`
+    --     que ponga todo en NULL a lo bruto en vez de leer el archivo.
+    --   · id 4 · empresa 2, que no tiene ninguna sucursal cargada: se queda como
+    --     está y se informa aparte. Es la rama que no se ejecuta nunca si todas
+    --     las empresas de la semilla tienen sucursal.
+    --
+    -- Los importes llevan centavos que NO cierran en punto flotante —180000.10 +
+    -- 42500.20 acumulado con parseFloat da 222500.59999999998—: el informe de la
+    -- migración suma el total movido, y con importes redondos las dos sumas dan
+    -- lo mismo.
+    INSERT INTO fixed_expenses (id, empresa_id, name, amount, "group", punto_de_venta_id, created_at, updated_at) VALUES
+      (1, 1, 'Alquiler',         180000.10, 'gf1', NULL, NOW(), NOW()),
+      (2, 1, 'Contador',          42500.20, 'gf2', NULL, NOW(), NOW()),
+      (3, 1, 'Luz del depósito',  12345.67, 'gf1', 1,    NOW(), NOW()),
+      (4, 2, 'Monotributo',           0.30, 'gf1', NULL, NOW(), NOW());
+    SELECT setval(pg_get_serial_sequence('fixed_expenses', 'id'), 4);
   `;
 
   await cliente.query(sql);
