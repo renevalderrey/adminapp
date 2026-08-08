@@ -334,12 +334,24 @@ async function montar({
  * único que se estaría afirmando es qué dibuja la pantalla con la página
  * anterior todavía cargada, que es justo el estado intermedio que no importa.
  */
+/** Lo que espera el buscador de la pantalla antes de consultar (`PurchaseOrders.jsx`). */
+const ESPERA_DEL_REBOTE = 250
+
 async function buscar(texto) {
   await act(async () => {
     fireEvent.change(screen.getByLabelText('Buscar órdenes'), { target: { value: texto } })
   })
 
-  await act(async () => { await new Promise((listo) => setTimeout(listo, 400)) })
+  // ⚠ Se espera con el reloj REAL, y no adelantando temporizadores falsos.
+  //
+  // Se probó con `vi.useFakeTimers()` para no gastar los 300 ms —nueve búsquedas
+  // son casi tres segundos en este archivo— y funciona, pero deja un modo de
+  // falla peor: si un caso se pasa del tiempo límite mientras el reloj falso
+  // está puesto, el `finally` que lo devuelve no llega a correr y el caso
+  // SIGUIENTE arranca con el reloj trucado. El síntoma que aparece es «Timers
+  // are not mocked» en una prueba que no tiene nada que ver, y averiguar de
+  // dónde salió cuesta más que los tres segundos.
+  await act(async () => { await new Promise((listo) => setTimeout(listo, ESPERA_DEL_REBOTE + 50)) })
 }
 
 /** El panel lateral, mientras está abierto. */

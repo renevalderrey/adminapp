@@ -290,7 +290,14 @@ function filaDe(texto) {
 // `beforeEach` no hay nada montado: `cleanup()` ya desmontó lo de la anterior.
 beforeEach(() => {
   pedidos = []
-  interaccion = userEvent.setup()
+  // `delay: null` y no el valor por defecto.
+  //
+  // Por defecto `userEvent` cede al bucle de eventos entre tecla y tecla, y en
+  // esta pantalla se tipean direcciones de correo enteras. Con la suite completa
+  // corriendo en paralelo eso alcanzaba para pasarse de los 5 s por defecto de
+  // vitest, sin que hubiera cambiado nada del sistema. Es el mismo arreglo que
+  // ya lleva `renderDeBloqueDeDocumentos.test.jsx`, por el mismo motivo.
+  interaccion = userEvent.setup({ delay: null })
   useStore.setState({ permisos: [], usuario: null, empresaActiva: null })
 })
 

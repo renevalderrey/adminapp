@@ -102,5 +102,25 @@ export default defineConfig(({ command }) => ({
     // dos entornos se llaman «test» y no son lo mismo: lo que los separa es
     // esta línea.
     include: ['src/**/*.test.{js,jsx}'],
+
+    // ── Por qué 20 s y no los 5 s por defecto ──
+    //
+    // Los 5 s de vitest están calibrados para pruebas de función pura. Acá hay
+    // pruebas que montan una pantalla entera con cincuenta filas, esperan el
+    // rebote del buscador y vuelven a dibujar. Solas tardan menos de un segundo;
+    // con los cincuenta y cuatro archivos corriendo en paralelo en una máquina
+    // ocupada, las mismas pruebas tardan tres o cuatro veces más y se pasaban.
+    //
+    // ⚠ Lo que fallaba NO era el sistema, era el reloj: la misma suite daba
+    // verde o cuarenta rojos según cuán ocupada estuviera la máquina, sin
+    // cambiar una línea. Una suite así se termina ignorando, y el día que el
+    // rojo es de verdad nadie lo mira.
+    //
+    // 20 s NO es «desactivar el límite». Una prueba que de verdad se cuelga
+    // —una promesa que nadie resuelve, un `waitFor` que nunca se cumple— sigue
+    // fallando; falla más tarde. Lo que deja de fallar es la que estaba a punto
+    // de terminar bien.
+    testTimeout: 20000,
+    hookTimeout: 20000,
   },
 }))
