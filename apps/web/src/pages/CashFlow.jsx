@@ -101,7 +101,7 @@ const CashFlow = () => {
   };
 
   const handleDelete = async (id) => {
-    const ok = await confirm('¿Eliminar este movimiento?');
+    const ok = await confirm('¿Eliminar este movimiento?', { verbo: 'Eliminar movimiento' });
     if (!ok) return;
     try {
       await deleteCashflowEntry(id);

@@ -567,7 +567,8 @@ export default function Tiendanube() {
     const ok = await confirm(
       `¿Quitar el mapeo de "${variante.mapeo?.product_name}" con la variante ` +
       `"${variante.nombre_producto}${variante.nombre_variante ? ` · ${variante.nombre_variante}` : ''}"? ` +
-      `La variante deja de recibir stock y vuelve a «Sin mapear».`
+      `La variante deja de recibir stock y vuelve a «Sin mapear».`,
+      { verbo: 'Quitar mapeo' }
     )
     if (!ok) return
 

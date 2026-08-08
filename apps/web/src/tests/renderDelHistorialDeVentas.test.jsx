@@ -289,7 +289,7 @@ describe('Reintentar la facturación no emite de un clic', () => {
     await userEvent.click(await abrirElPanel())
 
     // El diálogo está y el pedido NO salió.
-    expect(await screen.findByRole('button', { name: 'Confirmar' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Emitir comprobante' })).toBeInTheDocument()
     expect(emisiones()).toHaveLength(0)
   })
 
@@ -310,7 +310,7 @@ describe('Reintentar la facturación no emite de un clic', () => {
     await montar()
 
     await userEvent.click(await abrirElPanel())
-    await userEvent.click(await screen.findByRole('button', { name: 'Confirmar' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Emitir comprobante' }))
 
     await waitFor(() => expect(emisiones()).toHaveLength(1))
     expect(emisiones()[0][0]).toBe(`/sales/${RECHAZADA.id}/facturar`)
@@ -349,7 +349,7 @@ describe('Reintentar la facturación no emite de un clic', () => {
     })
 
     await userEvent.click(await abrirElPanel())
-    await userEvent.click(await screen.findByRole('button', { name: 'Confirmar' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Emitir comprobante' }))
 
     // El panel cambia de forma: ahora pide el CUIT.
     const campo = await screen.findByPlaceholderText('20123456789')
@@ -359,11 +359,11 @@ describe('Reintentar la facturación no emite de un clic', () => {
 
     // El diálogo está y el segundo pedido NO salió: sigue habiendo uno solo,
     // el que ARCA rechazó.
-    expect(await screen.findByRole('button', { name: 'Confirmar' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Emitir comprobante' })).toBeInTheDocument()
     expect(emisiones()).toHaveLength(1)
 
     // Y confirmando sí sale, con el CUIT que se acaba de tipear.
-    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Emitir comprobante' }))
 
     await waitFor(() => expect(emisiones()).toHaveLength(2))
     expect(emisiones()[1][1]).toEqual({ customerCuit: '20304050607' })

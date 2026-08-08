@@ -275,7 +275,7 @@ describe('las acciones se dibujan según el permiso', () => {
     await montar()
 
     await usuario.click(within(filaDe('Alquiler')).getByTitle('Eliminar'))
-    await usuario.click(screen.getByRole('button', { name: 'Confirmar' }))
+    await usuario.click(screen.getByRole('button', { name: 'Eliminar gasto' }))
 
     expect(pedidos.filter((p) => p.metodo === 'delete')).toEqual([
       { metodo: 'delete', url: '/expenses/1' },
@@ -362,7 +362,7 @@ describe('los errores de la API se leen', () => {
     })
 
     await usuario.click(within(filaDe('Alquiler')).getByTitle('Eliminar'))
-    await usuario.click(screen.getByRole('button', { name: 'Confirmar' }))
+    await usuario.click(screen.getByRole('button', { name: 'Eliminar gasto' }))
 
     await waitFor(() => expect(aviso).toHaveBeenCalled())
 

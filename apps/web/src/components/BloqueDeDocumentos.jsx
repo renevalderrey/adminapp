@@ -204,7 +204,8 @@ export default function BloqueDeDocumentos({ proveedorId, documentos = [], onCam
     // del usuario, acá se pierde el enlace. Sin esa segunda mitad, borrar un
     // documento parece borrar la factura y nadie se anima a tocar el botón.
     const ok = await confirm(
-      `¿Eliminar «${documento.name}»? Se borra el enlace guardado en AdminApp; el archivo sigue en tu nube.`
+      `¿Eliminar «${documento.name}»? Se borra el enlace guardado en AdminApp; el archivo sigue en tu nube.`,
+      { verbo: 'Eliminar documento' }
     )
     if (!ok) return
 

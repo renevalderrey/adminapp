@@ -748,7 +748,9 @@ const PurchaseOrders = () => {
     // orden a medias **deja viva la deuda de lo ya recibido**, porque la
     // mercadería llegó y se debe. Es la misma frase que `pages/Orders.jsx`, para
     // que las dos pantallas no expliquen lo mismo de dos maneras.
-    const ok = await confirm(`¿Anular la orden #${id}? Lo que ya se recibió sigue debiéndose.`);
+    const ok = await confirm(`¿Anular la orden #${id}? Lo que ya se recibió sigue debiéndose.`, {
+      verbo: 'Anular orden',
+    });
     if (!ok) return;
 
     try {

@@ -823,10 +823,17 @@ const Billing = () => {
     // Va ANTES de tomar el cerrojo: si se tomara primero, un «Cancelar» tendría
     // que acordarse de soltarlo, y el día que alguien agregue un `return` en el
     // medio el POS deja de cobrar con el botón habilitado.
-    const confirmado = await confirm(textoDeConfirmacionDeEmision({
-      comprobante: NOMBRE_DEL_COMPROBANTE[pendiente.tipo] || 'un comprobante fiscal',
-      ambiente: settings.afip_environment,
-    }))
+    const confirmado = await confirm(
+      textoDeConfirmacionDeEmision({
+        comprobante: NOMBRE_DEL_COMPROBANTE[pendiente.tipo] || 'un comprobante fiscal',
+        ambiente: settings.afip_environment,
+      }),
+      // El rojo aparece SOLO en producción, que es donde el acto es
+      // irreversible: consume numeración correlativa de AFIP y no se puede
+      // borrar desde acá. En homologación no pasa nada, y pintarlo de rojo
+      // igual es exactamente lo que hace que el rojo deje de significar algo.
+      { verbo: 'Emitir comprobante', destructivo: settings.afip_environment === 'produccion' }
+    )
 
     if (!confirmado) return
 
@@ -959,7 +966,10 @@ const Billing = () => {
     // borre lo que ya está borrado es ruido.
     if (cart.length === 0) return
 
-    const confirmado = await confirm('¿Vaciar el ticket? Se pierden las líneas cargadas y los precios puestos a mano.')
+    const confirmado = await confirm(
+      '¿Vaciar el ticket? Se pierden las líneas cargadas y los precios puestos a mano.',
+      { verbo: 'Vaciar ticket' }
+    )
 
     if (confirmado) clearCart()
 
@@ -994,7 +1004,10 @@ const Billing = () => {
 
   const vaciarConConfirmacion = async () => {
     if (cart.length === 0) return
-    const confirmado = await confirm('¿Vaciar el ticket? Se pierden las líneas cargadas y los precios puestos a mano.')
+    const confirmado = await confirm(
+      '¿Vaciar el ticket? Se pierden las líneas cargadas y los precios puestos a mano.',
+      { verbo: 'Vaciar ticket' }
+    )
     if (confirmado) clearCart()
     buscador.current?.focus()
   }

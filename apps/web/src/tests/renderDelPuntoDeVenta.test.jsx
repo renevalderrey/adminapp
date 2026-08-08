@@ -465,7 +465,7 @@ describe('Esc limpia el campo antes que el ticket', () => {
     expect(await screen.findByText(/Vaciar el ticket/)).toBeInTheDocument()
     expect(cart()).toHaveLength(1)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Confirmar' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Vaciar ticket' }))
 
     await waitFor(() => expect(cart()).toHaveLength(0))
   })
@@ -978,7 +978,7 @@ describe('Los tres finales del cobro dejan la pantalla como corresponde', () => 
     // El reintento EMITE un comprobante fiscal, así que pasa por la
     // confirmación. Lo que este test mira es lo de después: que no se registre
     // la venta otra vez.
-    await userEvent.click(await screen.findByRole('button', { name: 'Confirmar' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Emitir comprobante' }))
 
     await waitFor(() =>
       expect(screen.queryByText(/cargá el CUIT acá abajo/)).not.toBeInTheDocument())
@@ -1812,7 +1812,7 @@ describe('El reintento de facturación no emite de un clic', () => {
 
     await userEvent.click(reintentar)
 
-    expect(await screen.findByRole('button', { name: 'Confirmar' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Emitir comprobante' })).toBeInTheDocument()
     expect(emisiones()).toHaveLength(1)
   })
 
@@ -1838,7 +1838,7 @@ describe('El reintento de facturación no emite de un clic', () => {
     post.mockResolvedValue({ data: { ok: true, data: { cae: '75123456789012', voucherNumber: 41 } } })
 
     await userEvent.click(reintentar)
-    await userEvent.click(await screen.findByRole('button', { name: 'Confirmar' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Emitir comprobante' }))
 
     await waitFor(() => expect(emisiones()).toHaveLength(2))
     expect(emisiones()[1][0]).toBe('/sales/sale_1/facturar')

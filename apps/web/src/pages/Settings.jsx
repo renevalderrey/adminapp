@@ -251,7 +251,10 @@ export default function Settings() {
         'tienen validez fiscal, se emiten a nombre de tu CUIT y consumen numeración ' +
         'correlativa de AFIP. Un comprobante emitido no se puede borrar desde acá: darlo ' +
         'de baja exige una nota de crédito. Volver a homologación no anula los que ya se ' +
-        'emitieron.'
+        'emitieron.',
+        // Uno de los cinco rojos de la aplicación: desde acá los comprobantes
+        // son fiscalmente reales y no hay vuelta atrás para los ya emitidos.
+        { verbo: 'Pasar a producción', destructivo: true }
       )
       if (!sigo) return
     }
@@ -311,7 +314,9 @@ export default function Settings() {
       '¿Desvincular AFIP? Se borran el certificado, la clave privada, el punto de venta y el ' +
       'ambiente. Vas a tener que volver a subir el certificado y la clave, y la clave no se ' +
       'puede recuperar de acá: si no la tenés guardada, hay que rehacer el trámite en ARCA. ' +
-      'Las ventas ya facturadas conservan su CAE.'
+      'Las ventas ya facturadas conservan su CAE.',
+      // Rojo: borra la clave privada, y la clave no se recupera de acá.
+      { verbo: 'Desvincular AFIP', destructivo: true }
     )
     if (!ok) return
 

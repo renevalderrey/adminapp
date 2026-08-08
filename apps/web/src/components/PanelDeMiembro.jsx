@@ -157,7 +157,8 @@ export default function PanelDeMiembro({
       `¿Sacar a ${persona.nombre || persona.email} del equipo de esta empresa? ` +
       'Pierde el acceso en su próximo pedido al sistema y sus invitaciones ' +
       'pendientes quedan revocadas. Su historial —ventas, movimientos— no se toca, ' +
-      'y podés devolverle el acceso desde acá cuando quieras.'
+      'y podés devolverle el acceso desde acá cuando quieras.',
+      { verbo: 'Sacar del equipo' }
     )
     if (!ok) return
 

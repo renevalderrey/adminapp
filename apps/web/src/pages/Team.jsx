@@ -257,7 +257,8 @@ export default function Team() {
   const revocar = async (invitacion) => {
     const ok = await confirm(
       `¿Revocar la invitación de ${invitacion.email}? El enlace que ya le mandaste ` +
-      'deja de funcionar. Podés volver a invitarla cuando quieras.'
+      'deja de funcionar. Podés volver a invitarla cuando quieras.',
+      { verbo: 'Revocar invitación' }
     )
     if (!ok) return
 

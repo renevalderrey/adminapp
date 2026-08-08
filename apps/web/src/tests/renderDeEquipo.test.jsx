@@ -666,7 +666,7 @@ describe('sacar a alguien del equipo, y devolverlo', () => {
     // historial no se toca: sin eso, «sacar» se lee como «borrar».
     expect(screen.getByText(/invitaciones\s+pendientes quedan revocadas/)).toBeInTheDocument()
 
-    await interaccion.click(screen.getByRole('button', { name: 'Confirmar' }))
+    await interaccion.click(screen.getByRole('button', { name: 'Sacar del equipo' }))
 
     expect(pedidos).toContainEqual({
       metodo: 'put',

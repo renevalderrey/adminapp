@@ -588,11 +588,16 @@ const InvoicesList = () => {
     // aparece después de un CUIT_REQUERIDO— pasan por acá. Puesta en el
     // `onClick` de uno solo, el otro seguiría emitiendo un comprobante fiscal
     // real de un clic, que es el defecto que esto cierra.
-    const confirmado = await confirm(textoDeConfirmacionDeEmision({
-      comprobante: comprobanteQueSeVaAEmitir(settings.tax_condition),
-      ambiente: settings.afip_environment,
-      referencia: venta.afip_nro ? `Nro ${venta.afip_nro}` : identificadorCorto(venta.id),
-    }))
+    const confirmado = await confirm(
+      textoDeConfirmacionDeEmision({
+        comprobante: comprobanteQueSeVaAEmitir(settings.tax_condition),
+        ambiente: settings.afip_environment,
+        referencia: venta.afip_nro ? `Nro ${venta.afip_nro}` : identificadorCorto(venta.id),
+      }),
+      // Ver Billing.jsx: el rojo se reserva para producción, donde emitir es
+      // irreversible.
+      { verbo: 'Emitir comprobante', destructivo: settings.afip_environment === 'produccion' }
+    )
 
     if (!confirmado) return
 
@@ -721,7 +726,8 @@ const InvoicesList = () => {
 
   const handleVoid = async (sale) => {
     const confirmed = await confirm(
-      `¿Anular la venta ${sale.afip_nro ? `Nro ${sale.afip_nro}` : identificadorCorto(sale.id)}? Se restaurará el stock.`
+      `¿Anular la venta ${sale.afip_nro ? `Nro ${sale.afip_nro}` : identificadorCorto(sale.id)}? Se restaurará el stock.`,
+      { verbo: 'Anular venta' }
     )
     if (!confirmed) return
 

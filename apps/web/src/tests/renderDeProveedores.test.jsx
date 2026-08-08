@@ -802,7 +802,7 @@ describe('El formulario de pago se valida ANTES de llamar (T1244)', () => {
     await enviar('Registrar pago')
 
     await act(async () => {
-      fireEvent.click(within(dialogoTitulado('Confirmar')).getByRole('button', { name: 'Confirmar' }))
+      fireEvent.click(within(dialogoTitulado('Confirmar')).getByRole('button', { name: 'Registrar el pago' }))
     })
 
     expect(enviado).toHaveBeenCalledTimes(1)
@@ -885,7 +885,7 @@ describe('Los dos endpoints de movimientos por fin tienen botón (T1245)', () =>
     expect(borrado).not.toHaveBeenCalled()
 
     await act(async () => {
-      fireEvent.click(within(dialogoTitulado('Confirmar')).getByRole('button', { name: 'Confirmar' }))
+      fireEvent.click(within(dialogoTitulado('Confirmar')).getByRole('button', { name: 'Eliminar movimiento' }))
     })
 
     expect(borrado).toHaveBeenCalledWith('/suppliers/movements/8')
@@ -1012,7 +1012,7 @@ describe('Eliminar un proveedor dice qué se borra con él (T1246)', () => {
     await pedirBorrado()
 
     await act(async () => {
-      fireEvent.click(within(dialogoTitulado('Confirmar')).getByRole('button', { name: 'Confirmar' }))
+      fireEvent.click(within(dialogoTitulado('Confirmar')).getByRole('button', { name: 'Eliminar proveedor' }))
     })
 
     expect(aviso).toHaveBeenCalledWith(
@@ -1241,5 +1241,111 @@ describe('Exportar la cuenta corriente (T1247)', () => {
     expect(columna(hoja, 'C')).not.toContain('Saldo anterior')
     expect(saldoEnPantalla()).toHaveTextContent(`$${pesos(saldos.at(-1))}`)
     expect(saldos.at(-1)).toBe(12345.6)
+  })
+})
+
+// ════════════════════════════════════════════
+//  Hito 9 · Dos clics en «Registrar pago» escribían dos filas
+//
+//  El handler no tenía cerrojo: dos envíos de la misma tanda —doble clic, o
+//  Enter dos veces— entraban los dos y quedaban **dos pagos en la cuenta
+//  corriente, con el saldo bajando el doble**. Es plata, y del lado que peor
+//  se detecta: un pago de más no se nota hasta que alguien concilia con el
+//  proveedor, y para entonces nadie se acuerda del doble clic.
+//
+//  Acá muerde más que en otras pantallas porque el handler **cede el hilo antes
+//  de escribir**: si el pago supera el saldo hay un `await confirm(...)`, y
+//  durante todo ese diálogo la puerta queda abierta de par en par.
+//
+//  ⚠ **Los dos envíos van adentro de UN SOLO `act`.** Con un `act` por envío
+//  React alcanza a renderizar en el medio, y entonces **un cerrojo hecho con
+//  estado también pasaría**: el test quedaría verde con y sin la corrección.
+//  Es el error exacto que este repositorio ya cometió una vez con el cobro del
+//  punto de venta (T1123). Por eso el cerrojo es un `useRef`: el estado se lee
+//  actualizado recién en el render siguiente, que acá llega tarde.
+// ════════════════════════════════════════════
+
+describe('El pago no se registra dos veces por un doble clic', () => {
+  /** El campo, buscado dentro del diálogo de pago. */
+  const campoDePago = (etiqueta) =>
+    within(dialogoTitulado('Registrar pago')).getByLabelText(etiqueta)
+
+  /** Manda el formulario de pago N veces SIN dejar renderizar en el medio. */
+  async function enviarEnLaMismaTanda(veces) {
+    const form = dialogoTitulado('Registrar pago').querySelector('form')
+    await act(async () => {
+      for (let i = 0; i < veces; i++) fireEvent.submit(form)
+    })
+  }
+
+  it('dos envíos en la misma tanda escriben UN solo pago', async () => {
+    const enviado = vi.spyOn(api, 'post').mockResolvedValue({ data: { ok: true } })
+
+    await montar()
+    await elegir('Distribuidora Norte')
+    await abrirPago()
+
+    // Menor al saldo de $12.345,60: este camino no pregunta nada, va derecho a
+    // escribir. Es el doble clic común, sin confirmación de por medio.
+    await act(async () => {
+      fireEvent.change(campoDePago('Monto pagado'), { target: { value: '1000' } })
+    })
+    await enviarEnLaMismaTanda(2)
+
+    expect(enviado).toHaveBeenCalledTimes(1)
+    expect(enviado.mock.calls[0][0]).toBe('/suppliers/3/payments')
+  })
+
+  it('tampoco mientras el pago anterior todavía viaja', async () => {
+    // La otra ventana, y más ancha que la del tick: entre que sale el POST y
+    // vuelve la respuesta pasan cientos de milisegundos de red. El diálogo sigue
+    // abierto y el botón sigue apretable, así que el segundo clic acá NO es un
+    // doble clic accidental —es alguien que esperó, no vio nada y volvió a
+    // apretar—. Con el cerrojo tomado hasta el `finally`, no entra.
+    let responder
+    const enviado = vi.spyOn(api, 'post')
+      .mockImplementation(() => new Promise((r) => { responder = () => r({ data: { ok: true } }) }))
+
+    await montar()
+    await elegir('Distribuidora Norte')
+    await abrirPago()
+
+    await act(async () => {
+      fireEvent.change(campoDePago('Monto pagado'), { target: { value: '1000' } })
+    })
+
+    // Primer envío: queda esperando la respuesta.
+    await enviar('Registrar pago')
+    expect(enviado).toHaveBeenCalledTimes(1)
+
+    // Segundo envío, con render de por medio: el cerrojo tiene que seguir puesto.
+    await enviar('Registrar pago')
+    expect(enviado).toHaveBeenCalledTimes(1)
+
+    await act(async () => { responder() })
+  })
+
+  it('y cancelar NO deja el formulario inerte para siempre', async () => {
+    // La otra mitad, y la que rompe un cerrojo mal escrito: si el `finally` no
+    // cubriera los `return` tempranos, un solo importe inválido dejaría el botón
+    // sin efecto por el resto de la sesión, sin ninguna señal de por qué.
+    const enviado = vi.spyOn(api, 'post').mockResolvedValue({ data: { ok: true } })
+    vi.spyOn(toast, 'error').mockImplementation(() => {})
+
+    await montar()
+    await elegir('Distribuidora Norte')
+    await abrirPago()
+
+    // Primer intento: importe vacío. Sale por el `return` de la validación.
+    await enviar('Registrar pago')
+    expect(enviado).not.toHaveBeenCalled()
+
+    // Segundo intento, ahora con importe. Tiene que salir.
+    await act(async () => {
+      fireEvent.change(campoDePago('Monto pagado'), { target: { value: '1000' } })
+    })
+    await enviar('Registrar pago')
+
+    expect(enviado).toHaveBeenCalledTimes(1)
   })
 })

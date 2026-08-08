@@ -208,7 +208,9 @@ export default function Expenses() {
   useEffect(() => { cargar() }, [cargar])
 
   const eliminar = async (gasto) => {
-    const ok = await confirm(`¿Eliminar «${gasto.name}»? Deja de contar para el punto de equilibrio.`)
+    const ok = await confirm(`¿Eliminar «${gasto.name}»? Deja de contar para el punto de equilibrio.`, {
+      verbo: 'Eliminar gasto',
+    })
     if (!ok) return
 
     try {

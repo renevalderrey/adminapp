@@ -103,7 +103,8 @@ export default function SesionesDelEquipo({ empresaId, onCambio }) {
       'esa computadora o ese teléfono. Se va a cerrar esa sesión en todas las empresas a ' +
       'las que esta persona tenga acceso, porque la sesión es del dispositivo y no de la ' +
       'empresa. Esto no revoca su acceso: si vuelve a entrar, abre una sesión nueva. Para ' +
-      'sacarla del equipo, desactivala en la lista de miembros.'
+      'sacarla del equipo, desactivala en la lista de miembros.',
+      { verbo: 'Cerrar esa sesión' }
     )
     if (!ok) return
 
@@ -120,7 +121,8 @@ export default function SesionesDelEquipo({ empresaId, onCambio }) {
   const cerrarLasMias = async () => {
     const ok = await confirm(
       '¿Cerrar todas tus otras sesiones? Ésta, la de este navegador, sigue abierta. ' +
-      'Los demás dispositivos van a tener que volver a entrar.'
+      'Los demás dispositivos van a tener que volver a entrar.',
+      { verbo: 'Cerrar las otras' }
     )
     if (!ok) return
 

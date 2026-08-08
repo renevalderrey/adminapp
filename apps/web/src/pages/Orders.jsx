@@ -363,6 +363,24 @@ const Orders = () => {
    */
   const pedidoDeDetalle = useRef(0)
 
+  /**
+   * El cerrojo del pago. **Escribe plata, así que no puede depender de un
+   * estado de React.**
+   *
+   * Un `useState` se lee actualizado recién en el render siguiente: dos eventos
+   * de la misma tanda —doble clic, o Enter dos veces— entran los dos al handler
+   * antes de que el `disabled` llegue al DOM, y quedan **dos filas en la cuenta
+   * corriente y el saldo bajando el doble**. Un `ref` es una celda mutable
+   * única: el segundo disparo lee `true` en el mismo tick.
+   *
+   * Y acá muerde más que en otros lados, porque el handler **cede el hilo antes
+   * de escribir**: si el pago supera el saldo hay un `await confirm(...)`, y
+   * durante ese diálogo la puerta queda abierta de par en par.
+   *
+   * Es el mismo molde del cobro del punto de venta, por el mismo motivo.
+   */
+  const pagoEnCurso = useRef(false)
+
   // ── Los formularios ──
   const [altaAbierta, setAltaAbierta] = useState(false)
   const [edicionAbierta, setEdicionAbierta] = useState(false)
@@ -578,7 +596,9 @@ const Orders = () => {
   }
 
   const anularOrden = async (orden) => {
-    const ok = await confirm(`¿Anular la orden #${orden.id}? Lo que ya se recibió sigue debiéndose.`)
+    const ok = await confirm(`¿Anular la orden #${orden.id}? Lo que ya se recibió sigue debiéndose.`, {
+      verbo: 'Anular orden',
+    })
     if (!ok) return
 
     try {
@@ -624,50 +644,65 @@ const Orders = () => {
   const registrarPago = async (e) => {
     e.preventDefault()
 
-    // ⚠ Se valida ANTES de llamar (FR-088, US9 escenarios 1 y 2). No alcanza con
-    // que el servidor lo rechace: un ida y vuelta para decir «poné un número»
-    // es un error que la persona ve tres segundos después de haberlo cometido, y
-    // el `required` del campo no corre cuando el formulario se manda con Enter
-    // desde otro control ni cuando el valor es «0».
-    const monto = importeDePago(formPago.amount)
-
-    if (monto === null) {
-      toast.error('Poné cuánto se pagó: tiene que ser un número mayor que cero.')
-      return
-    }
-
-    // FR-089 y US9 escenario 3. **Pagar por adelantado es legítimo** —deja el
-    // saldo negativo, que es la forma correcta de decir «el proveedor me debe a
-    // mí»—, así que esto pregunta y no bloquea. Los DOS números van a la vista:
-    // «el pago supera el saldo» sin decir cuánto es cada uno obliga a cerrar el
-    // formulario para ir a mirarlo, y ahí se pierde lo tipeado.
-    //
-    // La resta no aparece por ningún lado: comparar dos números que mandó el
-    // servidor no es volver a sumar la cuenta (FR-101).
-    const saldo = Number(proveedor.saldo) || 0
-
-    if (monto > saldo) {
-      const ok = await confirm(
-        `El saldo de ${proveedor.name} es $${pesos(saldo)} y estás registrando un pago de $${pesos(monto)}. `
-        + 'Queda un saldo a favor tuyo. ¿Registrarlo igual?'
-      )
-      if (!ok) return
-    }
+    // El cerrojo se toma ACÁ, antes de cualquier `await`. Tomarlo después de la
+    // confirmación dejaría pasar a los dos que llegaron juntos.
+    if (pagoEnCurso.current) return
+    pagoEnCurso.current = true
 
     try {
-      await createSupplierPayment(proveedor.id, {
-        date: formPago.date,
-        amount: monto,
-        payment_method: formPago.method,
-        notes: formPago.notes,
-      })
+      // ⚠ Se valida ANTES de llamar (FR-088, US9 escenarios 1 y 2). No alcanza
+      // con que el servidor lo rechace: un ida y vuelta para decir «poné un
+      // número» es un error que la persona ve tres segundos después de haberlo
+      // cometido, y el `required` del campo no corre cuando el formulario se
+      // manda con Enter desde otro control ni cuando el valor es «0».
+      const monto = importeDePago(formPago.amount)
 
-      setPagoAbierto(false)
-      setFormPago({ amount: '', method: 'ef', date: fechaDeHoy(), notes: '' })
-      await recargarCuenta()
-      toast.success('Pago registrado.')
-    } catch (err) {
-      toast.error(mensajeDeError(err, 'No se pudo registrar el pago.'))
+      if (monto === null) {
+        toast.error('Poné cuánto se pagó: tiene que ser un número mayor que cero.')
+        return
+      }
+
+      // FR-089 y US9 escenario 3. **Pagar por adelantado es legítimo** —deja el
+      // saldo negativo, que es la forma correcta de decir «el proveedor me debe
+      // a mí»—, así que esto pregunta y no bloquea. Los DOS números van a la
+      // vista: «el pago supera el saldo» sin decir cuánto es cada uno obliga a
+      // cerrar el formulario para ir a mirarlo, y ahí se pierde lo tipeado.
+      //
+      // La resta no aparece por ningún lado: comparar dos números que mandó el
+      // servidor no es volver a sumar la cuenta (FR-101).
+      const saldo = Number(proveedor.saldo) || 0
+
+      if (monto > saldo) {
+        const ok = await confirm(
+          `El saldo de ${proveedor.name} es $${pesos(saldo)} y estás registrando un pago de $${pesos(monto)}. `
+          + 'Queda un saldo a favor tuyo. ¿Registrarlo igual?',
+          // No es rojo: pagar por adelantado es legítimo, deja el saldo
+          // negativo y se corrige registrando el movimiento inverso.
+          { verbo: 'Registrar el pago' }
+        )
+        if (!ok) return
+      }
+
+      try {
+        await createSupplierPayment(proveedor.id, {
+          date: formPago.date,
+          amount: monto,
+          payment_method: formPago.method,
+          notes: formPago.notes,
+        })
+
+        setPagoAbierto(false)
+        setFormPago({ amount: '', method: 'ef', date: fechaDeHoy(), notes: '' })
+        await recargarCuenta()
+        toast.success('Pago registrado.')
+      } catch (err) {
+        toast.error(mensajeDeError(err, 'No se pudo registrar el pago.'))
+      }
+    } finally {
+      // Se suelta SIEMPRE, incluidos los dos `return` de arriba —el importe
+      // inválido y el «Cancelar» de la confirmación—. Sin esto, cancelar una vez
+      // dejaría el formulario inerte y sin ninguna señal de por qué.
+      pagoEnCurso.current = false
     }
   }
 
@@ -742,7 +777,10 @@ const Orders = () => {
     const ok = await confirm(
       `¿Eliminar este ${movimiento.type === 'pago' ? 'pago' : 'movimiento de deuda'} `
       + `de $${pesos(importe)} del ${fechaCorta(movimiento.date)}? `
-      + `El saldo de ${proveedor.name} queda en $${pesos(resultante)}.`
+      + `El saldo de ${proveedor.name} queda en $${pesos(resultante)}.`,
+      // Rojo: es plata, y borrar un movimiento mueve el saldo de una cuenta
+      // corriente sin dejar nada en su lugar.
+      { verbo: 'Eliminar movimiento', destructivo: true }
     )
     if (!ok) return
 
@@ -769,7 +807,9 @@ const Orders = () => {
    */
   const eliminarProveedor = async () => {
     const ok = await confirm(
-      `¿Eliminar a ${proveedor.name}? Se borran también ${queSeLleva()}. No se puede deshacer.`
+      `¿Eliminar a ${proveedor.name}? Se borran también ${queSeLleva()}. No se puede deshacer.`,
+      // Rojo: se lleva la cuenta corriente entera, y eso no se repara.
+      { verbo: 'Eliminar proveedor', destructivo: true }
     )
     if (!ok) return
 

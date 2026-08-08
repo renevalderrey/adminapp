@@ -154,7 +154,9 @@ export default function EstadoDeTiendanube({
     const ok = await confirm(
       `Se borran el acceso a tu tienda y la copia local del catálogo. ` +
       `Los ${mapeados} mapeos NO se borran: si volvés a vincular la misma tienda, ` +
-      `siguen ahí. Si vinculás otra, van a quedar apuntando a variantes que no existen.`
+      `siguen ahí. Si vinculás otra, van a quedar apuntando a variantes que no existen.`,
+      // Rojo: borra el acceso a la tienda y la copia local del catálogo.
+      { verbo: 'Desvincular tienda', destructivo: true }
     )
     if (!ok) return
 
@@ -179,7 +181,9 @@ export default function EstadoDeTiendanube({
 
     const ok = await confirm(
       `El stock que publica tu tienda va a pasar a salir de "${destino.name}" en vez de "${desde}". ` +
-      `Se vuelven a empujar ${mapeados} variantes mapeadas, una por una.`
+      `Se vuelven a empujar ${mapeados} variantes mapeadas, una por una.`,
+      // No es rojo: cambiar de sucursal se deshace volviendo a cambiarla.
+      { verbo: 'Cambiar sucursal' }
     )
     if (!ok) return
 

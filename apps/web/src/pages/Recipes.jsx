@@ -203,7 +203,9 @@ const Recipes = () => {
 
   // Delete recipe
   const handleDeleteRecipe = async () => {
-    const ok = await confirm('¿Seguro que querés eliminar esta receta? El producto pasará a costo manual.');
+    const ok = await confirm('¿Seguro que querés eliminar esta receta? El producto pasará a costo manual.', {
+      verbo: 'Eliminar receta',
+    });
     if (!ok) return;
     
     setSaving(true);

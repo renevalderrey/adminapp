@@ -132,7 +132,7 @@ export default function GastosVariables() {
   }
 
   const eliminar = async (item) => {
-    const ok = await confirm(`¿Eliminar «${item.nombre}»?`)
+    const ok = await confirm(`¿Eliminar «${item.nombre}»?`, { verbo: 'Eliminar' })
     if (!ok) return
 
     try {

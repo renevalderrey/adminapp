@@ -594,7 +594,7 @@ describe('las ventas que AFIP rechazó y la desvinculación', () => {
     expect(screen.getByText(/la clave no se puede recuperar de acá/i)).toBeTruthy()
     expect(screen.getByText(/ventas ya facturadas conservan su CAE/i)).toBeTruthy()
 
-    await interaccion.click(screen.getByRole('button', { name: 'Confirmar' }))
+    await interaccion.click(screen.getByRole('button', { name: 'Desvincular AFIP' }))
 
     expect(pedidos.some((p) => p.metodo === 'delete' && p.url === '/afip/vinculacion')).toBe(true)
   })
@@ -788,7 +788,7 @@ describe('pasar a producción pide confirmación y dice que los comprobantes son
     await montar({ status: { ...SERVIDORES_ARRIBA, verificacion: VERIFICADO } })
 
     await pasarAProduccion()
-    await interaccion.click(screen.getByRole('button', { name: 'Confirmar' }))
+    await interaccion.click(screen.getByRole('button', { name: 'Pasar a producción' }))
 
     const guardado = pedidos.find((p) => p.metodo === 'post' && p.url === '/afip/setup')
 

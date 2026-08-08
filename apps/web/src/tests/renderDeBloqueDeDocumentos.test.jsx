@@ -329,7 +329,7 @@ describe('El aviso de «eliminado» no sale si no se eliminó nada', () => {
 
   /** El «Confirmar» de `useConfirmDialog`, que se dibuja en un portal colgado del
    *  `<body>`: `screen` lo encuentra, el `container` del render no. */
-  const confirmar = () => screen.getByRole('button', { name: 'Confirmar' })
+  const confirmar = () => screen.getByRole('button', { name: 'Eliminar documento' })
 
   it('el aviso de «Documento eliminado» no sale si el DELETE no se llamó', async () => {
     const exito = vi.spyOn(toast, 'success').mockImplementation(() => {})

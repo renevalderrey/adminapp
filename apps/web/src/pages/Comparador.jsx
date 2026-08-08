@@ -90,7 +90,9 @@ export default function Comparador() {
   }
 
   const eliminar = async (lista) => {
-    const ok = await confirm(`¿Eliminar la lista "${lista.nombre}"?`)
+    const ok = await confirm(`¿Eliminar la lista "${lista.nombre}"?`, {
+      verbo: 'Eliminar lista',
+    })
     if (!ok) return
 
     try {
