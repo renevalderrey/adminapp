@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { nombreDeRuta } from '@/components/navegacion'
 import {
   alturasDelSparkline,
   etiquetaDeAviso,
@@ -85,6 +86,20 @@ describe('El orden de los avisos', () => {
   })
 })
 
+/**
+ * La ruta que el servidor manda con cada aviso.
+ *
+ * Sale de `services/dashboardService.js`. Está acá y no adivinada porque la
+ * acción del botón se deriva de la ruta: si una cambiara sin que esta lista se
+ * entere, el aviso mandaría al lugar equivocado con el nombre del correcto.
+ */
+const RUTA_DEL_AVISO = [
+  ['faltantes', '/faltantes'],
+  ['sin_cae', '/ventas'],
+  ['vencimientos', '/inventario'],
+  ['certificado_afip', '/facturacion'],
+]
+
 describe('Lo que dice cada aviso', () => {
   it('el aviso de faltantes dice que es de la SUCURSAL ACTIVA, no de la empresa', () => {
     // Es FR-059 y es la mitad de esta pantalla: el número sale de la sucursal
@@ -130,10 +145,49 @@ describe('Lo que dice cada aviso', () => {
   })
 
   it('cada aviso trae su acción, y son distintas entre sí', () => {
-    const acciones = ['faltantes', 'sin_cae', 'vencimientos', 'certificado_afip']
-      .map((tipo) => etiquetaDeAviso({ tipo, cantidad: 1, dias: 10 }).accion)
+    // ⚠ Ahora la acción sale de la RUTA y no del tipo, así que los avisos se
+    // arman con la ruta que manda el servidor. Sin ella todos dirían «Ver», que
+    // es lo correcto —no se puede nombrar una pantalla que no se sabe cuál es—
+    // pero no es lo que pasa en producción.
+    const acciones = RUTA_DEL_AVISO
+      .map(([tipo, ruta]) => etiquetaDeAviso({ tipo, ruta, cantidad: 1, dias: 10 }).accion)
 
     expect(new Set(acciones).size).toBe(4)
+  })
+
+  // ── El Panel no inventa nombres de pantalla ──
+  //
+  // Decía «Ver ventas» para `/ventas` —que en el menú es «Historial de
+  // ventas»—, «Ir a Facturación» para `/facturacion` —que es «Facturación
+  // AFIP»— y, en otro bloque, «Historial completo» para esa misma ruta. Tres
+  // nombres para dos pantallas.
+  //
+  // Alguien que lee «Ver ventas» y va a buscar esa pantalla en el menú no la
+  // encuentra. El nombre de una pantalla es cómo se la busca.
+  describe('la acción nombra la pantalla como la nombra el menú', () => {
+    it.each(RUTA_DEL_AVISO)('el aviso %s manda al nombre real de %s', (tipo, ruta) => {
+      const { accion } = etiquetaDeAviso({ tipo, ruta, cantidad: 1, dias: 10 })
+
+      expect(accion).toBe(`Ir a ${nombreDeRuta(ruta)}`)
+      // Y el nombre existe de verdad: `nombreDeRuta` de una ruta que no está en
+      // el menú devuelve `null`, y «Ir a null» pasaría el `toBe` de arriba.
+      expect(nombreDeRuta(ruta)).toBeTruthy()
+    })
+
+    it('las cuatro rutas de los avisos ESTÁN en el menú', () => {
+      // El ancla. Si el servidor empezara a mandar una ruta que el menú no
+      // tiene, los avisos dirían «Ver» y esta lista lo dice antes.
+      for (const [, ruta] of RUTA_DEL_AVISO) {
+        expect(nombreDeRuta(ruta)).not.toBeNull()
+      }
+    })
+
+    it('una ruta que no está en el menú NO dice «Ir a null»', () => {
+      // El caso de borde. Un aviso sin ruta, o con una ruta de detalle, tiene
+      // que quedarse con un botón genérico y no con un texto roto.
+      expect(etiquetaDeAviso({ tipo: 'faltantes', cantidad: 1 }).accion).toBe('Ver')
+      expect(etiquetaDeAviso({ tipo: 'faltantes', ruta: '/no-existe', cantidad: 1 }).accion).toBe('Ver')
+    })
   })
 })
 

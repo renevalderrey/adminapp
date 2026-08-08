@@ -11,6 +11,7 @@ import {
   resumenDeCorrida,
   tonoDeConexion,
 } from '@/utils/tiendanube'
+import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · El bloque de conexión de /tiendanube
@@ -233,7 +234,7 @@ export default function EstadoDeTiendanube({
             </button>
             {!puedeEditar && (
               <p className="w-full text-[12.5px] text-fg-3">
-                No podés conectar la tienda: te falta el permiso para editar la configuración.
+                No podés conectar la tienda: {faltaElPermiso('config.editar').toLowerCase()}.
               </p>
             )}
           </>
@@ -252,7 +253,7 @@ export default function EstadoDeTiendanube({
             </button>
             {!puedeEditar && (
               <p className="w-full text-[12.5px] text-fg-3">
-                No podés desvincular la tienda: te falta el permiso para editar la configuración.
+                No podés desvincular la tienda: {faltaElPermiso('config.editar').toLowerCase()}.
               </p>
             )}
           </>

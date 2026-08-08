@@ -481,13 +481,13 @@ describe('El bloque de conexión (T1340)', () => {
 
     dibujar()
     expect(screen.getByRole('button', { name: /Desvincular/ })).toBeDisabled()
-    expect(screen.getByText(/te falta el permiso para editar la configuración/)).toBeInTheDocument()
+    expect(screen.getByText(/config\.editar/)).toBeInTheDocument()
 
     cleanup()
 
     dibujar({ status: NO_VINCULADA })
     expect(screen.getByRole('button', { name: /Conectar con TiendaNube/ })).toBeDisabled()
-    expect(screen.getByText(/te falta el permiso para editar la configuración/)).toBeInTheDocument()
+    expect(screen.getByText(/config\.editar/)).toBeInTheDocument()
   })
 
   it('«Desvincular» abre confirmación y la confirmación dice que los mapeos no se borran', async () => {

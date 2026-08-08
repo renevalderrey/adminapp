@@ -20,6 +20,8 @@ import { calcularBep, estrategiasDePrecio } from '@/utils/bep'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 import { importeAbreviado, importeOGuion, pesos } from '@/utils/formato'
 import { etiquetaDePago } from '@/utils/mediosDePago'
+import { nombreDeRuta } from '@/components/navegacion'
+import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Panel de control
@@ -316,11 +318,16 @@ export default function Dashboard() {
           <RequiereTuAtencion avisos={kpis?.requiere_atencion || []} />
 
           {/* «Últimas ventas», no «Actividad reciente». Ver el encabezado. */}
+          {/* ⚠ El nombre de la pantalla sale de la barra lateral y NO se
+              escribe acá. Decía «Historial completo», y el aviso de más arriba
+              decía «Ver ventas» para esta misma ruta: tres nombres —con el del
+              menú— para una sola pantalla. Quien lee cualquiera de los dos y va
+              a buscarla al menú no la encuentra. */}
           <Bloque
             titulo="Últimas ventas"
             accion={
               <Link to="/ventas" className="text-[12.5px] font-medium text-fg-2 hover:text-brand">
-                Historial completo
+                Ir a {nombreDeRuta('/ventas')}
               </Link>
             }
           >
@@ -382,13 +389,18 @@ export default function Dashboard() {
                   </p>
                   <p className="mt-0.5 text-[12px] leading-snug text-fg-3">
                     La suma de los gastos fijos cargados en{' '}
-                    <Link to="/gastos" className="underline hover:text-brand">Gastos</Link>. No
+                    <Link to="/gastos" className="underline hover:text-brand">
+                      {nombreDeRuta('/gastos')}
+                    </Link>. No
                     lleva sparkline: un gasto fijo no tiene fecha.
                   </p>
                 </div>
               ) : (
                 <p className="text-[13px] text-fg-2">
-                  No ves los gastos fijos porque te falta el permiso de gastos.
+                  {/* ⚠ NOMBRA el permiso. Decía «el permiso de gastos», que es
+                      una paráfrasis: el usuario no puede pedir lo que no puede
+                      nombrar, y quien administra la empresa busca el código. */}
+                  No ves los gastos fijos: {faltaElPermiso('gastos.ver').toLowerCase()}.
                 </p>
               )}
 
@@ -556,12 +568,12 @@ function faltaParaSimular(meta, fijos, puedeVerGastos) {
   const hayGastos = fijos !== null && fijos > 0
 
   if (!hayGastos && !puedeVerGastos) {
-    return 'No podemos traer tus gastos fijos porque te falta el permiso de gastos. ' +
-      'Podés escribirlos a mano acá arriba.'
+    return `No podemos traer tus gastos fijos: ${faltaElPermiso('gastos.ver').toLowerCase()}. `
+      + 'Podés escribirlos a mano acá arriba.'
   }
 
   if (!hayGastos) {
-    return 'Cargá tus gastos fijos en Gastos, o escribí un importe acá arriba para probar.'
+    return `Cargá tus gastos fijos en ${nombreDeRuta('/gastos')}, o escribí un importe acá arriba para probar.`
   }
 
   return 'Escribí tu facturación mensual promedio acá arriba. ' +

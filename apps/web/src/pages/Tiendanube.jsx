@@ -32,6 +32,7 @@ import {
   hayFiltro,
   tonoDeMapeo,
 } from '@/utils/tiendanube'
+import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · /tiendanube
@@ -619,7 +620,7 @@ export default function Tiendanube() {
                 pedir el permiso, que es lo que hay que hacer. */}
             {!puedeEditar && (
               <p className="w-full text-[12.5px] text-fg-3">
-                No podés sincronizar el stock: te falta el permiso para editar la configuración.
+                No podés sincronizar el stock: {faltaElPermiso('config.editar').toLowerCase()}.
               </p>
             )}
 
@@ -803,8 +804,8 @@ export default function Tiendanube() {
 
             {!puedeEditar && (
               <p className="border-b border-border bg-surface-2 px-5 py-2.5 text-[12.5px] text-fg-2">
-                Estás viendo los mapeos en modo lectura: te falta el permiso para editar la
-                configuración, así que no podés crearlos ni quitarlos.
+                Estás viendo los mapeos en modo lectura: {faltaElPermiso('config.editar').toLowerCase()},
+                así que no podés crearlos ni quitarlos.
               </p>
             )}
 

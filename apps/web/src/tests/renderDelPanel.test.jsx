@@ -275,7 +275,10 @@ describe('El simulador de punto de equilibrio', () => {
     // dice qué hacer igual —se pueden escribir a mano—. Son dos mensajes
     // distintos para dos preguntas distintas y por eso se afirman por separado.
     expect(screen.getByText(/Podés escribirlos a mano/)).toBeInTheDocument()
-    expect(screen.getAllByText(/te falta el permiso de gastos/).length).toBeGreaterThan(0)
+    // ⚠ Se afirma el CÓDIGO y no la paráfrasis. Decía «el permiso de gastos»,
+    // que el usuario no puede reenviarle a quien administra la empresa: lo que
+    // esa persona busca en la lista de permisos es `gastos.ver`.
+    expect(screen.getAllByText(/gastos\.ver/).length).toBeGreaterThan(0)
     // Y no hay ningún porcentaje recomendado sobre datos que no existen.
     expect(screen.queryByText(/recargo mínimo sobre el costo/)).toBeNull()
   })

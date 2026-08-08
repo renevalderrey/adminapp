@@ -177,7 +177,11 @@ api.interceptors.response.use(
     }
 
     if (error.response?.status === 403) {
-      const msg = error.response?.data?.message || 'No tienes permiso para realizar esta acción';
+      // ⚠ El texto por defecto NO dice «No tienes permiso para realizar esta
+      // acción»: era la única frase peninsular del sistema, y además no nombra
+      // el permiso. El servidor manda el mensaje bueno —con el código adentro—
+      // en `data.message`; esto es solo el respaldo para el log cuando no vino.
+      const msg = error.response?.data?.message || 'Falta un permiso, y el servidor no dijo cuál';
       console.warn('[api] 403 Forbidden:', msg);
     }
 

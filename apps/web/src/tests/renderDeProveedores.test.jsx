@@ -638,7 +638,9 @@ describe('Las órdenes del proveedor abren el panel compartido (T1242)', () => {
 
     const seccion = bloque('Órdenes de compra')
 
-    expect(within(seccion).getByText('No tenés permiso para ver las órdenes de compra.')).toBeInTheDocument()
+    // El código va en el TÍTULO del bloque, no solo en la letra chica: es lo
+    // único accionable de las dos frases.
+    expect(within(seccion).getByText(/ordenes_compra\.ver/)).toBeInTheDocument()
     expect(within(seccion).queryByText('Este proveedor no tiene órdenes de compra.')).toBeNull()
 
     // Y no se pide lo que se sabe que va a responder 403: un `console.error`

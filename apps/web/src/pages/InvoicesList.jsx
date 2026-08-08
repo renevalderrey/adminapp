@@ -10,6 +10,7 @@ import { presentacionDeEstado, estaAnulada } from '@/utils/estadoVenta'
 import { descargarVentas } from '@/utils/exportarVentas'
 import { comprobanteInicial, comprobantesDisponibles } from '@/utils/comprobantes'
 import { pesos, fechaDeComprobante } from '@/utils/formato'
+import { mensajeDeError } from '@/utils/erroresDeApi'
 import {
   Calendar, Search, Printer, ShieldCheck, FileText, Store, Trash2,
   Receipt, FilterX, Download, Plus, Loader2, RefreshCw, FileCheck,
@@ -416,7 +417,7 @@ const InvoicesList = () => {
         }
       }
     } catch (err) {
-      toast.error('Error al cargar los comprobantes: ' + (err.response?.data?.message || err.response?.data?.error || err.message))
+      toast.error(mensajeDeError(err, 'No se pudieron cargar las ventas.'))
     } finally {
       setLoading(false)
     }
@@ -795,13 +796,13 @@ const InvoicesList = () => {
    */
   const exportar = async () => {
     if (total === 0) {
-      toast.error('No hay comprobantes para exportar con estos filtros.')
+      toast.error('No hay ventas para exportar con estos filtros.')
       return
     }
 
     if (total > LIMITE_EXPORT) {
       toast.error(
-        `El filtro devuelve ${total} comprobantes y el máximo por archivo es ` +
+        `El filtro devuelve ${total} ventas y el máximo por archivo es ` +
         `${LIMITE_EXPORT}. Acotá el rango de fechas o elegí una sucursal.`
       )
       return
@@ -1051,8 +1052,15 @@ const InvoicesList = () => {
 
         {/* ── El listado ── */}
         <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-nivel-1">
+          {/* ⚠ «Ventas», no «Comprobantes».
+              Esta lista trae ventas, y adentro hay filas que dicen «Sin
+              comprobante fiscal»: rotularla «Comprobantes» hacía que la tabla se
+              contradijera consigo misma a dos líneas de distancia. Y el filtro
+              de arriba tiene una opción que se llama exactamente así, con lo
+              cual el título parecía un filtro aplicado.
+              El `h1` de la pantalla ya decía «Historial de ventas». */}
           <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-5 py-4">
-            <h2>Comprobantes</h2>
+            <h2>Ventas</h2>
             <span className="num rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-fg-2">
               {total}
             </span>
@@ -1070,7 +1078,7 @@ const InvoicesList = () => {
 
           {loading && sales.length === 0 ? (
             <div className="py-12 text-center">
-              <p className="text-sm text-fg-2">Cargando comprobantes…</p>
+              <p className="text-sm text-fg-2">Cargando ventas…</p>
             </div>
           ) : sales.length === 0 ? (
             hayFiltros ? (
@@ -1213,7 +1221,7 @@ const InvoicesList = () => {
               <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2 text-[12.5px] text-fg-2">
                 <span>
                   Mostrando <span className="num">{sales.length}</span> de{' '}
-                  <span className="num">{total}</span> comprobantes
+                  <span className="num">{total}</span> ventas
                 </span>
                 <Pagination
                   page={consulta.page}

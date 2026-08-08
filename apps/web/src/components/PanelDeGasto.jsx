@@ -6,6 +6,7 @@ import { createExpense, updateExpense } from '@/services/api'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 import { pesos } from '@/utils/formato'
 import { usePermission } from '@/hooks/usePermission'
+import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Panel del gasto fijo
@@ -150,8 +151,8 @@ export default function PanelDeGasto({
   }
 
   const sinPermiso = esAlta
-    ? 'No podés crear gastos: te falta el permiso para hacerlo.'
-    : 'No podés editar gastos: te falta el permiso para hacerlo.'
+    ? `No podés crear gastos: ${faltaElPermiso('gastos.crear').toLowerCase()}.`
+    : `No podés editar gastos: ${faltaElPermiso('gastos.editar').toLowerCase()}.`
 
   return (
     <Sheet open={abierto} onOpenChange={onOpenChange}>

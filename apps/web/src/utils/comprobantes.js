@@ -22,6 +22,8 @@
 //  `routes/sales.js`), así que el defecto era solo del selector.
 // ════════════════════════════════════════════
 
+import { nombreDeRuta } from '@/components/navegacion'
+
 /**
  * El comprobante que viene elegido para cada condición fiscal.
  *
@@ -34,8 +36,13 @@ export function comprobanteInicial(condicionFiscal) {
   return condicionFiscal === 'RI' ? 'afip_b' : 'afip_c'
 }
 
+// ⚠ El nombre de la pantalla sale de la barra lateral. Decía «en Ajustes», y
+// no hay ninguna pantalla que se llame así: es «Facturación AFIP». Este texto
+// lo lee alguien que está por cobrar y descubre que no puede facturar, o sea
+// justo cuando no tiene tiempo de buscar.
 const SIN_AFIP =
-  'Configurá el CUIT y el punto de venta de AFIP en Ajustes para emitir comprobantes fiscales.'
+  `Configurá el CUIT y el punto de venta de AFIP en ${nombreDeRuta('/facturacion')} `
+  + 'para emitir comprobantes fiscales.'
 
 /**
  * Los comprobantes que puede ofrecer el selector, en orden.

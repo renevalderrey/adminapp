@@ -1225,10 +1225,12 @@ const Orders = () => {
                    que las órdenes del proveedor se perdieron. */
                 <div className="py-12 text-center">
                   <Lock className="mx-auto h-7 w-7 text-fg-3" />
-                  <p className="mt-3 font-semibold">No tenés permiso para ver las órdenes de compra.</p>
+                  {/* El código va en el TÍTULO y no solo en la letra chica:
+                      es lo único accionable de las dos frases, y es lo que se
+                      reenvía por mensaje a quien administra la empresa. */}
+                  <p className="mt-3 font-semibold">{faltaElPermiso('ordenes_compra.ver')}</p>
                   <p className="mx-auto mt-1 max-w-[46ch] text-sm text-fg-2">
-                    La cuenta corriente se ve igual. Para ver los pedidos hace falta el permiso
-                    «ordenes_compra.ver».
+                    La cuenta corriente se ve igual: lo que no se ve son las órdenes de compra.
                   </p>
                 </div>
               ) : ordenes.length === 0 ? (

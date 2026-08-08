@@ -144,6 +144,30 @@ export function itemDeRuta(pathname) {
 }
 
 /**
+ * Cómo se llama la pantalla de esa ruta, tal cual figura en la barra lateral.
+ *
+ * ── Por qué existe ──
+ *
+ * El Panel tenía su propia idea de cómo se llaman las otras pantallas: decía
+ * «Ver ventas» para `/ventas` —que en el menú es **Historial de ventas**—, «Ir a
+ * Facturación» para `/facturacion` —que es **Facturación AFIP**— y «Historial
+ * completo» para la misma ruta en otro bloque. Tres nombres para dos pantallas.
+ *
+ * Alguien que lee «Ver ventas» y busca esa pantalla en el menú no la encuentra:
+ * lo que hay es «Historial de ventas». El nombre de una pantalla es cómo se la
+ * busca, y un aviso que la nombra distinto manda a buscar algo que no existe.
+ *
+ * ⚠ Devuelve `null` para una ruta que no está en el menú —`/`, una ruta de
+ * detalle— y quien la use decide qué hacer. Devolver la ruta cruda pondría
+ * «/ventas» en un botón.
+ */
+export function nombreDeRuta(to) {
+  const item = ITEMS.find((i) => i.to === to)
+
+  return item ? item.label : null
+}
+
+/**
  * Filtra la navegación.
  *
  * Tres gates, del más restrictivo al menos:

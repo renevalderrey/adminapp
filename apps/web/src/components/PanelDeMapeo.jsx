@@ -9,6 +9,7 @@ import {
   estadoDeMapeo,
   tonoDeMapeo,
 } from '@/utils/tiendanube'
+import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · El panel de mapeo de una variante
@@ -246,7 +247,7 @@ export default function PanelDeMapeo({ variante, abierto, onOpenChange, onCambio
 
               {!puedeEditar && (
                 <p className="mt-2 text-[12.5px] text-fg-3">
-                  No podés cambiar los mapeos: te falta el permiso para editar la configuración.
+                  No podés cambiar los mapeos: {faltaElPermiso('config.editar').toLowerCase()}.
                 </p>
               )}
             </div>
@@ -358,7 +359,7 @@ export default function PanelDeMapeo({ variante, abierto, onOpenChange, onCambio
 
                 {!puedeEditar && (
                   <p className="mt-2 text-[12.5px] text-fg-3">
-                    No podés crear mapeos: te falta el permiso para editar la configuración.
+                    No podés crear mapeos: {faltaElPermiso('config.editar').toLowerCase()}.
                   </p>
                 )}
               </div>

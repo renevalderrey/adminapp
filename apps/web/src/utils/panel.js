@@ -24,6 +24,8 @@
 //  Lo único que hay que resolver bien es la escala, y esa es una función pura.
 // ════════════════════════════════════════════
 
+import { nombreDeRuta } from '@/components/navegacion'
+
 /**
  * Qué tan urgente es cada aviso.
  *
@@ -142,16 +144,44 @@ function textoDelCertificado(dias) {
  * servidor mandó en vez de desaparecer: un aviso que la pantalla no sabe rotular
  * sigue siendo un aviso, y esconderlo es peor que rotularlo mal.
  */
+/**
+ * El botón del aviso, con el nombre REAL de la pantalla a la que lleva.
+ *
+ * ── Por qué no se escribe a mano ──
+ *
+ * El Panel tenía su propia idea de cómo se llaman las otras pantallas: «Ver
+ * ventas» para `/ventas` —que en el menú es **Historial de ventas**—, «Ir a
+ * Facturación» para `/facturacion` —que es **Facturación AFIP**—, y en otro
+ * bloque «Historial completo» para esa misma ruta. Tres nombres para dos
+ * pantallas.
+ *
+ * Alguien que lee «Ver ventas» y va a buscar esa pantalla en el menú no la
+ * encuentra. El nombre de una pantalla es cómo se la busca.
+ *
+ * Sale de `nombreDeRuta`, o sea de la MISMA lista que dibuja la barra lateral,
+ * así que un aviso nuevo no puede inventar un nombre: si la ruta está en el
+ * menú, dice lo que dice el menú.
+ */
+function accionDelAviso(ruta) {
+  const nombre = nombreDeRuta(ruta)
+
+  // Una ruta que no está en el menú —o un aviso sin ruta— no se queda sin
+  // botón: «Ver» es genérico pero no miente, que es lo que hacía el nombre
+  // inventado.
+  return nombre ? `Ir a ${nombre}` : 'Ver'
+}
+
 export function etiquetaDeAviso(aviso) {
   const cantidad = Number(aviso?.cantidad) || 0
   const alcance = textoDeAlcance(aviso?.alcance)
+  const accion = accionDelAviso(aviso?.ruta)
 
   switch (aviso?.tipo) {
     case 'faltantes':
       return {
         titulo: `${plural(cantidad, 'producto', 'productos')} por debajo del mínimo`,
         alcance,
-        accion: 'Ver faltantes',
+        accion,
       }
 
     case 'sin_cae':
@@ -162,28 +192,28 @@ export function etiquetaDeAviso(aviso) {
         // fuera a buscar doscientas ventas que están bien.
         titulo: `${plural(cantidad, 'venta', 'ventas')} que AFIP rechazó y siguen sin comprobante`,
         alcance,
-        accion: 'Ver ventas',
+        accion,
       }
 
     case 'vencimientos':
       return {
         titulo: `${plural(cantidad, 'lote', 'lotes')} vencen dentro de ${aviso?.dias || 30} días`,
         alcance,
-        accion: 'Ver inventario',
+        accion,
       }
 
     case 'certificado_afip':
       return {
         titulo: textoDelCertificado(aviso?.dias),
         alcance: 'Sin certificado vigente no se puede facturar',
-        accion: 'Ir a Facturación',
+        accion,
       }
 
     default:
       return {
         titulo: cantidad > 0 ? `${cantidad} pendientes` : 'Hay algo para revisar',
         alcance,
-        accion: 'Ver',
+        accion,
       }
   }
 }

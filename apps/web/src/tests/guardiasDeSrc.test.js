@@ -300,3 +300,151 @@ describe('El motivo de un control apagado sale de una sola función', () => {
     expect(ayudante.contenido).toMatch(/\$\{codigo\}/)
   })
 })
+
+// ════════════════════════════════════════════
+//  ── 4 · Ninguna pantalla se inventa el nombre de otra ──
+//
+//  ── El defecto ──
+//
+//  El Panel tenía su propia idea de cómo se llaman las demás: decía «Ver
+//  ventas» para `/ventas` —que en el menú es **Historial de ventas**—, «Ir a
+//  Facturación» para `/facturacion` —que es **Facturación AFIP**— y, en otro
+//  bloque de la misma pantalla, «Historial completo» para esa misma ruta. Tres
+//  nombres para dos pantallas.
+//
+//  Y el punto de venta remataba con «Revisá Ajustes», que **no es ninguna
+//  pantalla**: se llama Facturación AFIP. Ese mensaje aparece en el pie del
+//  cobro, con un cliente enfrente — el peor momento posible para mandar a
+//  alguien a buscar algo que no existe.
+//
+//  El nombre de una pantalla es cómo se la busca. Escrito a mano en cada lugar
+//  que la menciona, se separa: no hace falta que nadie se equivoque, alcanza con
+//  que el menú cambie una vez.
+//
+//  ⚠ Esta guardia mira los nombres COMPLETOS y no palabras sueltas. «Ver
+//  ventas» en una frase no es lo mismo que rotular un botón que lleva a una
+//  pantalla; lo que se prohíbe es escribir el nombre propio de una pantalla en
+//  vez de pedírselo a `nombreDeRuta`.
+// ════════════════════════════════════════════
+
+describe('El nombre de una pantalla sale de la barra lateral', () => {
+  const NAVEGACION = 'components/navegacion.js'
+
+  /** Los nombres tal como los declara el menú. */
+  const NOMBRES_DEL_MENU = (() => {
+    const fuente = ARCHIVOS.find(({ nombre }) => nombre === NAVEGACION)
+    return [...(fuente?.contenido.matchAll(/label:\s*'([^']+)'/g) || [])].map((m) => m[1])
+  })()
+
+  it('la guardia miró de verdad: el menú declara sus pantallas', () => {
+    // Ancla. Si el archivo se moviera o la forma de declarar cambiara, la lista
+    // quedaría vacía y todo lo de abajo pasaría sin mirar nada.
+    expect(NOMBRES_DEL_MENU).toContain('Historial de ventas')
+    expect(NOMBRES_DEL_MENU).toContain('Facturación AFIP')
+    expect(NOMBRES_DEL_MENU.length).toBeGreaterThan(10)
+  })
+
+  it('«Ajustes» no aparece como si fuera una pantalla', () => {
+    // No existe ninguna pantalla con ese nombre. Se busca la frase que manda a
+    // ir ahí —«Revisá Ajustes», «en Ajustes», «a Ajustes»— y no la palabra
+    // suelta, que aparece legítimamente en comentarios sobre la pantalla vieja.
+    const manda = ARCHIVOS.flatMap(({ nombre, contenido }) =>
+      sinComentarios(contenido)
+        .split('\n')
+        .map((linea, i) => ({ archivo: nombre, n: i + 1, texto: linea.trim() }))
+        .filter(({ texto }) => /\b(Revisá|Revisa|en|a|de)\s+Ajustes\b/.test(texto))
+    )
+
+    expect(manda.map(({ archivo, n }) => `${archivo}:${n}`)).toEqual([])
+  })
+
+  it('el nombre de una pantalla no se escribe a mano en el rótulo de un enlace', () => {
+    // Solo dentro de un `<Link>`/`<NavLink>` o de un `to=`: nombrar una pantalla
+    // en un párrafo explicativo es correcto y frecuente. Lo que no puede pasar
+    // es que el TEXTO DEL BOTÓN que lleva ahí esté escrito aparte del menú.
+    const enlaces = ARCHIVOS
+      // El propio menú y la miga de pan SÍ escriben los nombres: son la fuente.
+      .filter(({ nombre }) => nombre !== NAVEGACION)
+      .flatMap(({ nombre, contenido }) => {
+        const limpio = sinComentarios(contenido)
+        const hallazgos = []
+
+        for (const m of limpio.matchAll(/<Link\b[\s\S]{0,400}?<\/Link>/g)) {
+          const texto = m[0]
+          const escritos = NOMBRES_DEL_MENU.filter((label) =>
+            // El nombre, pero NO cuando viene de `nombreDeRuta(...)`.
+            texto.includes(`>${label}`) || texto.includes(` ${label}<`)
+          )
+
+          if (escritos.length) {
+            hallazgos.push(`${nombre}: ${escritos.join(', ')}`)
+          }
+        }
+
+        return hallazgos
+      })
+
+    expect(enlaces).toEqual([])
+  })
+
+  it('y `nombreDeRuta` se usa donde hace falta', () => {
+    // La otra mitad del ancla. Cero hallazgos arriba se lee igual que «no
+    // encontré ningún enlace», y así es como estas guardias se quedan verdes.
+    const usuarios = ARCHIVOS.filter(({ contenido }) => /\bnombreDeRuta\(/.test(contenido))
+
+    expect(usuarios.length).toBeGreaterThan(2)
+  })
+})
+
+// ════════════════════════════════════════════
+//  ── 5 · Un permiso se NOMBRA, no se parafrasea ──
+//
+//  ── El defecto ──
+//
+//  Diez lugares decían «te falta el permiso **para editar la configuración**»,
+//  «el permiso **de gastos**», «el permiso **para hacerlo**». Ninguno decía el
+//  código.
+//
+//  El usuario no puede pedir lo que no puede nombrar: quien administra la
+//  empresa busca `config.editar` en una lista de permisos, no «editar la
+//  configuración». La paráfrasis suena más amable y deja a la persona sin nada
+//  concreto que reenviar por mensaje — que es peor que el código a secas.
+//
+//  Es la misma regla que ya cumplían los `title` de los controles apagados. Lo
+//  que faltaba era que la cumplieran también los párrafos.
+// ════════════════════════════════════════════
+
+describe('Los avisos de permiso dicen el código', () => {
+  const parafrasis = ARCHIVOS
+    .filter(({ nombre }) => nombre !== 'utils/permisos.js')
+    .flatMap(({ nombre, contenido }) =>
+      sinComentarios(contenido)
+        .split('\n')
+        .map((linea, i) => ({ archivo: nombre, n: i + 1, texto: linea.trim() }))
+        // «el permiso para …» / «el permiso de …» seguido de palabras y NO de un
+        // código con punto. `faltaElPermiso('config.editar')` no matchea.
+        .filter(({ texto }) => /permiso\s+(para|de)\s+[a-záéíóúñ]/i.test(texto))
+    )
+
+  it('ninguna pantalla parafrasea el permiso que falta', () => {
+    expect(parafrasis.map(({ archivo, n }) => `${archivo}:${n}`)).toEqual([])
+  })
+
+  it('la guardia miró de verdad: hay avisos de permiso en varias pantallas', () => {
+    // Ancla. Cero paráfrasis se lee igual que «no hay ningún aviso de permiso»,
+    // y así es como esta guardia se queda verde el día que alguien los reescribe.
+    const conAviso = ARCHIVOS.filter(({ contenido }) => /\bfaltaElPermiso\(/.test(contenido))
+
+    expect(conAviso.length).toBeGreaterThan(8)
+  })
+
+  it('la muestra sintética de una paráfrasis SÍ da hallazgo', () => {
+    // Sin esto, un regex que no matchea nada pasa las dos de arriba: la primera
+    // porque no encuentra, la segunda porque mira otra cosa.
+    const mala = "toast.error('No podés: te falta el permiso para editar la configuración.')"
+    const buena = "toast.error(faltaElPermiso('config.editar'))"
+
+    expect(/permiso\s+(para|de)\s+[a-záéíóúñ]/i.test(mala)).toBe(true)
+    expect(/permiso\s+(para|de)\s+[a-záéíóúñ]/i.test(buena)).toBe(false)
+  })
+})

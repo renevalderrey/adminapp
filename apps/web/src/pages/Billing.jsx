@@ -17,6 +17,7 @@ import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { usePermission } from '@/hooks/usePermission'
 import CatalogoDelPos from '@/components/pos/CatalogoDelPos'
 import TicketDelPos from '@/components/pos/TicketDelPos'
+import { nombreDeRuta } from '@/components/navegacion'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Punto de venta
@@ -630,7 +631,12 @@ const Billing = () => {
       setLastInvoice(null)
 
       if (isAfip && !isAfipConfigured) {
-        throw new Error('AFIP no está configurado. Revisá Ajustes.')
+        // ⚠ «Ajustes» NO es ninguna pantalla: se llama «Facturación AFIP», y
+        // el nombre sale de la barra lateral para que no puedan separarse.
+        // Este mensaje aparece en el pie del cobro, con un cliente enfrente:
+        // mandarlo a buscar una pantalla que no existe es el peor momento
+        // posible para hacerlo.
+        throw new Error(`AFIP no está configurado. Revisá ${nombreDeRuta('/facturacion')}.`)
       }
 
       // ── 1. Guardar la venta ──
