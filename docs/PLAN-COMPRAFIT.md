@@ -318,7 +318,7 @@ la spec para que la revises. Nada se implementa sin ese visto bueno.
 | ✔ 6 | Proveedores y Órdenes de compra | |
 | ✔ 7 | TiendaNube | Pantalla nueva completa |
 | ✔ 8 | Panel, Gastos, Equipo, Ajustes AFIP | Sale en diez cortes revertibles. Queda **un paso manual**: el certificado de homologación de ARCA, que es un trámite distinto del de producción |
-| 9 | Repaso de coherencia | Recorrer las doce pantallas juntas y corregir lo que se desalineó |
+| 9 | Repaso de coherencia | **Recorrido hecho, correcciones sin empezar** → [HITO-9-COHERENCIA.md](HITO-9-COHERENCIA.md). El producto de este hito **no son las 49 correcciones: es el documento** — `REGLAS-DISENO.md` se contradice a sí mismo en cuatro lugares, y de ahí salieron las cuatro escuelas |
 
 ---
 
