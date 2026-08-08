@@ -51,6 +51,7 @@ import {
 import { pesos, fechaCorta, fechaDeHoy } from '@/utils/formato';
 import { mensajeDeError } from '@/utils/erroresDeApi';
 import PageHeader from '@/components/PageHeader'
+import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Órdenes de compra
@@ -178,15 +179,11 @@ const LIMITE_DE_PROVEEDORES = 200;
  */
 const FILAS_POR_PAGINA = 50;
 
-/**
- * Cuánto se espera después de la última tecla antes de preguntarle al servidor.
- *
- * La búsqueda la resuelve `GET /suppliers/orders?q=` (FR-009), así que sin
- * rebote escribir «Distribuidora» son trece consultas, y la respuesta que llega
- * última no tiene por qué ser la de la última tecla. Es el mismo número que
- * `pages/Orders.jsx`, que resuelve su buscador contra el mismo tipo de endpoint.
- */
-const ESPERA_DE_BUSQUEDA = 250;
+// El rebote sale de `utils/busqueda.js`, no de acá.
+//
+// La búsqueda la resuelve `GET /suppliers/orders?q=` (FR-009), así que sin
+// rebote escribir «Distribuidora» son trece consultas, y la respuesta que llega
+// última no tiene por qué ser la de la última tecla.
 
 /**
  * Lo que dice el botón de fechas cuando está cerrado (FR-010).

@@ -19,6 +19,7 @@ import {
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { usePermission } from '@/hooks/usePermission'
 import Pagination from '@/components/Pagination'
+import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Historial de ventas
@@ -458,12 +459,13 @@ const InvoicesList = () => {
   // rango: número de comprobante, CAE, el nombre libre de la venta y el de la
   // ficha del cliente.
   //
-  // Con un rebote de 350 ms: sin él, escribir «vega» son cuatro consultas y
-  // cada una es un iLike '%…%' que no usa índice.
+  // Con rebote: sin él, escribir «vega» son cuatro consultas y cada una barre
+  // la tabla. El número sale de `utils/busqueda.js` y no de acá: eran cuatro
+  // distintos en cuatro pantallas, y éste era el más lento de todos.
   useEffect(() => {
     const rebote = setTimeout(() => {
       aplicarFiltro({ q: searchQuery.trim() || undefined })
-    }, 350)
+    }, ESPERA_DE_BUSQUEDA)
 
     return () => clearTimeout(rebote)
   }, [searchQuery])

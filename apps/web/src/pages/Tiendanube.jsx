@@ -33,6 +33,7 @@ import {
   tonoDeMapeo,
 } from '@/utils/tiendanube'
 import { faltaElPermiso } from '@/utils/permisos'
+import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · /tiendanube
@@ -432,7 +433,7 @@ export default function Tiendanube() {
     const temporizador = setTimeout(() => {
       setBusqueda(texto.trim())
       setPagina(1)
-    }, 300)
+    }, ESPERA_DE_BUSQUEDA)
 
     return () => clearTimeout(temporizador)
   }, [texto])
@@ -566,8 +567,8 @@ export default function Tiendanube() {
 
   const quitarMapeo = async (variante) => {
     const ok = await confirm(
-      `¿Quitar el mapeo de "${variante.mapeo?.product_name}" con la variante ` +
-      `"${variante.nombre_producto}${variante.nombre_variante ? ` · ${variante.nombre_variante}` : ''}"? ` +
+      `¿Quitar el mapeo de «${variante.mapeo?.product_name}» con la variante ` +
+      `«${variante.nombre_producto}${variante.nombre_variante ? ` · ${variante.nombre_variante}` : ''}»? ` +
       `La variante deja de recibir stock y vuelve a «Sin mapear».`,
       { verbo: 'Quitar mapeo' }
     )

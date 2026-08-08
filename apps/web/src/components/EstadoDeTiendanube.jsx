@@ -181,7 +181,7 @@ export default function EstadoDeTiendanube({
     const desde = tienda?.punto_de_venta?.name || 'la sucursal actual'
 
     const ok = await confirm(
-      `El stock que publica tu tienda va a pasar a salir de "${destino.name}" en vez de "${desde}". ` +
+      `El stock que publica tu tienda va a pasar a salir de «${destino.name}» en vez de «${desde}». ` +
       `Se vuelven a empujar ${mapeados} variantes mapeadas, una por una.`,
       // No es rojo: cambiar de sucursal se deshace volviendo a cambiarla.
       { verbo: 'Cambiar sucursal' }

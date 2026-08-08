@@ -1501,3 +1501,60 @@ describe('El contador de órdenes dice cuántas hay, no cuántas entraron', () =
     expect(screen.queryByText(/Mostrando/)).toBeNull()
   })
 })
+
+// ════════════════════════════════════════════
+//  Hito 9 · «Orden» y «pedido» para la misma cosa
+//
+//  La ficha del proveedor tenía un encabezado que decía «Órdenes de compra» y,
+//  diez píxeles más abajo, un botón que decía «Registrar pedido». El diálogo que
+//  abría se titulaba «Registrar pedido», el aviso de éxito decía «Pedido
+//  registrado», y la pantalla `/ordenes-compra` —y el menú— lo llaman orden.
+//
+//  Dos palabras para un solo objeto hacen buscar la diferencia que no existe:
+//  quien lee las dos asume que un pedido y una orden son cosas distintas, y se
+//  pone a averiguar cuál es cuál.
+//
+//  ⚠ **No se toca la otra acepción.** «En su próximo pedido al sistema» —el
+//  request HTTP, en Equipo y en Sesiones— es otra palabra que se escribe igual,
+//  y cambiarla ahí no arreglaría nada.
+// ════════════════════════════════════════════
+
+describe('La ficha del proveedor usa UNA sola palabra para la orden de compra', () => {
+  it('el botón dice «orden», igual que el encabezado de la sección', async () => {
+    await montar()
+    await elegir('Distribuidora Norte')
+
+    // Las dos cosas que estaban en desacuerdo, afirmadas juntas: es el desacuerdo
+    // lo que era el defecto, no cada texto por separado.
+    expect(screen.getByRole('heading', { name: 'Órdenes de compra' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Registrar orden/ })).toBeInTheDocument()
+  })
+
+  it('ningún botón de la ficha dice «pedido»', async () => {
+    // Barre TODOS los botones y no solo el que se corrigió: el diálogo tenía su
+    // propio «Registrar pedido» en el pie, y corregir uno solo dejaba la
+    // pantalla diciendo las dos cosas igual.
+    await montar()
+    await elegir('Distribuidora Norte')
+
+    const conPedido = screen.getAllByRole('button')
+      .map((b) => b.textContent.trim())
+      .filter((t) => /\bpedidos?\b/i.test(t))
+
+    expect(conPedido).toEqual([])
+  })
+
+  it('y el diálogo que abre también dice «orden»', async () => {
+    await montar()
+    await elegir('Distribuidora Norte')
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Registrar orden/ }))
+    })
+
+    const dialogo = dialogoTitulado('Registrar orden de compra')
+
+    expect(dialogo).toBeDefined()
+    expect(within(dialogo).getByRole('button', { name: /Registrar orden/ })).toBeInTheDocument()
+  })
+})

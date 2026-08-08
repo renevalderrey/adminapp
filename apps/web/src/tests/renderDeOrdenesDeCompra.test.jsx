@@ -3,6 +3,7 @@ import { render, screen, within, fireEvent, act } from '@testing-library/react'
 import { toast } from 'sonner'
 import api from '@/services/api'
 import useStore from '@/store/useStore'
+import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
 import PurchaseOrders from '@/pages/PurchaseOrders'
 
 // ════════════════════════════════════════════
@@ -334,8 +335,14 @@ async function montar({
  * único que se estaría afirmando es qué dibuja la pantalla con la página
  * anterior todavía cargada, que es justo el estado intermedio que no importa.
  */
-/** Lo que espera el buscador de la pantalla antes de consultar (`PurchaseOrders.jsx`). */
-const ESPERA_DEL_REBOTE = 250
+// ⚠ El rebote se IMPORTA, no se copia.
+//
+// Estaba escrito acá como `250`, y el día que las cuatro pantallas unificaron su
+// rebote en `utils/busqueda.js` el valor real pasó a 300: el test esperaba 300
+// —250 más el margen de 50— o sea justo el borde, y habría empezado a fallar de
+// a ratos sin que nadie entendiera por qué.
+//
+// Un número copiado de un archivo a otro es un número que se separa.
 
 async function buscar(texto) {
   await act(async () => {
@@ -351,7 +358,7 @@ async function buscar(texto) {
   // SIGUIENTE arranca con el reloj trucado. El síntoma que aparece es «Timers
   // are not mocked» en una prueba que no tiene nada que ver, y averiguar de
   // dónde salió cuesta más que los tres segundos.
-  await act(async () => { await new Promise((listo) => setTimeout(listo, ESPERA_DEL_REBOTE + 50)) })
+  await act(async () => { await new Promise((listo) => setTimeout(listo, ESPERA_DE_BUSQUEDA + 80)) })
 }
 
 /** El panel lateral, mientras está abierto. */

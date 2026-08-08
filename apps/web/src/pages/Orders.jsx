@@ -62,6 +62,7 @@ import { pesos, fechaCorta, fechaDeHoy } from '@/utils/formato'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 import { armarHoja, nombreDelArchivo } from '@/utils/exportarProveedores'
 import { faltaElPermiso } from '@/utils/permisos'
+import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Proveedores y su cuenta corriente
@@ -179,16 +180,15 @@ const MOVIMIENTOS_POR_PAGINA = 25
 /** Las órdenes del proveedor elegido. Son pocas y se dibujan enteras. */
 const LIMITE_DE_ORDENES = 50
 
-/**
- * Cuánto se espera después de la última tecla antes de preguntarle al servidor.
- *
- * La búsqueda por nombre la resuelve `GET /suppliers?q=` (FR-059), que compara
- * **sin acentos y sin distinguir mayúsculas** con un `translate` en SQL. Filtrar
- * en el navegador obligaría a escribir esa normalización por segunda vez —y a
- * buscar solo dentro de la página cargada—: escribir «almacen» dejaría de
- * encontrar «Almacén Central» el día que la lista pase de 200.
- */
-const ESPERA_DE_BUSQUEDA = 250
+// El rebote sale de `utils/busqueda.js`, no de acá. Eran cuatro números
+// distintos en cuatro pantallas —250, 250, 300 y 350—, y la diferencia no se
+// nota mirando una sola: se nota al pasar de una a otra.
+//
+// La búsqueda por nombre la resuelve `GET /suppliers?q=` (FR-059), que compara
+// **sin acentos y sin distinguir mayúsculas** con un `translate` en SQL. Filtrar
+// en el navegador obligaría a escribir esa normalización por segunda vez —y a
+// buscar solo dentro de la página cargada—: escribir «almacen» dejaría de
+// encontrar «Almacén Central» el día que la lista pase de 200.
 
 /** Botón secundario del sistema: 34px, borde, fondo de superficie. */
 const SECUNDARIO =
@@ -934,9 +934,9 @@ const Orders = () => {
       setLineasDelPedido([lineaVacia()])
       setNotasDelPedido('')
       await recargarCuenta()
-      toast.success('Pedido registrado.')
+      toast.success('Orden de compra registrada.')
     } catch (err) {
-      toast.error(mensajeDeError(err, 'No se pudo registrar el pedido.'))
+      toast.error(mensajeDeError(err, 'No se pudo registrar la orden de compra.'))
     }
   }
 
@@ -1026,7 +1026,7 @@ const Orders = () => {
               <p className="mx-auto mt-1 max-w-[36ch] text-sm text-fg-2">
                 {filtro
                   ? 'Probá con parte del nombre, o borrá la búsqueda para ver la lista completa.'
-                  : 'Cargá el primero con «Nuevo proveedor» y desde ahí se le registran pedidos y pagos.'}
+                  : 'Cargá el primero con «Nuevo proveedor» y desde ahí se le registran órdenes de compra y pagos.'}
               </p>
             </div>
           ) : (
@@ -1122,7 +1122,7 @@ const Orders = () => {
                     </BotonDeFila>
 
                     {/* T1246. Va acá y no entre las acciones de la derecha: es
-                        destructivo y no compite con «Registrar pedido» ni con
+                        destructivo y no compite con «Registrar orden» ni con
                         «Registrar pago», que son lo que se hace todos los días. */}
                     <BotonDeFila
                       title={
@@ -1149,7 +1149,7 @@ const Orders = () => {
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => setPedidoAbierto(true)} className={SECUNDARIO}>
                     <Truck className="h-3.5 w-3.5 text-fg-3" />
-                    Registrar pedido
+                    Registrar orden
                   </button>
                   <button type="button" onClick={() => setPagoAbierto(true)} className={SECUNDARIO}>
                     <CreditCard className="h-3.5 w-3.5 text-fg-3" />
@@ -1238,7 +1238,7 @@ const Orders = () => {
                   <ClipboardList className="mx-auto h-7 w-7 text-fg-3" />
                   <p className="mt-3 font-semibold">Este proveedor no tiene órdenes de compra.</p>
                   <p className="mx-auto mt-1 max-w-[46ch] text-sm text-fg-2">
-                    Con «Registrar pedido» se carga lo que le pediste, y al recibirlo se actualiza el stock.
+                    Con «Registrar orden» se carga lo que le pediste, y al recibirla se actualiza el stock.
                   </p>
                 </div>
               ) : (
@@ -1356,7 +1356,7 @@ const Orders = () => {
                   <ClipboardList className="mx-auto h-7 w-7 text-fg-3" />
                   <p className="mt-3 font-semibold">Todavía no hay movimientos en esta cuenta.</p>
                   <p className="mx-auto mt-1 max-w-[46ch] text-sm text-fg-2">
-                    Recibir un pedido carga la deuda y registrar un pago la descuenta. Los dos aparecen acá.
+                    Recibir una orden carga la deuda y registrar un pago la descuenta. Los dos aparecen acá.
                   </p>
                 </div>
               ) : (
@@ -1575,11 +1575,16 @@ const Orders = () => {
         </DialogContent>
       </Dialog>
 
-      {/* ── Registrar pedido ── */}
+      {/* ── Registrar orden de compra ──
+          ⚠ Se dice «orden» y NO «pedido». Es el mismo objeto que la pantalla
+          `/ordenes-compra` y que el menú llaman «Órdenes de compra», y hasta
+          acá esta ficha lo llamaba «pedido» a diez píxeles de un encabezado que
+          decía «Órdenes de compra». Dos palabras para una cosa hacen buscar la
+          diferencia que no existe. */}
       <Dialog open={pedidoAbierto} onOpenChange={setPedidoAbierto}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Registrar pedido — {proveedor?.name}</DialogTitle>
+            <DialogTitle>Registrar orden de compra — {proveedor?.name}</DialogTitle>
           </DialogHeader>
           <form onSubmit={registrarPedido} className="space-y-4">
             <div className="space-y-2">
@@ -1675,7 +1680,7 @@ const Orders = () => {
               <Input
                 value={notasDelPedido}
                 onChange={(e) => setNotasDelPedido(e.target.value)}
-                placeholder="Ej: pedido mensual"
+                placeholder="Ej: reposición mensual"
               />
             </div>
 
@@ -1683,7 +1688,7 @@ const Orders = () => {
               <Button variant="outline" className="flex-1" type="button" onClick={() => setPedidoAbierto(false)}>
                 Cancelar
               </Button>
-              <Button className="flex-1" type="submit">Registrar pedido</Button>
+              <Button className="flex-1" type="submit">Registrar orden</Button>
             </div>
           </form>
         </DialogContent>

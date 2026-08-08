@@ -448,3 +448,124 @@ describe('Los avisos de permiso dicen el código', () => {
     expect(/permiso\s+(para|de)\s+[a-záéíóúñ]/i.test(buena)).toBe(false)
   })
 })
+
+// ════════════════════════════════════════════
+//  ── 6 · Las comillas de un texto que lee una persona son « » ──
+//
+//  Cuatro mensajes rodeaban un nombre con comillas rectas —`"Depósito Norte"`—
+//  mientras el resto de la aplicación usa las angulares: «Registrar orden»,
+//  «proveedores.editar», «Nuevo proveedor».
+//
+//  No es tipografía por gusto. Los cuatro casos son confirmaciones de acciones
+//  que borran o mueven cosas, o sea el momento en que alguien lee con más
+//  atención, y son justo los que se ven distintos del resto.
+//
+//  ⚠ **Las comillas rectas de un CSV o de un atributo HTML no se tocan**: ahí
+//  son sintaxis, no puntuación. La guardia mira solo texto que va a una
+//  persona, y por eso busca el patrón `"${…}"` —un valor rodeado de comillas
+//  dentro de una plantilla— y excluye los cuatro archivos que generan CSV o
+//  HTML.
+// ════════════════════════════════════════════
+
+describe('Las comillas de un mensaje son angulares', () => {
+  // Generan CSV o HTML: ahí la comilla recta es sintaxis obligatoria.
+  const GENERAN_TEXTO_DE_MAQUINA = [
+    'pages/Reports.jsx',
+    'utils/pegadoDeLista.js',
+    'utils/impresionInventario.js',
+    'utils/printInvoice.js',
+  ]
+
+  const rectas = ARCHIVOS
+    .filter(({ nombre }) => !GENERAN_TEXTO_DE_MAQUINA.includes(nombre))
+    .flatMap(({ nombre, contenido }) =>
+      sinComentarios(contenido)
+        .split('\n')
+        .map((linea, i) => ({ archivo: nombre, n: i + 1, texto: linea.trim() }))
+        .filter(({ texto }) => /"\$\{/.test(texto))
+    )
+
+  it('ningún mensaje rodea un valor con comillas rectas', () => {
+    expect(rectas.map(({ archivo, n }) => `${archivo}:${n}`)).toEqual([])
+  })
+
+  it('la guardia miró de verdad: las angulares se usan en varias pantallas', () => {
+    // Ancla. Cero hallazgos se lee igual que «no encontré ningún archivo».
+    const conAngulares = ARCHIVOS.filter(({ contenido }) => /«\$\{/.test(contenido))
+
+    expect(conAngulares.length).toBeGreaterThan(2)
+  })
+
+  it('los archivos que generan CSV o HTML siguen usando comillas rectas', () => {
+    // El contra-caso, y el que impide que alguien «corrija» un CSV: ahí la
+    // comilla recta es lo que separa las columnas, y cambiarla rompe el archivo
+    // que abre el contador.
+    const deMaquina = ARCHIVOS.filter(({ nombre }) => GENERAN_TEXTO_DE_MAQUINA.includes(nombre))
+
+    expect(deMaquina.length).toBe(GENERAN_TEXTO_DE_MAQUINA.length)
+    expect(deMaquina.some(({ contenido }) => /"\$\{/.test(contenido))).toBe(true)
+  })
+})
+
+// ════════════════════════════════════════════
+//  ── 7 · Un solo rebote de buscador ──
+//
+//  Había cuatro, escritos por separado: 250 ms en Proveedores, 250 en Órdenes
+//  de compra, 300 en TiendaNube y 350 en Historial de ventas. Ninguno estaba
+//  mal, y por eso nadie los miró: **la diferencia no se nota mirando una sola
+//  pantalla, se nota al pasar de una a otra**, que es lo que hace alguien que
+//  usa el sistema todo el día.
+//
+//  Un buscador que responde a distinta velocidad según la pantalla se lee como
+//  que unas están más pesadas que otras.
+//
+//  ⚠ Inventario NO entra: filtra en el navegador sobre lo que ya tiene cargado,
+//  así que no hay pedido que rebotar y esperar sería demora pura.
+// ════════════════════════════════════════════
+
+describe('El rebote del buscador sale de un solo lugar', () => {
+  const FUENTE = 'utils/busqueda.js'
+
+  it('ninguna pantalla declara su propio ESPERA_DE_BUSQUEDA', () => {
+    const propias = ARCHIVOS
+      .filter(({ nombre }) => nombre !== FUENTE)
+      .flatMap(({ nombre, contenido }) =>
+        sinComentarios(contenido)
+          .split('\n')
+          .map((linea, i) => ({ archivo: nombre, n: i + 1, texto: linea.trim() }))
+          .filter(({ texto }) => /^(const|let)\s+ESPERA_DE_BUSQUEDA\s*=/.test(texto))
+      )
+
+    expect(propias.map(({ archivo, n }) => `${archivo}:${n}`)).toEqual([])
+  })
+
+  it('ningún `setTimeout` de búsqueda lleva el número escrito a mano', () => {
+    // El otro camino, y el que tenían tres de las cuatro: no declarar constante
+    // y poner el número directo en el `setTimeout`. Se buscan los milisegundos
+    // sueltos de dos o tres cifras, que es la forma que tomaba.
+    const aMano = ARCHIVOS
+      .filter(({ nombre }) => nombre !== FUENTE)
+      .flatMap(({ nombre, contenido }) => {
+        const limpio = sinComentarios(contenido)
+
+        return [...limpio.matchAll(/setBusqueda|setFiltro|aplicarFiltro/g)].length === 0
+          ? []
+          : limpio
+            .split('\n')
+            .map((linea, i) => ({ archivo: nombre, n: i + 1, texto: linea.trim() }))
+            .filter(({ texto }) => /\}, [23]\d\d\)/.test(texto))
+      })
+
+    expect(aMano.map(({ archivo, n }) => `${archivo}:${n}`)).toEqual([])
+  })
+
+  it('la guardia miró de verdad: la fuente existe y la usan varias pantallas', () => {
+    const fuente = ARCHIVOS.find(({ nombre }) => nombre === FUENTE)
+
+    expect(fuente).toBeDefined()
+    expect(fuente.contenido).toMatch(/export const ESPERA_DE_BUSQUEDA = \d+/)
+
+    const usuarios = ARCHIVOS.filter(({ contenido }) => /from '@\/utils\/busqueda'/.test(contenido))
+    expect(usuarios.length).toBeGreaterThanOrEqual(4)
+  })
+})
