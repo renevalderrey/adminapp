@@ -11,13 +11,14 @@ import {
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { Can } from '@/components/Can'
 import {
-  Scale, Plus, Trash2, Eye, EyeOff, FileSpreadsheet, Loader2, TrendingDown, Info,
+  Scale, Plus, Trash2, Eye, EyeOff, FileSpreadsheet, Loader2, TrendingDown, Info, ClipboardList,
 } from 'lucide-react'
 // El `pesos` propio de esta pantalla NO era el de siempre: mostraba los
 // centavos solo si el precio los tenía. Esa diferencia es deliberada —ver
 // `pesosDeLista` en utils/formato.js— y por eso se mudó con nombre propio en
 // vez de aplanarse contra `pesos`.
 import { pesosDeLista } from '@/utils/formato'
+import { mensajeDeError } from '@/utils/erroresDeApi'
 
 // ════════════════════════════════════════════
 //  Comparador de proveedores
@@ -39,7 +40,23 @@ const BOTON_SECUNDARIO =
 export default function Comparador() {
   const [listas, setListas] = useState([])
   const [comparacion, setComparacion] = useState(null)
-  const [cargando, setCargando] = useState(false)
+  // Arranca en `true` para que el PRIMER pintado —antes de que corra el efecto—
+  // ya muestre el spinner y no el vacío.
+  //
+  // ⚠ Es la mitad defensiva, y conviene saber que **ningún test la puede
+  // verificar**: `cargar()` hace `setCargando(true)` en su primera línea, así
+  // que en jsdom, con el render envuelto en `act`, el valor inicial nunca se
+  // observa. Se comprobó por mutación: volverlo a `false` deja los siete casos
+  // en verde.
+  //
+  // Lo que sí carga el peso —y sí se pone en rojo— es **el orden de las tres
+  // ramas** de más abajo: cargando, después vacío, después datos. Al revés, la
+  // pantalla afirmaba «Todavía no cargaste ninguna lista» al lado de su propio
+  // spinner, durante toda la request.
+  //
+  // `pages/Expenses.jsx` ya lo había resuelto, con siete líneas de comentario
+  // explicando el caso. La corrección existía y no se había llevado a las otras.
+  const [cargando, setCargando] = useState(true)
   const [dialogoAbierto, setDialogoAbierto] = useState(false)
 
   const { confirm, ConfirmDialog } = useConfirmDialog()
@@ -55,7 +72,7 @@ export default function Comparador() {
       setListas(resListas.data?.data || [])
       setComparacion(resComp.data?.data || null)
     } catch (err) {
-      toast.error(err.response?.data?.error || err.message)
+      toast.error(mensajeDeError(err, 'No se pudieron cargar las listas de proveedores.'))
     } finally {
       setCargando(false)
     }
@@ -68,7 +85,7 @@ export default function Comparador() {
       await api.put(`/comparador/listas/${lista.id}`, { activa: !lista.activa })
       cargar()
     } catch (err) {
-      toast.error(err.response?.data?.error || err.message)
+      toast.error(mensajeDeError(err, 'No se pudo cambiar el estado de la lista.'))
     }
   }
 
@@ -80,7 +97,7 @@ export default function Comparador() {
       await api.delete(`/comparador/listas/${lista.id}`)
       cargar()
     } catch (err) {
-      toast.error(err.response?.data?.error || err.message)
+      toast.error(mensajeDeError(err, 'No se pudo eliminar la lista.'))
     }
   }
 
@@ -146,10 +163,31 @@ export default function Comparador() {
             Exportar
           </button>
 
-          <Can codigo="proveedores.crear">
+          {/* ⚠ Sin el permiso el botón se DESHABILITA con su motivo, no se esconde.
+              Escondiéndolo, el estado vacío de abajo le decía al usuario «Pegá la
+              lista de precios que te manda cada proveedor» y le sacaba de la
+              pantalla el único botón que hace eso: la pantalla le pedía algo y
+              le escondía cómo hacerlo. Es la llamada de soporte «a mí no me
+              sale». La regla está en REGLAS-DISENO → «Controles apagados». */}
+          <Can
+            codigo="proveedores.crear"
+            fallback={
+              <button
+                disabled
+                title="Te falta el permiso «proveedores.crear». Pediselo a quien administra la empresa."
+                className="inline-flex h-[34px] items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px]
+                           font-semibold text-white shadow-nivel-1
+                           disabled:cursor-not-allowed disabled:opacity-55"
+              >
+                <Plus className="h-4 w-4" />
+                Cargar lista
+              </button>
+            }
+          >
             <button
               className="inline-flex h-[34px] items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px]
-                         font-semibold text-white shadow-nivel-1 transition-colors hover:bg-brand-dark"
+                         font-semibold text-white shadow-nivel-1 transition-colors hover:bg-brand-dark
+                         focus-visible:border-brand focus-visible:outline-none"
               onClick={() => setDialogoAbierto(true)}
             >
               <Plus className="h-4 w-4" />
@@ -170,9 +208,19 @@ export default function Comparador() {
           {cargando && <Loader2 className="h-4 w-4 animate-spin text-fg-3" />}
         </div>
 
-        {listas.length === 0 ? (
+        {cargando ? (
+          /* ⚠ La carga va ANTES del vacío, y ése es el orden que fija
+             REGLAS-DISENO → «Carga». Al revés, la pantalla afirma «Todavía no
+             cargaste ninguna lista» mientras las listas viajan por la red: le
+             dice al usuario que su sistema está vacío justo cuando se está
+             formando la primera impresión. */
+          <div className="grid place-items-center py-16">
+            <Loader2 className="h-5 w-5 animate-spin text-fg-3" />
+          </div>
+        ) : listas.length === 0 ? (
           <div className="py-12 text-center">
-            <p className="font-semibold">Todavía no cargaste ninguna lista.</p>
+            <ClipboardList className="mx-auto h-7 w-7 text-fg-3" />
+            <p className="mt-3 font-semibold">Todavía no cargaste ninguna lista.</p>
             <p className="mx-auto mt-1 max-w-[46ch] text-sm text-fg-2">
               Pegá la lista de precios que te manda cada proveedor. Con dos o más
               podés compararlas.
@@ -414,7 +462,7 @@ function DialogoCargarLista({ open, onOpenChange, onCargada }) {
       onOpenChange(false)
       onCargada?.()
     } catch (err) {
-      toast.error(err.response?.data?.error || err.message)
+      toast.error(mensajeDeError(err, 'No se pudo guardar la lista.'))
     } finally {
       setGuardando(false)
     }

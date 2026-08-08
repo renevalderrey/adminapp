@@ -1,5 +1,31 @@
 const logger = require('../utils/logger');
 
+/**
+ * Lo que el usuario lee cuando le falta un permiso.
+ *
+ * ── Por que nombra el codigo del permiso ──
+ *
+ * Porque el usuario no puede pedir lo que no puede nombrar. «No tenes permiso
+ * para esto» deja a alguien parado con un pedido de compra armado y sin nada
+ * concreto que decirle a quien administra la empresa; «te falta el permiso
+ * ordenes_compra.crear» se reenvia por mensaje y se resuelve en un minuto.
+ *
+ * ── Y por que tutea rioplatense ──
+ *
+ * Decia «No tienes permiso», que es la unica forma verbal en segunda persona de
+ * toda la aplicacion que no es rioplatense. No es un detalle de gusto: en una
+ * pantalla donde todo lo demas dice «Cargá», «Pegá» y «Revisá», la frase que
+ * aparece cuando algo sale mal era la unica que sonaba de otro producto.
+ *
+ * ⚠ El campo `error` sigue siendo `FORBIDDEN`, y eso es a proposito: es el
+ * codigo que el cliente puede comparar. Lo que NO puede pasar es que una
+ * pantalla lo muestre crudo — para eso esta `mensajeDeError` de
+ * `utils/erroresDeApi.js`, que distingue un codigo de maquina de un mensaje.
+ */
+function mensajeDeFalta(codigo) {
+  return `Te falta el permiso «${codigo}». Pediselo a quien administra la empresa.`;
+}
+
 function checkPermission(codigo) {
   return (req, res, next) => {
     if (process.env.BYPASS_AUTH === 'true') {
@@ -19,7 +45,7 @@ function checkPermission(codigo) {
 
       return res.status(403).json({
         error: 'FORBIDDEN',
-        message: `No tienes permiso para realizar esta acción (${codigo})`,
+        message: mensajeDeFalta(codigo),
       });
     }
 
@@ -39,9 +65,10 @@ function checkPermission(codigo) {
 
     return res.status(403).json({
       error: 'FORBIDDEN',
-      message: `No tienes permiso para realizar esta acción (${codigo})`,
+      message: mensajeDeFalta(codigo),
     });
   };
 }
 
 module.exports = checkPermission;
+module.exports.mensajeDeFalta = mensajeDeFalta;
