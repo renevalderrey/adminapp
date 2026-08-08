@@ -178,7 +178,7 @@ export default function GastosVariables() {
             onClick={() => setMes(desplazarMes(mes, 1))}
             className="grid h-8 w-8 place-items-center rounded-lg border border-border bg-surface
                        text-fg-2 transition-colors hover:bg-surface-3
-                       disabled:pointer-events-none disabled:opacity-50"
+                       disabled:cursor-not-allowed disabled:opacity-50"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -277,7 +277,7 @@ export default function GastosVariables() {
             disabled={guardando}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3.5 text-[13px]
                        font-semibold text-white shadow-nivel-1 transition-colors hover:bg-brand-dark
-                       disabled:pointer-events-none disabled:opacity-60"
+                       disabled:cursor-not-allowed disabled:opacity-60"
           >
             {guardando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Agregar

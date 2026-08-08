@@ -530,7 +530,7 @@ function FacturacionDeReferencia({ settings }) {
           type="submit"
           disabled={guardando}
           className="inline-flex h-9 items-center rounded-lg border border-border bg-surface px-3 text-[13px]
-                     font-medium transition-colors hover:bg-surface-3 disabled:pointer-events-none disabled:opacity-60"
+                     font-medium transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Guardar
         </button>

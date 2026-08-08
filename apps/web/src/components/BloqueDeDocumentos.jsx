@@ -301,7 +301,7 @@ export default function BloqueDeDocumentos({ proveedorId, documentos = [], onCam
             title={puedeEditar ? 'Agregar el documento' : 'Necesitás el permiso «proveedores.editar»'}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-semibold
                        text-white shadow-nivel-1 transition-colors hover:bg-brand-dark
-                       disabled:pointer-events-none disabled:opacity-50"
+                       disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus className="h-4 w-4" />
             Agregar

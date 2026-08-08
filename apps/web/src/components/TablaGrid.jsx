@@ -122,7 +122,21 @@ export function BotonDeFila({ onClick, className, children, ...props }) {
       className={cn(
         'grid h-[29px] w-[29px] place-items-center rounded-lg text-fg-3',
         'transition-colors hover:bg-surface-3 hover:text-foreground',
-        'disabled:pointer-events-none disabled:opacity-50',
+        // ⚠ `disabled:cursor-not-allowed` y NO `disabled:pointer-events-none`.
+        //
+        // `pointer-events-none` saca al elemento del hit-testing, y con eso el
+        // navegador **nunca muestra el `title`**. Este repositorio pone en el
+        // `title` justamente el MOTIVO por el que la acción está apagada — «No
+        // se puede anular: el comprobante tiene CAE y sigue vigente ante ARCA»,
+        // «Necesitás el permiso proveedores.editar»—, así que la mitad de esas
+        // explicaciones eran inalcanzables, en seis pantallas.
+        //
+        // O sea: el comentario de acá arriba pedía deshabilitar CON el motivo
+        // en vez de esconder, y una clase lo derrotaba en silencio.
+        //
+        // Y era redundante: el atributo `disabled` ya bloquea el clic. Lo único
+        // que agregaba `pointer-events-none` era romper el tooltip.
+        'disabled:cursor-not-allowed disabled:opacity-50',
         '[&_svg]:h-[15px] [&_svg]:w-[15px]',
         className
       )}

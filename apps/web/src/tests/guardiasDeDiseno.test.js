@@ -1001,3 +1001,86 @@ describe('Ninguna pantalla lee settings.fixed_expenses_total', () => {
     expect(hallazgos).toEqual([])
   })
 })
+
+// ════════════════════════════════════════════
+//  Un control apagado tiene que poder decir POR QUÉ
+//
+//  `disabled:pointer-events-none` saca al elemento del hit-testing, y con eso el
+//  navegador **nunca muestra el `title`**. Este repositorio pone en el `title`
+//  justamente el motivo por el que la acción está apagada:
+//
+//    · «No se puede anular: el comprobante tiene CAE y sigue vigente ante ARCA»
+//    · «Necesitás el permiso proveedores.editar»
+//
+//  Estaba en veinte lugares, y el peor era `components/TablaGrid.jsx`, que lo
+//  multiplicaba por las seis pantallas que usan `BotonDeFila`. Arriba de esa
+//  línea hay un comentario de tres líneas pidiendo que la acción se deshabilite
+//  **con el motivo** en vez de esconderse: una clase lo derrotaba en silencio.
+//
+//  Y era redundante: el atributo `disabled` ya bloquea el clic. Lo único que
+//  agregaba era romper el tooltip.
+//
+//  ── Qué queda afuera, y por qué ──
+//
+//  `components/ui/` es shadcn sin tocar: se actualiza desde afuera y no lleva
+//  `title` explicativo. `components/pos/` son controles del mostrador —el
+//  stepper de cantidad, los segmentos de pago— que se apagan por estado y no por
+//  permiso, y ninguno explica nada en un `title`; además el POS es la pantalla
+//  con más presión de tiempo y ahí `pointer-events-none` evita un clic doble en
+//  un botón que ya está inerte.
+// ════════════════════════════════════════════
+
+describe('Un control apagado no se queda sin explicación', () => {
+  // La lista completa, sin las dos carpetas excluidas. No se reusa `ARCHIVOS`
+  // porque `NOMBRES` incluye `components/pos/`.
+  const REVISADOS = ARCHIVOS.filter(
+    (a) => a.existe && !a.nombre.startsWith('components/pos/') && !a.nombre.startsWith('components/ui/')
+  )
+
+  it('la guardia leyó los archivos que dice revisar', () => {
+    // El ancla. `[].filter(…)` da `[]` y `expect([]).toEqual([])` pasa: si la
+    // lista se vaciara —un renombre de carpeta, un filtro que se afloja— el caso
+    // de abajo quedaría en verde sin haber mirado nada.
+    expect(REVISADOS.length).toBeGreaterThan(20)
+    expect(REVISADOS.map((a) => a.nombre)).toContain('components/TablaGrid.jsx')
+  })
+
+  it('ningún componente saca del hit-testing un control que puede tener título', () => {
+    const hallazgos = REVISADOS.flatMap(({ nombre, contenido }) =>
+      lineasQueMatchean(contenido, /disabled:pointer-events-none/).map(
+        ({ n, texto }) => `${nombre}:${n} — ${texto}`
+      )
+    )
+
+    expect(hallazgos).toEqual([])
+  })
+
+  it('el detector encuentra el patrón cuando está: no pasa por vacío', () => {
+    // Muestra sintética. Sin esto, la única forma de saber si el detector sirve
+    // era que alguien reintrodujera el defecto de verdad — y un detector que
+    // solo se corre sobre un árbol limpio pasa en verde tanto si sabe buscar
+    // como si no.
+    const MALA = `
+      <button
+        disabled={!puedeAnular}
+        title="No se puede anular: el comprobante tiene CAE"
+        className="disabled:pointer-events-none disabled:opacity-50"
+      />
+    `
+
+    expect(lineasQueMatchean(MALA, /disabled:pointer-events-none/)).toHaveLength(1)
+  })
+
+  it('y NO marca la forma correcta', () => {
+    // Una guardia que marca todo es tan inútil como una que no marca nada.
+    const BUENA = `
+      <button
+        disabled={!puedeAnular}
+        title="No se puede anular: el comprobante tiene CAE"
+        className="disabled:cursor-not-allowed disabled:opacity-50"
+      />
+    `
+
+    expect(lineasQueMatchean(BUENA, /disabled:pointer-events-none/)).toEqual([])
+  })
+})

@@ -243,13 +243,13 @@ function Dato({ etiqueta, children }) {
 const SECUNDARIO =
   'inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 ' +
   'text-[13px] font-medium transition-colors hover:bg-surface-3 ' +
-  'disabled:pointer-events-none disabled:opacity-50'
+  'disabled:cursor-not-allowed disabled:opacity-50'
 
 /** Botón principal del pie: turquesa, 36px. */
 const PRINCIPAL =
   'inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-4 text-[13px] font-semibold ' +
   'text-white shadow-nivel-1 transition-colors hover:bg-brand-dark ' +
-  'disabled:pointer-events-none disabled:opacity-50'
+  'disabled:cursor-not-allowed disabled:opacity-50'
 
 /** Campo de formulario: 36px de alto, el mismo de `PanelTransferencia.jsx`. */
 const CAMPO =
@@ -260,7 +260,7 @@ const CAMPO =
 const DESTRUCTIVO =
   'inline-flex h-9 items-center gap-1.5 rounded-lg border border-danger-line bg-danger-soft px-3 ' +
   'text-[13px] font-semibold text-danger transition-colors hover:bg-danger-soft ' +
-  'disabled:pointer-events-none disabled:opacity-50'
+  'disabled:cursor-not-allowed disabled:opacity-50'
 
 /**
  * @param {boolean} abierto

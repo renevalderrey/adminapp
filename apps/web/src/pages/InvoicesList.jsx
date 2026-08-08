@@ -58,13 +58,13 @@ const FILAS_POR_PAGINA = 25
 const BOTON_PRINCIPAL =
   'inline-flex h-[34px] items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-semibold ' +
   'text-white shadow-nivel-1 transition-colors hover:bg-brand-dark ' +
-  'disabled:pointer-events-none disabled:opacity-60'
+  'disabled:cursor-not-allowed disabled:opacity-60'
 
 /** Botón secundario del sistema: 34px, borde, hover en surface-3. */
 const BOTON_SECUNDARIO =
   'inline-flex h-[34px] items-center gap-1.5 rounded-lg border border-border bg-surface px-3 ' +
   'text-[13px] font-medium transition-colors hover:bg-surface-3 ' +
-  'disabled:pointer-events-none disabled:opacity-60'
+  'disabled:cursor-not-allowed disabled:opacity-60'
 
 const ETIQUETAS_DE_TIPO = { 1: 'Factura A', 6: 'Factura B', 11: 'Factura C' }
 

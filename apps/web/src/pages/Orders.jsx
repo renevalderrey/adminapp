@@ -193,7 +193,7 @@ const ESPERA_DE_BUSQUEDA = 250
 const SECUNDARIO =
   'inline-flex h-[34px] items-center gap-1.5 rounded-lg border border-border bg-surface px-3 ' +
   'text-[13px] font-medium transition-colors hover:border-border-2 hover:bg-surface-3 ' +
-  'disabled:pointer-events-none disabled:opacity-50'
+  'disabled:cursor-not-allowed disabled:opacity-50'
 
 /** Campo del sistema: 36px, borde, foco en `brand`. */
 const CAMPO =

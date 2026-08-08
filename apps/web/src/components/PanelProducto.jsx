@@ -73,12 +73,12 @@ const FORMULARIO_VACIO = {
 const BOTON_PRINCIPAL =
   'inline-flex h-[34px] items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-semibold ' +
   'text-white shadow-nivel-1 transition-colors hover:bg-brand-dark ' +
-  'disabled:pointer-events-none disabled:opacity-60'
+  'disabled:cursor-not-allowed disabled:opacity-60'
 
 const BOTON_SECUNDARIO =
   'inline-flex h-[34px] items-center gap-1.5 rounded-lg border border-border bg-surface px-3 ' +
   'text-[13px] font-medium transition-colors hover:bg-surface-3 ' +
-  'disabled:pointer-events-none disabled:opacity-60'
+  'disabled:cursor-not-allowed disabled:opacity-60'
 
 const CAMPO =
   'h-9 w-full rounded-lg border border-border bg-surface px-3 text-[13px] transition-colors ' +
