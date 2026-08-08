@@ -29,6 +29,7 @@ import {
   tonoDeInvitacion,
   tonoDeMiembro,
 } from '@/utils/equipo'
+import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · /equipo
@@ -606,7 +607,7 @@ export default function Team() {
                       title={
                         puedeInvitar
                           ? 'Volver a mandarle el mail'
-                          : 'Necesitás el permiso «equipo.invitar»'
+                          : faltaElPermiso('equipo.invitar')
                       }
                     >
                       <RotateCcw />
@@ -618,7 +619,7 @@ export default function Team() {
                       title={
                         can('equipo.eliminar')
                           ? 'Revocar la invitación'
-                          : 'Necesitás el permiso «equipo.eliminar»'
+                          : faltaElPermiso('equipo.eliminar')
                       }
                     >
                       <X />

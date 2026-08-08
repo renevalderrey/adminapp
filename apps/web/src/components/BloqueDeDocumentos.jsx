@@ -8,6 +8,7 @@ import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid
 import { fechaCorta } from '@/utils/formato'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 import { TIPOS, esEnlaceAceptable, nubeDelEnlace } from '@/utils/documentosDeProveedor'
+import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Los documentos de un proveedor
@@ -299,7 +300,7 @@ export default function BloqueDeDocumentos({ proveedorId, documentos = [], onCam
             type="button"
             onClick={agregar}
             disabled={!puedeEditar || guardando}
-            title={puedeEditar ? 'Agregar el documento' : 'Necesitás el permiso «proveedores.editar»'}
+            title={puedeEditar ? 'Agregar el documento' : faltaElPermiso('proveedores.editar')}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px] font-semibold
                        text-white shadow-nivel-1 transition-colors hover:bg-brand-dark
                        disabled:cursor-not-allowed disabled:opacity-50"
@@ -311,7 +312,7 @@ export default function BloqueDeDocumentos({ proveedorId, documentos = [], onCam
 
         {!puedeEditar && (
           <p className="mt-2.5 text-[12.5px] text-fg-2">
-            Necesitás el permiso «proveedores.editar» para cargar documentos. Los que ya están se
+            {faltaElPermiso('proveedores.editar')} para cargar documentos. Los que ya están se
             pueden abrir y copiar.
           </p>
         )}
@@ -386,7 +387,7 @@ export default function BloqueDeDocumentos({ proveedorId, documentos = [], onCam
                     <Copy />
                   </BotonDeFila>
                   <BotonDeFila
-                    title={puedeEliminar ? 'Eliminar el documento' : 'Necesitás el permiso «proveedores.eliminar»'}
+                    title={puedeEliminar ? 'Eliminar el documento' : faltaElPermiso('proveedores.eliminar')}
                     disabled={!puedeEliminar}
                     onClick={() => eliminar(documento)}
                     className="hover:bg-danger-soft hover:text-danger"

@@ -1349,3 +1349,83 @@ describe('El pago no se registra dos veces por un doble clic', () => {
     expect(enviado).toHaveBeenCalledTimes(1)
   })
 })
+
+// ════════════════════════════════════════════
+//  Hito 9 · El lápiz que no miraba el permiso
+//
+//  El tacho de al lado se apagaba con su motivo; el lápiz, pegado a él, se
+//  dibujaba encendido para cualquiera. Quien no puede editar completaba el CUIT,
+//  apretaba Guardar, comía un 403 —y veía el tacho de al lado APAGADO, con su
+//  explicación—.
+//
+//  La conclusión razonable ahí no es «me falta un permiso». Es que **el sistema
+//  falló**: si fuera cuestión de permisos, este botón estaría apagado como el
+//  otro. Es peor que no poder editar, porque además hace desconfiar de lo que sí
+//  se puede.
+// ════════════════════════════════════════════
+
+describe('El lápiz mira el permiso, igual que el tacho de al lado', () => {
+  /** Los permisos de alguien que entra a la ficha pero no puede tocarla. */
+  const MIRON = ['proveedores.ver', 'ordenes_compra.ver']
+
+  /**
+   * Los dos botones del encabezado de la ficha.
+   *
+   * Se busca DENTRO del bloque del nombre y no en toda la pantalla: las filas
+   * del historial de movimientos tienen su propio lápiz con el mismo permiso, y
+   * `getByTitle` a secas encuentra varios. Que sean varios no es un defecto —el
+   * historial también se corrige— pero éste es el del encabezado.
+   */
+  const encabezadoDeLaFicha = () =>
+    screen.getByRole('heading', { name: 'Distribuidora Norte' }).parentElement
+
+  const lapizDeLaFicha = () =>
+    within(encabezadoDeLaFicha())
+      .getByTitle(/Editar los datos del proveedor|Necesitás el permiso «proveedores.editar»/)
+
+  it('sin el permiso queda apagado, y dice cuál falta', async () => {
+    await montar({ permisos: MIRON })
+    await elegir('Distribuidora Norte')
+
+    const lapiz = lapizDeLaFicha()
+
+    expect(lapiz).toBeDisabled()
+    // Que NOMBRE el permiso: quien lee «no tenés permiso» no puede pedir nada
+    // concreto a quien administra la empresa.
+    expect(lapiz.getAttribute('title')).toContain('proveedores.editar')
+  })
+
+  it('y el motivo se puede leer: no sale del hit-testing', async () => {
+    // `disabled:pointer-events-none` hace que el navegador nunca muestre el
+    // `title`, o sea que apaga justamente la explicación.
+    await montar({ permisos: MIRON })
+    await elegir('Distribuidora Norte')
+
+    expect(lapizDeLaFicha().className).not.toContain('pointer-events-none')
+  })
+
+  it('no se queda apagado para quien SÍ puede editar', async () => {
+    // Sin este caso, apagarlo siempre pasaría los dos anteriores y la ficha
+    // quedaría sin forma de corregir un CUIT.
+    await montar({ permisos: TODOS })
+    await elegir('Distribuidora Norte')
+
+    expect(lapizDeLaFicha()).not.toBeDisabled()
+  })
+
+  it('el lápiz y el tacho de al lado se apagan por el MISMO motivo', async () => {
+    // El defecto era exactamente el contraste entre los dos: uno apagado con su
+    // explicación y el otro encendido. Se afirma que los dos se comportan igual
+    // frente a la falta de permiso, que es lo que hace que la pantalla se lea
+    // como una sola cosa.
+    await montar({ permisos: MIRON })
+    await elegir('Distribuidora Norte')
+
+    const tacho = within(encabezadoDeLaFicha())
+      .getByTitle(/Eliminar el proveedor|Necesitás el permiso «proveedores.eliminar»/)
+
+    expect(lapizDeLaFicha()).toBeDisabled()
+    expect(tacho).toBeDisabled()
+    expect(tacho.getAttribute('title')).toContain('proveedores.eliminar')
+  })
+})

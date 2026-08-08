@@ -11,6 +11,7 @@ import {
 } from '@/services/api'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 import { etiquetaDeDispositivo, haceCuanto } from '@/utils/sesiones'
+import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Sesiones activas del equipo
@@ -256,7 +257,7 @@ export default function SesionesDelEquipo({ empresaId, onCambio }) {
                       ? 'Es la sesión de este navegador: usá «Cerrar mis otras sesiones» o cerrá sesión normalmente'
                       : puedeCerrarAjenas
                         ? 'Cerrar sesión en ese dispositivo'
-                        : 'Necesitás el permiso «equipo.editar»'
+                        : faltaElPermiso('equipo.editar')
                   }
                 >
                   <LogOut />

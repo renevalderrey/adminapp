@@ -61,6 +61,7 @@ import { ETIQUETAS, estadoDeProveedor, tonoDeProveedor } from '@/utils/cuentaDeP
 import { pesos, fechaCorta, fechaDeHoy } from '@/utils/formato'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 import { armarHoja, nombreDelArchivo } from '@/utils/exportarProveedores'
+import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Proveedores y su cuenta corriente
@@ -1094,8 +1095,18 @@ const Orders = () => {
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <h2 className="truncate text-[17px]">{proveedor.name}</h2>
+                    {/* ⚠ El lápiz mira el permiso igual que el tacho de al lado.
+                        Sin esto, quien no puede editar completaba el CUIT,
+                        apretaba Guardar, comía un 403 —y veía el tacho de al
+                        lado apagado CON su motivo—. La conclusión razonable ahí
+                        no es «me falta un permiso»: es que el sistema falló. */}
                     <BotonDeFila
-                      title="Editar los datos del proveedor"
+                      title={
+                        puedeEditar
+                          ? 'Editar los datos del proveedor'
+                          : faltaElPermiso('proveedores.editar')
+                      }
+                      disabled={!puedeEditar}
                       onClick={() => {
                         setFormEdicion({
                           name: proveedor.name || '',
@@ -1117,7 +1128,7 @@ const Orders = () => {
                       title={
                         puedeEliminar
                           ? 'Eliminar el proveedor'
-                          : 'Necesitás el permiso «proveedores.eliminar»'
+                          : faltaElPermiso('proveedores.eliminar')
                       }
                       disabled={!puedeEliminar}
                       onClick={eliminarProveedor}
@@ -1394,7 +1405,7 @@ const Orders = () => {
                             title={
                               puedeEditar
                                 ? 'Corregir el movimiento'
-                                : 'Necesitás el permiso «proveedores.editar»'
+                                : faltaElPermiso('proveedores.editar')
                             }
                             disabled={!puedeEditar}
                             onClick={() => abrirEdicionDeMovimiento(m)}
@@ -1405,7 +1416,7 @@ const Orders = () => {
                             title={
                               puedeEliminar
                                 ? 'Eliminar el movimiento'
-                                : 'Necesitás el permiso «proveedores.eliminar»'
+                                : faltaElPermiso('proveedores.eliminar')
                             }
                             disabled={!puedeEliminar}
                             onClick={() => eliminarMovimiento(m)}

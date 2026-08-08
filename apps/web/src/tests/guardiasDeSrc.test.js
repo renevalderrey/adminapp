@@ -244,3 +244,59 @@ describe('Ninguna fecha se arma pasando por UTC', () => {
     expect(conFechaDeHoy.length).toBeGreaterThan(3)
   })
 })
+
+// ════════════════════════════════════════════
+//  ── 3 · La frase del permiso que falta se escribe en UN solo lugar ──
+//
+//  ── El defecto ──
+//
+//  Estaba escrita a mano en dieciocho lugares, y **ya había divergido**: el
+//  comparador decía «Te falta el permiso «X». Pediselo a quien administra la
+//  empresa» —copiado del mensaje del servidor— y los otros diecisiete decían
+//  «Necesitás el permiso «X»».
+//
+//  Dos formas de decir lo mismo en la misma sesión se leen como dos cosas
+//  distintas, y la persona empieza a buscar la diferencia que no existe. Y la
+//  divergencia no la produjo un descuido: la produjo alguien copiando del lugar
+//  correcto —el servidor— porque no había ningún lugar en el front que fuera EL
+//  lugar.
+//
+//  Diecinueve copias no se mantienen iguales. Se mantiene una.
+// ════════════════════════════════════════════
+
+describe('El motivo de un control apagado sale de una sola función', () => {
+  const AYUDANTE = 'utils/permisos.js'
+
+  const aMano = ARCHIVOS
+    .filter(({ nombre }) => nombre !== AYUDANTE)
+    .flatMap(({ nombre, contenido }) =>
+      sinComentarios(contenido)
+        .split('\n')
+        .map((linea, i) => ({ archivo: nombre, n: i + 1, texto: linea.trim() }))
+        .filter(({ texto }) => /Necesitás el permiso|Te falta el permiso/.test(texto))
+    )
+
+  it('nadie la escribe a mano', () => {
+    expect(aMano.map(({ archivo, n }) => `${archivo}:${n}`)).toEqual([])
+  })
+
+  it('la guardia miró de verdad: el ayudante existe y lo usan varias pantallas', () => {
+    // Ancla. Cero frases a mano se lee igual que «no encontré ningún archivo»,
+    // y así es como estas guardias se quedan verdes para siempre.
+    const ayudante = ARCHIVOS.find(({ nombre }) => nombre === AYUDANTE)
+    expect(ayudante).toBeDefined()
+    expect(ayudante.contenido).toContain('export function faltaElPermiso')
+
+    const usuarios = ARCHIVOS.filter(({ contenido }) => /\bfaltaElPermiso\(/.test(contenido))
+    expect(usuarios.length).toBeGreaterThan(6)
+  })
+
+  it('la frase NOMBRA el permiso, que es lo único accionable', () => {
+    // El usuario no puede pedir lo que no puede nombrar. Una versión que dijera
+    // «no tenés permiso para esto» pasaría las dos de arriba y dejaría a la
+    // persona sin nada concreto que reenviar por mensaje.
+    const ayudante = ARCHIVOS.find(({ nombre }) => nombre === AYUDANTE)
+
+    expect(ayudante.contenido).toMatch(/\$\{codigo\}/)
+  })
+})

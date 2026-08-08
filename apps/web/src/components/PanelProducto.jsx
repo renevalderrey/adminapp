@@ -8,6 +8,7 @@ import { usePermission } from '@/hooks/usePermission'
 import HistorialDeCostos from '@/components/HistorialDeCostos'
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { AlertTriangle, Loader2, RotateCcw, Trash2 } from 'lucide-react'
+import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Panel del producto
@@ -756,7 +757,7 @@ export default function PanelProducto({
 
               {!puedeEditarStock && (
                 <p className="text-[11.5px] text-fg-3">
-                  Necesitás el permiso «stock.editar» para cambiar estas
+                  {faltaElPermiso('stock.editar')} para cambiar estas
                   cantidades.
                 </p>
               )}
@@ -811,7 +812,7 @@ export default function PanelProducto({
                 disabled={!puedeEditar || guardando || !hayCambios}
                 title={puedeEditar
                   ? undefined
-                  : `Necesitás el permiso «products.${esAlta ? 'crear' : 'editar'}»`}
+                  : faltaElPermiso(`products.${esAlta ? 'crear' : 'editar'}`)}
                 onClick={guardar}
               >
                 {guardando

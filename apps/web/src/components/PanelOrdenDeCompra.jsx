@@ -18,6 +18,7 @@ import { ESTADOS, esRecibible, esAnulable, porcentajeRecibido } from '@/utils/or
 import { pesos, fechaCorta } from '@/utils/formato'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 import { enviarPedidoPorWhatsapp } from '@/utils/pedidoWhatsapp'
+import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · El panel lateral de una orden de compra
@@ -609,8 +610,8 @@ export default function PanelOrdenDeCompra({
                 el sistema «ya no deja recibir». */}
             {((recibible && !puedeRecibir) || (anulable && !puedeAnular)) && (
               <p className="mb-2.5 text-[12.5px] text-fg-2">
-                {recibible && !puedeRecibir && 'Necesitás el permiso «ordenes_compra.recibir» para registrar la recepción. '}
-                {anulable && !puedeAnular && 'Necesitás el permiso «ordenes_compra.anular» para anular la orden.'}
+                {recibible && !puedeRecibir && `${faltaElPermiso('ordenes_compra.recibir')} para registrar la recepción. `}
+                {anulable && !puedeAnular && `${faltaElPermiso('ordenes_compra.anular')} para anular la orden.`}
               </p>
             )}
 
@@ -640,7 +641,7 @@ export default function PanelOrdenDeCompra({
                       title={
                         puedeRecibir
                           ? 'Registrar la recepción de esta orden'
-                          : 'Necesitás el permiso «ordenes_compra.recibir»'
+                          : faltaElPermiso('ordenes_compra.recibir')
                       }
                       className={PRINCIPAL}
                     >
@@ -663,7 +664,7 @@ export default function PanelOrdenDeCompra({
                       title={
                         puedeAnular
                           ? 'Anular esta orden de compra'
-                          : 'Necesitás el permiso «ordenes_compra.anular»'
+                          : faltaElPermiso('ordenes_compra.anular')
                       }
                       className={DESTRUCTIVO}
                     >
@@ -707,7 +708,7 @@ export default function PanelOrdenDeCompra({
                       title={
                         puedeRecibir
                           ? 'Cargar lo que llegó'
-                          : 'Necesitás el permiso «ordenes_compra.recibir»'
+                          : faltaElPermiso('ordenes_compra.recibir')
                       }
                       className={PRINCIPAL}
                     >

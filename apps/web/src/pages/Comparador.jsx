@@ -19,6 +19,7 @@ import {
 // vez de aplanarse contra `pesos`.
 import { pesosDeLista, fechaDeHoy } from '@/utils/formato'
 import { mensajeDeError } from '@/utils/erroresDeApi'
+import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
 //  Comparador de proveedores
@@ -176,7 +177,7 @@ export default function Comparador() {
             fallback={
               <button
                 disabled
-                title="Te falta el permiso «proveedores.crear». Pediselo a quien administra la empresa."
+                title={faltaElPermiso('proveedores.crear')}
                 className="inline-flex h-[34px] items-center gap-1.5 rounded-lg bg-brand px-3 text-[13px]
                            font-semibold text-white shadow-nivel-1
                            disabled:cursor-not-allowed disabled:opacity-55"

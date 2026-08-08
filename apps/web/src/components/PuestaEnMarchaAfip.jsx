@@ -1,5 +1,6 @@
 import { Loader2, ShieldCheck } from 'lucide-react'
 import { puestaEnMarchaAfip } from '@/utils/puestaEnMarchaAfip'
+import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · «Puesta en marcha», el checklist de facturación
@@ -109,7 +110,7 @@ export default function PuestaEnMarchaAfip({
                 title={
                   puedeVerificar
                     ? 'Pide el ticket de acceso y consulta el último comprobante autorizado. No emite nada.'
-                    : 'Necesitás el permiso «config.editar»'
+                    : faltaElPermiso('config.editar')
                 }
               >
                 {verificando

@@ -23,6 +23,7 @@ import {
 import { mensajeDeError } from '@/utils/erroresDeApi'
 import { fechaCorta } from '@/utils/formato'
 import { diasHastaVencer } from '@/utils/puestaEnMarchaAfip'
+import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · /facturacion — Facturación electrónica (ARCA/AFIP)
@@ -750,7 +751,7 @@ export default function Settings() {
                 codigo="config.editar"
                 fallback={
                   <p className="mt-3 text-[12.5px] text-fg-3">
-                    Necesitás el permiso «config.editar».
+                    {faltaElPermiso('config.editar')}.
                   </p>
                 }
               >
