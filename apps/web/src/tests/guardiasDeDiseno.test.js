@@ -198,6 +198,19 @@ const NOMBRES = [
   'pages/Team.jsx',
   'components/PuestaEnMarchaAfip.jsx',
   'pages/Settings.jsx',
+  // ── Hito 9 ──
+  //
+  // Las dos que nunca habían entrado, y son las dos que más pesan:
+  //
+  // `pages/Comparador.jsx` es **la referencia viva** que este documento y
+  // `CONVENCIONES.md` mandan copiar, y estaba fuera de su propia guardia. Cada
+  // desvío suyo es un desvío con interés compuesto: la próxima pantalla lo copia
+  // creyendo que es la regla.
+  //
+  // `pages/Faltantes.jsx` no entró a ningún hito de rediseño: no es una pantalla
+  // que se desalineó, es una que nunca se alineó.
+  'pages/Comparador.jsx',
+  'pages/Faltantes.jsx',
   'components/SesionesDelEquipo.jsx',
 ]
 
@@ -364,12 +377,18 @@ describe('Los dos rojos de esta guardia se leen distinto', () => {
 
 // Si esta lista queda vacía, la guardia pasa a ser un test que siempre pasa.
 describe('La guardia mira los archivos que dice mirar', () => {
-  it('los veintinueve archivos existen y tienen contenido', () => {
-    // Diecinueve = los dieciséis de los hitos 4, 5 y 6 —el uno de InvoicesList,
-    // los seis de Inventario, los cinco del punto de venta y los cuatro de
-    // proveedores y órdenes— más los TRES de TiendaNube: `pages/Tiendanube.jsx`
-    // (T1342), `components/PanelDeMapeo.jsx` (T1341) y
-    // `components/EstadoDeTiendanube.jsx` (T1340).
+  it('los treinta y dos archivos existen y tienen contenido', () => {
+    // **Treinta**, y la cuenta se lee así: dieciséis de los hitos 4, 5 y 6 —el
+    // uno de InvoicesList, los seis de Inventario, los cinco del punto de venta
+    // y los cuatro de proveedores y órdenes—, tres de TiendaNube
+    // (`pages/Tiendanube.jsx`, `components/PanelDeMapeo.jsx`,
+    // `components/EstadoDeTiendanube.jsx`) y once del hito 8, que los sumó de a
+    // uno por tarea. La tabla completa está en su `tasks.md`, punto 7.
+    //
+    // ⚠ El encabezado de este caso decía «los veintinueve archivos» sobre un
+    // `expect` de 30, y el hito 9 lo encontró. Una cuenta escrita que no
+    // coincide con el `expect` es peor que no escribirla: quien la lee cree que
+    // la revisó alguien, y quien la ajusta ajusta el número equivocado.
     //
     // **Veintiuno** desde el hito 014, corte 4: entran
     // `components/PanelDeGasto.jsx` (T1370) —el panel lateral del alta y la
@@ -451,7 +470,7 @@ describe('La guardia mira los archivos que dice mirar', () => {
     // El número está escrito y no se calcula de `NOMBRES.length`: contra la
     // lista que se está verificando, el ancla pasaría igual el día que alguien
     // saque un archivo para que la guardia deje de molestar.
-    expect(ARCHIVOS).toHaveLength(30)
+    expect(ARCHIVOS).toHaveLength(32)
 
     // Primero los que faltan, y con su propio texto: un archivo que todavía no
     // se escribió es una tarea pendiente y se lee distinto de un color fuera

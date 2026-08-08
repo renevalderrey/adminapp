@@ -248,23 +248,37 @@ informaría nada nuevo. Sesenta píxeles de alto en la pantalla que se usa ocho
 horas por día valen más que eso. Es una excepción **de esa pantalla y de ninguna
 otra**: si la próxima quiere ahorrarse el encabezado, la discusión es acá.
 
+**Se usa `components/PageHeader.jsx`.** No se escribe a mano:
+
 ```jsx
-<div className="flex flex-wrap items-end justify-between gap-6">
-  <div>
-    <h1>Comparador de proveedores</h1>
-    <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
-      Pegá las listas de cada proveedor y mirá quién tiene cada producto más barato.
-    </p>
-  </div>
-  <div className="flex gap-2">
-    <button className="...">Exportar</button>
-    <button className="...">Nueva comparación</button>
-  </div>
-</div>
+<PageHeader
+  titulo="Comparador de proveedores"
+  descripcion="Pegá las listas de cada proveedor y mirá quién tiene cada producto más barato."
+>
+  <button className="...">Exportar</button>
+  <button className="...">Nueva comparación</button>
+</PageHeader>
 ```
+
+Las acciones van como `children` y el componente les pone el contenedor.
+
+> **Esto estaba mal escrito hasta el hito 9, y tuvo consecuencias.** El ejemplo
+> de acá era el bloque a mano —un `<div>` pelado con `flex gap-2`— y **no
+> nombraba `PageHeader` en ninguna parte**. Cuatro pantallas lo copiaron tal
+> cual, o sea que **estaban siguiendo el documento**: el desvío no lo introdujo
+> quien las escribió, lo introdujo esta página.
+>
+> Se conserva la nota porque explica por qué esas cuatro no son un descuido y
+> por qué migrarlas es una tarea del hito 9 y no un reproche.
 
 La descripción no es relleno: es donde se dice qué hace la pantalla y qué se
 espera del usuario. Máximo 60 caracteres de ancho (`max-w-[60ch]`).
+
+**El ícono al lado del `h1`**: va. Un ícono de 18px en `text-fg-3`, el mismo que
+la pantalla tiene en la barra lateral, para que el usuario reconozca dónde está
+sin leer. Estuvo en siete de doce pantallas hasta el hito 9 porque el documento
+no lo decía — mitad y mitad no es deriva, son dos escuelas, y la decisión es
+**que lleve ícono**.
 
 ### Tarjeta
 
@@ -290,13 +304,44 @@ La maqueta **no usa `<table>`**: usa grid, con las mismas
 columnas y que cada fila sea clickeable entera.
 
 **El marco lo pone `apps/web/src/components/TablaGrid.jsx`**, con cuatro
-piezas. Hay **dos** pantallas que lo aplican, y conviene mirar la que se parezca
-a la que se está construyendo:
+piezas. Lo aplican **diez** archivos —siete pantallas y tres componentes—, así
+que a esta altura es *la* forma de hacer una tabla y no una de dos. Conviene
+mirar el que se parezca a lo que se está construyendo:
 
 | Ejemplo | Cuándo mirarlo |
 |---|---|
 | `pages/InvoicesList.jsx` | Columnas **fijas**: se saben al escribir el archivo |
 | `pages/Inventory.jsx` | Columnas que **dependen de los datos**: una por sucursal |
+| `pages/Expenses.jsx` | Varias tablas en una pantalla, agrupadas por sucursal |
+| `components/SesionesDelEquipo.jsx` | Una tabla chica adentro de otra pantalla |
+
+Los otros seis son `pages/Orders.jsx`, `pages/PurchaseOrders.jsx`,
+`pages/Team.jsx`, `pages/Tiendanube.jsx`, `components/BloqueDeDocumentos.jsx` y
+`components/GastosVariables.jsx`.
+
+> Hasta el hito 9 esta sección decía «hay **dos** pantallas que lo aplican».
+> Eran diez. Un documento que subestima cuánto se usa un patrón invita a no
+> usarlo: quien lee «dos» razonablemente concluye que todavía es un experimento.
+
+**El pie de la tabla.** Cuando la tabla pagina, abajo va una franja con cuántas
+filas se están viendo de cuántas, y el paginador a la derecha:
+
+```jsx
+<div className="flex items-center justify-between border-t border-border px-5 py-[13px]">
+  <span className="text-[12.5px] text-fg-2">
+    Mostrando <span className="num">{filas.length}</span> de <span className="num">{total}</span>
+  </span>
+  <Pagination page={pagina} totalPages={paginas} onPageChange={setPagina} />
+</div>
+```
+
+El número de la derecha es **el total del servidor**, no la cantidad de filas
+cargadas: si son distintos y solo se muestra el segundo, el contador miente hacia
+abajo y nada avisa. `Pagination` ya se esconde solo cuando hay una sola página,
+así que la franja se puede dibujar siempre.
+
+Existía en dos de las cinco pantallas que paginan hasta el hito 9. Las otras tres
+la saltearon porque acá no estaba escrita, aunque la maqueta la dibuja dos veces.
 
 ```jsx
 import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid'
@@ -503,12 +548,39 @@ qué hacer:
 
 ```jsx
 <div className="py-12 text-center">
-  <p className="font-semibold">No falta nada.</p>
-  <p className="mt-1 text-sm text-fg-2">
+  <PackageOpen className="mx-auto h-7 w-7 text-fg-3" />
+  <p className="mt-3 font-semibold">No falta nada.</p>
+  <p className="mt-1 max-w-[46ch] mx-auto text-sm text-fg-2">
     Ningún producto está por debajo de su mínimo.
   </p>
 </div>
 ```
+
+> **El ícono faltaba en este ejemplo hasta el hito 9**, aunque el párrafo de
+> arriba lo pedía. Tres pantallas quedaron sin él —copiaron el bloque, no la
+> prosa— y el documento se estaba contradiciendo a sí mismo. Es la misma familia
+> que el encabezado sin `PageHeader`: **lo que se copia es el snippet.**
+
+**Y son dos estados distintos, no uno.** «Todavía no hay nada cargado» y «el
+filtro no devolvió nada» se ven parecido y significan cosas opuestas: el primero
+invita a cargar el primero, el segundo a sacar el filtro. Dibujarlos igual deja
+al usuario buscando datos que sí existen.
+
+```jsx
+{hayFiltro ? (
+  <Vacio titulo="Ninguna orden coincide con el filtro"
+         detalle="Probá con otro período o sacá la búsqueda."
+         accion={<button onClick={limpiar}>Limpiar filtros</button>} />
+) : (
+  <Vacio titulo="Todavía no hay órdenes de compra"
+         detalle="Creá la primera con «Nueva orden»." />
+)}
+```
+
+⚠ **Y ninguno de los dos se dibuja mientras los datos viajan.** Un vacío que
+aparece durante la carga afirma algo que la pantalla todavía no sabe — y lo
+afirma justo cuando el usuario está formando su primera impresión. Ver
+«Carga», más abajo.
 
 ---
 
@@ -522,6 +594,104 @@ Dos animaciones, y ninguna más:
 Las dos se desactivan con `prefers-reduced-motion`. No hay animaciones de
 hover más allá del cambio de color: en una pantalla que se usa ocho horas por
 día, el movimiento cansa.
+
+**`anim-subida` va en el elemento raíz de toda pantalla.** No es decoración: es
+lo que hace que cambiar de sección se sienta como un cambio y no como un salto.
+Faltaba en cuatro de las doce hasta el hito 9.
+
+---
+
+## Carga
+
+**La pantalla se dibuja siempre; lo que falta es el cuerpo.** El encabezado, los
+filtros y el marco de la tarjeta se pintan de entrada, y adentro va el indicador.
+Reemplazar la pantalla entera por un spinner hace que el usuario vea desaparecer
+lo que acababa de mirar.
+
+```jsx
+<PageHeader titulo="Órdenes de compra" descripcion="…" />
+
+<section className="…">
+  {cargando ? (
+    <div className="grid place-items-center py-16">
+      <Loader2 className="h-5 w-5 animate-spin text-fg-3" />
+    </div>
+  ) : filas.length === 0 ? (
+    <Vacio … />
+  ) : (
+    <TablaGrid>…</TablaGrid>
+  )}
+</section>
+```
+
+⚠ **El orden de esas tres ramas no es negociable, y es el defecto más caro que
+encontró el hito 9.** Con el vacío antes que la carga —o sin guardia de carga—,
+la pantalla afirma «Todavía no hay proveedores. Cargá el primero» **mientras los
+cuarenta viajan por la red**. El usuario lee que su sistema está vacío en el
+momento exacto en que se está formando la primera impresión.
+
+Pasaba en dos pantallas, y `pages/Expenses.jsx` ya lo había resuelto con siete
+líneas de comentario explicando el caso: **la corrección existía y no se llevó a
+las otras.** Por eso está escrita acá y no solo allá.
+
+**Los permisos también tardan.** `usePermission` devuelve `false` para todo hasta
+que llega el contexto, así que un control que se esconde sin permiso **aparece
+tarde** y uno que se deshabilita **afirma que no tenés permiso antes de saberlo**.
+Mientras el contexto no llegó, la pantalla está cargando: vale la misma regla.
+
+---
+
+## Foco
+
+Toda cosa que se pueda apretar tiene que verse cuando llega el teclado.
+
+```
+focus-visible:border-brand focus-visible:outline-none
+```
+
+Es el vocabulario del sistema: **se reemplaza el anillo por 1px de borde de
+marca**, que no mueve el layout ni desborda de una celda de tabla. Los anillos
+(`focus-visible:ring-*`) son de shadcn y quedan solo dentro de
+`components/ui/`.
+
+**Los botones escritos a mano lo declaran igual.** Las constantes
+`BOTON_PRINCIPAL` / `BOTON_SECUNDARIO` de cada pantalla llevan foco: sin eso
+quedan con el contorno del navegador teñido por el `outline-ring/50` global, que
+sobre `bg-brand` es turquesa sobre turquesa.
+
+**Y una fila clickeable tiene que ser alcanzable.** Una fila que abre un panel es
+un control, no un renglón: lleva `role="button"`, `tabIndex={0}` y responde a
+`Enter` y `Espacio`. Hasta el hito 9 eran `<div>` con `onClick`, así que **seis
+pantallas solo se podían usar con mouse** — y el propio código lo mencionaba como
+ventaja de una excepción («encima le da teclado gratis, que las filas de grid no
+tienen») sin verlo como defecto del patrón.
+
+---
+
+## Controles apagados
+
+**Se deshabilitan con el motivo, no se esconden.** Una acción que desaparece deja
+al usuario sin saber por qué en unas filas está y en otras no; una apagada con su
+explicación le dice qué le falta y qué pedir.
+
+```jsx
+<BotonDeFila
+  disabled={!puedeAnular}
+  title="No se puede anular: el comprobante tiene CAE y sigue vigente ante ARCA"
+>
+```
+
+⚠ **Nunca `disabled:pointer-events-none`.** Saca al elemento del hit-testing y
+con eso el navegador **nunca muestra el `title`** — o sea que apaga justamente la
+explicación que la regla de arriba pide. Va `disabled:cursor-not-allowed`, y el
+atributo `disabled` ya bloquea el clic por su cuenta.
+
+Estuvo en veinte lugares hasta el hito 9, y el peor era `TablaGrid.jsx`, que lo
+multiplicaba por seis pantallas. Lo cuida una guardia en `guardiasDeDiseno.test.js`.
+
+**Y el mensaje nombra el permiso**, no lo parafrasea: «Necesitás el permiso
+`proveedores.editar`». Quien lee «no tenés permiso para esto» no puede pedir nada
+concreto.
 
 ---
 
