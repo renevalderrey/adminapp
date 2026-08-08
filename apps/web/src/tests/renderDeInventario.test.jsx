@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import api from '@/services/api'
 import useStore from '@/store/useStore'
 import Inventory from '@/pages/Inventory'
 
@@ -398,5 +399,94 @@ describe('Los dos vacíos dicen cosas distintas', () => {
 
     expect(screen.getByText('Colágeno')).toBeInTheDocument()
     expect(screen.getByText('Whey')).toBeInTheDocument()
+  })
+})
+
+// ════════════════════════════════════════════
+//  Hito 9 · El contador de transferencias mentía hacia abajo
+//
+//  El historial se pide con un tope de veinte y el badge contaba el ARREGLO. Un
+//  comercio con doscientas transferencias mostraba «20», sin ninguna señal de
+//  que la lista estaba cortada.
+//
+//  Es el mismo molde que tenía la lista de órdenes de un proveedor —el endpoint
+//  manda `total` y la pantalla cuenta `data.length`— y por eso se corrigen
+//  juntos: un defecto que aparece dos veces en dos pantallas distintas no es un
+//  descuido, es la forma que tiene de escribirse esta pantalla.
+//
+//  ⚠ Acá se espía la instancia de axios, que es lo que el encabezado de este
+//  archivo dice que hay que hacer cuando hace falta interceptar. El historial
+//  llega por `GET /stock/transfers`, que no pasa por el store.
+// ════════════════════════════════════════════
+
+describe('El contador de transferencias dice cuántas hay, no cuántas entraron', () => {
+  const TRANSFERENCIA = {
+    id: 1,
+    date: '2026-08-01',
+    from_location: 'Centro',
+    to_location: 'Depósito',
+    items: [{ product_name: 'Colágeno', quantity: 2 }],
+  }
+
+  /**
+   * Abre el historial con lo que devuelve el endpoint.
+   *
+   * `total` se pasa aparte de `data` a propósito: si el doble los derivara uno
+   * del otro nunca podrían discrepar, y la discrepancia ES el defecto.
+   */
+  async function abrirHistorial({ data, total }) {
+    vi.spyOn(api, 'get').mockImplementation((url) => {
+      if (String(url).includes('/stock/transfers')) {
+        return Promise.resolve({ data: { ok: true, data, total } })
+      }
+      return Promise.resolve({ data: { ok: true, data: [] } })
+    })
+
+    montar({ productos: [COLAGENO] })
+
+    await userEvent.setup({ delay: null }).click(
+      screen.getByRole('button', { name: /Transferencias/ })
+    )
+  }
+
+  /**
+   * La sección del historial.
+   *
+   * Se acota a ella y no se busca en toda la pantalla: la tabla de productos
+   * tiene su propio pie «Mostrando N de M», y `getByText(/Mostrando/)` a secas
+   * encuentra los dos. Que existan los dos no es un defecto —son dos listas
+   * distintas— pero el que se verifica acá es el del historial.
+   */
+  const seccion = () => screen.getByRole('heading', { name: 'Transferencias' }).closest('section')
+
+  /** El badge del encabezado de la sección. */
+  const contador = () =>
+    screen.getByRole('heading', { name: 'Transferencias' }).parentElement.querySelector('span.num')
+
+  it('con más transferencias que el tope, muestra el TOTAL', async () => {
+    await abrirHistorial({ data: [TRANSFERENCIA], total: 200 })
+
+    expect(contador().textContent).toBe('200')
+    expect(contador().textContent).not.toBe('1')
+  })
+
+  it('y avisa que la lista está cortada', async () => {
+    // Sin la franja, el contador dice 200 y abajo hay una fila: dos números que
+    // se contradicen a la vista, que es peor que el defecto original.
+    await abrirHistorial({ data: [TRANSFERENCIA], total: 200 })
+
+    const pie = within(seccion()).getByText(/Mostrando/)
+
+    expect(pie.textContent).toContain('1')
+    expect(pie.textContent).toContain('200')
+  })
+
+  it('cuando NO está cortada, no aparece ninguna franja', async () => {
+    // El contra-caso: un pie permanente es ruido, y el ruido permanente es cómo
+    // un aviso deja de leerse.
+    await abrirHistorial({ data: [TRANSFERENCIA], total: 1 })
+
+    expect(contador().textContent).toBe('1')
+    expect(within(seccion()).queryByText(/Mostrando/)).toBeNull()
   })
 })

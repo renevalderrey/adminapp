@@ -209,6 +209,9 @@ async function montar({
   movimientos = MOVIMIENTOS,
   totalDeMovimientos = movimientos.length,
   ordenes = [],
+  // Cuántas órdenes hay EN TOTAL para ese proveedor, que no tiene por qué ser
+  // lo que entró en la página. `null` = las que trae `ordenes`.
+  totalDeOrdenes = null,
   // Los ids cuyo detalle no responde hasta que el caso llame a `soltarDetalle`.
   detallesDemorados = [],
   documentos = [],
@@ -229,7 +232,19 @@ async function montar({
 
     if (url === '/suppliers/orders') {
       const delProveedor = ordenes.filter((o) => o.supplier_id === config?.params?.supplier_id)
-      return respuesta({ ok: true, total: delProveedor.length, data: delProveedor })
+
+      // ⚠ El doble RECORTA por `limit`, como el servidor, y devuelve el total
+      // sin recortar. Antes devolvía `total: delProveedor.length` sobre el
+      // arreglo entero, así que `total` y `data.length` coincidían SIEMPRE: un
+      // contador que mostrara el largo del arreglo pasaba igual, y era
+      // exactamente el defecto que había en la pantalla.
+      const tope = config?.params?.limit || delProveedor.length
+
+      return respuesta({
+        ok: true,
+        total: totalDeOrdenes === null ? delProveedor.length : totalDeOrdenes,
+        data: delProveedor.slice(0, tope),
+      })
     }
 
     const detalle = ordenes.find((o) => url === `/suppliers/orders/${o.id}`)
@@ -1427,5 +1442,60 @@ describe('El lápiz mira el permiso, igual que el tacho de al lado', () => {
     expect(lapizDeLaFicha()).toBeDisabled()
     expect(tacho).toBeDisabled()
     expect(tacho.getAttribute('title')).toContain('proveedores.eliminar')
+  })
+})
+
+// ════════════════════════════════════════════
+//  Hito 9 · El contador que mentía hacia abajo
+//
+//  La lista de órdenes del proveedor se pide con un tope de cincuenta, y el
+//  badge del encabezado contaba el ARREGLO. Un proveedor con sesenta órdenes
+//  mostraba «50», sin ninguna señal de que la lista estaba cortada: la única
+//  forma de enterarse era contar las filas a mano.
+//
+//  ⚠ Lo peor no es el número. Es que **el estado con el total ya existía** —lo
+//  usa la confirmación del borrado, que tiene que decir cuántas se van de
+//  verdad— y su comentario explica exactamente este problema, diez líneas más
+//  arriba del badge que lo ignoraba. La corrección estaba escrita al lado del
+//  defecto.
+// ════════════════════════════════════════════
+
+describe('El contador de órdenes dice cuántas hay, no cuántas entraron', () => {
+  /** El badge del encabezado de la sección de órdenes. */
+  const contadorDeOrdenes = () => {
+    const titulo = screen.getByRole('heading', { name: 'Órdenes de compra' })
+    return titulo.parentElement.querySelector('span.num')
+  }
+
+  it('con más órdenes que el tope, muestra el TOTAL y no las que llegaron', async () => {
+    await montar({ ordenes: [PRIMERA_PENDIENTE, SEGUNDA_PENDIENTE], totalDeOrdenes: 60 })
+    await elegir('Distribuidora Norte')
+
+    expect(contadorDeOrdenes().textContent).toBe('60')
+    // Y no el largo del arreglo, que es lo que decía.
+    expect(contadorDeOrdenes().textContent).not.toBe('2')
+  })
+
+  it('y avisa que la lista está cortada, diciendo cuántas se ven', async () => {
+    // Sin esta franja, el contador dice 60 y abajo hay 2 filas: dos números que
+    // se contradicen a la vista, que es peor que el defecto original.
+    await montar({ ordenes: [PRIMERA_PENDIENTE, SEGUNDA_PENDIENTE], totalDeOrdenes: 60 })
+    await elegir('Distribuidora Norte')
+
+    const pie = screen.getByText(/Mostrando/)
+
+    expect(pie.textContent).toContain('2')
+    expect(pie.textContent).toContain('60')
+  })
+
+  it('cuando NO está cortada, no aparece ninguna franja', async () => {
+    // El contra-caso. Un pie que dijera siempre «Mostrando 2 de 2» es ruido en
+    // el noventa y nueve por ciento de las fichas, y el ruido permanente es
+    // cómo un aviso deja de leerse.
+    await montar({ ordenes: [PRIMERA_PENDIENTE, SEGUNDA_PENDIENTE] })
+    await elegir('Distribuidora Norte')
+
+    expect(contadorDeOrdenes().textContent).toBe('2')
+    expect(screen.queryByText(/Mostrando/)).toBeNull()
   })
 })

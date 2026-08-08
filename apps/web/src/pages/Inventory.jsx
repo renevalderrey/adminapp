@@ -25,6 +25,7 @@ import ImportWizard from '@/components/ImportWizard'
 import PanelProducto from '@/components/PanelProducto'
 import PanelTransferencia from '@/components/PanelTransferencia'
 import PreciosMasivos from '@/components/PreciosMasivos'
+import { mensajeDeError } from '@/utils/erroresDeApi'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Inventario
@@ -111,6 +112,15 @@ const MAXIMO_COLUMNAS_DE_SUCURSAL = 3
  */
 const LIMITE_EXPORT = 5000
 
+/**
+ * Cuántas transferencias trae el historial.
+ *
+ * Era un `20` escrito en la llamada. Sale acá porque el pie que avisa que la
+ * lista está cortada compara contra el total del endpoint, y un tope escrito en
+ * dos lugares es un pie que un día deja de aparecer.
+ */
+const TRANSFERENCIAS_A_LA_VISTA = 20
+
 /** Las columnas del historial de transferencias. Mismo patrón que la tabla de
  *  productos: el mismo string arriba y abajo. */
 const COLUMNAS_TRANSFERENCIAS = '150px minmax(0,1fr) minmax(0,1fr) minmax(0,1.5fr)'
@@ -188,6 +198,8 @@ const Inventory = () => {
    *  primeras, que es el valor por defecto de FR-063. */
   const [columnasElegidas, setColumnasElegidas] = useState(new Set())
   const [transfers, setTransfers] = useState([])
+  // El `total` del endpoint y NO `transfers.length`: la lista se pide con tope.
+  const [totalDeTransferencias, setTotalDeTransferencias] = useState(0)
   const [showTransfers, setShowTransfers] = useState(false)
   const [cargandoTransferencias, setCargandoTransferencias] = useState(false)
   const [page, setPage] = useState(1)
@@ -287,14 +299,23 @@ const Inventory = () => {
     })
   }
 
-  /** Trae el historial de transferencias. */
+  /**
+   * Trae el historial de transferencias.
+   *
+   * ⚠ Se guarda el `total` del endpoint, y no solo las filas. El pedido lleva un
+   * tope de veinte, así que el badge —que contaba el arreglo— decía «20» en un
+   * comercio con doscientas transferencias: un contador que miente hacia abajo y
+   * sin ninguna señal de que la lista está cortada.
+   */
   const pedirTransferencias = async () => {
     setCargandoTransferencias(true)
     try {
-      const res = await getStockTransfers({ limit: 20 })
+      const res = await getStockTransfers({ limit: TRANSFERENCIAS_A_LA_VISTA })
       setTransfers(res.data.data || [])
+      setTotalDeTransferencias(res.data.total || 0)
     } catch (err) {
-      toast.error('No se pudo cargar el historial de transferencias: ' + (err.response?.data?.error || err.message))
+      toast.error(mensajeDeError(err, 'No se pudo cargar el historial de transferencias.'))
+      setTotalDeTransferencias(0)
     } finally {
       setCargandoTransferencias(false)
     }
@@ -892,7 +913,7 @@ const Inventory = () => {
           <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-5 py-4">
             <h2>Transferencias</h2>
             <span className="num rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-fg-2">
-              {transfers.length}
+              {totalDeTransferencias}
             </span>
             <div className="flex-1" />
             {cargandoTransferencias && <Loader2 className="h-4 w-4 animate-spin text-fg-3" />}
@@ -946,6 +967,17 @@ const Inventory = () => {
                 )
               })}
             </TablaGrid>
+          )}
+
+          {/* ── La señal de truncado ──
+              Solo cuando la lista está cortada de verdad. Un pie que dijera
+              siempre «Mostrando 7 de 7» es ruido; el que falta es el que avisa
+              que hay transferencias que no se ven. */}
+          {totalDeTransferencias > transfers.length && (
+            <div className="border-t border-border px-5 py-3 text-[12.5px] text-fg-2">
+              Mostrando <span className="num">{transfers.length}</span> de{' '}
+              <span className="num">{totalDeTransferencias}</span>. Las más nuevas primero.
+            </div>
           )}
         </section>
       )}

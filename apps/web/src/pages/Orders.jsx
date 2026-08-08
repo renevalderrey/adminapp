@@ -1204,9 +1204,15 @@ const Orders = () => {
             <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-nivel-1">
               <div className="flex items-center gap-2.5 border-b border-border px-5 py-4">
                 <h2>Órdenes de compra</h2>
+                {/* ⚠ `totalDeOrdenes` y NO `ordenes.length`.
+                    La lista se pide con un tope de cincuenta, así que un
+                    proveedor con sesenta órdenes mostraba «50» — un contador que
+                    miente hacia abajo y sin ninguna señal de que está cortado.
+                    El estado ya existía y se usaba solo en la confirmación del
+                    borrado; la corrección estaba escrita a diez líneas de acá. */}
                 {puedeVerOrdenes && (
                   <span className="num rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-fg-2">
-                    {ordenes.length}
+                    {totalDeOrdenes}
                   </span>
                 )}
                 <div className="flex-1" />
@@ -1300,6 +1306,18 @@ const Orders = () => {
                     )
                   })}
                 </TablaGrid>
+              )}
+
+              {/* ── La señal de truncado ──
+                  Solo aparece cuando la lista está cortada de verdad. Un pie que
+                  dijera siempre «Mostrando 12 de 12» es ruido; el que falta es
+                  el que avisa que hay órdenes que no se ven, y sin él la única
+                  forma de enterarse era contar las filas. */}
+              {totalDeOrdenes > ordenes.length && (
+                <div className="border-t border-border px-5 py-3 text-[12.5px] text-fg-2">
+                  Mostrando <span className="num">{ordenes.length}</span> de{' '}
+                  <span className="num">{totalDeOrdenes}</span>. Las más nuevas primero.
+                </div>
               )}
             </section>
 
