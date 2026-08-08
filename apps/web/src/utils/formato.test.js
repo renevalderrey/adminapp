@@ -9,6 +9,7 @@ import {
   importeOGuion,
   importeAbreviado,
   fechaCorta,
+  fechaCortaDeMomento,
   fechaDeHoy,
 } from './formato'
 
@@ -177,6 +178,71 @@ describe('fechaCorta no corre el día', () => {
     expect(fechaCorta('sin fecha')).toBe('sin fecha')
     expect(fechaCorta(null)).toBe('—')
     expect(fechaCorta('')).toBe('—')
+  })
+})
+
+// ════════════════════════════════════════════
+//  `fechaCortaDeMomento` · la otra mitad, y por qué son dos
+//
+//  `fechaCorta` recorta los diez primeros caracteres A PROPÓSITO, y para un
+//  `DATEONLY` eso es lo correcto: parsear «2026-08-01» lo correría al 31 de
+//  julio. Hay un test acá arriba que lo fija.
+//
+//  Pero hay campos que NO son fechas, son MOMENTOS —`expires_at`, `createdAt`,
+//  `validTo`, `recibido_en`—, y ahí esos diez caracteres son la fecha **en
+//  UTC**. En Argentina, de las 21:00 en adelante, ya es el día siguiente allá.
+//
+//  ⚠ El caso que lo destapó: una invitación creada un jueves a las 22:00 vence
+//  el jueves siguiente a las 22:00, y se dibujaba con la fecha del **viernes**.
+//  Miente hacia adelante, así que alguien la iba a intentar usar muerta.
+//
+//  Las dos conviven porque hacen falta las dos, y confundirlas corre el día en
+//  un sentido o en el otro.
+// ════════════════════════════════════════════
+
+describe('fechaCortaDeMomento lee el instante en hora local', () => {
+  it('un vencimiento de las 22:00 NO se dibuja como del día siguiente', () => {
+    // 2026-08-14T01:00:00Z son las 22:00 del 13 en Argentina. `fechaCorta`
+    // decía 14/08 sobre un enlace que a esa hora ya no servía.
+    const momento = new Date(2026, 7, 13, 22, 0, 0)
+
+    expect(fechaCortaDeMomento(momento)).toBe('13/08/2026')
+  })
+
+  it('y las dos funciones difieren justo ahí, que es el motivo de que sean dos', () => {
+    // Se afirma la DIFERENCIA y no solo el valor: si alguien «unificara» las dos
+    // en una, este caso lo dice. Un ISO cuyo instante local es el 13 y cuya
+    // fecha UTC es el 14.
+    const iso = '2026-08-14T01:00:00.000Z'
+
+    // Este test corre en la zona de la máquina. Solo tiene sentido donde el
+    // instante cae en otro día que su fecha UTC — o sea al oeste de Greenwich,
+    // que es donde está el negocio.
+    const local = new Date(iso)
+    const esOtroDia = local.getDate() !== 14
+
+    if (esOtroDia) {
+      expect(fechaCortaDeMomento(iso)).not.toBe(fechaCorta(iso))
+    }
+
+    // Lo que SÍ se afirma siempre: `fechaCorta` sigue devolviendo la fecha UTC
+    // recortada, sin parsear. Es su contrato y no cambió.
+    expect(fechaCorta(iso)).toBe('14/08/2026')
+  })
+
+  it('el mediodía coincide con `fechaCorta`, que es lo normal', () => {
+    // El contra-caso. Si difirieran siempre, una de las dos estaría corriendo
+    // el día en todas las pantallas y no solo de noche.
+    expect(fechaCortaDeMomento('2026-08-14T15:00:00.000Z')).toBe('14/08/2026')
+    expect(fechaCorta('2026-08-14T15:00:00.000Z')).toBe('14/08/2026')
+  })
+
+  it('lo ilegible devuelve el texto, y lo vacío un guión', () => {
+    // Mismo criterio que `fechaCorta`: «Invalid Date» manda a buscar el problema
+    // al lugar equivocado.
+    expect(fechaCortaDeMomento('sin fecha')).toBe('sin fecha')
+    expect(fechaCortaDeMomento(null)).toBe('—')
+    expect(fechaCortaDeMomento('')).toBe('—')
   })
 })
 
@@ -426,7 +492,12 @@ const PENDIENTES = [
   ['pages/Inventory.jsx', '`unidades()` —que NO es plata— y la fecha de una transferencia', ['el formateo en línea de un importe o una fecha']],
   ['pages/InvoicesList.jsx', 'la fecha y hora del comprobante impreso, en línea', ['el formateo en línea de un importe o una fecha']],
   ['pages/SubscriptionSettings.jsx', 'las dos fechas de la prueba gratis, en línea', ['el formateo en línea de un importe o una fecha']],
-  ['components/HistorialDeCostos.jsx', 'su `fechaCorta` propia es deliberada —recibe un timestamp CON hora— y usa toLocaleDateString', ['el formateo en línea de un importe o una fecha']],
+  //  ✔ **`components/HistorialDeCostos.jsx` ya salió** (hito 9): tenía su propia
+  //  `fechaCorta` con `toLocaleDateString`, y estaba bien —recibe un timestamp
+  //  CON hora, no un `DATEONLY`, y aplanarla contra la compartida habría movido
+  //  un día esa columna—. Lo que faltaba no era unificarlas: era que existiera
+  //  la segunda forma. Ahora está, se llama `fechaCortaDeMomento`, y la copia
+  //  local se borró. La línea se borra y no se comenta.
   ['components/PanelTransferencia.jsx', '`unidades()`, que no es plata', ['el formateo en línea de un importe o una fecha']],
   ['components/PanelVenta.jsx', 'la fecha y hora de la venta, en línea', ['el formateo en línea de un importe o una fecha']],
   ['components/PreciosMasivos.jsx', 'la fecha del último cambio y un importe de resumen', ['el formateo en línea de un importe o una fecha']],
@@ -605,10 +676,14 @@ const IMPORTAN = [
   // entrada, borrar el `toLocaleDateString` y dejar de mostrar la fecha también
   // pasaría la guardia — y la fecha del vencimiento es justamente el dato que
   // evita que un comercio deje de poder facturar de un día para el otro.
-  ['pages/Settings.jsx', ['fechaCorta']],
+  // ⚠ Ahora es `fechaCortaDeMomento` y no `fechaCorta`: `validTo` y
+  // `verificado_en` son INSTANTES, no `DATEONLY`. Con la función de `DATEONLY`
+  // se dibujaba la fecha UTC, o sea un día de más para todo lo que pasa después
+  // de las 21:00 hora argentina.
+  ['pages/Settings.jsx', ['fechaCortaDeMomento']],
   ['pages/Orders.jsx', ['pesos', 'fechaCorta', 'fechaDeHoy']],
   ['pages/PurchaseOrders.jsx', ['pesos', 'fechaCorta', 'fechaDeHoy']],
-  ['components/HistorialDeCostos.jsx', ['pesos']],
+  ['components/HistorialDeCostos.jsx', ['pesos', 'fechaCortaDeMomento']],
   ['components/PanelProducto.jsx', ['pesos']],
   ['components/PanelVenta.jsx', ['pesos', 'fechaCorta']],
   ['utils/impresionInventario.js', ['pesos']],
@@ -636,13 +711,31 @@ describe('los archivos migrados usan la fuente compartida', () => {
     expect(leer('components/PanelVenta.jsx')).not.toMatch(/function\s+fechaCorta\b/)
   })
 
-  it('`fechaCorta` de HistorialDeCostos NO se unificó, y es a propósito', () => {
-    // La de `utils/formato.js` parte el string sin pasar por `Date` porque su
-    // entrada es un DATEONLY. La de acá recibe un timestamp CON hora, que es un
-    // instante real y se muestra en la hora del usuario: un costo cambiado a
-    // las 21:30 del 2 pasó el 2 para quien lo hizo y en UTC figura como el 3.
-    // Aplanarlas movería un día una de las dos columnas, así que esta guardia
-    // afirma la diferencia en vez de prohibirla.
-    expect(leer('components/HistorialDeCostos.jsx')).toMatch(/function\s+fechaCorta\b/)
+  it('HistorialDeCostos ya NO tiene su copia: ahora existe la compartida', () => {
+    // Esta guardia decía lo contrario, y tenía razón: la copia de acá recibe un
+    // timestamp CON hora —un instante real, que se muestra en la hora del
+    // usuario— y la de `utils/formato.js` recibe un DATEONLY. Aplanarlas habría
+    // movido un día una de las dos columnas, así que la duplicación quedó
+    // anotada como deliberada.
+    //
+    // Lo que faltaba no era unificarlas: era que existiera **la segunda forma**.
+    // `fechaCortaDeMomento` hace exactamente lo que hacía esta copia, y ahora
+    // las dos viven en el mismo archivo, cada una con su motivo escrito.
+    //
+    // El defecto que lo destapó estaba en otro lado: una invitación creada a las
+    // 22:00 mostraba un vencimiento del día SIGUIENTE, porque le aplicaba a un
+    // instante la función que es correcta para un DATEONLY. Miente hacia
+    // adelante, así que alguien iba a intentar usar un enlace ya muerto.
+    expect(leer('components/HistorialDeCostos.jsx')).not.toMatch(/function\s+fechaCorta\b/)
+  })
+
+  it('y las dos formas siguen siendo dos, con su motivo escrito', () => {
+    // Lo que la guardia anterior protegía sigue protegido, por el lado correcto:
+    // que nadie las aplane. Si alguien borrara una de las dos, la otra correría
+    // el día en la mitad de las pantallas.
+    const fuente = leer('utils/formato.js')
+
+    expect(fuente).toMatch(/export function fechaCorta\b/)
+    expect(fuente).toMatch(/export function fechaCortaDeMomento\b/)
   })
 })

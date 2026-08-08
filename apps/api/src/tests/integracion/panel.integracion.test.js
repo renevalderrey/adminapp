@@ -75,11 +75,19 @@ function mediadosDelMes(fechaISO, meses = 0) {
  */
 let parDeClaves;
 
-function certificadoQueVenceEn(dias) {
+/** La fecha ISO `dias` despues, sin pasar por la zona horaria de nadie. */
+function sumarDiasISO(fechaISO, dias) {
+  const base = new Date(`${fechaISO}T12:00:00.000Z`);
+  base.setUTCDate(base.getUTCDate() + dias);
+
+  return base.toISOString().split('T')[0];
+}
+
+function certificadoQueVenceEn(dias, notAfter = null) {
   if (!parDeClaves) parDeClaves = forge.pki.rsa.generateKeyPair({ bits: 512 });
 
   const cert = forge.pki.createCertificate();
-  const vence = new Date(Date.now() + dias * MILISEGUNDOS_POR_DIA);
+  const vence = notAfter || new Date(Date.now() + dias * MILISEGUNDOS_POR_DIA);
 
   cert.publicKey = parDeClaves.publicKey;
   cert.serialNumber = '01';
@@ -94,7 +102,12 @@ function certificadoQueVenceEn(dias) {
 
   return {
     pem: forge.pki.certificateToPem(cert),
-    vence: vence.toISOString().split('T')[0],
+    // ⚠ La fecha esperada se calcula en la ZONA DEL NEGOCIO, no con
+    // `toISOString()`. Con la fecha UTC, este helper daba un dia de mas cada vez
+    // que la suite corria entre las 21:00 y la medianoche hora argentina: el
+    // test se ponia rojo por la hora a la que alguien lo corrio, que es la peor
+    // clase de rojo porque no se reproduce al dia siguiente.
+    vence: fechaDelNegocio('America/Argentina/Buenos_Aires', vence),
   };
 }
 
@@ -804,6 +817,46 @@ describe('Requiere tu atención', () => {
     expect(aviso.dias).toBeGreaterThanOrEqual(19);
     expect(aviso.vence).toBe(vence);
     expect(JSON.stringify(avisos)).not.toContain('BEGIN');
+  });
+
+  // ── El certificado que muere de noche ──
+  //
+  // `notAfter` es un INSTANTE, y el aviso lo leia con `.toISOString()`, o sea en
+  // UTC. Un certificado que muere el 7 a las 02:00 UTC muere el **6 a las 23:00
+  // hora argentina**: el Panel decia «te queda 1 dia» sobre algo que se apagaba
+  // esa misma noche.
+  //
+  // ⚠ Miente hacia el lado que duele —de mas, nunca de menos— y el tramite en
+  // ARCA no se hace en una tarde. Y ademas contradecia a la pantalla de
+  // Facturacion, que cuenta en hora local: las dos hablan del mismo certificado
+  // y decian numeros distintos, asi que no habia forma de saber cual creer.
+  it('el vencimiento se cuenta en la zona del negocio y NO en UTC', async () => {
+    // Las 02:00 UTC de mañana son las 23:00 de HOY en Argentina.
+    const mañanaEnUtc = new Date(`${sumarDiasISO(HOY, 1)}T02:00:00.000Z`);
+    const { pem } = certificadoQueVenceEn(null, mañanaEnUtc);
+
+    await Setting.create({ key: 'afip_cert', empresa_id: 1, value: pem });
+
+    const { requiere_atencion: avisos } = await dashboardService.getKpis(1, { hoy: HOY });
+    const aviso = deTipo(avisos, 'certificado_afip');
+
+    // Se apaga hoy a la noche: cero dias, no uno.
+    expect(aviso.dias).toBe(0);
+    expect(aviso.vence).toBe(HOY);
+  });
+
+  it('y el que muere de tarde SI es de mañana, que es la otra mitad', async () => {
+    // Sin este caso, «restarle un dia a todo» pasaria el anterior y el aviso
+    // adelantaria un dia todos los vencimientos.
+    const mañanaDeTarde = new Date(`${sumarDiasISO(HOY, 1)}T18:00:00.000Z`);
+    const { pem } = certificadoQueVenceEn(null, mañanaDeTarde);
+
+    await Setting.create({ key: 'afip_cert', empresa_id: 1, value: pem });
+
+    const { requiere_atencion: avisos } = await dashboardService.getKpis(1, { hoy: HOY });
+
+    expect(deTipo(avisos, 'certificado_afip').dias).toBe(1);
+    expect(deTipo(avisos, 'certificado_afip').vence).toBe(sumarDiasISO(HOY, 1));
   });
 
   it('un certificado con un año por delante no genera aviso', async () => {

@@ -182,6 +182,41 @@ export function fechaCorta(iso) {
 }
 
 /**
+ * La fecha de un INSTANTE, leída en la zona horaria del usuario.
+ *
+ * ── Por qué no alcanza con `fechaCorta` ──
+ *
+ * `fechaCorta` recorta los diez primeros caracteres del ISO **a propósito**, y
+ * eso es correcto para los `DATEONLY` que manda la API: `'2026-08-01'` es el 1
+ * de agosto y parsearlo lo correría al 31 de julio. Hay un test que lo fija.
+ *
+ * Pero hay campos que NO son fechas: son momentos. `expires_at`, `createdAt`,
+ * `validTo`, `recibido_en`. Ahí los diez primeros caracteres son la fecha **en
+ * UTC**, y en Argentina —UTC−3— de las 21:00 en adelante ya es el día
+ * siguiente allá.
+ *
+ * ⚠ El caso que lo destapó: una invitación creada un jueves a las 22:00 vence
+ * siete días después, o sea el jueves siguiente a las 22:00 — pero se dibujaba
+ * con la fecha del **viernes**. Miente hacia adelante, así que alguien la iba a
+ * intentar usar muerta, con el enlace ya vencido y sin ninguna explicación.
+ *
+ * Las dos funciones conviven porque **hacen falta las dos**, y confundirlas
+ * corre el día en un sentido o en el otro. Cuál usar sale de qué guarda la
+ * columna: si tiene hora, es un momento.
+ */
+export function fechaCortaDeMomento(iso) {
+  if (!iso) return '—'
+
+  const momento = iso instanceof Date ? iso : new Date(iso)
+  if (Number.isNaN(momento.getTime())) return String(iso)
+
+  const dia = String(momento.getDate()).padStart(2, '0')
+  const mes = String(momento.getMonth() + 1).padStart(2, '0')
+
+  return `${dia}/${mes}/${momento.getFullYear()}`
+}
+
+/**
  * La fecha de hoy como `AAAA-MM-DD`, leída en la zona horaria del usuario.
  *
  * **No** es `new Date().toISOString().slice(0, 10)`: eso pasa por UTC, así que

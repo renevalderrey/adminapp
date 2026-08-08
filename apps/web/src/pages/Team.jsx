@@ -19,7 +19,7 @@ import {
   revokeInvitation,
 } from '@/services/api'
 import { mensajeDeError } from '@/utils/erroresDeApi'
-import { fechaCorta } from '@/utils/formato'
+import { fechaCortaDeMomento } from '@/utils/formato'
 import {
   ETIQUETAS_DE_INVITACION,
   ETIQUETAS_DE_MIEMBRO,
@@ -584,11 +584,11 @@ export default function Team() {
                   </span>
 
                   <span className="num text-[13px] text-fg-2">
-                    {fechaCorta(invitacion.createdAt)}
+                    {fechaCortaDeMomento(invitacion.createdAt)}
                   </span>
 
                   <span className="num text-[13px] text-fg-2">
-                    {fechaCorta(invitacion.expires_at)}
+                    {fechaCortaDeMomento(invitacion.expires_at)}
                   </span>
 
                   <span>

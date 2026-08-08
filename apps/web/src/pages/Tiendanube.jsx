@@ -23,7 +23,7 @@ import {
   setTiendanubeSucursal,
   sincronizarTiendanube,
 } from '@/services/api'
-import { fechaCorta } from '@/utils/formato'
+import { fechaCortaDeMomento } from '@/utils/formato'
 import {
   ETIQUETAS_DE_MAPEO,
   estadoDeLaConexion,
@@ -244,7 +244,7 @@ function PedidosConProblemas({ pedidos, total }) {
                   </span>
 
                   <span className="num text-[12.5px] text-fg-3">
-                    {fechaCorta(pedido.recibido_en)}
+                    {fechaCortaDeMomento(pedido.recibido_en)}
                   </span>
 
                   <span className="text-[12.5px] text-fg-2">

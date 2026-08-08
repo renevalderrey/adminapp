@@ -4,7 +4,7 @@ import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { usePermission } from '@/hooks/usePermission'
 import { getTiendanubeUltimaCorrida } from '@/services/api'
 import { mensajeDeError } from '@/utils/erroresDeApi'
-import { fechaCorta } from '@/utils/formato'
+import { fechaCortaDeMomento } from '@/utils/formato'
 import {
   ETIQUETAS_DE_CONEXION,
   estadoDeLaConexion,
@@ -91,7 +91,7 @@ const CON_TIENDA = ['vinculada', 'vinculada_con_error']
  * que ir una fecha se lee como un error de carga y no como «esto no pasó».
  */
 function fechaOTexto(iso, siNunca) {
-  return iso ? fechaCorta(iso) : siNunca
+  return iso ? fechaCortaDeMomento(iso) : siNunca
 }
 
 /**

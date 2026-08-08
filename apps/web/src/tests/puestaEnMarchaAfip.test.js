@@ -210,6 +210,89 @@ describe('diasHastaVencer', () => {
     expect(diasHastaVencer('no es una fecha', AHORA)).toBeNull()
     expect(diasHastaVencer(null, AHORA)).toBeNull()
   })
+
+  // ── El número no puede cambiar durante el día ──
+  //
+  // Contaba sobre los INSTANTES, así que la resta cruzaba un múltiplo exacto de
+  // veinticuatro horas en algún momento de la jornada y el mismo certificado
+  // decía «28 días» a la mañana y «27» a la tarde.
+  //
+  // Nadie mira un número así dos veces seguidas y concluye «cambió la hora».
+  // Concluye que el sistema no está seguro. Y de este número cuelga la severidad
+  // del aviso, así que el mismo certificado podía verse amarillo a la mañana y
+  // rojo a la tarde.
+  describe('el número no se mueve a lo largo del día', () => {
+    const VENCE = '2026-09-03T13:22:11.000Z'
+
+    /** El mismo día, a esa hora local. */
+    const aLasHoras = (hora) => new Date(2026, 7, 6, hora, 0, 0)
+
+    it('a las 8, a las 13 y a las 20 dice lo mismo', () => {
+      const mañana = diasHastaVencer(VENCE, aLasHoras(8))
+      const mediodia = diasHastaVencer(VENCE, aLasHoras(13))
+      const tarde = diasHastaVencer(VENCE, aLasHoras(20))
+
+      expect(mediodia).toBe(mañana)
+      expect(tarde).toBe(mañana)
+    })
+
+    it('y a lo largo de las veinticuatro horas tampoco', () => {
+      // Barrer el día entero y no tres horas sueltas: el instante donde la
+      // cuenta saltaba depende de la hora exacta del vencimiento, y tres puntos
+      // elegidos a mano pueden caer todos del mismo lado.
+      const delDia = new Set(
+        Array.from({ length: 24 }, (_, hora) => diasHastaVencer(VENCE, aLasHoras(hora)))
+      )
+
+      expect([...delDia]).toHaveLength(1)
+    })
+
+    it('y al día siguiente baja EXACTAMENTE uno', () => {
+      // El contra-caso. Un número que nunca se mueve pasaría los dos de arriba
+      // —devolver una constante los pasa— y el aviso no llegaría nunca.
+      const hoy = diasHastaVencer(VENCE, new Date(2026, 7, 6, 9, 0, 0))
+      const mañana = diasHastaVencer(VENCE, new Date(2026, 7, 7, 9, 0, 0))
+
+      expect(mañana).toBe(hoy - 1)
+    })
+
+    it('cuenta igual que el Panel, que ya contaba sobre el día', () => {
+      // `services/dashboardService.js` hace `round((venceUTC − hoyUTC) / DÍA)` y
+      // su comentario dice este mismo motivo. Las dos pantallas hablan del mismo
+      // certificado: si dieran números distintos, una de las dos miente y no hay
+      // forma de saber cuál.
+      //
+      // Se reproduce la cuenta del servidor acá en vez de importarla: son dos
+      // aplicaciones distintas y el front no puede requerir del back. Lo que se
+      // afirma es que los dos resultados coinciden.
+      //
+      // ⚠ El servidor le pasa a esa cuenta la fecha del vencimiento **en la zona
+      // del negocio**, no en UTC. Escribir el test comparando contra la fecha
+      // UTC fue lo que destapó que el Panel tenía además su propio defecto: un
+      // certificado que muere el 7 a las 02:00 UTC muere el 6 a las 23:00 acá, y
+      // el Panel decía «te queda 1 día» sobre algo que se apagaba esa noche.
+      const DIA = 24 * 60 * 60 * 1000
+      const comoUtc = (iso) => new Date(`${iso}T00:00:00Z`)
+      const comoElPanel = (venceEnZonaDelNegocio, hoyISO) =>
+        Math.round((comoUtc(venceEnZonaDelNegocio).getTime() - comoUtc(hoyISO).getTime()) / DIA)
+
+      expect(diasHastaVencer('2026-09-03T13:22:11.000Z', new Date(2026, 7, 6, 9, 0, 0)))
+        .toBe(comoElPanel('2026-09-03', '2026-08-06'))
+
+      // El caso de borde: instante del 7 en UTC, día 6 en la zona del negocio.
+      // Los dos tienen que decir 0 —«se te vence hoy»— y no 1.
+      expect(diasHastaVencer('2026-08-07T02:00:00.000Z', new Date(2026, 7, 6, 22, 0, 0)))
+        .toBe(comoElPanel('2026-08-06', '2026-08-06'))
+    })
+
+    it('el que vence hoy dice 0, y el que vencio ayer dice -1', () => {
+      // Los dos bordes. «0» es «se te vence hoy», que es el aviso mas urgente
+      // que existe, y tiene que distinguirse de «-1», que es «ya no podes
+      // facturar».
+      expect(diasHastaVencer('2026-08-06T23:00:00.000Z', new Date(2026, 7, 6, 9, 0, 0))).toBe(0)
+      expect(diasHastaVencer('2026-08-05T23:00:00.000Z', new Date(2026, 7, 6, 9, 0, 0))).toBe(-1)
+    })
+  })
 })
 
 describe('el CUIT del certificado se compara con el configurado', () => {

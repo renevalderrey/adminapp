@@ -1,4 +1,4 @@
-import { fechaCorta } from './formato'
+import { fechaCortaDeMomento } from './formato'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · La puesta en marcha de la facturación electrónica
@@ -85,12 +85,37 @@ function comoFecha(valor) {
   return Number.isNaN(fecha.getTime()) ? null : fecha
 }
 
+/** La medianoche de ese día, en hora local. */
+function alComienzoDelDia(fecha) {
+  return new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate())
+}
+
 /**
  * Cuántos días faltan para que venza el certificado. Negativo si ya venció.
  *
- * Se redondea **hacia arriba**: un certificado que vence en veinte horas tiene
- * «1 día», no «0». Redondear hacia abajo diría «vence en 0 días» sobre algo que
- * todavía sirve, y esa es la lectura que hace que alguien no lo renueve.
+ * ── Por qué se cuenta sobre el DÍA y no sobre el instante ──
+ *
+ * Contaba `ceil((vence − ahora) / DÍA)` sobre los instantes, y eso hace que el
+ * MISMO certificado diga «28 días» a la mañana y «27» a la tarde: la resta
+ * cruza un múltiplo exacto de veinticuatro horas en algún momento de la
+ * jornada. Nadie mira un número así dos veces seguidas y concluye «cambió la
+ * hora»; concluye que el sistema no está seguro.
+ *
+ * Y de este número cuelga la severidad del aviso, así que el mismo certificado
+ * podía verse amarillo a la mañana y rojo a la tarde.
+ *
+ * ⚠ El Panel ya contaba sobre el día —`services/dashboardService.js`, y su
+ * comentario dice exactamente este motivo—, así que además las dos pantallas
+ * decían números distintos sobre lo mismo. **Esta es la que estaba mal**: se
+ * alinea con el Panel, no al revés.
+ *
+ * Se sigue redondeando hacia arriba entre días: un certificado que vence mañana
+ * tiene «1 día», no «0». Decir «vence en 0 días» sobre algo que todavía sirve
+ * es la lectura que hace que alguien no lo renueve.
+ *
+ * ⚠ Esto NO cambia `estaVigente()`, que sí compara instantes y tiene que
+ * seguir haciéndolo: un certificado que venció hace dos horas no sirve, por más
+ * que «hoy» sea su día.
  *
  * @returns {number|null} `null` si no hay una fecha utilizable.
  */
@@ -100,7 +125,12 @@ export function diasHastaVencer(validTo, ahora = new Date()) {
 
   if (!vence) return null
 
-  return Math.ceil((vence.getTime() - referencia.getTime()) / DIA)
+  const dias = (alComienzoDelDia(vence).getTime() - alComienzoDelDia(referencia).getTime()) / DIA
+
+  // `round` y no `ceil`: los dos extremos ya son medianoche, así que la división
+  // da un entero salvo por el horario de verano —que mueve una hora y dejaría
+  // 27,96—. Redondear al entero más cercano es lo que absorbe eso.
+  return Math.round(dias)
 }
 
 /**
@@ -183,7 +213,7 @@ function pasoDelCertificado(configuracion, certificado, ahora) {
     return {
       estado: 'error',
       detalle:
-        `El certificado venció el ${fechaCorta(certificado.validTo)}. ` +
+        `El certificado venció el ${fechaCortaDeMomento(certificado.validTo)}. ` +
         'Mientras esté vencido no se puede emitir ningún comprobante: sacá uno nuevo en ARCA.',
       dias,
     }
@@ -193,7 +223,7 @@ function pasoDelCertificado(configuracion, certificado, ahora) {
     return {
       estado: 'atencion',
       detalle:
-        `El certificado vence el ${fechaCorta(certificado.validTo)}, en ${dias} ` +
+        `El certificado vence el ${fechaCortaDeMomento(certificado.validTo)}, en ${dias} ` +
         `${dias === 1 ? 'día' : 'días'}. Sacá uno nuevo en ARCA antes de esa fecha.`,
       dias,
     }
@@ -201,7 +231,7 @@ function pasoDelCertificado(configuracion, certificado, ahora) {
 
   return {
     estado: 'listo',
-    detalle: `Certificado vigente hasta el ${fechaCorta(certificado.validTo)}.`,
+    detalle: `Certificado vigente hasta el ${fechaCortaDeMomento(certificado.validTo)}.`,
     dias,
   }
 }
@@ -335,7 +365,7 @@ function pasoDelCircuito(configuracion, verificacion, circuito) {
     return {
       estado: 'atencion',
       detalle:
-        `Se verificó el ${fechaCorta(verificacion.verificado_en)}, con un certificado ` +
+        `Se verificó el ${fechaCortaDeMomento(verificacion.verificado_en)}, con un certificado ` +
         'distinto del que está cargado hoy. Conviene verificar de nuevo.',
     }
   }
@@ -343,7 +373,7 @@ function pasoDelCircuito(configuracion, verificacion, circuito) {
   return {
     estado: 'listo',
     detalle:
-      `Circuito verificado el ${fechaCorta(verificacion.verificado_en)} contra ` +
+      `Circuito verificado el ${fechaCortaDeMomento(verificacion.verificado_en)} contra ` +
       `${verificacion.ambiente === 'production' ? 'producción' : 'homologación'}.`,
   }
 }

@@ -85,12 +85,25 @@ function fechaParaAfip(zona = ZONA_POR_DEFECTO, momento = new Date()) {
  * @param {number} empresaId
  * @returns {Promise<string>} YYYY-MM-DD en la zona de la empresa.
  */
-async function hoyDelNegocio(empresaId) {
+/**
+ * La zona horaria de esa empresa, o el default.
+ *
+ * Existe aparte de `hoyDelNegocio` porque hay fechas que NO son «hoy» y que
+ * igual tienen que leerse en la zona del negocio: el vencimiento de un
+ * certificado, por ejemplo. Un certificado que muere a las 02:00 UTC muere a
+ * las 23:00 de ayer en Argentina, y decirle a alguien que le queda un dia mas
+ * de los que le quedan es el error que hace que no renueve a tiempo.
+ */
+async function zonaDelNegocio(empresaId) {
   const { Empresa } = require('../models');
 
   const empresa = await Empresa.findByPk(empresaId, { attributes: ['timezone'] });
 
-  return fechaDelNegocio(empresa && empresa.timezone);
+  return (empresa && empresa.timezone) || ZONA_POR_DEFECTO;
+}
+
+async function hoyDelNegocio(empresaId) {
+  return fechaDelNegocio(await zonaDelNegocio(empresaId));
 }
 
 module.exports = {
@@ -99,4 +112,5 @@ module.exports = {
   horaDelNegocio,
   fechaParaAfip,
   hoyDelNegocio,
+  zonaDelNegocio,
 };

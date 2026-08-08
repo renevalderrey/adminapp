@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { getProductCostHistory } from '@/services/api'
 import { Loader2, TrendingDown, TrendingUp } from 'lucide-react'
-import { pesos } from '@/utils/formato'
+import { pesos, fechaCortaDeMomento } from '@/utils/formato'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Historial de costos de un producto
@@ -27,25 +27,6 @@ import { pesos } from '@/utils/formato'
 
 /** Cuántas filas trae cada pedido. Es el default del servidor (tope 100). */
 const POR_PAGINA = 10
-
-/**
- * «2026-08-03T14:20:00Z» → «03/08/2026».
- *
- * ⚠ **No es la `fechaCorta` de `utils/formato.js` y no se unificó a propósito.**
- * Aquella parte el string sin pasar por `Date` porque su entrada es un
- * `DATEONLY` —«2026-08-01», sin hora— y leerlo con `new Date()` lo interpreta
- * en UTC y lo corre un día. Acá la entrada es lo contrario: un timestamp con
- * hora, que es un instante real y se muestra en la hora del usuario. Un cambio
- * de costo hecho a las 21:30 del 2 de agosto pasó el 2 de agosto para quien lo
- * hizo, y en UTC figura como el 3.
- *
- * Aplanar las dos contra una sola movería un día una de las dos columnas.
- */
-function fechaCorta(valor) {
-  const d = new Date(valor)
-  if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-}
 
 /**
  * La variación porcentual entre dos costos.
@@ -147,7 +128,7 @@ export default function HistorialDeCostos({ productoId }) {
             return (
               <div key={fila.id} className="border-b border-border px-4 py-3 last:border-b-0">
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <span className="num text-[12.5px] text-fg-2">{fechaCorta(fila.change_date)}</span>
+                  <span className="num text-[12.5px] text-fg-2">{fechaCortaDeMomento(fila.change_date)}</span>
 
                   <span className="num text-[13px] text-fg-3 line-through">${pesos(fila.old_cost)}</span>
                   <span className="text-fg-3">→</span>

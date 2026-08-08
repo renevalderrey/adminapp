@@ -21,7 +21,7 @@ import {
   verificarCircuitoAfip,
 } from '@/services/api'
 import { mensajeDeError } from '@/utils/erroresDeApi'
-import { fechaCorta } from '@/utils/formato'
+import { fechaCortaDeMomento } from '@/utils/formato'
 import { diasHastaVencer } from '@/utils/puestaEnMarchaAfip'
 import { faltaElPermiso } from '@/utils/permisos'
 
@@ -410,7 +410,7 @@ export default function Settings() {
                   mostrar un banner equivocado, y un error de render se lee como
                   «la aplicación está rota» y no como «este banner miente». */}
               {verificado
-                ? `Circuito verificado el ${fechaCorta(verificacion?.verificado_en)} con el CUIT ` +
+                ? `Circuito verificado el ${fechaCortaDeMomento(verificacion?.verificado_en)} con el CUIT ` +
                   `${verificacion?.cuit} y el punto de venta ${verificacion?.pv}.`
                 : cumplidoPorCaePrevio
                   /* ⚠ La rama que faltaba, y la frase de abajo era FALSA para
@@ -426,7 +426,7 @@ export default function Settings() {
             {certificado && (
               <p className="mt-1 text-[13px] text-fg-2">
                 Certificado de {certificado.subject} ({certificado.cuit}), emitido por{' '}
-                {certificado.issuer}, vigente hasta el {fechaCorta(certificado.validTo)}
+                {certificado.issuer}, vigente hasta el {fechaCortaDeMomento(certificado.validTo)}
                 {dias !== null && dias > 0 ? ` — faltan ${dias} días.` : '.'}
               </p>
             )}

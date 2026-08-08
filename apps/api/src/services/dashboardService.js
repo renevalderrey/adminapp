@@ -49,7 +49,7 @@ const {
 } = require('../models');
 const cashflowService = require('./cashflowService');
 const logger = require('../utils/logger');
-const { hoyDelNegocio } = require('../utils/fechas');
+const { hoyDelNegocio, fechaDelNegocio, zonaDelNegocio } = require('../utils/fechas');
 const { resumenDeCuenta } = require('../utils/cuentaDeProveedor');
 const { repartirPorAntiguedad } = require('../utils/antiguedad');
 const { aCentavos, deCentavos } = require('../utils/centavos');
@@ -660,7 +660,19 @@ class DashboardService {
 
     try {
       const cert = forge.pki.certificateFromPem(fila.value);
-      const vence = cert.validity.notAfter.toISOString().split('T')[0];
+
+      // ⚠ La fecha del vencimiento se lee en la zona del NEGOCIO, no en UTC.
+      //
+      // Estaba con `.toISOString().split('T')[0]`, que es la fecha en UTC. Un
+      // certificado que muere el 7 a las 02:00 UTC muere el 6 a las 23:00 en
+      // Argentina: el aviso decia «te queda 1 dia» sobre algo que se apagaba esa
+      // misma noche. Miente hacia el lado que duele —de mas, nunca de menos— y
+      // el tramite en ARCA no se hace en una tarde.
+      //
+      // Es la misma correccion que ya llevan las ventas y los gastos, por el
+      // mismo motivo, y la que alinea este numero con el de la pantalla de
+      // Facturacion: las dos hablan del mismo certificado.
+      const vence = fechaDelNegocio(await zonaDelNegocio(empresaId), cert.validity.notAfter);
       const dias = diasHasta(vence, hoy);
 
       if (dias > DIAS_DE_AVISO_DEL_CERTIFICADO) return null;

@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { desactivarMiembro, reactivarMiembro, updateMemberRole } from '@/services/api'
 import { mensajeDeError } from '@/utils/erroresDeApi'
-import { fechaCorta } from '@/utils/formato'
+import { fechaCortaDeMomento } from '@/utils/formato'
 import {
   ETIQUETAS_DE_MIEMBRO,
   ETIQUETAS_DE_ROL,
@@ -206,7 +206,7 @@ export default function PanelDeMiembro({
             </Dato>
 
             <Dato etiqueta="En el equipo desde">
-              <span className="num">{fechaCorta(miembro.createdAt)}</span>
+              <span className="num">{fechaCortaDeMomento(miembro.createdAt)}</span>
             </Dato>
           </div>
 
