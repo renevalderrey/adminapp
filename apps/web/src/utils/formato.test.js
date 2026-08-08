@@ -10,6 +10,7 @@ import {
   importeAbreviado,
   fechaCorta,
   fechaCortaDeMomento,
+  fechaDeComprobante,
   fechaDeHoy,
 } from './formato'
 
@@ -243,6 +244,90 @@ describe('fechaCortaDeMomento lee el instante en hora local', () => {
     expect(fechaCortaDeMomento('sin fecha')).toBe('sin fecha')
     expect(fechaCortaDeMomento(null)).toBe('—')
     expect(fechaCortaDeMomento('')).toBe('—')
+  })
+})
+
+// ════════════════════════════════════════════
+//  `fechaDeComprobante` · el papel y la carga fiscal dicen lo mismo
+//
+//  Un solo comprobante tenía TRES fuentes de fecha:
+//
+//   · el papel del punto de venta, con `new Date()` —el reloj del NAVEGADOR en
+//     el momento de imprimir—;
+//   · la carga fiscal, con `fechaParaAfip(zona de la empresa)` en el servidor;
+//   · el QR de ese mismo papel, con `venta.date`.
+//
+//  Una computadora con la zona mal puesta, un reloj atrasado, o una venta
+//  registrada 23:59 e impresa 00:01 alcanzan para que digan días distintos. En
+//  un comprobante fiscal eso no es presentación: es el papel que le queda al
+//  cliente, y el que no coincide con lo que AFIP tiene registrado.
+//
+//  Y la reimpresión desde el historial usaba una tercera expresión más, escrita
+//  aparte. Ahora las dos salen de acá.
+// ════════════════════════════════════════════
+
+describe('fechaDeComprobante imprime la fecha del negocio', () => {
+  it('arma la fecha y la hora que guardó el servidor', () => {
+    // `date` y `time` son la fecha y hora DEL NEGOCIO. No se toca ninguna zona:
+    // se leen como están.
+    const impreso = fechaDeComprobante('2026-08-07', '23:59')
+
+    expect(impreso).toContain('7/8/2026')
+    expect(impreso).toContain('23:59')
+  })
+
+  it('NO se corre de día por el huso: se parsea sin Z', () => {
+    // El defecto de siempre por el otro lado. `new Date('2026-08-07T23:59Z')` en
+    // Argentina es el 7 a las 20:59, pero también existe el caso inverso: una
+    // venta de las 00:30 leída como UTC pasa al día anterior. Se parsea local.
+    expect(fechaDeComprobante('2026-08-07', '00:30')).toContain('7/8/2026')
+    expect(fechaDeComprobante('2026-08-07', '23:59')).toContain('7/8/2026')
+  })
+
+  it('las 23:59 se imprimen como 23:59, y NO como 11:59', () => {
+    // ⚠ Un defecto propio, que apareció escribiendo el test de arriba.
+    // `toLocaleString('es-AR')` a secas dibuja reloj de 12 horas **y sin el
+    // AM/PM**: en el papel, una venta de las once de la noche y una de las once
+    // de la mañana se leían igual. La reimpresión del historial ya lo tenía.
+    //
+    // En un comprobante fiscal esa hora es el dato que ubica la operación.
+    const nocturno = fechaDeComprobante('2026-08-07', '23:59')
+
+    expect(nocturno).toContain('23:59')
+    expect(nocturno).not.toContain('11:59')
+  })
+
+  it('y los segundos NO se inventan', () => {
+    // `time` es `HH:MM`. Un «:00» agregado se lee como precisión que no existe.
+    expect(fechaDeComprobante('2026-08-07', '23:59')).not.toContain(':00')
+  })
+
+  it('sin hora imprime solo el día, sin inventar las 00:00', () => {
+    // Los comprobantes viejos no tienen `time`. Imprimir «, 0:00» ahí se lee
+    // como que la venta fue a la medianoche.
+    const impreso = fechaDeComprobante('2026-08-07')
+
+    expect(impreso).toContain('7/8/2026')
+    expect(impreso).not.toContain('0:00')
+  })
+
+  it('lo vacío da un guión y lo ilegible devuelve el texto', () => {
+    expect(fechaDeComprobante(null)).toBe('—')
+    expect(fechaDeComprobante('')).toBe('—')
+    expect(fechaDeComprobante('sin fecha')).toBe('sin fecha')
+  })
+
+  it('no depende del reloj de la máquina', () => {
+    // La propiedad que importa, y la que el defecto no tenía: dos llamadas con
+    // los mismos datos dan lo mismo, se imprima cuando se imprima. `new Date()`
+    // no lo cumple, y por eso el papel del POS y la reimpresión del historial
+    // podían decir días distintos sobre el mismo comprobante.
+    const primera = fechaDeComprobante('2026-08-07', '23:59')
+    const segunda = fechaDeComprobante('2026-08-07', '23:59')
+
+    expect(segunda).toBe(primera)
+    // Y no es la fecha de hoy: es la de la venta.
+    expect(primera).not.toContain(String(new Date().getFullYear() + 1))
   })
 })
 
@@ -487,10 +572,19 @@ const PENDIENTES = [
   //  —un `DATEONLY` leído como medianoche UTC, o sea el día anterior en
   //  Argentina— y ahora sale de `fechaCorta`. La línea se borra y no se comenta:
   //  la lista es el registro de lo que falta, no de lo que faltó.
-  ['pages/Billing.jsx', 'la fecha del ticket impreso, en línea; fuera del alcance de este cambio', ['el formateo en línea de un importe o una fecha']],
+  //  ✔ **`pages/Billing.jsx` ya salió** (hito 9): la fecha del ticket impreso se
+  //  armaba con `new Date().toLocaleDateString('es-AR')`, o sea el reloj del
+  //  NAVEGADOR en el momento de imprimir, mientras la carga fiscal iba a AFIP
+  //  con la fecha que calcula el servidor y el QR del mismo papel usaba
+  //  `venta.date`. Tres fuentes para un solo comprobante. Ahora sale de
+  //  `fechaDeComprobante`. La línea se borra y no se comenta.
   ['pages/Faltantes.jsx', 'dos importes del pedido a pedir, en línea', ['el formateo en línea de un importe o una fecha']],
   ['pages/Inventory.jsx', '`unidades()` —que NO es plata— y la fecha de una transferencia', ['el formateo en línea de un importe o una fecha']],
-  ['pages/InvoicesList.jsx', 'la fecha y hora del comprobante impreso, en línea', ['el formateo en línea de un importe o una fecha']],
+  //  ✔ **`pages/InvoicesList.jsx` ya salió** (hito 9): la reimpresión armaba la
+  //  fecha con una expresión propia, escrita aparte de la del punto de venta, y
+  //  además `toLocaleString('es-AR')` a secas dibuja las 23:59 como «11:59:00»
+  //  —doce horas y sin AM/PM—, así que en el papel las once de la noche y las
+  //  once de la mañana se leían igual. Ahora sale de `fechaDeComprobante`.
   ['pages/SubscriptionSettings.jsx', 'las dos fechas de la prueba gratis, en línea', ['el formateo en línea de un importe o una fecha']],
   //  ✔ **`components/HistorialDeCostos.jsx` ya salió** (hito 9): tenía su propia
   //  `fechaCorta` con `toLocaleDateString`, y estaba bien —recibe un timestamp

@@ -217,6 +217,50 @@ export function fechaCortaDeMomento(iso) {
 }
 
 /**
+ * La fecha y hora que se IMPRIME en un comprobante: «08/08/2026, 21:47».
+ *
+ * ── Por qué no se arma con `new Date()` ──
+ *
+ * El punto de venta imprimía `new Date().toLocaleDateString('es-AR')`, o sea el
+ * reloj del NAVEGADOR en el momento de imprimir. La carga fiscal, en cambio, va
+ * a AFIP con `fechaParaAfip(zona de la empresa)`, que la calcula el servidor. Y
+ * el QR del mismo papel usa `venta.date`.
+ *
+ * O sea que un solo comprobante tenía **tres fuentes de fecha**, y no tenían por
+ * qué coincidir: una computadora con la zona mal puesta, un reloj atrasado, o
+ * una venta registrada 23:59 e impresa 00:01 alcanzan para que el papel diga un
+ * día y AFIP tenga otro. Sobre un comprobante fiscal eso no es un detalle de
+ * presentación: es el papel que le queda al cliente.
+ *
+ * ⚠ Se parsea SIN `Z` a propósito. `date` y `time` son la fecha y la hora del
+ * negocio tal como las guardó el servidor; leerlas como UTC las correría.
+ *
+ * @param {string} fecha `AAAA-MM-DD`, como la guarda la base.
+ * @param {string} [hora] `HH:MM` o `HH:MM:SS`. Sin ella solo se imprime el día.
+ */
+export function fechaDeComprobante(fecha, hora) {
+  if (!fecha) return '—'
+
+  const momento = new Date(hora ? `${fecha}T${hora}` : `${fecha}T00:00:00`)
+  if (Number.isNaN(momento.getTime())) return String(fecha)
+
+  // ⚠ `hour12: false` explícito.
+  //
+  // `toLocaleString('es-AR')` a secas dibuja las 23:59 como «11:59:00» —reloj de
+  // 12 horas y SIN el AM/PM—, así que en el papel una venta de las once de la
+  // noche y una de las once de la mañana se leen igual. En un comprobante
+  // fiscal esa hora es el dato que ubica la operación.
+  //
+  // Y los segundos se sacan: `time` es `HH:MM`, así que «:00» es un cero
+  // inventado que se lee como precisión que no existe.
+  return hora
+    ? `${momento.toLocaleDateString('es-AR')}, ${momento.toLocaleTimeString('es-AR', {
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    })}`
+    : momento.toLocaleDateString('es-AR')
+}
+
+/**
  * La fecha de hoy como `AAAA-MM-DD`, leída en la zona horaria del usuario.
  *
  * **No** es `new Date().toISOString().slice(0, 10)`: eso pasa por UTC, así que

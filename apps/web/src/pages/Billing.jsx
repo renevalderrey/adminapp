@@ -4,6 +4,7 @@ import useStore from '@/store/useStore'
 import Fuse from 'fuse.js'
 import api, { getCustomers, nuevoIdDeVenta } from '@/services/api'
 import { printInvoice } from '@/utils/printInvoice'
+import { fechaDeComprobante } from '@/utils/formato'
 import { useAtajosDelPos } from '@/hooks/useAtajosDelPos'
 import { ATRIBUTO_BUSCADOR, ATRIBUTO_CAMPO, campoLimpiable } from '@/utils/atajosDelPos'
 import { buscarEnCatalogo } from '@/utils/busquedaDelPos'
@@ -550,7 +551,16 @@ const Billing = () => {
         items: lineas,
         total: parseFloat(venta.total),
         customer: customerDoc,
-        date: new Date().toLocaleDateString('es-AR'),
+        // ⚠ La fecha del NEGOCIO, no el reloj del navegador.
+        //
+        // Decía `new Date().toLocaleDateString('es-AR')`, o sea la hora de esta
+        // computadora en el momento de imprimir. La carga fiscal va a AFIP con
+        // la fecha que calcula el servidor en la zona de la empresa, y el QR de
+        // este mismo papel usa `venta.date`: un solo comprobante tenía TRES
+        // fuentes de fecha. Una máquina con la zona mal puesta, un reloj
+        // atrasado, o una venta registrada 23:59 e impresa 00:01 alcanzan para
+        // que el papel diga un día y AFIP tenga otro.
+        date: fechaDeComprobante(venta.date, venta.time),
         fechaIso: venta.date,
         isInternal: false,
         empresa: empresaActiva,
@@ -565,7 +575,11 @@ const Billing = () => {
       items: lineas,
       total: parseFloat(venta.total),
       customer: customerName || 'Consumidor Final',
-      date: new Date().toLocaleDateString('es-AR'),
+      // Igual que arriba. Un remito o un recibo X no van a AFIP, pero se
+      // reimprimen desde el historial —y ahí sale `venta.date`—, así que si acá
+      // saliera el reloj del navegador las dos copias del mismo papel podrían
+      // decir días distintos.
+      date: fechaDeComprobante(venta.date, venta.time),
       isInternal: true,
       empresa: empresaActiva,
       empresaNombre: empresaActiva?.name,

@@ -9,7 +9,7 @@ import PanelVenta from '@/components/PanelVenta'
 import { presentacionDeEstado, estaAnulada } from '@/utils/estadoVenta'
 import { descargarVentas } from '@/utils/exportarVentas'
 import { comprobanteInicial, comprobantesDisponibles } from '@/utils/comprobantes'
-import { pesos } from '@/utils/formato'
+import { pesos, fechaDeComprobante } from '@/utils/formato'
 import {
   Calendar, Search, Printer, ShieldCheck, FileText, Store, Trash2,
   Receipt, FilterX, Download, Plus, Loader2, RefreshCw, FileCheck,
@@ -664,7 +664,7 @@ const InvoicesList = () => {
       // el numero impreso y el QR salian con un PV que no es el suyo.
       pointOfSale: isAfip ? (settings.afip_pv || 1) : 0,
       voucherNumber: sale.afip_nro || identificadorCorto(sale.id),
-      date: new Date(sale.date + 'T' + sale.time).toLocaleString('es-AR'),
+      date: fechaDeComprobante(sale.date, sale.time),
       // El QR necesita la fecha en formato ISO, no la version legible.
       fechaIso: sale.date,
       customer: customerStr, items: formattedItems, total: sale.total,
