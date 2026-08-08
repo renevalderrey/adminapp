@@ -4,6 +4,8 @@ import * as XLSX from 'xlsx'
 import api from '@/services/api'
 import useStore from '@/store/useStore'
 import { enviarPedidoPorWhatsapp } from '@/utils/pedidoWhatsapp'
+import { fechaDeHoy } from '@/utils/formato'
+import { mensajeDeError } from '@/utils/erroresDeApi'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -56,7 +58,7 @@ export default function Faltantes() {
       setCantidades(iniciales)
       setExcluidos(new Set())
     } catch (err) {
-      toast.error(err.response?.data?.error || err.message)
+      toast.error(mensajeDeError(err, 'No se pudieron cargar los faltantes.'))
     } finally {
       setCargando(false)
     }
@@ -139,7 +141,7 @@ export default function Faltantes() {
     XLSX.utils.book_append_sheet(libro, hoja, 'Pedido')
 
     const proveedor = (grupo.proveedor?.nombre || 'sin-proveedor').replace(/[^\w-]+/g, '_')
-    XLSX.writeFile(libro, `pedido_${proveedor}_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    XLSX.writeFile(libro, `pedido_${proveedor}_${fechaDeHoy()}.xlsx`)
   }
 
   const crearOrdenDeCompra = async (grupo) => {
@@ -156,7 +158,15 @@ export default function Faltantes() {
 
     try {
       await api.post(`/suppliers/${grupo.supplier_id}/orders`, {
-        date: new Date().toISOString().slice(0, 10),
+        // ⚠ `fechaDeHoy()` y NO `new Date().toISOString()`. El ISO da la fecha
+        // en UTC, y en Argentina —UTC-3— desde las 21:00 ya es el día
+        // siguiente allá. Una reposición cargada un jueves a las 22:00 se
+        // asentaba en la cuenta del proveedor con fecha del viernes.
+        //
+        // Y esta pantalla NO dibuja la fecha en ningún lado, así que nadie lo
+        // veía acá: aparecía después, en la cuenta corriente, corrido de día y
+        // a veces de mes.
+        date: fechaDeHoy(),
         notes: nota || 'Reposición de faltantes',
         items: items.map(i => ({
           product_id: i.product_id,
@@ -168,7 +178,7 @@ export default function Faltantes() {
 
       toast.success(`Orden de compra creada para ${grupo.proveedor?.nombre}.`)
     } catch (err) {
-      toast.error(err.response?.data?.error || err.message)
+      toast.error(mensajeDeError(err, 'No se pudo crear la orden de compra.'))
     }
   }
 

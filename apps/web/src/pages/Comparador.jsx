@@ -17,7 +17,7 @@ import {
 // centavos solo si el precio los tenía. Esa diferencia es deliberada —ver
 // `pesosDeLista` en utils/formato.js— y por eso se mudó con nombre propio en
 // vez de aplanarse contra `pesos`.
-import { pesosDeLista } from '@/utils/formato'
+import { pesosDeLista, fechaDeHoy } from '@/utils/formato'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 
 // ════════════════════════════════════════════
@@ -133,7 +133,7 @@ export default function Comparador() {
     const hoja = XLSX.utils.json_to_sheet(filas)
     const libro = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(libro, hoja, 'Comparación')
-    XLSX.writeFile(libro, `comparacion_proveedores_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    XLSX.writeFile(libro, `comparacion_proveedores_${fechaDeHoy()}.xlsx`)
   }
 
   // Una columna por proveedor activo. El grid se arma a mano porque el ancho

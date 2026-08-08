@@ -163,6 +163,23 @@ describe('El filtro de tipo de comprobante', () => {
   });
 });
 
+/**
+ * La columna que normaliza una condicion armada con `where(fn(...))`.
+ *
+ * Se baja por la estructura que arma Sequelize —`translate(lower(col))`— en vez
+ * de comparar el objeto entero: comparar el objeto entero ata el test a la
+ * forma interna de Sequelize y se rompe en cada actualizacion sin que haya
+ * cambiado nada del sistema.
+ */
+function columnaDe(condicion) {
+  return condicion.attribute.args[0].args[0].col;
+}
+
+/** El patron `%...%` que se compara contra esa columna. */
+function patronDe(condicion) {
+  return condicion.logic[Op.like];
+}
+
 describe('La busqueda', () => {
   it('sin q no agrega condiciones de busqueda', () => {
     expect(base({}).where[Op.or]).toBeUndefined();
@@ -174,8 +191,66 @@ describe('La busqueda', () => {
 
     expect(condiciones).toHaveLength(3);
     expect(condiciones[0]).toEqual({ afip_cae: { [Op.iLike]: '%vega%' } });
-    expect(condiciones[1]).toEqual({ customer_name: { [Op.iLike]: '%vega%' } });
-    expect(condiciones[2]).toEqual({ '$customer.name$': { [Op.iLike]: '%vega%' } });
+
+    // Los dos nombres pasan por `translate()`. La columna que toca cada uno se
+    // verifica de verdad: sin esto, una condicion que normalizara SIEMPRE la
+    // misma columna pasaria igual y la busqueda por nombre de ficha dejaria de
+    // funcionar sin que nada avise.
+    expect(columnaDe(condiciones[1])).toBe('Sale.customer_name');
+    expect(columnaDe(condiciones[2])).toBe('customer.name');
+    expect(patronDe(condiciones[1])).toBe('%vega%');
+    expect(patronDe(condiciones[2])).toBe('%vega%');
+  });
+
+  // ── «Perez» tiene que encontrar «Perez» con acento ──
+  //
+  // El usuario que busca sin acento y no encuentra nada NO concluye que le
+  // falto el acento: concluye que la venta no esta. Es el peor final de una
+  // busqueda, porque el sistema contesta con seguridad y se equivoca.
+  //
+  // El motivo escrito para dejarlo sensible era que hace falta `unaccent`, que
+  // pide superusuario. Es cierto de `unaccent` y no del problema:
+  // `routes/suppliers.js` lo resolvio con `translate()`, del nucleo de Postgres.
+  describe('la busqueda por nombre no distingue acentos', () => {
+    it('lo que escribio el usuario se normaliza antes de ir a la consulta', () => {
+      const condiciones = base({ q: 'Pérez' }).where[Op.or];
+
+      expect(patronDe(condiciones[1])).toBe('%perez%');
+      expect(patronDe(condiciones[2])).toBe('%perez%');
+    });
+
+    it('escribirlo sin acento da EXACTAMENTE el mismo patron', () => {
+      // Es la propiedad que importa, y la que un `toLowerCase()` solo no da:
+      // los dos lados tienen que caer en el mismo texto para que se encuentren.
+      const conAcento = patronDe(base({ q: 'Pérez' }).where[Op.or][1]);
+      const sinAcento = patronDe(base({ q: 'Perez' }).where[Op.or][1]);
+
+      expect(conAcento).toBe(sinAcento);
+    });
+
+    it('la columna se normaliza con la MISMA lista, y no con otra', () => {
+      // Dos listas que hay que mantener iguales es como una busqueda encuentra
+      // «Perez» y no «Nandu»: se importan las dos del mismo modulo.
+      const { ACENTOS, SIN_ACENTOS } = require('../utils/cuentaDeProveedor');
+      const { attribute } = base({ q: 'vega' }).where[Op.or][1];
+
+      expect(attribute.fn).toBe('translate');
+      expect(attribute.args[1]).toBe(ACENTOS);
+      expect(attribute.args[2]).toBe(SIN_ACENTOS);
+
+      // Y la enye y la ce cedilla estan: son las dos que una lista armada a ojo
+      // se olvida, y las dos que aparecen en apellidos de aca.
+      expect(ACENTOS).toContain('ñ');
+      expect(ACENTOS).toContain('ç');
+    });
+
+    it('el CAE NO pasa por translate: son digitos', () => {
+      // Normalizar cada fila de una columna de digitos es trabajo por nada en
+      // una tabla que crece sin techo.
+      const condiciones = base({ q: 'vega' }).where[Op.or];
+
+      expect(condiciones[0]).toEqual({ afip_cae: { [Op.iLike]: '%vega%' } });
+    });
   });
 
   it('con digitos suma la busqueda por numero de comprobante', () => {

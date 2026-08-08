@@ -4,7 +4,17 @@ import path from 'node:path'
 import url from 'node:url'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Toda confirmación dice qué hace, y el rojo significa algo
+//  ADMINAPP · Guardias estáticas sobre todo el árbol de `src`
+//
+//  Dos propiedades que no son de una pantalla sino de TODAS, y que por eso se
+//  verifican leyendo los archivos en vez de montando componentes: que toda
+//  confirmación diga qué hace, y que ninguna fecha se arme pasando por UTC.
+//
+//  Comparten el recorrido recursivo de una sola vez a propósito. Duplicarlo es
+//  la forma de que uno de los dos se quede atrás el día que alguien agregue una
+//  carpeta, y ése es justo el modo en que estas guardias mueren sin avisar.
+//
+//  ── 1 · Toda confirmación dice qué hace, y el rojo significa algo ──
 //
 //  ── El defecto ──
 //
@@ -46,6 +56,12 @@ function archivosDeCodigo(dir = RAIZ, acumulado = []) {
       archivosDeCodigo(ruta, acumulado)
       continue
     }
+
+    // ⚠ Los `.test.js` quedan afuera estén donde estén, y no solo los de
+    // `tests/`: `utils/` tiene sus tests al lado del archivo que prueban, y uno
+    // de ellos cita el defecto de `toISOString()` para verificar la corrección.
+    // Un test que documenta el defecto no puede hacer fallar a la guardia.
+    if (/\.test\.jsx?$/.test(entrada.name)) continue
 
     if (/\.jsx?$/.test(entrada.name)) acumulado.push(ruta)
   }
@@ -182,5 +198,49 @@ describe('El rojo se reserva para lo que no se puede deshacer', () => {
     for (const llamada of vaciar) {
       expect(llamada.texto).not.toMatch(/destructivo:\s*true/)
     }
+  })
+})
+
+// ════════════════════════════════════════════
+//  ── 2 · Ninguna fecha se arma pasando por UTC ──
+//
+//  ── El defecto ──
+//
+//  `new Date().toISOString().slice(0, 10)` devuelve la fecha **en UTC**. En
+//  Argentina —UTC−3— desde las 21:00 allá ya es el día siguiente, así que una
+//  reposición cargada un jueves a las 22:00 se asentaba en la cuenta del
+//  proveedor con fecha del viernes.
+//
+//  ⚠ Miente **siempre hacia adelante y solo de noche**: nunca se equivoca a la
+//  mañana, cuando alguien podría estar mirando. Y la pantalla que lo tenía no
+//  dibuja la fecha en ningún lado, así que el error no aparecía ahí sino
+//  después, en la cuenta corriente, corrido de día y a veces de mes.
+//
+//  Este repositorio lo corrigió ya cinco veces —está explicado en cinco
+//  encabezados distintos— y volvió a aparecer igual. Por eso ahora hay guardia.
+// ════════════════════════════════════════════
+
+describe('Ninguna fecha se arma pasando por UTC', () => {
+  const usos = ARCHIVOS.flatMap(({ nombre, contenido }) =>
+    sinComentarios(contenido)
+      .split('\n')
+      .map((linea, i) => ({ archivo: nombre, n: i + 1, texto: linea.trim() }))
+      .filter(({ texto }) => /toISOString\(\)/.test(texto))
+  )
+
+  it('nadie usa `toISOString()` para sacar el día', () => {
+    // `fechaDeHoy()` de `utils/formato.js` usa los métodos LOCALES del `Date`,
+    // que son los que dan el día del negocio. La guardia mira `toISOString()`
+    // entero y no solo el `.slice(0, 10)`: el `.slice(0, 7)` del mes tiene
+    // exactamente el mismo problema y ya lo tuvo `utils/gastos.js`.
+    expect(usos.map(({ archivo, n }) => `${archivo}:${n}`)).toEqual([])
+  })
+
+  it('la guardia miró de verdad: `fechaDeHoy` se usa en varios lados', () => {
+    // Ancla. Sin esto, cero usos de `toISOString` se lee igual que «no encontré
+    // ningún archivo», que es cómo estas guardias se quedan verdes para siempre.
+    const conFechaDeHoy = ARCHIVOS.filter(({ contenido }) => /\bfechaDeHoy\b/.test(contenido))
+
+    expect(conFechaDeHoy.length).toBeGreaterThan(3)
   })
 })

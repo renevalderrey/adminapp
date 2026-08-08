@@ -20,8 +20,9 @@
 //  diciendo algo distinto de la pantalla.
 // ════════════════════════════════════════════
 
-const { Op } = require('sequelize');
+const { Op, fn, col, where: sqlWhere } = require('sequelize');
 const { ErrorDeNegocio } = require('./errores');
+const { sinAcentos, ACENTOS, SIN_ACENTOS } = require('./cuentaDeProveedor');
 
 /** 25 filas por pagina, igual que Inventario. */
 const FILAS_POR_PAGINA = 25;
@@ -143,29 +144,52 @@ function numeroDeComprobante(texto) {
 }
 
 /**
+ * La condicion sobre una columna de nombre, sin mayusculas ni acentos.
+ *
+ * ── Por que dejo de ser sensible a acentos ──
+ *
+ * Buscar «Perez» no encontraba «Pérez», y de ahi el usuario no concluye que le
+ * falto un acento: concluye que **la venta no esta**. Es el peor final posible
+ * para una busqueda, porque el sistema contesta con seguridad y se equivoca.
+ *
+ * El motivo que estaba escrito para dejarlo asi era que quitar acentos exige la
+ * extension `unaccent`, que pide permisos de superusuario en una base
+ * administrada. Eso es cierto de `unaccent` y **ya no vale como motivo**:
+ * `routes/suppliers.js` resolvio exactamente lo mismo con `translate()`, que es
+ * del nucleo de Postgres y no pide nada. Este archivo estaba citado ahi como el
+ * lugar que faltaba.
+ *
+ * ⚠ La MISMA lista de acentos normaliza los dos lados —la columna, en SQL, y lo
+ * que escribio el usuario, en JS—, asi que no pueden separarse. Se importan de
+ * `cuentaDeProveedor.js` en vez de copiarse: dos listas que hay que mantener
+ * iguales es como una busqueda encuentra «Pérez» y no «Ñandú».
+ */
+function comoNombre(columna, texto) {
+  return sqlWhere(
+    fn('translate', fn('lower', col(columna)), ACENTOS, SIN_ACENTOS),
+    { [Op.like]: `%${sinAcentos(texto)}%` }
+  );
+}
+
+/**
  * Condiciones de la busqueda libre.
  *
  * Cubre numero de comprobante, CAE, el nombre libre escrito en la venta y el
  * nombre de la ficha del cliente. Los cuatro van en OR: el usuario escribe lo
  * que se acuerda, no elige por que campo busca.
- *
- * Es insensible a mayusculas (iLike) pero SENSIBLE a acentos: «Perez» no
- * encuentra «Pérez». Quitarlos exige la extension unaccent de Postgres, que
- * necesita permisos de superusuario en la base administrada. Queda afuera a
- * proposito.
  */
 function condicionesDeBusqueda(q) {
   const texto = String(q || '').trim();
   if (!texto) return null;
 
-  const patron = `%${texto}%`;
-
   const condiciones = [
-    { afip_cae: { [Op.iLike]: patron } },
-    { customer_name: { [Op.iLike]: patron } },
-    // La ficha del cliente vive en otra tabla: el $…$ le dice a Sequelize que
-    // es una columna del include y no un atributo de Sale.
-    { '$customer.name$': { [Op.iLike]: patron } },
+    // El CAE es de digitos: no tiene acentos ni mayusculas que normalizar, y
+    // pasarlo por `translate` seria trabajo de mas en cada fila.
+    { afip_cae: { [Op.iLike]: `%${texto}%` } },
+    comoNombre('Sale.customer_name', texto),
+    // La ficha del cliente vive en otra tabla. Con `col()` hay que nombrar el
+    // alias del include —`customer`—, que es lo mismo que decia el `$…$`.
+    comoNombre('customer.name', texto),
   ];
 
   const numero = numeroDeComprobante(texto);
