@@ -46,7 +46,7 @@ const SubscriptionSettings = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1>Suscripción y Plan</h1>
+        <h1>Suscripción</h1>
         <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
           Estado de tu plan y período de prueba.
         </p>

@@ -723,7 +723,7 @@ const InvoicesList = () => {
         `Comprobante validado - CAE: ${d.CodAutorizacion} - Vto: ${d.FchVto}`
       )
     } catch (err) {
-      toast.error('Error al consultar AFIP: ' + (err.response?.data?.error || err.message))
+      toast.error(mensajeDeError(err, 'No se pudo consultar el estado en AFIP.'))
     }
   }
 
@@ -738,14 +738,20 @@ const InvoicesList = () => {
     try {
       await api.put(`/sales/${sale.id}/void`)
       toast.success('Venta anulada y stock restaurado')
-      fetchSales()
 
-      // Si la venta anulada es la que está abierta, el panel tiene que mostrar
-      // el estado nuevo: si no, sigue ofreciendo anular algo ya anulado.
-      if (ventaAbierta === sale.id) {
-        const res = await getSale(sale.id)
-        setDetalle(res.data.data)
-      }
+      // ⚠ `sincronizarVenta` y NO `fetchSales()`.
+      //
+      // Recargar el listado entero pierde la página, el orden y el scroll: quien
+      // anula la novena venta de la página 3 volvía a la página 1 y tenía que
+      // buscarla de nuevo para confirmar que quedó anulada. Es el mismo motivo
+      // que está escrito en el encabezado de `sincronizarVenta`, que ya existía
+      // y hacía exactamente esto —parchar la fila en el lugar— y que los otros
+      // dos caminos de esta pantalla ya usaban.
+      //
+      // Y de paso resuelve el panel: `sincronizarVenta` actualiza `detalle` si
+      // la venta abierta es ésta, así que el `getSale` de acá abajo era un
+      // segundo viaje al servidor para traer lo mismo.
+      await sincronizarVenta(sale.id)
     } catch (err) {
       // Un 400 es una condición prevista y su mensaje está escrito para que lo
       // lea el usuario —«esta venta tiene un CAE y sigue vigente ante ARCA»—.

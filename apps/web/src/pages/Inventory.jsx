@@ -25,6 +25,7 @@ import ImportWizard from '@/components/ImportWizard'
 import PanelProducto from '@/components/PanelProducto'
 import PanelTransferencia from '@/components/PanelTransferencia'
 import PreciosMasivos from '@/components/PreciosMasivos'
+import MenuDesplegable from '@/components/MenuDesplegable'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 
 // ════════════════════════════════════════════
@@ -708,12 +709,11 @@ const Inventory = () => {
               misma decisión —«llevarme este listado»— y separados serían dos
               botones secundarios más compitiendo con el principal. */}
           <Can codigo="products.ver">
-            <details className="relative">
-              <summary className={`${BOTON_SECUNDARIO} cursor-pointer list-none`}>
-                <Download className="h-3.5 w-3.5 text-fg-3" /> Exportar
-              </summary>
-
-              <div className="absolute right-0 z-20 mt-1.5 w-[210px] overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-nivel-2">
+            <MenuDesplegable
+              claseDelBoton={BOTON_SECUNDARIO}
+              boton={<><Download className="h-3.5 w-3.5 text-fg-3" /> Exportar</>}
+            >
+              <div>
                 <button
                   className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors hover:bg-surface-3"
                   onClick={exportarExcel}
@@ -729,7 +729,7 @@ const Inventory = () => {
                   Imprimir
                 </button>
               </div>
-            </details>
+            </MenuDesplegable>
           </Can>
           <button className={BOTON_PRINCIPAL} onClick={openCreate}>
             <Plus className="h-4 w-4" /> Nuevo producto
@@ -861,20 +861,25 @@ const Inventory = () => {
         {/* ── Qué sucursales se comparan ──
             Aparece solo con más de tres: con tres o menos están todas y un
             selector que no puede cambiar nada es un botón que enseña a ignorar
-            los botones. Es un `<details>` y no un popover para no arrastrar otro
-            componente: el navegador ya resuelve abrir, cerrar y el teclado. */}
+            los botones. Va con `MenuDesplegable`, que es un `<details>` con las
+            tres líneas que el navegador NO resuelve: cerrar al hacer clic
+            afuera, cerrar con Escape y devolver el foco al botón. */}
         {sucursalElegida === TODAS_LAS_SUCURSALES
           && sucursalesComparables.length > MAXIMO_COLUMNAS_DE_SUCURSAL && (
-          <details className="relative">
-            <summary className="inline-flex h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[13px] text-fg-2 transition-colors hover:bg-surface-3">
-              <SlidersHorizontal className="h-3.5 w-3.5" />
-              Columnas
-              <span className="num text-[11.5px] text-fg-3">
-                {columnasDeStock.length}/{MAXIMO_COLUMNAS_DE_SUCURSAL}
-              </span>
-            </summary>
-
-            <div className="absolute right-0 z-20 mt-1.5 w-[240px] rounded-xl border border-border bg-surface p-2 shadow-nivel-2">
+          <MenuDesplegable
+            ancho="w-[240px]"
+            claseDelBoton="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[13px] text-fg-2 transition-colors hover:bg-surface-3"
+            boton={
+              <>
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                Columnas
+                <span className="num text-[11.5px] text-fg-3">
+                  {columnasDeStock.length}/{MAXIMO_COLUMNAS_DE_SUCURSAL}
+                </span>
+              </>
+            }
+          >
+            <div className="p-1">
               <p className="px-2 py-1 text-[11.5px] text-fg-3">
                 Hasta {MAXIMO_COLUMNAS_DE_SUCURSAL} sucursales lado a lado.
               </p>
@@ -900,7 +905,7 @@ const Inventory = () => {
                 )
               })}
             </div>
-          </details>
+          </MenuDesplegable>
         )}
       </div>
 

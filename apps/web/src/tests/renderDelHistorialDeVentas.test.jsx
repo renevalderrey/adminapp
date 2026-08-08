@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, act, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, act, waitFor, cleanup, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import useStore from '@/store/useStore'
@@ -382,5 +382,92 @@ describe('Reintentar la facturación no emite de un clic', () => {
     expect(texto).toContain('Factura C')
     expect(texto).toContain('HOMOLOGACIÓN')
     expect(texto).toContain('NO tiene validez fiscal')
+  })
+})
+
+// ════════════════════════════════════════════
+//  Hito 9 · Anular recargaba la lista entera
+//
+//  `handleVoid` llamaba a `fetchSales()` —el listado completo, desde la página
+//  1— mientras `sincronizarVenta` ya existía en el mismo archivo, parchaba la
+//  fila en el lugar, y tenía escrito en su encabezado exactamente por qué la
+//  recarga está mal: «recargar perdería la página, el orden y el scroll, que es
+//  justo lo que esta pantalla tiene que conservar».
+//
+//  Los otros dos caminos que cambian una venta —reintentar y verificar contra
+//  AFIP— ya usaban `sincronizarVenta`. Anular era el que no.
+//
+//  ⚠ Es el mismo molde que este repositorio ya encontró tres veces: **la regla
+//  existe, está escrita, y un segundo camino no la invoca.**
+//
+//  Lo que se le pierde a la persona: quien anula la novena venta de la página 3
+//  vuelve a la página 1 y tiene que buscarla de nuevo para confirmar que quedó
+//  anulada — justo cuando acaba de hacer algo que no se deshace.
+// ════════════════════════════════════════════
+
+describe('Anular una venta NO recarga el listado', () => {
+  /** Cuántas veces se pidió el listado completo. */
+  const pedidosDelListado = () => get.mock.calls.filter(([url]) => url === '/sales').length
+
+  it('parcha la fila en el lugar en vez de volver a pedir el listado', async () => {
+    const put = vi.spyOn(api, 'put').mockResolvedValue({ data: { ok: true } })
+
+    await montar()
+
+    // El montaje pide el listado. Lo que se cuenta es lo que pasa DESPUÉS.
+    const alMontar = pedidosDelListado()
+    expect(alMontar).toBeGreaterThan(0)
+
+    const fila = screen.getByText('Pérez').closest('[style*="grid-template-columns"]')
+    await userEvent.click(within(fila).getByTitle(/Anular/))
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Anular venta' }))
+    })
+
+    expect(put).toHaveBeenCalledWith(`/sales/${RECHAZADA.id}/void`)
+
+    // Ni un pedido más del listado…
+    expect(pedidosDelListado()).toBe(alMontar)
+    // …y sí uno del detalle de ESA venta, que es lo que parcha la fila.
+    expect(get.mock.calls.some(([url]) => url === `/sales/${RECHAZADA.id}`)).toBe(true)
+
+    put.mockRestore()
+  })
+
+  it('con el panel abierto tampoco pide el detalle dos veces', async () => {
+    // ⚠ **El panel se abre a propósito.** El `getSale` que había además del
+    // `fetchSales` estaba adentro de un `if (ventaAbierta === sale.id)`, así que
+    // con el panel cerrado no corre — y este caso pasaba con y sin él. Es la
+    // única forma de ver esa mitad del defecto: dos viajes al servidor para
+    // traer lo mismo, en la operación que menos conviene demorar.
+    const put = vi.spyOn(api, 'put').mockResolvedValue({ data: { ok: true } })
+
+    await montar()
+    await abrirElPanel()
+
+    // Abrir el panel ya pidió el detalle una vez. Se cuenta desde acá.
+    const alAbrir = get.mock.calls.filter(([url]) => url === `/sales/${RECHAZADA.id}`).length
+    expect(alAbrir).toBeGreaterThan(0)
+
+    // El nombre aparece también en el panel abierto, así que la fila se busca
+    // dentro de la tabla y no en toda la pantalla.
+    const fila = screen.getAllByText('Pérez')
+      .map((n) => n.closest('[style*="grid-template-columns"]'))
+      .find(Boolean)
+
+    await userEvent.click(within(fila).getByTitle(/Anular/))
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Anular venta' }))
+    })
+
+    const total = get.mock.calls.filter(([url]) => url === `/sales/${RECHAZADA.id}`).length
+
+    // Exactamente UNO más: el de `sincronizarVenta`, que además de parchar la
+    // fila actualiza el panel abierto.
+    expect(total).toBe(alAbrir + 1)
+
+    put.mockRestore()
   })
 })

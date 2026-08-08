@@ -59,7 +59,7 @@ export const GRUPOS = [
       { to: '/recetas', icon: Zap, label: 'Fórmulas y recetas', permission: 'recetas.ver', modulo: 'recetas' },
       { to: '/faltantes', icon: AlertTriangle, label: 'Faltantes', permission: 'stock.ver' },
       { to: '/proveedores', icon: Truck, label: 'Proveedores', permission: 'proveedores.ver', modulo: 'proveedores' },
-      { to: '/comparador', icon: Scale, label: 'Comparar proveedores', permission: 'proveedores.ver' },
+      { to: '/comparador', icon: Scale, label: 'Comparador de proveedores', permission: 'proveedores.ver' },
       { to: '/ordenes-compra', icon: ClipboardList, label: 'Órdenes de compra', permission: 'ordenes_compra.ver', modulo: 'ordenes-compra' },
     ],
   },

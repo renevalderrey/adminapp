@@ -569,3 +569,102 @@ describe('El rebote del buscador sale de un solo lugar', () => {
     expect(usuarios.length).toBeGreaterThanOrEqual(4)
   })
 })
+
+// ════════════════════════════════════════════
+//  ── 8 · La pantalla se llama igual en el menú y adentro ──
+//
+//  Tres no coincidían:
+//
+//   · el menú decía «Comparar proveedores» y la pantalla «Comparador de
+//     proveedores»;
+//   · «Fórmulas y recetas» adentro era «Fórmulas y Recetas», con mayúscula;
+//   · «Suscripción» adentro era «Suscripción y Plan».
+//
+//  Nada de eso rompe nada, y por eso sobrevivió: se ve solo cuando alguien va
+//  del menú a la pantalla y se pregunta si llegó a la que quería. En un sistema
+//  que alguien está aprendiendo, esa duda cuesta más que un botón mal puesto.
+//
+//  ⚠ Esta guardia se lee al revés que las otras: no prohíbe un patrón, **exige
+//  que dos textos sean iguales**. La lista de pares está escrita a mano porque
+//  no hay forma estática de saber qué pantalla dibuja qué ruta.
+// ════════════════════════════════════════════
+
+describe('El nombre del menú y el título de la pantalla coinciden', () => {
+  /** Ruta → archivo que la dibuja. */
+  const PANTALLA_DE_LA_RUTA = [
+    ['/ventas', 'pages/InvoicesList.jsx'],
+    ['/inventario', 'pages/Inventory.jsx'],
+    ['/recetas', 'pages/Recipes.jsx'],
+    ['/faltantes', 'pages/Faltantes.jsx'],
+    ['/proveedores', 'pages/Orders.jsx'],
+    ['/comparador', 'pages/Comparador.jsx'],
+    ['/ordenes-compra', 'pages/PurchaseOrders.jsx'],
+    ['/gastos', 'pages/Expenses.jsx'],
+    ['/panel', 'pages/Dashboard.jsx'],
+    ['/facturacion', 'pages/Settings.jsx'],
+    ['/tiendanube', 'pages/Tiendanube.jsx'],
+    ['/team', 'pages/Team.jsx'],
+    ['/suscripcion', 'pages/SubscriptionSettings.jsx'],
+  ]
+
+  /** El nombre que declara el menú para esa ruta. */
+  function delMenu(ruta) {
+    const fuente = ARCHIVOS.find(({ nombre }) => nombre === 'components/navegacion.js')
+    const linea = fuente.contenido
+      .split('\n')
+      .find((l) => l.includes(`to: '${ruta}'`))
+
+    return linea?.match(/label:\s*'([^']+)'/)?.[1] || null
+  }
+
+  /**
+   * El título que dibuja la pantalla: el `titulo=` de `PageHeader` o su `<h1>`.
+   *
+   * Las dos formas conviven —cuatro pantallas se hicieron a mano antes de que
+   * existiera `PageHeader`— y la guardia acepta las dos: lo que se verifica acá
+   * es el TEXTO, no cómo se dibuja.
+   */
+  function deLaPantalla(archivo) {
+    const fuente = ARCHIVOS.find(({ nombre }) => nombre === archivo)
+    if (!fuente) return null
+
+    const limpio = sinComentarios(fuente.contenido)
+
+    const delPageHeader = limpio.match(/titulo="([^"]+)"/)?.[1]
+    if (delPageHeader) return delPageHeader
+
+    // El `<h1>` entero, con lo que tenga adentro. Cuatro pantallas le ponen un
+    // ícono delante: se saca el `<Icono />` y queda el texto.
+    const bloque = limpio.match(/<h1[^>]*>([\s\S]*?)<\/h1>/)?.[1]
+    if (!bloque) return null
+
+    const texto = bloque.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+
+    // ⚠ Vacío es `null` y NO `''`. La primera versión de esto devolvía `' '`
+    // para las dos pantallas con ícono, y `' '` es truthy: el ancla de abajo la
+    // daba por buena y el `it.each` comparaba un espacio contra el nombre. La
+    // guardia informaba dos fallas reales y podría no haber informado ninguna.
+    return texto || null
+  }
+
+  it('la guardia miró de verdad: encuentra los dos textos de cada pantalla', () => {
+    // Ancla, y la más importante de esta guardia: si `deLaPantalla` devolviera
+    // `null` para todas, el `it` de abajo compararía `null` con `null` y pasaría
+    // sin haber leído un solo título.
+    const sinTitulo = PANTALLA_DE_LA_RUTA
+      // `trim()` además del truthy: un título en blanco no es un título.
+      .filter(([, archivo]) => !deLaPantalla(archivo)?.trim())
+      .map(([, archivo]) => archivo)
+
+    const sinNombre = PANTALLA_DE_LA_RUTA
+      .filter(([ruta]) => !delMenu(ruta))
+      .map(([ruta]) => ruta)
+
+    expect(sinTitulo).toEqual([])
+    expect(sinNombre).toEqual([])
+  })
+
+  it.each(PANTALLA_DE_LA_RUTA)('%s dice lo mismo en el menú y adentro', (ruta, archivo) => {
+    expect(deLaPantalla(archivo)).toBe(delMenu(ruta))
+  })
+})

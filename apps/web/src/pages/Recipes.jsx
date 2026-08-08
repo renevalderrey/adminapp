@@ -240,7 +240,7 @@ const Recipes = () => {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1>Fórmulas y Recetas</h1>
+        <h1>Fórmulas y recetas</h1>
         <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
           Diseñá recetas complejas combinando insumos y productos. El sistema actualizará el costo unitario de venta automáticamente.
         </p>
