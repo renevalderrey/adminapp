@@ -612,16 +612,119 @@ un error de migración se vea en la máquina de quien lo escribió.
 
 ## Deploy
 
+### El monorepo es workspaces
+
+Hay **un solo `package-lock.json`, en la raíz**, y las tres apps más
+`packages/precios` se instalan juntas. Cambió cómo se instala y cómo se
+construyen las imágenes, y ninguno de los síntomas dice «lo hiciste como antes»:
+dicen otra cosa.
+
+**1 · Se instala una sola vez, desde la raíz.**
+
+```
+npm ci
+```
+
+Con eso quedan instaladas las tres apps y el paquete. **`install:all` ya no
+existe**: si alguien lo copia de un README viejo o de un apunte, npm contesta que
+el script no está, y ese es el motivo — no es un clon incompleto ni un `node`
+mal instalado. Lo mismo con entrar a `apps/api` y hacer `npm install` ahí: no hay
+nada que instalar abajo.
+
+Los scripts de una app se corren desde la raíz con `-w`:
+
+```
+npm run migrate -w apps/api
+```
+
+Dentro del contenedor no hace falta la bandera: el `WORKDIR` ya es la app
+(`/app/apps/api`), así que ahí va `npm run backup -- --todas` a secas, como está
+escrito en [DESPLIEGUE-HOSTINGER.md](DESPLIEGUE-HOSTINGER.md).
+
+**2 · Los `docker build` se corren desde la raíz, con `-f`.**
+
+```
+docker build -f apps/api/Dockerfile -t favalio-api .
+```
+
+El punto del final es el contexto, y el contexto es **la raíz**, no `apps/api`:
+el `package-lock.json` vive arriba, y sin él adentro del contexto el `npm ci` de
+la imagen no tiene qué respetar — la imagen podría quedar con versiones distintas
+de las que se probaron. Entrar a `apps/api` y construir desde ahí falla al copiar
+el lock.
+
+El deploy normal del VPS ya lo hace bien y no se toca: en
+`docker-compose.produccion.yml` cada servicio declara `context: .` y
+`dockerfile: apps/X/Dockerfile`, así que `up -d --build` construye las tres
+imágenes con el contexto correcto. Lo de arriba es para cuando alguien construye
+una a mano.
+
+**3 · Un `MODULE_NOT_FOUND` de `@favalio/precios` al arrancar el contenedor NO
+es una dependencia que falta.**
+
+Es el síntoma más confuso de este cambio, y engaña por **cuándo** aparece: la
+imagen se construye entera, sin un error, se sube, y **el contenedor no levanta**.
+Instalar algo no lo arregla, porque no falta nada instalado.
+
+Lo que pasó es que **el enlace del workspace quedó colgado**: npm crea ese enlace
+durante el `npm ci`, y si el `package.json` de `packages/precios` todavía no está
+en la imagen en ese momento, el enlace apunta a un directorio que no existe.
+Copiar el código del paquete después no lo repara — el enlace ya se creó mal.
+
+Se arregla en el Dockerfile, no en el `.env` ni en el VPS: el
+`COPY packages/precios/package.json` va **antes** del `RUN npm ci`, y el código
+del paquete, después. Los Dockerfiles lo tienen así y lo dicen en un comentario;
+si alguien reordena los `COPY` «para agruparlos», el defecto vuelve tal cual.
+
+Dos cosas que ahorran perseguir el error equivocado:
+
+- **El mismo import puede fallar en el servidor de desarrollo y andar en el
+  build, y ése es otro problema.** `@favalio/precios` es CommonJS a propósito y
+  no tiene paso de build; `apps/web/vite.config.js` lo declara en
+  `optimizeDeps.include`. Sin esa línea, `npm run dev -w apps/web` rompe y
+  `npm run build -w apps/web` anda. Un `MODULE_NOT_FOUND` en el contenedor y uno
+  en el servidor de desarrollo no tienen la misma causa.
+- **El CI lo agarra antes, si se lo mira.** De los seis jobs de
+  `.github/workflows/ci.yml`, el que ve este defecto es **«API — la imagen
+  arranca y migra»**: construye la imagen y la levanta de verdad. Los otros cinco
+  pueden estar en verde con este problema adentro.
+
+**4 · Si un `npm ci` de la raíz deja `apps/landing` sin `node_modules`.**
+
+Es un árbol viejo, de la época de `npm --prefix`: quedaron `node_modules` propios
+adentro de `apps/*` y npm no los adopta. Se borran a mano, **una sola vez**, y se
+vuelve a instalar:
+
+```
+rm -rf apps/api/node_modules apps/web/node_modules apps/landing/node_modules
+npm ci
+```
+
+En PowerShell: `Remove-Item -Recurse -Force apps/*/node_modules`.
+
+Después de eso `node_modules` vive solo en la raíz, y que `apps/landing` no tenga
+uno propio **es lo correcto**, no lo que hay que arreglar. Landing entró al
+workspace aunque no consuma el paquete justamente para esto: dos árboles
+conviviendo es el estado en el que un `npm ci` de la raíz borra el
+`node_modules` de landing y nadie entiende por qué el build dejó de andar.
+
+> Al regenerar el lock, varias dependencias subieron **dentro de su rango**:
+> axios 1.15.0 → 1.19.0, tailwindcss 4.2.4 → 4.3.3, vite 8.0.8 → 8.2.1 y react
+> 19.2.5 → 19.2.8. Ninguna es un cambio mayor, pero el bundle que sale de este
+> deploy no es el mismo de antes. Si algo se ve raro en el navegador justo
+> después del corte y no hay ningún cambio de código que lo explique, esto es lo
+> único que cambió.
+
 ### Migraciones
 
 Corren solas al arrancar el contenedor, vía `scripts/migrar.js`, que toma un
 advisory lock de PostgreSQL. Si falla, **el contenedor no levanta** — es
 preferible a levantar con el schema a medias.
 
-Manualmente:
+Manualmente, desde la raíz del repositorio:
 
 ```
-npm --prefix apps/api run db:migrate
+npm run migrate -w apps/api
 ```
 
 ### Migraciones pendientes de correr
@@ -666,7 +769,7 @@ mira el informe.
 #### 1. Cómo se corre el informe
 
 ```
-npm --prefix apps/api run informe:stock
+npm run informe:stock -w apps/api
 ```
 
 **No escribe nada**: ni una fila, ni una tabla, ni un índice. Se puede correr
@@ -834,7 +937,7 @@ es otro caso: devolverle los datos a un cliente que se va, o recuperar algo que
 alguien borró por error. No reemplaza lo anterior.
 
 ```
-npm --prefix apps/api run backup -- --empresa=<id>
+npm run backup -w apps/api -- --empresa=<id>
 ```
 
 ---
@@ -846,10 +949,10 @@ tabla clave-valor. El script traduce eso al esquema actual.
 
 ```
 # 1. Simulación: no escribe nada, dice qué haría
-npm --prefix apps/api run migrar:legacy -- --empresa=<id>
+npm run migrar:legacy -w apps/api -- --empresa=<id>
 
 # 2. Si el resumen cierra, aplicar
-npm --prefix apps/api run migrar:legacy -- --empresa=<id> --confirmar
+npm run migrar:legacy -w apps/api -- --empresa=<id> --confirmar
 ```
 
 Antes de correrlo:
@@ -890,9 +993,9 @@ que todavía no se liberaron. Es el nivel de quien desarrolla y da soporte, no
 un rol dentro de una empresa.
 
 ```
-npm --prefix apps/api run superadmin -- listar
-npm --prefix apps/api run superadmin -- activar <email>
-npm --prefix apps/api run superadmin -- quitar <email>
+npm run superadmin -w apps/api -- listar
+npm run superadmin -w apps/api -- activar <email>
+npm run superadmin -w apps/api -- quitar <email>
 ```
 
 El usuario tiene que haber entrado al menos una vez para existir en la base.
