@@ -104,15 +104,30 @@ const loadEmpresaContext = async (req, res, next) => {
 
     await enrichUserFromAuth0(req);
 
-    let usuario = await Usuario.findOne({ where: { auth0_sub: req.userId } });
-
-    if (!usuario) {
-      usuario = await Usuario.create({
+    // ⚠ `findOrCreate` y NO `findOne` + `create`.
+    //
+    // Este es el PRIMER ingreso de alguien nuevo, y el navegador no manda un
+    // pedido: manda varios juntos —el contexto de la empresa, los permisos, la
+    // suscripcion—. Con los dos pasos separados, dos de esos pedidos hacen los
+    // dos el `findOne`, los dos no encuentran nada, y los dos crean: el segundo
+    // choca con el UNIQUE de `auth0_sub` y este middleware responde **500**.
+    //
+    // O sea: la aplicacion no abre, y el momento en que pasa es el unico que no
+    // se puede reintentar sin que la persona piense que el sistema no anda.
+    //
+    // Se encontro buscando el molde que ya habia roto `taxService.getConfig`:
+    // un `findOne` seguido de un `create` bajo un `if (!...)`. De los cuatro
+    // lugares que tenian esa forma, este y aquel eran carreras de verdad.
+    const [usuario, creado] = await Usuario.findOrCreate({
+      where: { auth0_sub: req.userId },
+      defaults: {
         auth0_sub: req.userId,
         email: req.userEmail || `user@${req.userId?.split('|')[1] || 'unknown'}.placeholder`,
         nombre: req.userName || req.userId,
-      });
-    } else {
+      },
+    });
+
+    if (!creado) {
       const updates = {};
       if (req.userEmail && req.userEmail !== usuario.email) updates.email = req.userEmail;
       if (req.userName && req.userName !== usuario.nombre) updates.nombre = req.userName;

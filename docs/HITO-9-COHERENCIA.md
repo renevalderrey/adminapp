@@ -22,8 +22,9 @@ cerrados**.
 > | La lupa de TiendaNube | Un segundo buscador sin ella, **en el pie del cobro** |
 > | El contador de órdenes | El doble de prueba devolvía `total = data.length`: **no podía ver el defecto** |
 > | La frase del permiso | Escrita a mano en dieciocho lugares, y **ya divergida** |
+> | Medir el ancho mínimo | Un **500 en el log de la API**: un GET que rompe la primera vez que dos pedidos llegan juntos — y buscando su molde apareció el mismo defecto en el primer ingreso de un usuario nuevo |
 >
-> **Tres cosas para la próxima vez:**
+> **Cuatro cosas para la próxima vez:**
 >
 > 1. **Una lente de coherencia es ciega a lo que está mal en las doce por
 >    igual.** El teclado —seis pantallas operables solo con mouse— no lo
@@ -35,6 +36,14 @@ cerrados**.
 > 3. **La mutación es lo único que dice si un test vale.** Uno del cerrojo de
 >    pagos pasaba con y sin el cerrojo, y el motivo era otro defecto que lo
 >    tapaba.
+> 4. **Un defecto encontrado vale menos que su molde.** El 500 de
+>    `taxService.getConfig` era un `findOne` + `create` donde va `findOrCreate`.
+>    Buscar esa forma en todo el servidor devolvió cuatro lugares: dos falsos
+>    positivos —anotados con su motivo— y uno más que era real, en
+>    `middleware/auth.js`. Ése es **el primer ingreso de alguien nuevo**: dos de
+>    los pedidos que el navegador manda juntos alcanzan para que la aplicación
+>    no abra, en el único momento que no se puede reintentar sin que la persona
+>    piense que el sistema no anda.
 
 Las doce pantallas se rediseñaron en **cuatro hitos distintos**, con semanas de
 diferencia. Este documento es el resultado de recorrerlas juntas buscando **lo

@@ -13,23 +13,35 @@ const DEFAULT_MONOTRIBUTO_SCALES = [
 ];
 
 class TaxService {
+  /**
+   * La configuracion impositiva de esa empresa, creandola con los valores por
+   * defecto la primera vez.
+   *
+   * ⚠ `findOrCreate` y NO `findOne` + `create`.
+   *
+   * Con los dos pasos separados, dos pedidos que llegan juntos hacen los dos el
+   * `findOne`, los dos no encuentran nada, y los dos intentan crear: el segundo
+   * choca con el UNIQUE de `(tax_type, empresa_id)` y el endpoint responde
+   * **500**. Es un GET —una LECTURA— devolviendo un error de servidor.
+   *
+   * No es hipotetico: se vio en las pruebas de navegador, la primera vez que se
+   * abrio `/impuestos` contra una base limpia. El `useEffect` en desarrollo
+   * corre dos veces y alcanzo para reproducirlo. En produccion alcanza con dos
+   * pestañas, o con un doble clic en el menu.
+   *
+   * `updateConfig`, dos funciones mas abajo, ya usaba `findOrCreate` — la
+   * correccion estaba escrita al lado del defecto.
+   */
   async getConfig(taxType, empresaId) {
-    let config = await TaxConfig.findOne({ where: { tax_type: taxType, empresa_id: empresaId } });
-    if (!config) {
-      if (taxType === 'monotributo') {
-        config = await TaxConfig.create({
-          tax_type: 'monotributo',
-          empresa_id: empresaId,
-          config: { scales: DEFAULT_MONOTRIBUTO_SCALES },
-        });
-      } else {
-        config = await TaxConfig.create({
-          tax_type: taxType,
-          empresa_id: empresaId,
-          config: { rate: 0 },
-        });
-      }
-    }
+    const porDefecto = taxType === 'monotributo'
+      ? { scales: DEFAULT_MONOTRIBUTO_SCALES }
+      : { rate: 0 };
+
+    const [config] = await TaxConfig.findOrCreate({
+      where: { tax_type: taxType, empresa_id: empresaId },
+      defaults: { tax_type: taxType, empresa_id: empresaId, config: porDefecto },
+    });
+
     return config;
   }
 
