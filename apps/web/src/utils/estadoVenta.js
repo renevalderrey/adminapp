@@ -1,7 +1,7 @@
 import { Ban } from 'lucide-react'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El color de cada estado de venta
+//  FAVALIO · El color de cada estado de venta
 //
 //  El SIGNIFICADO lo decide el servidor: `apps/api/src/utils/estadoVenta.js`
 //  devuelve `{ codigo, etiqueta }` y esa misma etiqueta va al badge de la

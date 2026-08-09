@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Sesiones: registrar, listar y cerrar
+//  FAVALIO · Sesiones: registrar, listar y cerrar
 //
 //  ── ⚠ El aislamiento NO sale de una columna, sale de la membresía ──
 //

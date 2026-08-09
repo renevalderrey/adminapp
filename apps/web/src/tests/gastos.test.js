@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { agruparGastosPorSucursal, CLAVE_GENERAL, desplazarMes, nombreDelMes } from '@/utils/gastos'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El reparto de los gastos fijos
+//  FAVALIO · El reparto de los gastos fijos
 //
 //  Lo que se afirma acá son **los dos invariantes**, no tres casos elegidos a
 //  mano, y el motivo es que los dos defectos que esta función viene a cerrar

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · El reparto de un saldo impago por antigüedad
+//  FAVALIO · El reparto de un saldo impago por antigüedad
 //
 //  Vivía como método privado `_repartirPorAntiguedad` de `customerService`, que
 //  ya lo usaba para DOS cosas —el aging de clientes y el de proveedores— y que

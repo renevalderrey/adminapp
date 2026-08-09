@@ -11,7 +11,7 @@ import { TIPOS, esEnlaceAceptable, nubeDelEnlace } from '@/utils/documentosDePro
 import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Los documentos de un proveedor
+//  FAVALIO · Los documentos de un proveedor
 //
 //  El modelo (`SupplierDocument`) y los dos endpoints existen y funcionan desde
 //  siempre —`POST /api/suppliers/:id/documents` y
@@ -21,7 +21,7 @@ import { faltaElPermiso } from '@/utils/permisos'
 //  descartaba. Este archivo es esa interfaz y nada más; los endpoints **no se
 //  tocan** (US7 escenario 10).
 //
-//  ── AdminApp no sube ningún archivo ──
+//  ── Favalio no sube ningún archivo ──
 //
 //  Guarda el ENLACE a la nube donde el usuario ya tiene la factura (FR-081), lo
 //  mismo que el legacy (`legacy:2516-2518`, `:7948-7983`). Por eso el campo se
@@ -166,7 +166,7 @@ export default function BloqueDeDocumentos({ proveedorId, documentos = [], onCam
     }
 
     if (enlace === '') {
-      toast.error('Pegá el enlace del archivo. AdminApp no sube archivos: guarda el enlace a tu nube.')
+      toast.error('Pegá el enlace del archivo. Favalio no sube archivos: guarda el enlace a tu nube.')
       return
     }
 
@@ -205,7 +205,7 @@ export default function BloqueDeDocumentos({ proveedorId, documentos = [], onCam
     // del usuario, acá se pierde el enlace. Sin esa segunda mitad, borrar un
     // documento parece borrar la factura y nadie se anima a tocar el botón.
     const ok = await confirm(
-      `¿Eliminar «${documento.name}»? Se borra el enlace guardado en AdminApp; el archivo sigue en tu nube.`,
+      `¿Eliminar «${documento.name}»? Se borra el enlace guardado en Favalio; el archivo sigue en tu nube.`,
       { verbo: 'Eliminar documento' }
     )
     if (!ok) return

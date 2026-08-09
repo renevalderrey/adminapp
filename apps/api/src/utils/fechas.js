@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Fechas en la zona horaria del negocio
+//  FAVALIO · Fechas en la zona horaria del negocio
 //
 //  Todo el sistema guarda las fechas como texto YYYY-MM-DD y las obtenía con
 //  new Date().toISOString().split('T')[0], que devuelve la fecha en UTC.

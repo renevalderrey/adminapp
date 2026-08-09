@@ -66,7 +66,7 @@ import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
 import PieDeTabla from '@/components/PieDeTabla'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Proveedores y su cuenta corriente
+//  FAVALIO · Proveedores y su cuenta corriente
 //
 //  Dos columnas (FR-054): a la izquierda quién es y cuánto se le debe, a la
 //  derecha la cuenta del que se eligió. La maqueta **no dibuja esta pantalla**

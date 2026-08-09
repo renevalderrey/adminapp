@@ -43,10 +43,10 @@ function Login() {
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center space-y-3 pt-4">
           <div className="flex items-center justify-center">
-            <img src="/logo_sin_fondo.png" alt="AdminApp" className="h-36 w-36 object-contain" />
+            <img src="/logo_sin_fondo.png" alt="Favalio" className="h-36 w-36 object-contain" />
           </div>
           <div>
-            <CardTitle className="text-2xl font-black tracking-tight">AdminApp</CardTitle>
+            <CardTitle className="text-2xl font-black tracking-tight">Favalio</CardTitle>
             <CardDescription className="mt-1">
               Iniciá sesión para acceder al panel
             </CardDescription>

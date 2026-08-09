@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Qué tipo de aparato es este user-agent
+//  FAVALIO · Qué tipo de aparato es este user-agent
 //
 //  ── Por qué es una función pura y no una columna ──
 //

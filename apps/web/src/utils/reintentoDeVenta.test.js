@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { comparacionDelReintento } from './reintentoDeVenta'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El reintento que trae otra venta
+//  FAVALIO · El reintento que trae otra venta
 //
 //  Es plata y es stock: lo que esta función decide es si un `200 { yaRegistrada:
 //  true }` se puede tratar como éxito silencioso. Decir que sí cuando no

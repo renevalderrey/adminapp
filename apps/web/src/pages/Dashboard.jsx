@@ -26,7 +26,7 @@ import { faltaElPermiso } from '@/utils/permisos'
 import EstadoVacio from '@/components/EstadoVacio'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Panel de control
+//  FAVALIO · Panel de control
 //
 //  ── Las tres cosas que esta pantalla dejó de hacer ──
 //

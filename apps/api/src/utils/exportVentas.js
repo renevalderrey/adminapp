@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Lo que se escribe en el archivo del historial de ventas
+//  FAVALIO · Lo que se escribe en el archivo del historial de ventas
 //
 //  Estas funciones vivian adentro del handler de `GET /api/sales/export`. Ahi
 //  no las tocaba ningun test: la verificacion aplico mutaciones que revertian

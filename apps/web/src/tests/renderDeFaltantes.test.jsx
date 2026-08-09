@@ -20,7 +20,7 @@ import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
 import Faltantes from '@/pages/Faltantes'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Faltantes → pedido, renderizado
+//  FAVALIO · Faltantes → pedido, renderizado
 //
 //  ── Por qué este archivo existe antes que cualquier corrección ──
 //

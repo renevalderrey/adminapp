@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Leer una lista de precios pegada como texto
+//  FAVALIO · Leer una lista de precios pegada como texto
 //
 //  El caso real: llega una lista por mail o por WhatsApp, se selecciona, se
 //  copia y se pega. Sin esto hay que armar un Excel antes, y armar un Excel para

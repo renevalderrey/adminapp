@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Models Index
+//  FAVALIO · Models Index
 //  Importa todos los modelos y define relaciones
 // ════════════════════════════════════════════
 

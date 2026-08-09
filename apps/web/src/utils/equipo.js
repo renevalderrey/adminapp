@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Las reglas del equipo, del lado del navegador
+//  FAVALIO · Las reglas del equipo, del lado del navegador
 //
 //  ⚠ **Este archivo es el ESPEJO de `apps/api/src/utils/equipo.js`.** Son dos
 //  copias a proposito: el monorepo no tiene paquete compartido entre `apps/api`

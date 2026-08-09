@@ -1,11 +1,11 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · La sesión falsa de las pruebas de navegador
+//  FAVALIO · La sesión falsa de las pruebas de navegador
 //
 //  ⚠⚠ ESTE ARCHIVO NO PUEDE ESTAR EN NINGÚN BUNDLE. ⚠⚠
 //
 //  Reemplaza a `src/sesion/ProveedorDeSesion.jsx` mediante un alias que
 //  `vite.config.js` declara **únicamente** cuando `command === 'serve'` y
-//  `ADMINAPP_SESION_DE_PRUEBA=1`. `vite build` no ejecuta esa rama, así que el
+//  `FAVALIO_SESION_DE_PRUEBA=1`. `vite build` no ejecuta esa rama, así que el
 //  archivo nunca entra al grafo de módulos de un `dist/`.
 //
 //  ── Por qué no alcanza con apagarlo en tiempo de ejecución ──
@@ -65,7 +65,7 @@ export const MARCA = 'BYPASS_DE_SESION_SOLO_PARA_PRUEBAS_DE_NAVEGADOR'
 const USUARIO_DE_PRUEBA = {
   sub: 'test-user-id',
   name: 'Dev User',
-  email: 'dev@adminapp.app',
+  email: 'dev@favalio.com',
   email_verified: true,
 }
 

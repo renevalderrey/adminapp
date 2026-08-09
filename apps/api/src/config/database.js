@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Database Configuration
+//  FAVALIO · Database Configuration
 //  Sequelize + PostgreSQL
 // ════════════════════════════════════════════
 

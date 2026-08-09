@@ -21,7 +21,7 @@ import { enviarPedidoPorWhatsapp } from '@/utils/pedidoWhatsapp'
 import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El panel lateral de una orden de compra
+//  FAVALIO · El panel lateral de una orden de compra
 //
 //  ⚠ **Es UN SOLO componente para las dos pantallas** (FR-034), y esa es la
 //  razón de que exista. `Orders.jsx` y `PurchaseOrders.jsx` tenían cada una su

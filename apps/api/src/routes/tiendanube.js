@@ -437,7 +437,7 @@ publico.post(
     } catch (error) {
       // 200 igual: el error se registra, no se le devuelve a TiendaNube. Un
       // error repetido apaga el webhook del otro lado y nadie puede volver a
-      // prenderlo desde AdminApp.
+      // prenderlo desde Favalio.
       logger.error(
         { err: error, requestId: req.id, storeId: (req.body || {}).store_id },
         'tiendanube: error procesando el webhook'
@@ -454,7 +454,7 @@ const privado = express.Router();
 // siempre esta definido. Antes todos usaban `req.empresaId || 1` y el router se
 // montaba sin autenticacion: en la practica operaban sobre la empresa 1.
 
-// ── Un fallo de TiendaNube no es un fallo de AdminApp ──
+// ── Un fallo de TiendaNube no es un fallo de Favalio ──
 //
 // Acá vivía `falloDeTiendanube`, que respondía 502 con un texto fijo para
 // cualquier cosa que viniera del tercero. Era lo mínimo que sostenía la
@@ -464,7 +464,7 @@ const privado = express.Router();
 //
 // Ahora eso lo hace `tiendanubeService.errorDeTiendanube(err)`, que clasifica y
 // devuelve un `ErrorDeNegocio` con **su** texto y **su** status —o el error
-// original cuando el problema es de AdminApp, para que `fallo()` responda su 500
+// original cuando el problema es de Favalio, para que `fallo()` responda su 500
 // genérico con el `requestId`—. Los handlers solo llaman a `fallo`.
 
 /**

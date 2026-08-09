@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Un menú que se abre desde un botón
+//  FAVALIO · Un menú que se abre desde un botón
 //
 //  ── Por qué existe ──
 //

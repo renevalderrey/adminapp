@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · TiendaNube · lo que habla con la tienda
+//  FAVALIO · TiendaNube · lo que habla con la tienda
 //
 //  Acá vive lo que hace red: traer el catálogo entero y escribir la instantánea.
 //  Las reglas —normalizar la respuesta, el backoff, clasificar un error— son
@@ -31,7 +31,7 @@
 //  existía devolvía «ninguna coincide» y la red ni se tocaba.
 //
 //  La instantánea **no es una segunda fuente de verdad**: el catálogo de
-//  TiendaNube no es un dato de AdminApp, es la respuesta de un tercero con la
+//  TiendaNube no es un dato de Favalio, es la respuesta de un tercero con la
 //  fecha en que se pidió a la vista. Esa fecha no es decorado: es lo que evita
 //  que alguien lea una instantánea vieja creyendo que es el estado actual.
 // ════════════════════════════════════════════
@@ -319,7 +319,7 @@ async function soltarArriendo(empresaId) {
  * clasificación genérica no puede explicar: `PUT /products/variants/{id}` contra
  * una variante borrada del otro lado es una petición «mal armada» para
  * `clasificarError` —un 4xx que no es 401 ni 429— y su mensaje sería el genérico
- * de AdminApp. Quien mira la pantalla necesita saber que la variante ya no está,
+ * de Favalio. Quien mira la pantalla necesita saber que la variante ya no está,
  * porque lo que hay que hacer es refrescar el catálogo y borrar el mapeo.
  */
 function motivoDelFallo(err) {
@@ -327,7 +327,7 @@ function motivoDelFallo(err) {
 
   if (info.status === 404) return 'La variante ya no existe en tu tienda.';
 
-  return info.mensaje || 'AdminApp no pudo publicar el stock de esta variante.';
+  return info.mensaje || 'Favalio no pudo publicar el stock de esta variante.';
 }
 
 /**
@@ -976,7 +976,7 @@ async function esperarDrenajesEnCurso({ vueltas = 10 } = {}) {
  *
  * | Número | De dónde sale | Qué falla atrapa |
  * |---|---|---|
- * | `stock.available` de la designada | AdminApp | — es la referencia |
+ * | `stock.available` de la designada | Favalio | — es la referencia |
  * | `stock_publicado` | lo que mandamos | **el empujón que se perdió** |
  * | `stock_en_tienda` | el refresco recién hecho | **el número que alguien cambió a mano en el panel de TiendaNube** |
  *

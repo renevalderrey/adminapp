@@ -3,7 +3,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import MenuDesplegable from '@/components/MenuDesplegable'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El menú que se abre desde un botón
+//  FAVALIO · El menú que se abre desde un botón
 //
 //  ── El defecto ──
 //

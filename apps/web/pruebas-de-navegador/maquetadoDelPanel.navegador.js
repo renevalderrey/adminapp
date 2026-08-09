@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El maquetado del Panel de control
+//  FAVALIO · El maquetado del Panel de control
 //
 //  **Dos medidas, y nada más.** Todo lo demás del Panel está cubierto más
 //  barato: las alturas del sparkline son `utils/panel.test.js`, que una tarjeta
@@ -58,7 +58,7 @@ import { test, expect } from '@playwright/test'
 //     mismo con o sin él.
 // ════════════════════════════════════════════
 
-const API = process.env.ADMINAPP_API_DE_PRUEBAS || 'http://localhost:5099/api'
+const API = process.env.FAVALIO_API_DE_PRUEBAS || 'http://localhost:5099/api'
 
 /** El primer día del mes corrido `meses` hacia atrás, como YYYY-MM-DD. */
 function mediadosDelMes(meses) {

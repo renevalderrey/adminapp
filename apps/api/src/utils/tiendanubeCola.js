@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · TiendaNube · el backoff, la clasificación del error y qué empujar
+//  FAVALIO · TiendaNube · el backoff, la clasificación del error y qué empujar
 //
 //  Tres funciones puras. Acá no hay red ni base: el backoff es aritmética, la
 //  clasificación son ramas sobre un objeto de axios, y «hay que empujar» es una
@@ -8,7 +8,7 @@
 //
 //  ── Por qué la clasificación es una función y no un `switch` en la pantalla ──
 //
-//  Un fallo de TiendaNube y un fallo de AdminApp se veían iguales para el
+//  Un fallo de TiendaNube y un fallo de Favalio se veían iguales para el
 //  usuario: «No se pudo sincronizar el stock con TiendaNube», para los cuatro
 //  casos. Los cuatro se arreglan distinto —esperar, volver a vincular, avisar a
 //  TiendaNube, o abrir un ticket acá— y sin distinguirlos la pantalla manda a
@@ -149,7 +149,7 @@ function retryAfterDe(err) {
  * Qué le pasó a la llamada, y qué se hace con eso.
  *
  * `mensaje: null` significa **«esto no es para el usuario»**: es un fallo de
- * AdminApp —una petición mal armada, un error que no sabemos leer— y le
+ * Favalio —una petición mal armada, un error que no sabemos leer— y le
  * corresponde el mensaje genérico de `fallo`, con su `requestId`. Decirle
  * «TiendaNube tuvo un problema» a alguien cuyo problema es nuestro lo manda a
  * revisar el lado equivocado durante una tarde.
@@ -182,7 +182,7 @@ function clasificarError(err) {
       // Es distinto de «no se pudo sincronizar»: no se arregla reintentando, se
       // arregla volviendo a vincular. Sin esta diferencia, la pantalla ofrece
       // «reintentar» para siempre sobre un token que ya no vale.
-      mensaje: 'Tu tienda desconectó AdminApp. Hay que volver a vincularla.',
+      mensaje: 'Tu tienda desconectó Favalio. Hay que volver a vincularla.',
     };
   }
 
@@ -202,13 +202,13 @@ function clasificarError(err) {
       ...base,
       clase: CLASES.CAIDA_DE_TIENDANUBE,
       reintentable: true,
-      mensaje: 'TiendaNube tuvo un problema. No es de AdminApp.',
+      mensaje: 'TiendaNube tuvo un problema. No es de Favalio.',
     };
   }
 
   if (status !== null) {
     // Un 4xx que no es 401 ni 429 es una petición que armamos mal: un id que no
-    // existe, un cuerpo que no acepta. Es un fallo de AdminApp y va por el
+    // existe, un cuerpo que no acepta. Es un fallo de Favalio y va por el
     // genérico, con su `requestId` para poder encontrar la línea.
     return { ...base, clase: CLASES.PETICION_RECHAZADA, reintentable: false, mensaje: null };
   }

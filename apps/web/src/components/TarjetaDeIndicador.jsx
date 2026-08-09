@@ -2,7 +2,7 @@ import { ArrowDownRight, ArrowUpRight } from 'lucide-react'
 import { alturasDelSparkline } from '@/utils/panel'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Una tarjeta de indicador del Panel
+//  FAVALIO · Una tarjeta de indicador del Panel
 //
 //  Etiqueta, número grande, variación, sparkline de doce barras y **la nota al
 //  pie con la definición del número**.

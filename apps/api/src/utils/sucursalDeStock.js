@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Que sucursal le toca a una fila de stock
+//  FAVALIO · Que sucursal le toca a una fila de stock
 //
 //  Hoy hay diez lugares que escriben en `stock` y cada uno decide la sucursal
 //  a su manera: uno mira la cabecera, otro el `location` del cuerpo, otro cae

@@ -9,7 +9,7 @@ const RESEND_ANTERIOR = process.env.RESEND_API_KEY;
 const FRONTEND_ANTERIOR = process.env.FRONTEND_URL;
 
 delete process.env.RESEND_API_KEY;
-process.env.FRONTEND_URL = 'https://app.adminapp.test';
+process.env.FRONTEND_URL = 'https://app.favalio.test';
 
 // ⚠ baseDePruebas va PRIMERO: arma la conexión contra la base de integración.
 const { app, modelos, limpiarLaBase, conectarOFallar, cerrar } = require('./baseDePruebas');
@@ -56,7 +56,7 @@ const { sembrarDosEmpresas } = require('./fixtures');
 const { Invitacion, Usuario, UsuarioEmpresa } = modelos;
 
 /** El email del usuario que `BYPASS_AUTH` pone en la sesión. */
-const EMAIL_DE_LA_SESION = 'dev@adminapp.app';
+const EMAIL_DE_LA_SESION = 'dev@favalio.com';
 
 /** Un token que no está en la tabla. */
 const TOKEN_INEXISTENTE = 'token-que-no-existe-en-ninguna-fila';
@@ -983,6 +983,6 @@ describe('POST /api/empresas/:empresaId/invitar · el enlace para pasarlo a mano
       where: { empresa_id: datos.empresaA.id, email: 'nuevo.empleado@panaderia.test' },
     });
 
-    expect(res.body.enlace).toBe(`https://app.adminapp.test/?invite=${invitacion.token}`);
+    expect(res.body.enlace).toBe(`https://app.favalio.test/?invite=${invitacion.token}`);
   });
 });

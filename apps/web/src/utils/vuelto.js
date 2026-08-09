@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · El vuelto del mostrador
+//  FAVALIO · El vuelto del mostrador
 //
 //  Estas dos cuentas vivían adentro de un `useMemo` de `Billing.jsx`, donde
 //  ningún test las alcanzaba: FR-018 daba por conservadas las sugerencias de

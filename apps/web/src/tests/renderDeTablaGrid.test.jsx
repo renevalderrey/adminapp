@@ -3,7 +3,7 @@ import { render, screen, fireEvent, cleanup, within } from '@testing-library/rea
 import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · La fila de una tabla, con teclado
+//  FAVALIO · La fila de una tabla, con teclado
 //
 //  ── El defecto ──
 //

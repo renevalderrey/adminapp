@@ -1,7 +1,7 @@
 const { dispositivoDeUserAgent, DISPOSITIVOS } = require('../utils/dispositivo');
 
 // ════════════════════════════════════════════
-//  ADMINAPP · La etiqueta del aparato de una sesión
+//  FAVALIO · La etiqueta del aparato de una sesión
 //
 //  Va en `src/tests/` y no en `utils/dispositivo.test.js`: el `testMatch` de
 //  `jest.config.js` solo levanta `src/tests/**`, así que un test al lado del

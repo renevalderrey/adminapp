@@ -24,8 +24,8 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ════════════════════════════════════════════
-   Sistema de diseño · AdminApp
-   Origen: maqueta "AdminApp Rediseño" (Claude Design)
+   Sistema de diseño · Favalio
+   Origen: maqueta "Favalio Rediseño" (Claude Design)
 
    Los valores de acá NO se eligen por página. Son los tokens de la maqueta,
    copiados tal cual, y todo lo demás se construye con ellos. Si una pantalla
@@ -258,20 +258,20 @@
 
   /* Entrada de una vista. 220ms: se nota que algo llegó, no se espera. */
   .anim-subida {
-    animation: adminapp-subida .22s ease both;
+    animation: favalio-subida .22s ease both;
   }
 
   .anim-panel {
-    animation: adminapp-panel .22s cubic-bezier(.22, .8, .3, 1) both;
+    animation: favalio-panel .22s cubic-bezier(.22, .8, .3, 1) both;
   }
 }
 
-@keyframes adminapp-subida {
+@keyframes favalio-subida {
   from { transform: translateY(8px); opacity: 0; }
   to { transform: none; opacity: 1; }
 }
 
-@keyframes adminapp-panel {
+@keyframes favalio-panel {
   from { transform: translateX(28px); opacity: 0; }
   to { transform: none; opacity: 1; }
 }

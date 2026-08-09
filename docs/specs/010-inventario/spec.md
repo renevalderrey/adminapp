@@ -69,7 +69,7 @@ hexadecimales, reglas `dark:` ni `<table>` de shadcn.
 ### Un desacuerdo entre la maqueta y el marco, resuelto
 
 La maqueta dibuja Inventario con `gap: 0 14px`
-(`docs/maqueta/AdminApp-Rediseno.dc.html:599`), y `TablaGrid` fija `gap-x-4`
+(`docs/maqueta/Favalio-Rediseno.dc.html:599`), y `TablaGrid` fija `gap-x-4`
 (16px), que es lo que usa Historial de ventas. **Manda el marco: 16px.**
 
 El marco existe justamente para que las seis pantallas midan igual. Dos píxeles
@@ -89,7 +89,7 @@ para no dar por hecho lo que está roto.
 | Pantalla | `apps/web/src/pages/Inventory.jsx` | Usa `<Table>` de shadcn (`:306`), pestañas por sucursal (`:220-232`), edición en un `Dialog` |
 | Marco de tabla | `apps/web/src/components/TablaGrid.jsx` | **Ya existe.** Lo fijó la funcionalidad 009 |
 | Panel lateral | `apps/web/src/components/ui/sheet.jsx` + `PanelVenta.jsx` | **Ya existe** y resuelve accesibilidad |
-| Maqueta de esta pantalla | `docs/maqueta/AdminApp-Rediseno.dc.html:558-627` | **La maqueta sí dibuja Inventario**, con las columnas de sucursal **lado a lado** |
+| Maqueta de esta pantalla | `docs/maqueta/Favalio-Rediseno.dc.html:558-627` | **La maqueta sí dibuja Inventario**, con las columnas de sucursal **lado a lado** |
 | Listado | `GET /api/products` (`apps/api/src/routes/products.js:17`) | Acepta `search`, `brand`, `active`, `page`, `limit` |
 | Carga de datos | `apps/web/src/store/useStore.js:38` | `GET /products?active=true` **sin paginar**: trae el catálogo entero al navegador |
 | Búsqueda y paginación | `Inventory.jsx:118-132` | En memoria, sobre el catálogo completo ya cargado |
@@ -107,7 +107,7 @@ para no dar por hecho lo que está roto.
 
 ### Lo que la maqueta ya resolvió y conviene saber antes de discutirlo
 
-`AdminApp-Rediseno.dc.html:558-627` dibuja Inventario completo, y **resuelve la
+`Favalio-Rediseno.dc.html:558-627` dibuja Inventario completo, y **resuelve la
 comparación de sucursales sin pestañas**: las columnas de stock de cada sucursal
 están **siempre presentes, una al lado de la otra** (`Centro`, `Depósito`), y el
 selector de sucursal de arriba es un segmento que acota, no una solapa que
@@ -391,7 +391,7 @@ pasa a ser «lo que hizo Ventas».
 
 **Independent Test**: cargar la pantalla con productos de dos sucursales y
 comparar contra el bloque `isInv` de la maqueta
-(`AdminApp-Rediseno.dc.html:558-627`), verificando que el marco venga de
+(`Favalio-Rediseno.dc.html:558-627`), verificando que el marco venga de
 `TablaGrid`.
 
 **Acceptance Scenarios**:
@@ -501,7 +501,7 @@ Como dueño de Comprafit, quiero ver el stock de todas mis sucursales en columna
 juntas, para decidir de un vistazo qué transferir de dónde a dónde.
 
 **Why this priority**: es la deuda funcional que más pesa. El sistema viejo lo
-tenía (`invRenderComparar`, `legacy:5162`) y AdminApp lo perdió al partir la
+tenía (`invRenderComparar`, `legacy:5162`) y Favalio lo perdió al partir la
 vista en pestañas: con pestañas, comparar dos sucursales exige memorizar un
 número, cambiar de solapa y comparar de memoria. **La maqueta ya lo resolvió**
 como la tabla por defecto, así que no es una vista nueva: es cómo se dibuja esta
@@ -898,7 +898,7 @@ verificar que la hoja dice lo mismo.
   el marco, ni usar `<table>`, ni los componentes `Table*` de shadcn.
 - **FR-002**: El `grid-template-columns` DEBE ser **el mismo string** en el
   encabezado y en las filas, y DEBE derivar de la maqueta
-  (`AdminApp-Rediseno.dc.html:599`) con la cantidad de columnas de sucursal que
+  (`Favalio-Rediseno.dc.html:599`) con la cantidad de columnas de sucursal que
   se estén comparando: base `minmax(0,1.6fr) 116px 116px 104px 104px`, luego una
   columna por sucursal, y `56px` para las acciones.
 - **FR-003**: La separación entre columnas DEBE ser la del marco (16px). NO DEBE
@@ -1295,7 +1295,7 @@ Explícito, para que no se discuta después si estaba incluido:
 - **Agregar una biblioteca de PDF.** El PDF es la vista de impresión del
   navegador.
 - **El botón «Columnas»** que la maqueta dibuja
-  (`AdminApp-Rediseno.dc.html:595`). Igual que en la funcionalidad 009: queda
+  (`Favalio-Rediseno.dc.html:595`). Igual que en la funcionalidad 009: queda
   para el repaso de coherencia (hito 9).
 - **Importar desde PDF o desde una foto con IA.** El sistema viejo lo tenía
   (`legacy:1844-1878`, panel «PDF / IMAGEN IA») y no está en el pedido.

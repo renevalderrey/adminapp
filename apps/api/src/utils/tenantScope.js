@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Scoping por empresa
+//  FAVALIO · Scoping por empresa
 //
-//  AdminApp es multi-empresa: todas las empresas cliente comparten base de
+//  Favalio es multi-empresa: todas las empresas cliente comparten base de
 //  datos y se separan por la columna empresa_id. Si una consulta se olvida de
 //  filtrar por empresa_id, una empresa ve los datos de otra.
 //

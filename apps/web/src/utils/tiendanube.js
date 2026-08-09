@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Las reglas de la pantalla de TiendaNube
+//  FAVALIO · Las reglas de la pantalla de TiendaNube
 //
 //  Acá viven los estados, los tonos, el resumen de una corrida y el filtro de
 //  variantes. **Ningún componente de `/tiendanube` calcula nada de esto**: un

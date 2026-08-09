@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Que le va a pasar a cada fila de stock cuando la sucursal pase
+//  FAVALIO · Que le va a pasar a cada fila de stock cuando la sucursal pase
 //            a ser una identidad y no un texto
 //
 //  Esta es la funcion de la que dependen las otras dos cosas del cambio: el

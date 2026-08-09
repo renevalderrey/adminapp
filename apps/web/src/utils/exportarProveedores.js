@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El archivo de la cuenta corriente de un proveedor
+//  FAVALIO · El archivo de la cuenta corriente de un proveedor
 //
 //  Arma la hoja del `.xlsx` a partir de las filas que devuelve
 //  GET /api/suppliers/:id/movimientos/export, que ya vienen con las seis
@@ -15,7 +15,7 @@ import * as XLSX from 'xlsx'
 //  (FR-097). Las columnas no se copian, porque las de una cuenta corriente no
 //  son las de una venta: acá son las seis que decidió la spec —fecha, tipo,
 //  descripción, debe, haber y saldo—. **No es un asiento contable formal**:
-//  eso necesita un plan de cuentas que AdminApp no tiene, y está escrito así
+//  eso necesita un plan de cuentas que Favalio no tiene, y está escrito así
 //  para que nadie lo descubra en la reunión con el contador.
 //
 //  ── Por qué esto no es `XLSX.utils.json_to_sheet` ──

@@ -744,7 +744,7 @@ guardado. Se muestran las últimas ventas con su hora, su vendedor y su importe,
 ### 20. La pantalla de AFIP dice qué se guarda y dónde, y la guía se corrige con ella
 
 **Se eligió:** FR-093 a FR-096. La pantalla dice, textualmente, que el
-certificado y la clave se guardan **en la base de datos de AdminApp, sin cifrar**,
+certificado y la clave se guardan **en la base de datos de Favalio, sin cifrar**,
 que la clave **no sale nunca de la API** y que la del CSR **no se guarda: se
 descarga y hay que conservarla**. `docs/GUIA_AFIP.md:14` y `:45` se corrigen en el
 **mismo corte** que la pantalla: una guía que dice lo contrario de la pantalla es

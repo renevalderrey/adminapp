@@ -6,7 +6,7 @@
 //  1. **No había ningún reintento.** Un empujón que fallaba dejaba esa variante
 //     desfasada en silencio y para siempre: el disparador ya había ocurrido y no
 //     había nada que lo volviera a intentar.
-//  2. **Un fallo de TiendaNube y un fallo de AdminApp se veían iguales**: «No se
+//  2. **Un fallo de TiendaNube y un fallo de Favalio se veían iguales**: «No se
 //     pudo sincronizar el stock con TiendaNube» para los cuatro casos, que se
 //     arreglan de cuatro maneras distintas.
 //  3. **Un producto mapeado sin fila de stock en la sucursal designada**
@@ -141,7 +141,7 @@ describe('clasificarError · los seis casos, y el que más se olvida', () => {
     expect(mensajes.every((m) => typeof m === 'string' && m.length > 10)).toBe(true);
   });
 
-  it('un fallo de AdminApp NO trae mensaje: le toca el genérico con su requestId', () => {
+  it('un fallo de Favalio NO trae mensaje: le toca el genérico con su requestId', () => {
     // Un 4xx que no es 401 ni 429 es una petición que armamos mal. Decirle
     // «TiendaNube tuvo un problema» a alguien cuyo problema es nuestro lo manda
     // a revisar el lado equivocado durante una tarde.

@@ -109,7 +109,7 @@ async function sembrarDosEmpresas() {
   // ── Usuarios ──
   const usuarioA = await Usuario.create({
     auth0_sub: USUARIO_DE_LA_SESION,
-    email: 'dev@adminapp.app',
+    email: 'dev@favalio.com',
     nombre: 'Usuario de pruebas',
   });
 

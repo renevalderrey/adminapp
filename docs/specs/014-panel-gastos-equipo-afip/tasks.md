@@ -654,7 +654,7 @@ seguir viéndose (ajuste 5(a) del plan).
 
 - [x] **T1371** Reescribir `apps/web/src/pages/Expenses.jsx` con el patrón del
       sistema: `PageHeader` (FR-018) · las dos solapas como **segmentos** con la
-      forma de `AdminApp-Rediseno.dc.html:645-648` (FR-038) · `TablaGrid` /
+      forma de `Favalio-Rediseno.dc.html:645-648` (FR-038) · `TablaGrid` /
       `Encabezado` / `Fila` / `BotonDeFila` con el **mismo string** de
       `grid-template-columns` en el encabezado y en las filas (FR-007) · las
       tarjetas de total por grupo **incluida «General»** y sin filtrar por nombre
@@ -1065,7 +1065,7 @@ instantáneo hoy; lo que falta es el botón, y son estas dos tareas.
       `toast.success` incondicional) (E3, FR-105), y **muestra el enlace con un botón
       de copiar** cuando no salió (FR-106) · botón de **reenviar** una invitación
       pendiente (FR-107) · la pantalla explica que la persona invitada tiene que
-      registrarse **con ese mismo email**, porque AdminApp no crea nada en Auth0
+      registrarse **con ese mismo email**, porque Favalio no crea nada en Auth0
       (E14, FR-125) · `mensajeDeError` en todos los `catch` (FR-008) y el fallo de
       carga en pantalla, no en `console.error` (FR-009, hoy `Team.jsx:65`) ·
       `ETIQUETAS_DE_ROL` de `utils/equipo.js`, con `gerente` (FR-117) · el superadmin
@@ -1400,7 +1400,7 @@ de servidor de esta fase, y va escrita arriba de cada archivo de test:
       confirmación que dice qué se pierde: «vas a tener que volver a subir el
       certificado y la clave, y la clave no se puede recuperar de acá» (FR-098) ·
       **las tres frases falsas de la maqueta no se copian**: la pantalla dice, textual,
-      que el certificado y la clave se guardan **en la base de datos de AdminApp, sin
+      que el certificado y la clave se guardan **en la base de datos de Favalio, sin
       cifrar**, que la clave **no sale nunca de la API** y que la del CSR **no se
       guarda: se descarga y hay que conservarla** (FR-093, FR-094, decisión 20) ·
       `config.cert` y `config.key` se limpian después de guardar, los inputs de

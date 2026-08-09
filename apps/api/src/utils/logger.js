@@ -36,7 +36,7 @@ const logger = pino({
   timestamp: pino.stdTimeFunctions.isoTime,
 
   base: {
-    servicio: 'adminapp-api',
+    servicio: 'favalio-api',
     entorno: process.env.NODE_ENV || 'development',
   },
 

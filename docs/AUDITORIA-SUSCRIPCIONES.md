@@ -147,7 +147,7 @@ cuenta suspendida) y el cron avisa a los 5 días y a 1 día.
 5. **Términos y Condiciones y Política de Privacidad.** No existen. Son
    requisito de cualquier pasarela y del consentimiento de datos. Hoy el footer
    de la landing los apunta a contacto.
-6. **Quién le factura a la PyME que paga.** AdminApp le cobra a sus clientes y
+6. **Quién le factura a la PyME que paga.** Favalio le cobra a sus clientes y
    tiene que emitirles comprobante. No hay nada en el código para eso — y es
    irónico, siendo un sistema de facturación.
 
@@ -185,7 +185,7 @@ Si se acepta cobrar por transferencia y activar a mano:
 2. ✅ **Emails del ciclo** — hechos.
 3. ⬜ **Decidir los planes reales** y alinear la landing.
 4. ⬜ **Términos y Privacidad** redactados y publicados.
-5. ⬜ **Definir quién emite la factura** de AdminApp al cliente.
+5. ⬜ **Definir quién emite la factura** de Favalio al cliente.
 
 Los puntos 3, 4 y 5 no son código.
 

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Los cinco estados de una venta
+//  FAVALIO · Los cinco estados de una venta
 //
 //  `status` tiene dos valores ('active' / 'voided') pero para el usuario hay
 //  cinco situaciones distintas, y confundirlas tiene consecuencias fiscales:
@@ -62,7 +62,7 @@ function tieneValor(v) {
  *     mostraria Rechazada para siempre, con CAE y todo.
  *
  * El estado E existe porque hasta ahora se podia anular un comprobante con
- * CAE. Anular en AdminApp no lo da de baja ante ARCA: sigue declarado y sigue
+ * CAE. Anular en Favalio no lo da de baja ante ARCA: sigue declarado y sigue
  * en la base imponible hasta que se emita una nota de credito, que el sistema
  * todavia no emite. `taxService` ya los cuenta como `anuladas_con_cae_sin_nc`
  * justamente porque es un desvio conocido. Mostrarlos como una anulada comun

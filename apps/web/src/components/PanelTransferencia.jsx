@@ -5,7 +5,7 @@ import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/
 import { ArrowRight, Loader2, Plus, Search, Trash2 } from 'lucide-react'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Transferir mercadería entre sucursales
+//  FAVALIO · Transferir mercadería entre sucursales
 //
 //  Panel y no modal, y con **una lista de productos** en vez de uno solo. El
 //  formulario que había antes movía un producto por vez: llevar diez cosas de un

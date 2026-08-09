@@ -40,7 +40,7 @@ const logger = require('../../utils/logger');
 //
 //  Que TiendaNube firme con la cabecera `x-linkedstore-hmac-sha256`, con este
 //  algoritmo y con este cuerpo. **No hay entorno de pruebas del tercero**
-//  (supuesto 11): acá AdminApp verifica lo que AdminApp firmó, que es el
+//  (supuesto 11): acá Favalio verifica lo que Favalio firmó, que es el
 //  circuito, no el contrato del otro lado. Eso es el paso manual P2, y ningún
 //  test de este hito lo cubre.
 // ════════════════════════════════════════════

@@ -28,4 +28,4 @@ process.env.LOG_LEVEL = 'silent';
 // BYPASS_AUTH y sin .env: noventa segundos de espera y un ERR_ASSERTION que no
 // nombra ni a Auth0 ni al bypass. Ahi se arreglo en el medio y no en el borde.
 process.env.AUTH0_DOMAIN = process.env.AUTH0_DOMAIN || 'tests.auth0.local';
-process.env.AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE || 'https://tests.adminapp.local/api';
+process.env.AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE || 'https://tests.favalio.local/api';

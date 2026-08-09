@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Lo que tiene que existir antes de abrir el navegador
+//  FAVALIO · Lo que tiene que existir antes de abrir el navegador
 //
 //  Corre UNA vez por suite (`globalSetup` de `playwright.config.js`) y hace dos
 //  cosas: comprobar que la API descartable esté arriba, y sembrar los datos que
@@ -44,7 +44,7 @@
 import { readFile } from 'node:fs/promises'
 import { sembrarLaTienda, TIENDA_DE_PRUEBA, VARIANTES, variante } from './siembraDeTiendanube.js'
 
-const API = process.env.ADMINAPP_API_DE_PRUEBAS || 'http://localhost:5099/api'
+const API = process.env.FAVALIO_API_DE_PRUEBAS || 'http://localhost:5099/api'
 
 /** Cuántos productos comunes se siembran. El paso 2 pide 40 resultados. */
 const CUANTOS = 44
@@ -75,10 +75,10 @@ const PREFIJO = 'PRUEBA-'
  */
 const COMO_LEVANTAR_LA_API =
   'Las pruebas de navegador necesitan una base descartable y la API contra ella:\n\n'
-  + '  docker run -d --name adminapp-e2e-pg -e POSTGRES_USER=adminapp \\\n'
-  + '    -e POSTGRES_PASSWORD=adminapp -e POSTGRES_DB=adminapp_e2e \\\n'
+  + '  docker run -d --name favalio-e2e-pg -e POSTGRES_USER=favalio \\\n'
+  + '    -e POSTGRES_PASSWORD=favalio -e POSTGRES_DB=favalio_e2e \\\n'
   + '    -p 55432:5432 postgres:16-alpine\n\n'
-  + '  cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55432/adminapp_e2e \\\n'
+  + '  cd apps/api && DATABASE_URL=postgres://favalio:favalio@localhost:55432/favalio_e2e \\\n'
   + '    DB_SSL=false NODE_ENV=development BYPASS_AUTH=true PORT=5099 \\\n'
   + '    ALLOWED_ORIGINS=http://localhost:5199 TIENDANUBE_CLIENT_ID=maquetado \\\n'
   + '    node src/server.js\n\n'
@@ -109,7 +109,7 @@ const COMO_LEVANTAR_LA_API =
   + 'el comando completo es el de arriba.\n\n'
   + 'Si la base descartable no está en el 55432 —el arnés de integración usa ese mismo '
   + 'puerto y los dos no pueden estar arriba a la vez—, pasá la cadena en '
-  + 'ADMINAPP_DB_DE_PRUEBAS al correr las pruebas.'
+  + 'FAVALIO_DB_DE_PRUEBAS al correr las pruebas.'
 
 async function pedir(ruta, opciones = {}) {
   const respuesta = await fetch(`${API}${ruta}`, {
@@ -477,7 +477,7 @@ async function sembrarTiendanube(empresaId, puntoDeVentaId, productos) {
 
   // ── Y la comprobación que hace que sembrar contra la base equivocada se vea ──
   //
-  // Sin esto, apuntar ADMINAPP_DB_DE_PRUEBAS a una base que no es la de la API
+  // Sin esto, apuntar FAVALIO_DB_DE_PRUEBAS a una base que no es la de la API
   // deja todo en verde acá y las pruebas fallan después diciendo que no
   // encuentran ninguna fila, que es el síntoma que no permite adivinar la causa.
   const estado = await pedir('/tiendanube/status')
@@ -621,7 +621,7 @@ export default async function preparar() {
     throw new Error(
       `Hacen falta 8 productos sembrados para armar las órdenes y hay ${comunes.length}. `
       + `Lo más rápido es tirar la base y volver a empezar:\n\n`
-      + '  docker rm -f adminapp-e2e-pg\n\n'
+      + '  docker rm -f favalio-e2e-pg\n\n'
       + COMO_LEVANTAR_LA_API
     )
   }
@@ -637,7 +637,7 @@ export default async function preparar() {
       'No se pudieron sembrar los proveedores y sus órdenes, así que las pruebas de '
       + '/proveedores y /ordenes-compra medirían pantallas vacías.\n\n'
       + 'Si la base quedó a medias, lo más rápido es tirarla y volver a empezar:\n\n'
-      + '  docker rm -f adminapp-e2e-pg\n\n'
+      + '  docker rm -f favalio-e2e-pg\n\n'
       + `${COMO_LEVANTAR_LA_API}\n\nMotivo: ${err.message}`
     )
   }

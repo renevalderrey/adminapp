@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelo: FixedExpense (Gasto Fijo)
+//  FAVALIO · Modelo: FixedExpense (Gasto Fijo)
 //  Migra GF1[] y GF2[]
 //  Campos originales: { n, v }
 // ════════════════════════════════════════════

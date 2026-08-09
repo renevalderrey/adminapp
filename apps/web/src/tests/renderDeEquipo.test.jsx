@@ -11,7 +11,7 @@ import Team from '@/pages/Team'
 import PanelDeMiembro from '@/components/PanelDeMiembro'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · /equipo, renderizado
+//  FAVALIO · /equipo, renderizado
 //
 //  Lo que se afirma acá es EL DIBUJO Y EL EFECTO. Las reglas —quién es el último
 //  administrador activo, qué etiqueta lleva cada rol, cuándo una invitación pasó
@@ -186,7 +186,7 @@ const SESIONES = [MI_SESION, MI_CELULAR, LA_DEL_LOCAL]
 
 const TODOS = ['equipo.ver', 'equipo.invitar', 'equipo.editar', 'equipo.eliminar']
 
-const ENLACE = 'https://app.adminapp.com/?invite=tok-nuevo'
+const ENLACE = 'https://app.favalio.com/?invite=tok-nuevo'
 
 /** Todo lo que salió por la red, en orden. */
 let pedidos = []
@@ -370,7 +370,7 @@ describe('invitar dice la verdad sobre el mail', () => {
   })
 
   it('explica que la persona tiene que registrarse con ESE mismo email', async () => {
-    // FR-125. AdminApp no crea nada en Auth0: si se registra con otra dirección,
+    // FR-125. Favalio no crea nada en Auth0: si se registra con otra dirección,
     // el enlace no le sirve y hoy no hay un solo mensaje que lo diga.
     await montar()
 

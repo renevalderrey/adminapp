@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Rutas: Productos
+//  FAVALIO · Rutas: Productos
 // ════════════════════════════════════════════
 
 const express = require('express');

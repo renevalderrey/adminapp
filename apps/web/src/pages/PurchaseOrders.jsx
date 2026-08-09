@@ -56,7 +56,7 @@ import EstadoVacio from '@/components/EstadoVacio'
 import PieDeTabla from '@/components/PieDeTabla'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Órdenes de compra
+//  FAVALIO · Órdenes de compra
 //
 //  Las etiquetas de estado salen de `utils/ordenDeCompra.js` y no de una copia
 //  local (FR-107): esta pantalla y `Orders.jsx` tenían la misma lista escrita

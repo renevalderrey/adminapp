@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · El marco de 1320px que el shell dejó de aplicar a todas
+//  FAVALIO · El marco de 1320px que el shell dejó de aplicar a todas
 //
 //  Hasta ahora `App.jsx` envolvía TODAS las pantallas en el mismo
 //  `max-w-[1320px] px-5 py-7`, adentro de un `<main>` que scrollea entero. El

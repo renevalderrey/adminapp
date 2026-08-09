@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Cómo se reparten los gastos fijos por sucursal
+//  FAVALIO · Cómo se reparten los gastos fijos por sucursal
 //
 //  ── El defecto que esto cierra ──
 //

@@ -2,7 +2,7 @@ import { Search, Plus, Package, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Punto de venta, la columna izquierda
+//  FAVALIO · Punto de venta, la columna izquierda
 //
 //  La barra de búsqueda con sus filtros queda FIJA arriba y la lista scrollea
 //  debajo, en su propia zona. No es una preferencia estética: si la búsqueda

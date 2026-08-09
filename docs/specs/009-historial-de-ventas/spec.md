@@ -6,7 +6,7 @@
 **Status**: Ready for plan
 **Input**:
 
-> Pasada fina de la pantalla **Historial de ventas** de AdminApp. Es el hito 3
+> Pasada fina de la pantalla **Historial de ventas** de Favalio. Es el hito 3
 > del plan (`docs/PLAN-COMPRAFIT.md`, 4.2). Dos partes.
 >
 > **Diseño.** Llevar la pantalla a la maqueta del rediseño. Es la pantalla que la
@@ -74,7 +74,7 @@ Esta sección es la base del resto. Sin este vocabulario, «reintentar», «anul
 
 | Identidad | Quién la asigna | Campos | Cuándo existe |
 |---|---|---|---|
-| **La operación** | AdminApp | `Sale.id` | Siempre, desde que se cobra |
+| **La operación** | Favalio | `Sale.id` | Siempre, desde que se cobra |
 | **El comprobante fiscal** | ARCA/AFIP | `afip_type` + `afip_pv` + `afip_nro` | Solo si se emitió y hay CAE |
 
 La numeración de AFIP es **correlativa por punto de venta y por tipo**: un
@@ -122,7 +122,7 @@ que el sistema todavía no emite. Por eso llevan etiqueta y color propios.
 
 ### Anular un comprobante con CAE queda bloqueado
 
-Anular en AdminApp no anula nada ante ARCA. Mientras no existan las notas de
+Anular en Favalio no anula nada ante ARCA. Mientras no existan las notas de
 crédito, **la pantalla y la API rechazan anular una venta que tiene CAE**, y el
 mensaje explica por qué: el comprobante sigue vigente ante ARCA y hace falta una
 nota de crédito, que el sistema todavía no emite.
@@ -147,7 +147,7 @@ sale mal cinco veces.
 
 **Independent Test**: cargar la pantalla con ventas de los cinco estados y
 comparar contra el bloque `isVentas` de la maqueta
-(`AdminApp-Rediseno.dc.html:491-556`).
+(`Favalio-Rediseno.dc.html:491-556`).
 
 **Acceptance Scenarios**:
 
@@ -757,7 +757,7 @@ Explícito, para que no se discuta después si estaba incluido:
 - **Emitir notas de crédito ante AFIP.** Es el proyecto 1 de
   `docs/PROXIMOS-PROYECTOS.md`. Esta funcionalidad **bloquea** anular con CAE
   justamente porque las notas de crédito todavía no existen.
-- **El botón «Columnas»** que la maqueta dibuja (`AdminApp-Rediseno.dc.html:517`).
+- **El botón «Columnas»** que la maqueta dibuja (`Favalio-Rediseno.dc.html:517`).
   Queda para el repaso de coherencia.
 - **Cambiar el circuito de emisión del POS.** Esta pantalla reintenta; no factura
   por primera vez.

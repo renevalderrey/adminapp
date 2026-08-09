@@ -12,7 +12,7 @@ import {
 import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El panel de mapeo de una variante
+//  FAVALIO · El panel de mapeo de una variante
 //
 //  **Panel y no modal** (FR-053), y es una decisión y no una preferencia: el
 //  producto del sistema se elige **mirando** la lista de variantes, no
@@ -42,7 +42,7 @@ import { faltaElPermiso } from '@/utils/permisos'
 //  del pie, y el estado no se toca (US6 escenarios 2 y 4).
 //
 //  Y los avisos de las dos familias **son distintos** (FR-062): un problema de
-//  TiendaNube y uno de AdminApp se arreglan en lados distintos, y el usuario que
+//  TiendaNube y uno de Favalio se arreglan en lados distintos, y el usuario que
 //  ve siempre el mismo texto llama al que no es.
 //
 //  Reglas de dibujo: docs/REGLAS-DISENO.md. Referencia viva: pages/Comparador.jsx.
@@ -66,7 +66,7 @@ const REBOTE_MS = 300
  *  · **429** no es un error, es «más despacio». Reintentar en el momento lo
  *    empeora, y el texto lo dice.
  *  · **5xx** es del otro lado. Decir «no se pudo guardar» a secas manda a
- *    revisar AdminApp, que es el lado que está bien (FR-062).
+ *    revisar Favalio, que es el lado que está bien (FR-062).
  *  · el resto lo explica el servidor en castellano, que es donde `fallo()` y
  *    `ErrorDeNegocio` dejan el mensaje con el contexto —«"Colágeno 300g" ya está
  *    mapeado a la variante …»—. `err.message` de axios diría «Request failed
@@ -80,7 +80,7 @@ export function avisoDeError(err, generico) {
   }
 
   if (status >= 500 && status <= 599) {
-    return 'TiendaNube no está contestando. No es un problema de AdminApp: probá de nuevo en unos minutos.'
+    return 'TiendaNube no está contestando. No es un problema de Favalio: probá de nuevo en unos minutos.'
   }
 
   return mensajeDeError(err, generico)

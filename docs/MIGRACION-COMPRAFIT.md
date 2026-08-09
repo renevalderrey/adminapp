@@ -1,8 +1,8 @@
-# ¿Puede Comprafit migrar a AdminApp?
+# ¿Puede Comprafit migrar a Favalio?
 
 **Fecha:** 31 de julio de 2026
 **Método:** lectura completa del sistema legacy (`legacy/`, 11.037 líneas) y
-comparación función por función contra AdminApp.
+comparación función por función contra Favalio.
 
 ---
 
@@ -14,7 +14,7 @@ comparación función por función contra AdminApp.
 
 ## Respuesta corta
 
-**Sí, sin pérdida.** AdminApp cubre todo lo que hacía el sistema viejo y suma
+**Sí, sin pérdida.** Favalio cubre todo lo que hacía el sistema viejo y suma
 factura electrónica ante ARCA, clientes con cuenta corriente, recetas,
 producción, caja, impuestos, reportes y multi-empresa.
 
@@ -47,7 +47,7 @@ a la vez se pisaba, porque se guarda la clave entera.
 
 ## Comparación módulo por módulo
 
-Leyenda: ✅ está · ⚠️ parcial · ❌ falta · ⭐ solo en AdminApp
+Leyenda: ✅ está · ⚠️ parcial · ❌ falta · ⭐ solo en Favalio
 
 ### Calculadora de precios
 
@@ -97,7 +97,7 @@ Leyenda: ✅ está · ⚠️ parcial · ❌ falta · ⭐ solo en AdminApp
 | Imprimir comprobante y ticket | ✅ y mejor: con QR de AFIP (RG 4892/2020) |
 | **Editar una venta ya registrada** | ⚠️ se anula y se rehace |
 | Anular venta | ✅ y mejor: queda el registro, se devuelve el stock |
-| **Factura electrónica con CAE de AFIP** | ⭐ **solo AdminApp** |
+| **Factura electrónica con CAE de AFIP** | ⭐ **solo Favalio** |
 
 > El comprobante del legacy decía "Consumidor final" y no tenía CAE: no era una
 > factura ante ARCA. Este es el motivo más fuerte para migrar.
@@ -107,7 +107,7 @@ Leyenda: ✅ está · ⚠️ parcial · ❌ falta · ⭐ solo en AdminApp
 | Función del legacy | Estado |
 |---|---|
 | Armar pedido buscando productos | ✅ Órdenes de compra |
-| Recibir pedido y actualizar stock | ⭐ solo AdminApp |
+| Recibir pedido y actualizar stock | ⭐ solo Favalio |
 | **Faltantes automáticos → armar el pedido** | ⚠️ hay alerta de stock bajo, no el flujo |
 | **Exportar el pedido por WhatsApp, con o sin precios** | ❌ |
 | **Exportar el pedido a Excel / PDF** | ❌ |
@@ -136,11 +136,11 @@ Leyenda: ✅ está · ⚠️ parcial · ❌ falta · ⭐ solo en AdminApp
 | Ingreso con usuario y contraseña | ✅ y mejor: Auth0 |
 | Permisos por acción | ✅ y mejor: roles + permisos por usuario |
 | **Ver y cerrar sesiones activas** | ❌ |
-| Varias empresas por usuario | ⭐ solo AdminApp |
+| Varias empresas por usuario | ⭐ solo Favalio |
 
 ---
 
-## Lo que AdminApp agrega
+## Lo que Favalio agrega
 
 Nada de esto existía en Comprafit:
 

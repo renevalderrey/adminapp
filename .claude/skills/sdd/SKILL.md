@@ -1,6 +1,6 @@
 ---
 name: sdd
-description: Corre el ciclo de desarrollo dirigido por especificación sobre una funcionalidad — spec, plan, tareas, implementación y verificación. Se detiene después de la spec para que la revises. Usalo para cualquier funcionalidad nueva de AdminApp. Trigger - "/sdd", "nueva funcionalidad", "arrancá una feature".
+description: Corre el ciclo de desarrollo dirigido por especificación sobre una funcionalidad — spec, plan, tareas, implementación y verificación. Se detiene después de la spec para que la revises. Usalo para cualquier funcionalidad nueva de Favalio. Trigger - "/sdd", "nueva funcionalidad", "arrancá una feature".
 ---
 
 # Ciclo SDD
@@ -91,7 +91,7 @@ los emails que se perdían en silencio— salieron de implementar sin definir.
 Todo esto apunta a una sola cosa, que está en
 [docs/PLAN-COMPRAFIT.md](../../../docs/PLAN-COMPRAFIT.md):
 
-> **Comprafit abre AdminApp un lunes a la mañana y hace su semana completa sin
+> **Comprafit abre Favalio un lunes a la mañana y hace su semana completa sin
 > volver al sistema viejo ni una vez.**
 
 Una funcionalidad que no acerca a eso, o que lo acerca a costa de romper algo

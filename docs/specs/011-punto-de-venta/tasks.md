@@ -627,7 +627,7 @@ sabe cuál vino de dónde y la salida barata es comentar la guardia.
       del plan. **`white` y `black` quedan fuera del patrón a propósito y hay que
       escribir por qué**: `REGLAS-DISENO.md` fija el botón principal como
       `bg-brand text-white` y la maqueta pone `color:#fff` adentro del botón de
-      confirmar (`docs/maqueta/AdminApp-Rediseno.dc.html:484`); un patrón que los
+      confirmar (`docs/maqueta/Favalio-Rediseno.dc.html:484`); un patrón que los
       incluyera fallaría contra el propio sistema de diseño el primer día.
       **En la misma tarea, ⚠ dependencia (c)**: la guardia de `<Can>`
       (`:160-171`) hace `readdirSync` **sin recursión** sobre `pages` y
@@ -825,7 +825,7 @@ a la búsqueda. La pantalla sigue fea y sigue en una columna.
 ## Phase 7: Las dos columnas de la maqueta
 
 **Purpose**: la pantalla se ve como el bloque `isPos` de
-`docs/maqueta/AdminApp-Rediseno.dc.html:336-489`, y **la guardia del corte 4 pasa
+`docs/maqueta/Favalio-Rediseno.dc.html:336-489`, y **la guardia del corte 4 pasa
 a verde**.
 
 - [x] **T1120** [P] Escribir `apps/web/src/components/pos/CatalogoDelPos.jsx` (la
@@ -1343,9 +1343,9 @@ vive en el job de la imagen), y no hay fixtures ni `supertest`.
 ```bash
 # 1. Una base DESCARTABLE, en un contenedor propio y en un puerto propio, para
 #    no escribir en la base de desarrollo de nadie.
-docker run -d --name adminapp-e2e-pg \
-  -e POSTGRES_USER=adminapp -e POSTGRES_PASSWORD=adminapp \
-  -e POSTGRES_DB=adminapp_e2e -p 55432:5432 postgres:16-alpine
+docker run -d --name favalio-e2e-pg \
+  -e POSTGRES_USER=favalio -e POSTGRES_PASSWORD=favalio \
+  -e POSTGRES_DB=favalio_e2e -p 55432:5432 postgres:16-alpine
 
 # 2. La API contra esa base, SIN Auth0 y en un puerto propio.
 #    `BYPASS_AUTH=true` (apps/api/src/server.js:264) inyecta req.userId,
@@ -1358,7 +1358,7 @@ docker run -d --name adminapp-e2e-pg \
 #
 #    El arranque en desarrollo crea el esquema, siembra los permisos, la empresa
 #    1 con sus tres sucursales y el usuario `test-user-id`.
-cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55432/adminapp_e2e \
+cd apps/api && DATABASE_URL=postgres://favalio:favalio@localhost:55432/favalio_e2e \
   DB_SSL=false NODE_ENV=development BYPASS_AUTH=true PORT=5099 node src/server.js
 ```
 

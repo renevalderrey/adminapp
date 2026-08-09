@@ -220,7 +220,7 @@ async function cancelar(empresaId) {
 }
 
 const AYUDA = `
-Administrar suscripciones de AdminApp.
+Administrar suscripciones de Favalio.
 
   node scripts/suscripcion.js listar
       Lista todas las empresas con su plan, estado y vencimiento.

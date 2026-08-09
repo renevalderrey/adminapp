@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { NOMBRE_LARGO, PROVEEDORES } from './preparacion.js'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El maquetado de Proveedores y de Órdenes de compra
+//  FAVALIO · El maquetado de Proveedores y de Órdenes de compra
 //
 //  Las CUATRO afirmaciones del hito 012 que solo contesta un motor de
 //  maquetado, y ninguna más:

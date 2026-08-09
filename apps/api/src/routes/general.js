@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Rutas: Stock, Marcas, Gastos, Settings
+//  FAVALIO · Rutas: Stock, Marcas, Gastos, Settings
 // ════════════════════════════════════════════
 
 const express = require('express');
@@ -652,7 +652,7 @@ router.put('/settings/:key', checkPermission('config.editar'), async (req, res) 
 // GET /api/faltantes — Que hay que reponer, listo para armar el pedido
 //
 // El sistema anterior tenia esta pantalla y era la rutina semanal: mirar que
-// falta, poner cantidades, mandarlo por WhatsApp al proveedor. AdminApp tenia
+// falta, poner cantidades, mandarlo por WhatsApp al proveedor. Favalio tenia
 // la alerta de stock bajo en el panel, pero suelta: no traia el proveedor, ni
 // el costo, ni una cantidad sugerida, asi que armar el pedido seguia siendo a
 // mano.

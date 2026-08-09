@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · El filtro del historial de ventas
+//  FAVALIO · El filtro del historial de ventas
 //
 //  Traduce los parametros de la query en el `where`, el orden y la paginacion
 //  de la consulta. Es una funcion pura y esta separada de la ruta por dos

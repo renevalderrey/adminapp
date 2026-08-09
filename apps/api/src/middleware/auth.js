@@ -61,7 +61,7 @@ const extractUser = (req, res, next) => {
 // pone lento o deja de responder, cada request de la aplicacion se queda
 // colgado esperando —no falla, se cuelga— hasta el timeout del cliente. Con el
 // pool de conexiones y los workers ocupados, un problema de Auth0 se convierte
-// en una caida total de AdminApp.
+// en una caida total de Favalio.
 //
 // 3 segundos es holgado para una llamada que normalmente tarda decenas de
 // milisegundos, y es un limite duro para el peor caso. El perfil es opcional:

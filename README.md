@@ -1,18 +1,18 @@
-# AdminApp
+# Favalio
 
 SaaS multi-tenant de gestión comercial: punto de venta, stock multi-sucursal,
 proveedores, producción, cuentas corrientes, flujo de caja, impuestos y
 facturación electrónica AFIP.
 
 > **Nota sobre la marca.** Comprafit es un **cliente** del producto — de ahí
-> salió la base del proyecto — no el producto en sí. La marca es AdminApp.
+> salió la base del proyecto — no el producto en sí. La marca es Favalio.
 
 ---
 
 ## Estructura
 
 ```
-adminapp/
+favalio/
 ├── apps/
 │   ├── api/        API REST · Node + Express 5 + Sequelize + PostgreSQL + Auth0
 │   ├── web/        SPA de la aplicación · React 19 + Vite + Tailwind 4
@@ -34,9 +34,9 @@ un lockfile ubicado en la raíz.
 
 | App | Plataforma | Dominio previsto |
 |---|---|---|
-| `apps/landing` | Vercel | `adminapp.com` |
-| `apps/web` | Vercel | `app.adminapp.com` |
-| `apps/api` | Render | `api.adminapp.com` |
+| `apps/landing` | Vercel | `favalio.com` |
+| `apps/web` | Vercel | `app.favalio.com` |
+| `apps/api` | Render | `api.favalio.com` |
 | PostgreSQL | Neon | — |
 
 La landing y la app se despliegan por separado. La landing enlaza a la app vía
@@ -122,6 +122,13 @@ Actualizar en la API `ALLOWED_ORIGINS` con los dominios reales de web y landing
 
 En Auth0, agregar el dominio de la app a *Allowed Callback URLs*, *Allowed Logout
 URLs* y *Allowed Web Origins*.
+
+### Dominio propio
+
+`favalio.com` está registrado en Hostinger, que actúa solo como DNS: la landing
+y la app siguen en Vercel y la API en Render. El paso a paso —registros DNS,
+variables a actualizar y verificación— está en
+[docs/DOMINIO-HOSTINGER.md](docs/DOMINIO-HOSTINGER.md).
 
 ---
 

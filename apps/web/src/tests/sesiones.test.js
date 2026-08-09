@@ -6,7 +6,7 @@ import {
 } from '@/utils/sesiones'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Las reglas de la lista de sesiones
+//  FAVALIO · Las reglas de la lista de sesiones
 //
 //  Las dos son puras y por eso se prueban acá y no en el render: un test de
 //  render que verificara «dice hace 12 minutos» monta la pantalla entera, tarda

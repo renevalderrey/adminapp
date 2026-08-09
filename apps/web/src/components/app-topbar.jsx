@@ -68,7 +68,7 @@ export function AppTopbar({ sidebarAbierta, onAlternarSidebar }) {
             <ChevronRight className="hidden h-[13px] w-[13px] shrink-0 text-fg-3 sm:block" />
           </>
         )}
-        <span className="truncate font-semibold">{item?.label || 'AdminApp'}</span>
+        <span className="truncate font-semibold">{item?.label || 'Favalio'}</span>
       </div>
 
       <div className="flex-1" />

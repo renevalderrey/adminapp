@@ -6,7 +6,7 @@ import { AppTopbar } from '@/components/app-topbar'
 import { GRUPOS, alcanceDeRuta } from '@/components/navegacion'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El selector de sucursal de la barra superior
+//  FAVALIO · El selector de sucursal de la barra superior
 //
 //  ── El defecto ──
 //

@@ -6,7 +6,7 @@ const registrarSesion = require('../middleware/registrarSesion');
 const { GRACIA_HASTA, sinCabecera } = registrarSesion;
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Las dos cosas de `registrarSesion` que no necesitan Postgres
+//  FAVALIO · Las dos cosas de `registrarSesion` que no necesitan Postgres
 //
 //  Lo que sí lo necesita —que una sesión cerrada corte con 401, que dos requests
 //  simultáneos creen UNA fila, y **cuántas consultas cuesta**— vive en

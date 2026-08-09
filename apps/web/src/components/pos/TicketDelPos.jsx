@@ -4,7 +4,7 @@ import SegmentoDePago from '@/components/pos/SegmentoDePago'
 import { ATRIBUTO_CAMPO, ATRIBUTO_LINEA } from '@/utils/atajosDelPos'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Punto de venta, la columna derecha
+//  FAVALIO · Punto de venta, la columna derecha
 //
 //  400px fijos —no 380 como tenía la barra de carrito anterior—, con tres
 //  zonas: el encabezado propio del ticket, la lista de líneas con SU PROPIO

@@ -1,4 +1,4 @@
-# ── AdminApp Landing: React + TS + Vite (estatica) ──
+# ── Favalio Landing: React + TS + Vite (estatica) ──
 # Solo se usa para Railway/self-host. En Vercel el build es nativo (ver vercel.json).
 FROM node:22-alpine AS build
 

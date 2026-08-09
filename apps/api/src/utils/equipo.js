@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Las reglas del equipo
+//  FAVALIO · Las reglas del equipo
 //
 //  Dos preguntas que hasta la 014 no contestaba nadie, y una tabla de nombres
 //  que estaba escrita a mano y le faltaba un rol.

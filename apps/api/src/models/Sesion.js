@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelo: Sesion
+//  FAVALIO · Modelo: Sesion
 //  Una fila por (usuario, dispositivo). NO por empresa.
 //
 //  ── Qué es un «dispositivo» acá ──

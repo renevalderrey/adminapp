@@ -23,7 +23,7 @@ import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
 import PieDeTabla from '@/components/PieDeTabla'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Historial de ventas
+//  FAVALIO · Historial de ventas
 //
 //  La pantalla que la maqueta dibuja completa, y por eso la que fija el patrón
 //  de tabla que van a copiar Inventario, Órdenes de compra, Gastos y Equipo.

@@ -1,6 +1,6 @@
 # Maqueta del rediseño
 
-`AdminApp-Rediseno.dc.html` es la maqueta original de Claude Design
+`Favalio-Rediseno.dc.html` es la maqueta original de Claude Design
 (proyecto `da78da8f-639e-4489-8c2f-4f0bf0bb2f58`), guardada acá como
 referencia para las pasadas de diseño que quedan.
 

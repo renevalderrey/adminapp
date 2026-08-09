@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelo: Brand (Marca)
+//  FAVALIO · Modelo: Brand (Marca)
 // ════════════════════════════════════════════
 
 const { DataTypes } = require('sequelize');

@@ -1,7 +1,7 @@
-# Plan · Dejar AdminApp listo para Comprafit
+# Plan · Dejar Favalio listo para Comprafit
 
 **Fecha:** 1 de agosto de 2026
-**Objetivo:** que Comprafit pueda reemplazar su sistema viejo por AdminApp sin
+**Objetivo:** que Comprafit pueda reemplazar su sistema viejo por Favalio sin
 perder nada de lo que hacía, con el rediseño aplicado, y sin ver una sola
 pantalla a medio terminar.
 
@@ -9,7 +9,7 @@ pantalla a medio terminar.
 
 ## El norte
 
-> **Comprafit abre AdminApp un lunes a la mañana y hace su semana completa sin
+> **Comprafit abre Favalio un lunes a la mañana y hace su semana completa sin
 > volver al sistema viejo ni una vez.**
 
 Todo lo que sigue se mide contra eso. Una pantalla que existe pero que no

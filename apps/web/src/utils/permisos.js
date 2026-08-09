@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Lo que se lee cuando un control está apagado por permiso
+//  FAVALIO · Lo que se lee cuando un control está apagado por permiso
 //
 //  ── Por qué esto es una función y no una frase escrita en cada pantalla ──
 //

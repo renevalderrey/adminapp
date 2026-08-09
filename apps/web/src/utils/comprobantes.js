@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Qué comprobante puede emitir la empresa, y qué IVA se muestra
+//  FAVALIO · Qué comprobante puede emitir la empresa, y qué IVA se muestra
 //
 //  ⚠ NO es `utils/comprobanteAfip.js`. Los dos nombres empiezan igual y hacen
 //  cosas que no tienen nada que ver:

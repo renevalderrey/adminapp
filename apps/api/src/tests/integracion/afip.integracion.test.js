@@ -79,7 +79,7 @@ function generarPar(cuit) {
   cert.validity.notBefore = new Date(Date.now() - 24 * 60 * 60 * 1000);
   cert.validity.notAfter = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
   cert.setSubject([
-    { name: 'commonName', value: 'AdminApp' },
+    { name: 'commonName', value: 'Favalio' },
     { name: 'serialNumber', value: `CUIT ${cuit}` },
   ]);
   cert.setIssuer([{ name: 'commonName', value: 'Computadores' }]);

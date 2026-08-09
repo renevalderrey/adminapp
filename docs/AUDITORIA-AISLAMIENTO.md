@@ -8,7 +8,7 @@
 
 ## Qué se auditó y por qué
 
-AdminApp es un ERP multi-empresa: todas las empresas cliente comparten base de
+Favalio es un ERP multi-empresa: todas las empresas cliente comparten base de
 datos y servidor, y se separan por la columna `empresa_id`. Si una consulta se
 olvida de ese filtro, una empresa ve —o modifica— los datos de otra.
 

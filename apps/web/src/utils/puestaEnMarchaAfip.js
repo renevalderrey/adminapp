@@ -1,7 +1,7 @@
 import { fechaCortaDeMomento } from './formato'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · La puesta en marcha de la facturación electrónica
+//  FAVALIO · La puesta en marcha de la facturación electrónica
 //
 //  Los cuatro pasos que evitan la llamada «no puedo facturar»: CUIT cargado,
 //  certificado subido y vigente, punto de venta declarado y **circuito

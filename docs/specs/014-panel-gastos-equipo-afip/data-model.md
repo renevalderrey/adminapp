@@ -31,7 +31,7 @@ el día del deploy.
 ### No se crea una tabla de sesiones de Auth0
 
 No hay Management API en el repositorio (supuesto 13 de la spec). Lo que se
-guarda es lo que AdminApp sabe: qué dispositivos pidieron datos, cuándo, y cuáles
+guarda es lo que Favalio sabe: qué dispositivos pidieron datos, cuándo, y cuáles
 están cerrados. Ver el techo escrito en la decisión 2 del plan.
 
 ### No se crea `verificaciones_afip`

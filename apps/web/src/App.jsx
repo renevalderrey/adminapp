@@ -206,7 +206,7 @@ function App() {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <div className="text-center">
-          <img src="/logo_sin_fondo.png" alt="Admin App" className="h-16 w-16 object-contain mx-auto mb-4" />
+          <img src="/logo_sin_fondo.png" alt="Favalio" className="h-16 w-16 object-contain mx-auto mb-4" />
           <p className="text-muted-foreground font-medium">Cargando tu información...</p>
           <p className="text-xs text-muted-foreground mt-2">Esto puede tomar unos segundos en la primera carga</p>
         </div>

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Las reglas del Panel de control
+//  FAVALIO · Las reglas del Panel de control
 //
 //  El servidor manda **hechos** —`{ tipo, cantidad, alcance, ruta }`— y acá se
 //  decide qué severidad tiene cada aviso, en qué orden van y qué dice cada uno.

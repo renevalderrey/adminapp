@@ -14,7 +14,7 @@ import { pesos } from '@/utils/formato'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Gastos
+//  FAVALIO · Gastos
 //
 //  ── El defecto que esta pasada cierra ──
 //
@@ -260,7 +260,7 @@ export default function Expenses() {
       </PageHeader>
 
       {/* Las dos solapas como segmentos, con la forma de la maqueta
-          (`AdminApp-Rediseno.dc.html:645-648`): contenedor de 3px sobre
+          (`Favalio-Rediseno.dc.html:645-648`): contenedor de 3px sobre
           `surface-3`, radio 9px, botones de 28px con radio 7px (FR-038). Antes
           era un `border-b-2` a mano, que es el único control de este tipo que
           quedaba fuera del sistema. */}

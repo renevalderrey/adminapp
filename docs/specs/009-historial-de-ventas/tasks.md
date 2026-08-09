@@ -318,7 +318,7 @@ a copiar las otras cinco pantallas**.
       import de `@/components/ui/table`; no queda ningún `sale.id.split('-')[0]`
       en el lugar del número de comprobante; achicando la ventana la tabla
       scrollea dentro de su tarjeta y el body **no**; comparación visual contra
-      el bloque `isVentas` de `docs/maqueta/AdminApp-Rediseno.dc.html:491-556`.
+      el bloque `isVentas` de `docs/maqueta/Favalio-Rediseno.dc.html:491-556`.
       El `min-width: 1140px` de la maqueta **no** se copia al contenedor de la
       página.
 

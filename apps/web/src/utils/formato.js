@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Cómo se escribe un importe y cómo se escribe una fecha
+//  FAVALIO · Cómo se escribe un importe y cómo se escribe una fecha
 //
 //  Las dos funciones estaban adentro de `components/PanelVenta.jsx` y son las
 //  dos versiones correctas que había en el repositorio. Se sacan acá porque

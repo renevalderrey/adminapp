@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Que cuenta como "stock bajo"
+//  FAVALIO · Que cuenta como "stock bajo"
 //
 //  Existe porque hubo dos reglas distintas para la misma pregunta:
 //

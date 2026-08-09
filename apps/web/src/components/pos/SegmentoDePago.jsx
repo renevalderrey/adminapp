@@ -10,7 +10,7 @@ import {
 } from '@/utils/mediosDePago'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El control segmentado del medio de pago
+//  FAVALIO · El control segmentado del medio de pago
 //
 //  Tres segmentos —Efectivo · Tarjeta · Alianza— que se reparten el ancho y
 //  comparten borde y estados (FR-020). Un clic elige el segmento y le pone su

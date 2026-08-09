@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Los indicadores del Panel de control
+//  FAVALIO · Los indicadores del Panel de control
 //
 //  Este servicio calcula los números que el dueño mira todos los días para
 //  decidir. Hasta el corte 2 de la funcionalidad 014, cinco de ellos estaban

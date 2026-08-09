@@ -315,7 +315,7 @@ que llaman lo manejan:
 Está en el camino de todos los requests que llegan con un token sin `name` o sin
 `email`, y `fetch()` no tiene timeout por defecto. Si Auth0 se ponía lento, cada
 request se colgaba —no fallaba, se colgaba— hasta el timeout del cliente: un
-problema de Auth0 se convertía en una caída total de AdminApp.
+problema de Auth0 se convertía en una caída total de Favalio.
 
 Timeout de 3 s con `AbortSignal.timeout`. El perfil es opcional: si no llega, se
 sigue con lo que traiga el token. El `catch` además dejó de estar vacío.

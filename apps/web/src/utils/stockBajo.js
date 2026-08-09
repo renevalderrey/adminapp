@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Qué cuenta como «stock bajo», del lado del navegador
+//  FAVALIO · Qué cuenta como «stock bajo», del lado del navegador
 //
 //  Es la MISMA regla que `apps/api/src/utils/stockBajo.js`: el `min_stock` de
 //  la fila si está cargado y, si no, un umbral general. La necesitan el

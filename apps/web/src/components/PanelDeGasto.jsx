@@ -9,7 +9,7 @@ import { usePermission } from '@/hooks/usePermission'
 import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Panel del gasto fijo
+//  FAVALIO · Panel del gasto fijo
 //
 //  ── Lo que no existía ──
 //

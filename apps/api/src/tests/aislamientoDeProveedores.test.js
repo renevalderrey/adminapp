@@ -622,7 +622,7 @@ describe('Las dos rutas DELETE de la ficha, con un id ajeno', () => {
     expect(res.status).not.toBe(403);
 
     // El archivo sigue en la nube del otro cliente, pero el enlace es lo unico
-    // que AdminApp guarda: borrarlo es perder el respaldo de su factura.
+    // que Favalio guarda: borrarlo es perder el respaldo de su factura.
     expect(mockSupplierDocument.filas.map((d) => d.id)).toEqual([DOC_PROPIO, DOC_AJENO]);
 
     const inexistente = await request(levantarApi(PROPIA)).delete('/api/suppliers/documents/99999');

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Plata en centavos enteros
+//  FAVALIO · Plata en centavos enteros
 //
 //  FR-050 pide que el saldo de un proveedor se sume «con la misma disciplina
 //  que esCambioSignificativo»: en centavos enteros y no en punto flotante.

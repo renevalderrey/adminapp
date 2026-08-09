@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Calculos de venta
+//  FAVALIO · Calculos de venta
 //
 //  El total de una venta es el registro contable de la operacion. Tiene que
 //  salir del servidor a partir de las lineas, no llegar como un numero suelto

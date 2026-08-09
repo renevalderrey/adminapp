@@ -201,7 +201,7 @@ pantalla haga es una decisión nueva. Es el motivo por el que esta spec tiene m�
 
 ### La maqueta
 
-**`docs/maqueta/AdminApp-Rediseno.dc.html` no dibuja esta pantalla.** Se buscó
+**`docs/maqueta/Favalio-Rediseno.dc.html` no dibuja esta pantalla.** Se buscó
 `tiendanube`, `tienda nube` y `tienda-nube`: cero coincidencias. Su propio
 `README.md` enumera las siete pantallas que sí dibuja —Panel, POS, Historial de
 ventas, Inventario, Órdenes de compra, Configuración y el panel lateral— y
@@ -390,7 +390,7 @@ Falta:
 - **Desvincular.** No hay forma de borrar el token desde la aplicación. Es lo que
   hace posible el hallazgo 4, y es lo primero que hace falta cuando alguien
   vincula la tienda equivocada. Ajustes → AFIP **sí** tiene «Desvincular» y la
-  maqueta lo dibuja (`AdminApp-Rediseno.dc.html:780-783`): el patrón ya está.
+  maqueta lo dibuja (`Favalio-Rediseno.dc.html:780-783`): el patrón ya está.
   → **FR-050 a FR-056**.
 
 **10. `GET /api/tiendanube/products` trae solo la primera página.**
@@ -417,7 +417,7 @@ fixtures que dejaron pasar defectos, y acá está del lado del código.
   `:197`) en vez de usar `fallo(req, res, err, 'mensaje en castellano')`. No
   filtra nombres de tabla, pero tampoco deja el `requestId` con el que se
   encuentra la línea en los logs de Render (`OPERACION.md:78`).
-- Un fallo de TiendaNube y un fallo de AdminApp se ven iguales para el usuario:
+- Un fallo de TiendaNube y un fallo de Favalio se ven iguales para el usuario:
   «No se pudo sincronizar el stock con TiendaNube». → **FR-060 a FR-063**.
 
 **12. `checkSubscription` exime `/api/tiendanube` entero.**
@@ -482,8 +482,8 @@ Sin esto, «producto» quiere decir dos cosas distintas en la misma pantalla.
 | **Producto de TiendaNube** | El de la tienda. **No es la unidad que tiene stock** | la API de TiendaNube |
 | **Variante** | La unidad de la tienda que **sí** tiene stock y contra la que se mapea. Un producto de TiendaNube con talles o colores tiene varias | la API de TiendaNube |
 | **Mapeo** | La correspondencia entre **un** producto del sistema y **una** variante de la tienda. Uno a uno en las dos direcciones, por los dos índices únicos | `tiendanube_mappings` |
-| **Vinculación** | Que la empresa haya completado el OAuth y AdminApp tenga su token. Es de la **tienda**, no de un producto |
-| **Sincronizar stock** | Empujar el número de AdminApp hacia TiendaNube. **Va en un solo sentido** |
+| **Vinculación** | Que la empresa haya completado el OAuth y Favalio tenga su token. Es de la **tienda**, no de un producto |
+| **Sincronizar stock** | Empujar el número de Favalio hacia TiendaNube. **Va en un solo sentido** |
 | **Pedido** | Una compra hecha en la tienda online. Llega por webhook cuando se paga | evento `order/paid` |
 | **Corrida** | Una ejecución de la sincronización, con su hora, su disparador y su resultado. **Hoy no existe** |
 | **Cantidad** (`quantity`) | Lo que hay. «cant» del sistema original | `stock.quantity` |
@@ -496,11 +496,11 @@ regla; lo que queda ambiguo está marcado.
 
 | Dato | Dirección | Quién manda | Estado |
 |---|---|---|---|
-| **Stock** | AdminApp → TiendaNube | **AdminApp.** El número de la tienda es un espejo, no una fuente: la sincronización lo pisa | Existe (`syncStock`), con los defectos del hallazgo 5 |
-| **Pedidos** | TiendaNube → AdminApp | TiendaNube | Existe (`order/paid`), muerto por el hallazgo 1 |
+| **Stock** | Favalio → TiendaNube | **Favalio.** El número de la tienda es un espejo, no una fuente: la sincronización lo pisa | Existe (`syncStock`), con los defectos del hallazgo 5 |
+| **Pedidos** | TiendaNube → Favalio | TiendaNube | Existe (`order/paid`), muerto por el hallazgo 1 |
 | **Catálogo (alta de productos)** | — | Nadie | **No existe y no entra.** Los productos se crean en cada lado y después se mapean |
 | **Precios** | — | Nadie | **No existe y no entra.** Ver [PENDIENTE N8] |
-| **Mapeo** | AdminApp | AdminApp | Lo escribe una persona en AdminApp; TiendaNube no lo conoce |
+| **Mapeo** | Favalio | Favalio | Lo escribe una persona en Favalio; TiendaNube no lo conoce |
 
 **El conflicto que esto deja abierto, y que hay que mirar de frente:** un pedido
 paga a las 10:00 y descuenta stock local; la sincronización corre a las 10:05 y
@@ -620,7 +620,7 @@ verificable contra hoy, donde termina en `?tiendanube=error&motivo=sin_empresa`.
 ### User Story 2 — El pedido de la tienda descuenta stock, una sola vez y entero (Priority: P1)
 
 Como dueño, quiero que una venta de mi tienda online baje el inventario de
-AdminApp exactamente una vez, para que el stock que veo sea el que tengo.
+Favalio exactamente una vez, para que el stock que veo sea el que tengo.
 
 **Why this priority**: es el hallazgo 1 más el 6. Hoy **no descuenta nunca**, y
 el error del que se descuente dos veces —o la mitad— es de los que aparecen en un
@@ -786,7 +786,7 @@ sin validar (hallazgo 3) y una tienda que se puede vincular dos veces (hallazgo
 
 ### User Story 5 — Sincronizar el stock y ver el resultado de la última corrida (Priority: P1)
 
-Como dueño, quiero empujar el stock de AdminApp a mi tienda y ver cuándo fue la
+Como dueño, quiero empujar el stock de Favalio a mi tienda y ver cuándo fue la
 última vez, cuántas variantes se actualizaron y cuáles fallaron, para no tener
 que abrir TiendaNube a comprobar.
 
@@ -838,7 +838,7 @@ nombra, y que ese resultado **sigue ahí después de reiniciar el servidor**.
 ### User Story 6 — Cuando TiendaNube no contesta, contesta lento o contesta 429 (Priority: P2)
 
 Como dueño, quiero que un problema de TiendaNube se vea como un problema de
-TiendaNube y no como que AdminApp está roto, y que no deje mi sistema colgado.
+TiendaNube y no como que Favalio está roto, y que no deje mi sistema colgado.
 
 **Why this priority**: es lo que separa una integración de una pantalla interna.
 Hoy no hay un solo `timeout`, ni un reintento, ni nada que mire un 429, y el
@@ -859,7 +859,7 @@ y que no responda nunca, verificar los tres caminos.
    **Then** la pantalla dice que **hay que volver a vincular**, que es distinto
    de «no se pudo sincronizar».
 4. **Given** un 5xx de TiendaNube, **When** llega, **Then** se distingue de un
-   error de AdminApp en lo que ve el usuario y en lo que queda en el log.
+   error de Favalio en lo que ve el usuario y en lo que queda en el log.
 5. **Given** cualquiera de esos errores, **When** se registra, **Then** va por el
    **logger**, con el `requestId` y el `empresaId`, y **no por `console.error`**
    (`tiendanubeService.js:35`), que esquiva la redacción de secretos.
@@ -896,7 +896,7 @@ todo lo que afirma es cierto contra el comportamiento real.
    en reportes.
 2. **Given** la pantalla, **When** la leo, **Then** **no dice «bidireccional»**
    sin aclarar qué va en cada sentido: stock hacia la tienda, pedidos hacia
-   AdminApp.
+   Favalio.
 3. **Given** la pantalla, **When** la leo, **Then** dice de **qué sucursal** sale
    el stock que se publica ([PENDIENTE 3]) y **qué número** se publica
    ([PENDIENTE 2]).
@@ -1173,7 +1173,7 @@ existe el campo.
   va por el logger, que es el que aplica la redacción de secretos.
 - **FR-061**: Los handlers DEBEN usar `fallo(req, res, err, …)` y
   `ErrorDeNegocio`, en vez de armar la respuesta a mano.
-- **FR-062**: Un error de TiendaNube DEBE distinguirse de un error de AdminApp en
+- **FR-062**: Un error de TiendaNube DEBE distinguirse de un error de Favalio en
   lo que ve el usuario y en lo que queda en el log.
 - **FR-063**: Ningún mensaje al usuario DEBE traer `err.message` crudo, nombres
   de tabla ni de constraint.
@@ -1313,7 +1313,7 @@ Explícito, para que no se discuta después si estaba incluido.
 - **Reponer stock cuando un pedido se cancela o se devuelve.** [PENDIENTE N5], y
   por defecto no entra: la pantalla lo advierte.
 - **Sincronizar precios** en cualquier dirección. [PENDIENTE N8].
-- **Dar de alta productos** en TiendaNube desde AdminApp, o al revés.
+- **Dar de alta productos** en TiendaNube desde Favalio, o al revés.
 - **Sincronizar imágenes, descripciones, categorías o atributos.**
 - **Publicar stock de más de una sucursal** —TiendaNube tiene una sola cifra por
   variante—. Cuál se publica es [PENDIENTE 3].
@@ -1514,7 +1514,7 @@ defecto**: el nombre de la tienda y su id, cuándo se vinculó, y cuándo fue la
 de tarjetas de crédito que acá no aporta nada y filtra.
 
 **[PENDIENTE N8] — ¿Se sincronizan precios?** **Por defecto: no.** Nada del
-pedido lo menciona, y el modelo de precios de AdminApp —`price_override`,
+pedido lo menciona, y el modelo de precios de Favalio —`price_override`,
 `margin_override`, precio mayorista y los tres niveles de precio del POS— no
 tiene un equivalente único que mandar.
 
@@ -1546,7 +1546,7 @@ encontró duplicadas.
    decimoctava de `marcoDeLasPantallas.navegador.js`.
 2. **La maqueta NO dibuja esta pantalla.** Se verificó: cero coincidencias de
    `tiendanube`, `tienda nube` y `tienda-nube` en
-   `docs/maqueta/AdminApp-Rediseno.dc.html`, y su `README.md` enumera las siete
+   `docs/maqueta/Favalio-Rediseno.dc.html`, y su `README.md` enumera las siete
    pantallas que sí dibuja sin incluirla. A diferencia de Proveedores en la
    funcionalidad 012, **acá ni siquiera hay un ítem de menú que caiga en un
    stub**. Cualquier cosa que `sdd-verify` quiera comparar contra la maqueta para
@@ -1569,11 +1569,11 @@ encontró duplicadas.
 7. **La firma HMAC se conserva como está**: SHA-256 sobre el cuerpo crudo con
    `timingSafeEqual` y chequeo de longitud previo (`:69-84`). Lo único que hay
    que arreglar es que le llegue el cuerpo crudo.
-8. **AdminApp es la fuente de verdad del stock.** El número de TiendaNube es un
+8. **Favalio es la fuente de verdad del stock.** El número de TiendaNube es un
    espejo y la sincronización lo pisa. Es lo que el código ya hace y lo que hace
    que repetir una corrida sea seguro.
 9. **La sincronización va en un solo sentido.** No se lee el stock de TiendaNube
-   para escribirlo en AdminApp, así que **no hay conflicto de escritura que
+   para escribirlo en Favalio, así que **no hay conflicto de escritura que
    resolver**: lo que hay es una ventana en la que la tienda tiene un número
    viejo, y eso se acorta con el disparador de [PENDIENTE 4].
 10. **La API de TiendaNube pagina y tiene límite de requests por tienda.** Es lo
@@ -1582,7 +1582,7 @@ encontró duplicadas.
     los fija.
 11. **No hay entorno de pruebas de TiendaNube.** Las tres URL están escritas
     literales en el servicio. Los tests de integración ejercitan **el lado de
-    AdminApp** —el webhook entrando, la base, el aislamiento— con la API de
+    Favalio** —el webhook entrando, la base, el aislamiento— con la API de
     TiendaNube doblada.
 12. **El token sigue en `settings` en texto plano.** Es la misma condición que la
     clave de AFIP y su propio proyecto pendiente. Esta funcionalidad no lo

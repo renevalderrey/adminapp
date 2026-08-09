@@ -4,7 +4,7 @@ Esta guía explica los pasos necesarios para que un usuario final pueda configur
 
 > **El orden importa.** Primero se prueba en **homologación** —que necesita su
 > propio certificado, sacado por otro trámite— y recién después se pasa a
-> producción. AdminApp **no deja pasar a producción sin haber verificado el
+> producción. Favalio **no deja pasar a producción sin haber verificado el
 > circuito**: el primer comprobante fiscal real no puede ser también la primera
 > prueba de que todo funciona.
 
@@ -21,7 +21,7 @@ El sistema requiere dos archivos clave para comunicarse con AFIP: la **Clave Pri
 
     > ⚠ **La clave privada NO se guarda en el servidor: se descarga y la tenés
     > que conservar vos.** El sistema la genera, te la entrega una sola vez y no
-    > queda ninguna copia del lado de AdminApp. Si la perdés, el certificado que
+    > queda ninguna copia del lado de Favalio. Si la perdés, el certificado que
     > ARCA te emita no va a servir para nada y hay que rehacer el trámite entero.
     > Guardala donde guardes lo importante, no en la carpeta de Descargas.
 
@@ -31,7 +31,7 @@ El sistema requiere dos archivos clave para comunicarse con AFIP: la **Clave Pri
     *   Agregá un nuevo alias (ej: "MiEmpresa") y subí el archivo `.csr` que generaste en el paso anterior.
     *   Descargá el archivo `.crt` resultante.
 
-> El certificado y la clave se cargan **juntos** en AdminApp, y tienen que ser
+> El certificado y la clave se cargan **juntos** en Favalio, y tienen que ser
 > **pareja**: el `.crt` que ARCA emitió a partir de ese `.csr`, con el `.key` de
 > ese mismo pedido. Si no lo son, el guardado los rechaza — antes esto se
 > descubría al momento de facturar, con un cliente esperando su comprobante.
@@ -76,7 +76,7 @@ material**: cambiarlo sin cambiar el certificado no prueba nada y no funciona.
     —en el sitio de ARCA figura como el WSASS / "Autogestión Certificados
     Homologación"—. **No es** "Administración de Certificados Digitales", que es
     el de producción (paso 2 de esta guía).
-3.  Subí un `.csr` —podés generar uno nuevo desde AdminApp— y descargá el `.crt`
+3.  Subí un `.csr` —podés generar uno nuevo desde Favalio— y descargá el `.crt`
     de homologación.
 4.  Dentro de ese mismo servicio, **autorizá el web service `wsfe`** para ese
     certificado. Es el equivalente al paso 3 de esta guía, pero del lado de
@@ -84,7 +84,7 @@ material**: cambiarlo sin cambiar el certificado no prueba nada y no funciona.
 
 ### La secuencia completa, en orden
 
-1.  Sacar el certificado **de homologación** y cargarlo en AdminApp con el
+1.  Sacar el certificado **de homologación** y cargarlo en Favalio con el
     ambiente en **Homologación**.
 2.  Tocar **«Verificar circuito»** en Ajustes → Facturación. Eso pide el ticket
     de acceso y consulta el último comprobante autorizado de tu punto de venta:
@@ -114,7 +114,7 @@ Una vez que tengas todo listo, volvé a la aplicación y completá los datos:
 Esta sección dice lo mismo que la pantalla de Ajustes → Facturación, y dice lo
 que **es**, no lo que sería deseable:
 
-- **El certificado y la clave privada se guardan en la base de datos de AdminApp,
+- **El certificado y la clave privada se guardan en la base de datos de Favalio,
   en texto plano.** Cifrarlos en reposo es un proyecto abierto y todavía no está
   hecho. Se dice acá para que puedas decidir con el dato a la vista.
 - **La clave privada no sale nunca de la API**: `GET /api/settings` la excluye, la

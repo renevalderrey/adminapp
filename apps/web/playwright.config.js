@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Pruebas de navegador
+//  FAVALIO · Pruebas de navegador
 //
 //  El tercer nivel de verificación de la web, y el ÚLTIMO recurso. Las reglas
 //  van en funciones puras, el dibujo en tests de render con jsdom, y acá abajo
@@ -19,11 +19,11 @@ import { defineConfig, devices } from '@playwright/test'
 //
 //    1. Una base descartable y la API contra ella, con el bypass de la API:
 //
-//       docker run -d --name adminapp-e2e-pg \
-//         -e POSTGRES_USER=adminapp -e POSTGRES_PASSWORD=adminapp \
-//         -e POSTGRES_DB=adminapp_e2e -p 55432:5432 postgres:16-alpine
+//       docker run -d --name favalio-e2e-pg \
+//         -e POSTGRES_USER=favalio -e POSTGRES_PASSWORD=favalio \
+//         -e POSTGRES_DB=favalio_e2e -p 55432:5432 postgres:16-alpine
 //
-//       cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55432/adminapp_e2e \
+//       cd apps/api && DATABASE_URL=postgres://favalio:favalio@localhost:55432/favalio_e2e \
 //         DB_SSL=false NODE_ENV=development BYPASS_AUTH=true PORT=5099 \
 //         ALLOWED_ORIGINS=http://localhost:5199 node src/server.js
 //
@@ -38,10 +38,10 @@ import { defineConfig, devices } from '@playwright/test'
 //       Y hace falta el superadmin, o seis pantallas redirigen a `/pos`:
 //
 //         cd apps/api && DATABASE_URL=<la de pruebas> DB_SSL=false \
-//           node scripts/superadmin.js activar dev@adminapp.app
+//           node scripts/superadmin.js activar dev@favalio.com
 //
 //       Si la base no está en el 55432, va además
-//       `ADMINAPP_DB_DE_PRUEBAS=<la misma URL>`: la siembra de TiendaNube se
+//       `FAVALIO_DB_DE_PRUEBAS=<la misma URL>`: la siembra de TiendaNube se
 //       conecta por su cuenta y no lee `DATABASE_URL`.
 //
 //       El arranque en desarrollo crea el esquema con `sequelize.sync`, siembra
@@ -57,7 +57,7 @@ import { defineConfig, devices } from '@playwright/test'
 //
 //    2. `npm --prefix apps/web run test:navegador`
 //
-//       Levanta el servidor de desarrollo con `ADMINAPP_SESION_DE_PRUEBA=1`, que
+//       Levanta el servidor de desarrollo con `FAVALIO_SESION_DE_PRUEBA=1`, que
 //       es lo único que hace existir el alias de la sesión falsa (ver
 //       `vite.config.js`). Sin esa variable, la aplicación pide Auth0 como
 //       siempre.
@@ -71,8 +71,8 @@ import { defineConfig, devices } from '@playwright/test'
 //  ramas usan el mismo Tailwind sobre las mismas fuentes.
 // ════════════════════════════════════════════
 
-const PUERTO_WEB = Number(process.env.ADMINAPP_PUERTO_WEB_DE_PRUEBAS || 5199)
-const API = process.env.ADMINAPP_API_DE_PRUEBAS || 'http://localhost:5099/api'
+const PUERTO_WEB = Number(process.env.FAVALIO_PUERTO_WEB_DE_PRUEBAS || 5199)
+const API = process.env.FAVALIO_API_DE_PRUEBAS || 'http://localhost:5099/api'
 
 export default defineConfig({
   testDir: './pruebas-de-navegador',
@@ -133,7 +133,7 @@ export default defineConfig({
     env: {
       // Lo único que enciende la sesión falsa. `vite.config.js` además exige
       // `command === 'serve'`, así que esta variable no puede afectar a un build.
-      ADMINAPP_SESION_DE_PRUEBA: '1',
+      FAVALIO_SESION_DE_PRUEBA: '1',
       // Las variables que ya existen en el entorno le ganan a `.env` en Vite,
       // así que esto redirige la aplicación a la API descartable y no a la que
       // el desarrollador tenga levantada en el 5000 con su propia base.

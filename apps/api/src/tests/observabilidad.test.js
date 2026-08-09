@@ -543,10 +543,10 @@ app.use(express.json({ limit: '10mb' }));
 //  Las tres llamadas de `services/tiendanubeService.js` —el canje del `code`, el
 //  catalogo y el PUT de stock— no tenian ninguna. Un `axios` sin `timeout` no
 //  tiene tope: si el otro lado acepta la conexion y no contesta nunca, el
-//  request de AdminApp **espera para siempre** y se queda con una conexion del
+//  request de Favalio **espera para siempre** y se queda con una conexion del
 //  pool. Con unas cuantas, el resto de la aplicacion se queda sin conexiones y
 //  el sintoma no se parece en nada a «TiendaNube no contesta»: se parece a
-//  «AdminApp esta caido».
+//  «Favalio esta caido».
 //
 //  El precedente contrario esta escrito y comentado en `afipService.js:86-89`,
 //  con el motivo: «Sin timeout, una llamada colgada a AFIP queda esperando para

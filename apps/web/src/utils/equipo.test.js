@@ -16,7 +16,7 @@ import {
 } from './equipo'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Las reglas del equipo, del lado del navegador
+//  FAVALIO · Las reglas del equipo, del lado del navegador
 //
 //  Este archivo es el ESPEJO de `apps/api/src/utils/equipo.js` y sus tests son
 //  los mismos casos: la regla tiene que contestar igual de los dos lados o la

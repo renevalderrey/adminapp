@@ -249,7 +249,7 @@ decisión equivocada.
   variantes de TiendaNube. Si es vieja, la tabla puede estar mostrando variantes
   que ya no existen o no mostrar las nuevas. Se arregla con **«Refrescar
   catálogo»**.
-- **«Última comunicación»** — la última vez que AdminApp le habló a la tienda.
+- **«Última comunicación»** — la última vez que Favalio le habló a la tienda.
 - **«Última reconciliación»** — la corrida diaria que compara lo que tenemos, lo
   que mandamos y lo que la tienda dice, y encola lo que difiere. **Si dice que
   nunca corrió, la red de respaldo no existe**: ver el punto 5.
@@ -550,7 +550,7 @@ Faltan tres pasos, todos de panel:
    Guardar (redeploya).
 3. **GitHub → Settings → Secrets and variables → Actions.** Agregar:
    - `API_URL` — la URL de la API, sin barra final. Ej:
-     `https://adminapp-api.onrender.com`
+     `https://favalio-api.onrender.com`
    - `CRON_SECRET` — **el mismo valor** del paso 2.
 
 Para probarlo sin esperar al día siguiente: pestaña **Actions → Tareas diarias

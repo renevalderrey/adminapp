@@ -2,7 +2,7 @@ import React from 'react'
 import { cn } from '@/lib/utils'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El marco de la tabla en grid
+//  FAVALIO · El marco de la tabla en grid
 //
 //  La maqueta no usa <table>: usa grid, con las mismas grid-template-columns
 //  en el encabezado y en las filas. Es lo que permite que las columnas queden

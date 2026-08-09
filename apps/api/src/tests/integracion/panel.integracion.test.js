@@ -94,7 +94,7 @@ function certificadoQueVenceEn(dias, notAfter = null) {
   cert.validity.notBefore = new Date(Date.now() - MILISEGUNDOS_POR_DIA);
   cert.validity.notAfter = vence;
 
-  const atributos = [{ name: 'commonName', value: 'adminapp-prueba' }];
+  const atributos = [{ name: 'commonName', value: 'favalio-prueba' }];
 
   cert.setSubject(atributos);
   cert.setIssuer(atributos);

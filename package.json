@@ -1,8 +1,8 @@
 {
-  "name": "adminapp",
+  "name": "favalio",
   "version": "1.0.0",
   "private": true,
-  "description": "AdminApp — SaaS multi-tenant de gestion comercial. Monorepo: api + web + landing.",
+  "description": "Favalio — SaaS multi-tenant de gestion comercial. Monorepo: api + web + landing.",
   "engines": {
     "node": ">=22"
   },

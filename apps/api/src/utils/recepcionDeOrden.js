@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Qué pasa con el detalle de una orden cuando llega mercadería
+//  FAVALIO · Qué pasa con el detalle de una orden cuando llega mercadería
 //
 //  Esta es la aritmética de la recepción, sin base de datos y sin transacción.
 //  Existe aparte porque el defecto que viene a cerrar es de identidad, no de

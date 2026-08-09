@@ -538,7 +538,7 @@ const FRONTEND_ANTERIOR = process.env.FRONTEND_URL;
 /**
  * El secreto con el que se firma el webhook en estas pruebas.
  *
- * ⚠ Lo que este archivo verifica es que **AdminApp valide lo que AdminApp
+ * ⚠ Lo que este archivo verifica es que **Favalio valide lo que Favalio
  * firmo**: no hay entorno de pruebas de TiendaNube (supuesto 11), asi que ni el
  * nombre real de la cabecera ni la forma del cuerpo del tercero los comprueba
  * ningun test. Eso es el paso manual P2 y esta dicho sin adornos en el plan.
@@ -1254,7 +1254,7 @@ describe('GET /status · cuatro estados, no un booleano', () => {
   });
 
   it('con ultima_comunicacion_ok en false el estado es vinculada_con_error', async () => {
-    sembrarTienda({ ultima_comunicacion_ok: false, ultimo_error: 'Tu tienda desconectó AdminApp.' });
+    sembrarTienda({ ultima_comunicacion_ok: false, ultimo_error: 'Tu tienda desconectó Favalio.' });
 
     const cuerpo = await estadoDe();
 
@@ -1448,7 +1448,7 @@ describe('DELETE /vinculacion · qué se borra y qué se conserva', () => {
 //  ── Lo que este nivel NO contesta, y hay que decirlo ──
 //
 //  Que TiendaNube firme con esta cabecera y este algoritmo. **No hay entorno de
-//  pruebas del tercero** (supuesto 11): aca AdminApp verifica lo que AdminApp
+//  pruebas del tercero** (supuesto 11): aca Favalio verifica lo que Favalio
 //  firmo, que es el circuito, no el contrato del otro lado. Eso es el paso
 //  manual P2.
 //
@@ -1599,7 +1599,7 @@ describe('POST /webhook · lo que responde 200 sin descontar nada', () => {
   it('un pedido de una tienda no vinculada responde 200 y loguea', async () => {
     // 200 y no 404: TiendaNube deshabilita el webhook ante errores repetidos, y
     // un webhook deshabilitado es una integracion apagada del otro lado que nadie
-    // puede volver a prender desde AdminApp.
+    // puede volver a prender desde Favalio.
     const avisos = jest.spyOn(logger, 'warn').mockImplementation(() => {});
 
     const res = await postearWebhook(pedido([{ variant_id: 111, quantity: 1 }], { store_id: 999999 }));
@@ -2030,7 +2030,7 @@ describe('POST /variantes/refrescar · el catalogo entero, no la primera pagina'
   });
 });
 
-describe('Un fallo de TiendaNube no se ve igual que un fallo de AdminApp', () => {
+describe('Un fallo de TiendaNube no se ve igual que un fallo de Favalio', () => {
   beforeEach(() => {
     sembrarTienda();
   });
@@ -2056,12 +2056,12 @@ describe('Un fallo de TiendaNube no se ve igual que un fallo de AdminApp', () =>
     expect(tienda.ultimo_error).toContain('volver a vincularla');
   });
 
-  it('un 5xx se distingue de un error de AdminApp en el texto', async () => {
+  it('un 5xx se distingue de un error de Favalio en el texto', async () => {
     const { status, error } = await refrescoQueFalla(errorHttp(503));
 
     expect(status).toBe(502);
     expect(error).toContain('TiendaNube tuvo un problema');
-    expect(error).toContain('No es de AdminApp');
+    expect(error).toContain('No es de Favalio');
   });
 
   it('un timeout se distingue de los dos', async () => {
@@ -2085,7 +2085,7 @@ describe('Un fallo de TiendaNube no se ve igual que un fallo de AdminApp', () =>
     expect(new Set(textos).size).toBe(3);
   });
 
-  it('un fallo de AdminApp NO dice que fue TiendaNube', async () => {
+  it('un fallo de Favalio NO dice que fue TiendaNube', async () => {
     // Un 4xx que no es 401 ni 429 es una peticion que armamos mal. Decirle
     // «TiendaNube tuvo un problema» a alguien cuyo problema es nuestro lo manda a
     // revisar el lado equivocado durante una tarde.
@@ -2352,7 +2352,7 @@ describe('GET, POST y DELETE de /mapeos', () => {
       variante({
         id: 1, empresa_id: PROPIA, tiendanube_variant_id: 998877,
         pendiente_desde: new Date('2026-08-11T10:00:00.000Z'), intentos: 4,
-        ultimo_error: 'TiendaNube tuvo un problema. No es de AdminApp.',
+        ultimo_error: 'TiendaNube tuvo un problema. No es de Favalio.',
       }),
       // La misma variante en la otra empresa: un `update` sin `empresa_id` la
       // sacaria de la cola de un cliente ajeno.
@@ -2659,7 +2659,7 @@ describe('POST /sincronizar · un PUT por variante, con el available de la desig
     expect(res.body.corrida.fallas).toHaveLength(1);
     expect(res.body.corrida.fallas[0]).toMatchObject({ variante: 998877, sku: 'COL-300' });
     // «La variante ya no existe» dice que hay que refrescar el catalogo y borrar
-    // el mapeo. El generico de AdminApp manda a abrir un ticket.
+    // el mapeo. El generico de Favalio manda a abrir un ticket.
     expect(res.body.corrida.fallas[0].motivo).toContain('ya no existe');
 
     // Y no se reintenta sola: un 404 no se arregla esperando.
@@ -2826,7 +2826,7 @@ describe('GET /corridas/ultima · el resultado que sobrevive un reinicio', () =>
 
     filas[0].pendiente_desde = new Date('2026-08-12T10:00:00.000Z');
     filas[1].pendiente_desde = new Date('2026-08-12T09:00:00.000Z');
-    filas[1].ultimo_error = 'TiendaNube tuvo un problema. No es de AdminApp.';
+    filas[1].ultimo_error = 'TiendaNube tuvo un problema. No es de Favalio.';
 
     const res = await ultimaCorrida();
 

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Qué se le muestra al usuario cuando la API dice que no
+//  FAVALIO · Qué se le muestra al usuario cuando la API dice que no
 //
 //  Las dos pantallas de proveedores hacen hoy dos cosas, y las dos dejan a
 //  quien está del otro lado sin saber qué pasó:

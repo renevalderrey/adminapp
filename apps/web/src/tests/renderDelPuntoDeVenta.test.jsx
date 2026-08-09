@@ -36,7 +36,7 @@ vi.mock('@/utils/mediosDePago', async (importarOriginal) => {
 })
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Punto de venta, renderizado
+//  FAVALIO · Punto de venta, renderizado
 //
 //  Acá se afirma **el efecto**: que una tecla dispare lo que tiene que
 //  disparar, y **solo** eso. La decisión de SI una tecla dispara —tecla ×

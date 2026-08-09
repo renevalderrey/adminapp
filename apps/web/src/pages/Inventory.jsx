@@ -30,7 +30,7 @@ import { mensajeDeError } from '@/utils/erroresDeApi'
 import PieDeTabla from '@/components/PieDeTabla'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Inventario
+//  FAVALIO · Inventario
 //
 //  La segunda pantalla que aplica el patrón de tabla que fijó Historial de
 //  ventas. El marco vive en `components/TablaGrid.jsx`; las columnas y las
@@ -48,7 +48,7 @@ import PieDeTabla from '@/components/PieDeTabla'
  * Las columnas, idénticas en el encabezado y en las filas.
  *
  * `n` es cuántas columnas de stock hay. La maqueta
- * (`AdminApp-Rediseno.dc.html:599`) dibuja
+ * (`Favalio-Rediseno.dc.html:599`) dibuja
  * `minmax(0,1.6fr) 116px 116px 104px 104px` + una por sucursal + `56px`, y
  * **no** dibuja la columna de selección: se dibujó antes de que se liberara la
  * actualización masiva de precios, que es la que necesita seleccionar filas. Por

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Cuánto espera un buscador antes de preguntarle al servidor
+//  FAVALIO · Cuánto espera un buscador antes de preguntarle al servidor
 //
 //  ── Por qué es una sola constante ──
 //

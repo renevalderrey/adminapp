@@ -1,7 +1,7 @@
 import { Inbox } from 'lucide-react'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · «Acá todavía no hay nada»
+//  FAVALIO · «Acá todavía no hay nada»
 //
 //  ── Por qué existe ──
 //

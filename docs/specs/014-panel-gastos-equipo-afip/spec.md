@@ -160,7 +160,7 @@ desvío cada cosa que se resolvió distinta a propósito.
 | `MarcoDePantalla` (dos capas: la de afuera scrollea a ancho completo, la de adentro centra a 1320px) | **Ya** | **Ya** | **Ya** | **Ya** | Las cuatro rutas ya están envueltas (`App.jsx:289`, `:290`, `:291`, `:296`) y las cuatro están en `CON_MARCO` de `pruebas-de-navegador/marcoDeLasPantallas.navegador.js:53-58`, que hoy tiene **dieciocho** rutas. **No se agrega ninguna ruta nueva**: es la diferencia con la funcionalidad 013 |
 | `TablaGrid` / `Encabezado` / `Fila` / `BotonDeFila` | **Sí** | **No** | **No** | **Sí** | El plan pide «tabla en grid abajo» para Gastos (4.7) y «tabla en grid» para Equipo (4.11). El Panel son tarjetas y listas, no una tabla. Ajustes es un formulario. Las medidas literales —`11px 20px` en el encabezado, `15px 20px` en las filas, `gap-x` de 16px, botones de 29px (`TablaGrid.jsx:67`, `:90`, `:123`)— y **no** los `Table*` de shadcn, que es lo que las dos usan hoy (`Expenses.jsx:8`, `Team.jsx:9-16`) |
 | La disciplina del `grid-template-columns` | **Sí** | — | — | **Sí** | El encabezado y las filas comparten el **mismo string**, escrito una vez. Es lo que evita leer un importe bajo la etiqueta «Estado» (`TablaGrid.jsx:58-61`) |
-| Segmentos para las solapas | **Sí** | **No** | Ver ↓ | **No** | 4.7 pide «las dos solapas con el estilo de segmentos de la maqueta»: el contenedor `padding:3px;border-radius:9px;background:var(--surface-3)` con botones de 28px (`AdminApp-Rediseno.dc.html:645-648`), que es el mismo que ya implementa `components/pos/SegmentoDePago.jsx`. Hoy Gastos usa un `border-b-2` a mano (`Expenses.jsx:104-118`). **Ajustes es otra cosa**: la maqueta le dibuja solapas de subrayado (`:693-697`, `box-shadow:inset 0 -2px 0 0 var(--brand)`), no segmentos — ver [PENDIENTE N14] |
+| Segmentos para las solapas | **Sí** | **No** | Ver ↓ | **No** | 4.7 pide «las dos solapas con el estilo de segmentos de la maqueta»: el contenedor `padding:3px;border-radius:9px;background:var(--surface-3)` con botones de 28px (`Favalio-Rediseno.dc.html:645-648`), que es el mismo que ya implementa `components/pos/SegmentoDePago.jsx`. Hoy Gastos usa un `border-b-2` a mano (`Expenses.jsx:104-118`). **Ajustes es otra cosa**: la maqueta le dibuja solapas de subrayado (`:693-697`, `box-shadow:inset 0 -2px 0 0 var(--brand)`), no segmentos — ver [PENDIENTE N14] |
 | `ui/sheet.jsx` para el panel lateral | **Sí** | **No** | **No** | **Sí** | 520px con `max-w-[92vw]`, como `PanelProducto.jsx` y `PanelOrdenDeCompra.jsx`. Hoy las dos usan `Dialog` (`Expenses.jsx:181`, `Team.jsx:234`): se edita un gasto o un miembro **mirando la lista, no tapándola**. Es la misma decisión que tomó Inventario en el hito 4 |
 | `utils/formato.js` — `pesos`, `fechaCorta`, `fechaDeHoy`, `pesosRedondos`, `pesosDeLista`, `importeAbreviado`, `importeOGuion` | **Sí** | **Sí** | **Sí** | **Sí** | **Ninguna pantalla puede declarar la suya**, y la guardia está en `utils/formato.test.js:362-414`. Las cuatro tienen deuda acá, y **tres de las cuatro por un camino que la guardia no ve**: formatean en línea con `toLocaleString()` sin declarar función. Ver hallazgo T3 |
 | `utils/erroresDeApi.js` → `mensajeDeError` | **Sí** | **Sí** | **Sí** | **Sí** | **Ninguna de las cuatro lo usa hoy.** Siete lugares muestran `err.message`, que en axios es «Request failed with status code 500» (`Expenses.jsx:56`, `:68`; `Settings.jsx:103`, `:128`; `Team.jsx:87`, `:99`, `:109`), y tres se tragan el error entero con `console.error` (`Expenses.jsx:35`, `Dashboard.jsx:64`, `Team.jsx:65`) |
@@ -244,7 +244,7 @@ servicio con más aritmética de plata del backend**.
 | «Requiere tu atención» | — | **No existe.** Lo más cercano son dos listas planas al final: «Alertas de Stock Mínimo» (`Dashboard.jsx:436`) y «Vencimientos Próximos» (`:467`), sin prioridad, sin agregación y sin acción |
 | «Actividad reciente» | — | **No existe, y no hay de dónde sacarla**: no hay tabla de auditoría ni registro de eventos. Ver [PENDIENTE N5] |
 | «Accesos rápidos» | — | **No existe** |
-| Selector de período / Exportar | — | **No existen.** La maqueta los dibuja (`AdminApp-Rediseno.dc.html:226-234`). Ver [PENDIENTE N1] |
+| Selector de período / Exportar | — | **No existen.** La maqueta los dibuja (`Favalio-Rediseno.dc.html:226-234`). Ver [PENDIENTE N1] |
 | `kpis.alerts` | `dashboardService.js:77-80` | Se calcula, se devuelve y **la pantalla no lo lee**: dibuja las del otro endpoint. Dos consultas por request a la basura, con criterio distinto |
 
 ### Facturación AFIP (Ajustes)
@@ -327,7 +327,7 @@ Dos cosas que esto cambia respecto de lo que dice el pedido:
 
 ### La maqueta
 
-`docs/maqueta/AdminApp-Rediseno.dc.html` dibuja **dos** de las cuatro. Las otras
+`docs/maqueta/Favalio-Rediseno.dc.html` dibuja **dos** de las cuatro. Las otras
 dos caen en el bloque de stub. Verificado en `:1282`:
 
 ```js
@@ -941,7 +941,7 @@ la pantalla dice **«Conectado: API operativa» siempre**, sin mirar los tres
 campos `AppServer`/`DbServer`/`AuthServer` que el `FEDummy` devuelve.
 
 La maqueta dibuja encima un banner verde que dice «Conectado a AFIP · Ambiente
-de producción» (`AdminApp-Rediseno.dc.html:702`). **Un banner verde sobre un
+de producción» (`Favalio-Rediseno.dc.html:702`). **Un banner verde sobre un
 `FEDummy` es la afirmación más cara que puede hacer esta pantalla**, y hoy sería
 falsa. → **FR-079 a FR-082**.
 
@@ -974,7 +974,7 @@ ARCA duran dos años. `GET /afip/cert-info` devuelve `validTo` y `validFrom`;
 vence, el comercio deja de poder facturar sin entender por qué».
 
 La maqueta lo dibuja resuelto: «Vence el 14/03/2028 · **595 días restantes**»
-(`AdminApp-Rediseno.dc.html:1381`). → **FR-089, FR-090**.
+(`Favalio-Rediseno.dc.html:1381`). → **FR-089, FR-090**.
 
 **A9. El punto de venta de ARCA no se valida y no tiene relación con las
 sucursales.** `POST /afip/setup` valida el enum de ambiente y el de condición
@@ -1002,9 +1002,9 @@ servidor. Las dos cosas son falsas.**
 
 | Dónde | Qué dice | Realidad |
 |---|---|---|
-| `AdminApp-Rediseno.dc.html:730` | «Las llaves privadas se guardan **cifradas en el servidor** y nunca se muestran completas» | Texto plano en `settings.value` (`models/Setting.js:30-33`). No hay cifrado en ningún lado del repositorio |
-| `AdminApp-Rediseno.dc.html:1380` | «adminapp_privada.key · Cargado el 14/03/2026 · **cifrado en servidor**» | Ídem |
-| `AdminApp-Rediseno.dc.html:1374` | «Se crean el archivo .key (secreto, **queda en el servidor**) y el .csr» | `afipService.js:358-364` **devuelve la clave al navegador** y no la guarda. La advertencia del propio servicio lo dice: «Guardá la clave privada: **no queda almacenada en el servidor** y sin ella el certificado no sirve» |
+| `Favalio-Rediseno.dc.html:730` | «Las llaves privadas se guardan **cifradas en el servidor** y nunca se muestran completas» | Texto plano en `settings.value` (`models/Setting.js:30-33`). No hay cifrado en ningún lado del repositorio |
+| `Favalio-Rediseno.dc.html:1380` | «favalio_privada.key · Cargado el 14/03/2026 · **cifrado en servidor**» | Ídem |
+| `Favalio-Rediseno.dc.html:1374` | «Se crean el archivo .key (secreto, **queda en el servidor**) y el .csr» | `afipService.js:358-364` **devuelve la clave al navegador** y no la guarda. La advertencia del propio servicio lo dice: «Guardá la clave privada: **no queda almacenada en el servidor** y sin ella el certificado no sirve» |
 | `docs/GUIA_AFIP.md:14` | «El sistema te entregará un archivo `.csr` y **guardará la clave privada de forma segura**» | Ídem |
 | `docs/GUIA_AFIP.md:45` | «**El sistema cifra tu clave privada.**» | Falso |
 | `Settings.jsx:233-241` | «Tus llaves privadas se almacenan de forma segura en tu servidor» | Falso hoy, en los dos sentidos |
@@ -1542,7 +1542,7 @@ un panel lateral.
    en los dos lados, y **ningún `Table*` de shadcn** (`Expenses.jsx:8` hoy).
 3. **Given** las dos solapas, **When** las miro, **Then** son **segmentos**
    —contenedor con `background: surface-3`, botones de 28px—, como
-   `AdminApp-Rediseno.dc.html:645-648` y `components/pos/SegmentoDePago.jsx`. Hoy
+   `Favalio-Rediseno.dc.html:645-648` y `components/pos/SegmentoDePago.jsx`. Hoy
    es un `border-b-2` a mano (`Expenses.jsx:104-118`).
 4. **Given** una fila, **When** la toco, **Then** se abre un **panel lateral** de
    520px con `max-w-[92vw]`, y **no un modal**: se edita un gasto mirando la
@@ -1620,7 +1620,7 @@ coinciden, nadie sabe cuál creer, y la respuesta racional es dejar de mirar los
 dos. Es lo que vuelve inútil un panel de control.
 
 Y el rediseño lo empeora: la maqueta pone cada indicador **con un enlace a la
-pantalla que lo detalla** (`AdminApp-Rediseno.dc.html:1179-1182`). Hoy los
+pantalla que lo detalla** (`Favalio-Rediseno.dc.html:1179-1182`). Hoy los
 números divergentes están lejos; después van a estar a un clic.
 
 **Independent Test**: sembrar un proveedor con deuda y un pago parcial, y
@@ -1698,7 +1698,7 @@ verificar que el número del aviso coincide con el que muestra Faltantes.
 **Acceptance Scenarios**:
 
 1. **Given** el Panel, **When** lo abro, **Then** veo una sección «Requiere tu
-   atención» con su contador, como `AdminApp-Rediseno.dc.html:260-283`.
+   atención» con su contador, como `Favalio-Rediseno.dc.html:260-283`.
 2. **Given** esa sección, **When** la miro, **Then** cada fila tiene ícono con su
    tono, título, una línea de detalle y una acción que lleva a la pantalla
    correspondiente.
@@ -1784,7 +1784,7 @@ Como dueño, quiero abrir el Panel y ver de un vistazo cómo viene el negocio, c
 cuatro indicadores claros en vez de seis tarjetas apretadas.
 
 **Why this priority**: es lo que pide 4.8 y **la maqueta lo dibuja entero**
-(`AdminApp-Rediseno.dc.html:219-334`), que es más de lo que tuvo cualquiera de
+(`Favalio-Rediseno.dc.html:219-334`), que es más de lo que tuvo cualquiera de
 las otras tres pantallas de este hito. Va en P2 porque un indicador bien dibujado
 que dice un número equivocado sigue siendo un número equivocado.
 
@@ -1954,7 +1954,7 @@ evidencia de la prueba.
 
 1. **Given** una empresa recién creada, **When** entro a `/facturacion`, **Then**
    veo el bloque **«Puesta en marcha»** con los cuatro pasos numerados, su
-   descripción y su acción (`AdminApp-Rediseno.dc.html:709-733`, `:1373-1378`).
+   descripción y su acción (`Favalio-Rediseno.dc.html:709-733`, `:1373-1378`).
 2. **Given** el CUIT sin cargar, **When** miro, **Then** el paso está pendiente y
    su acción lleva a cargarlo.
 3. **Given** el certificado sin subir, **When** miro, **Then** el paso está
@@ -1966,7 +1966,7 @@ evidencia de la prueba.
 5. **Given** un certificado **vencido**, **When** miro, **Then** el paso está en
    rojo y dice que hay que renovarlo.
 6. **Given** un certificado que vence **pronto**, **When** miro, **Then** avisa
-   con los días que faltan, como `AdminApp-Rediseno.dc.html:1381` («595 días
+   con los días que faltan, como `Favalio-Rediseno.dc.html:1381` («595 días
    restantes»). Ver [PENDIENTE N8].
 7. **Given** el CUIT del certificado distinto del CUIT configurado, **When**
    miro, **Then** **lo dice**. Hoy se aceptan por separado y el error aparece
@@ -2060,7 +2060,7 @@ sobre seguridad es cierta contra el código.
 1. **Given** la pantalla, **When** la leo, **Then** **no dice que la clave se
    guarda cifrada**, porque no se guarda cifrada.
 2. **Given** la pantalla, **When** la leo, **Then** dice **qué se guarda y
-   dónde**: el certificado y la clave quedan en la base de AdminApp, asociados a
+   dónde**: el certificado y la clave quedan en la base de Favalio, asociados a
    la empresa, y no salen por la API.
 3. **Given** el paso 1 del checklist, **When** lo leo, **Then** dice que la clave
    privada **se descarga y hay que guardarla**, porque el servidor no la
@@ -2656,7 +2656,7 @@ separa.
 - **FR-037**: DEBE quedar escrito si `GET /api/expenses` respeta la sucursal
   activa o devuelve la empresa entera, y la pantalla DEBE decir cuál de las dos.
 - **FR-038**: Las dos solapas DEBEN ser **segmentos**, con la forma de
-  `AdminApp-Rediseno.dc.html:645-648`.
+  `Favalio-Rediseno.dc.html:645-648`.
 - **FR-039**: La edición DEBE ir en **panel lateral** de 520px con
   `max-w-[92vw]`, y no en un modal.
 
@@ -2719,7 +2719,7 @@ separa.
 - **FR-066**: La severidad, el orden y la etiqueta de los avisos DEBEN salir de
   una función pura.
 - **FR-067**: DEBE haber **cuatro** tarjetas de indicador con su sparkline de
-  doce barras, como `AdminApp-Rediseno.dc.html:237-255`.
+  doce barras, como `Favalio-Rediseno.dc.html:237-255`.
 - **FR-068**: El sparkline DEBE salir de datos reales. Sin datos suficientes, NO
   se dibuja.
 - **FR-069**: El sparkline NO DEBE agregar ninguna librería de gráficos.
@@ -2790,7 +2790,7 @@ separa.
 - **FR-097**: La pantalla DEBE decir si hay ventas sin CAE y llevar a
   reintentarlas. Ver [PENDIENTE N10].
 - **FR-098**: DEBE existir «Desvincular AFIP» con confirmación que diga qué se
-  pierde, como dibuja `AdminApp-Rediseno.dc.html:778-784`.
+  pierde, como dibuja `Favalio-Rediseno.dc.html:778-784`.
 - **FR-099**: `Settings.jsx` DEBE limpiar `config.cert` y `config.key` después de
   guardar, declarar `accept` en sus inputs de archivo y liberar los object URL.
 
@@ -2849,7 +2849,7 @@ separa.
 - **FR-124**: El registro del último acceso NO DEBE agregar una escritura por
   cada request.
 - **FR-125**: La pantalla DEBE explicar que la persona invitada tiene que
-  registrarse **con ese mismo email**, porque AdminApp no crea nada en Auth0.
+  registrarse **con ese mismo email**, porque Favalio no crea nada en Auth0.
 - **FR-126**: El superadmin de plataforma DEBE seguir sin aparecer en la lista, y
   **sin ningún filtro especial**: sale gratis porque no tiene fila en
   `usuario_empresas`.
@@ -3351,7 +3351,7 @@ tres meses es lo contrario de lo que la acción significa.
    no agrega ninguna ruta**: las dieciocho siguen siendo dieciocho. Es la
    diferencia con la funcionalidad 013.
 2. **La maqueta dibuja el Panel y Ajustes AFIP, y NO dibuja Gastos ni Equipo.**
-   Verificado en `AdminApp-Rediseno.dc.html:1282`:
+   Verificado en `Favalio-Rediseno.dc.html:1282`:
    `isStub: !['panel','pos','ventas','inventario','compras','config'].includes(st.route)`.
    `gastos` (`:959`) y `equipo` (`:962`) caen en el bloque genérico de stub
    (`:791-802`). **Cualquier cosa que `sdd-verify` quiera comparar contra la

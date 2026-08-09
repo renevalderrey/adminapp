@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · El estado de la cuenta de un proveedor, y su color
+//  FAVALIO · El estado de la cuenta de un proveedor, y su color
 //
 //  Son los cuatro estados del legacy (`:7522`), que es lo que Comprafit leyó
 //  durante años, y la regla detrás del badge de deuda del listado (FR-055).

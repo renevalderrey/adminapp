@@ -82,7 +82,7 @@ no corrección, y por eso no lo ve ningún chequeo.
 ## 1 · Notas de crédito
 
 **Por qué es lo primero.** Hoy anular una venta que ya tiene CAE la deja
-anulada en AdminApp y **vigente ante ARCA**. El monto sigue contando como
+anulada en Favalio y **vigente ante ARCA**. El monto sigue contando como
 facturación del cliente. `taxService` ya expone el número —
 `anuladas_con_cae_sin_nc` — justamente porque es un desvío conocido.
 
@@ -737,7 +737,7 @@ nadie**. La columna no se borra —sacarla de la lista blanca es reversible, un
 **Qué falta.** El concepto de «comprometido». La spec decidió publicar en
 TiendaNube el **disponible** (`stock.available`) y no la cantidad, con el ejemplo
 «un producto con 10 en el depósito y 3 comprometidos publica 7». Ese estado
-**AdminApp no lo puede producir**: nada reserva stock.
+**Favalio no lo puede producir**: nada reserva stock.
 
 **Por qué importa igual.** Publicar `available` es lo correcto y **hoy no cambia
 ningún número**, así que no cuesta nada. Lo que no se puede afirmar es que
@@ -805,7 +805,7 @@ sustancialmente más chica y contesta la pregunta que la gente hace.
 ### 12d · `order/cancelled` y las devoluciones
 
 **Qué falta.** Un pedido cancelado o devuelto en TiendaNube **no repone el
-stock**. AdminApp solo escucha `order/paid`.
+stock**. Favalio solo escucha `order/paid`.
 
 **Por qué no entró.** Reponer necesita **su propia guarda de idempotencia**, y no
 es la misma que la del descuento: reponer dos veces es tan malo como descontar
@@ -831,7 +831,7 @@ moverlas, así que no se puede apuntar a un sandbox ni a un doble de servidor.
 mirando la documentación y **nadie vio nunca una respuesta real**:
 
 - **El nombre de la cabecera de la firma** (`x-linkedstore-hmac-sha256`). El test
-  de HMAC prueba que **AdminApp verifica lo que AdminApp firmó**: el circuito, no
+  de HMAC prueba que **Favalio verifica lo que Favalio firmó**: el circuito, no
   el algoritmo del otro lado. Si la cabecera se llamara distinto, ese test
   seguiría verde y **todo webhook real respondería 401** — que es el mismo
   síntoma que ya tuvo esta integración durante meses.
@@ -846,7 +846,7 @@ mirando la documentación y **nadie vio nunca una respuesta real**:
 
 **Por qué importa que esté escrito acá.** Porque la suite de este hito es grande
 y verde, y una suite grande y verde se lee como «esto está probado». Lo que está
-probado es AdminApp de su lado del cable.
+probado es Favalio de su lado del cable.
 
 **Primer paso.** `TIENDANUBE_API_URL` con valor por defecto el actual, para poder
 apuntar a un servidor de pruebas. Es media hora y convierte cinco preguntas

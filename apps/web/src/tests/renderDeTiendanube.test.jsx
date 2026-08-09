@@ -13,7 +13,7 @@ import EstadoDeTiendanube from '@/components/EstadoDeTiendanube'
 import PanelDeMapeo from '@/components/PanelDeMapeo'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · /tiendanube, renderizado
+//  FAVALIO · /tiendanube, renderizado
 //
 //  Lo que se afirma acá es EL DIBUJO Y EL EFECTO, no las reglas: qué estado le
 //  toca a una conexión, de qué color va un badge y qué variantes entran en un
@@ -602,7 +602,7 @@ describe('El panel de mapeo (T1341)', () => {
   })
 
   it('un 429 y un 502 muestran avisos DISTINTOS, no cierran el panel y no pierden lo escrito', async () => {
-    // US6 escenarios 2 y 4, FR-062. Un problema de TiendaNube y uno de AdminApp
+    // US6 escenarios 2 y 4, FR-062. Un problema de TiendaNube y uno de Favalio
     // se arreglan en lados distintos, y quien ve siempre el mismo texto llama al
     // que no es. Y cerrar el panel se lleva el mensaje, el producto elegido y lo
     // escrito, dejando la sensación de que guardó.
@@ -787,8 +787,8 @@ describe('La pantalla no promete lo que el sistema no hace (T1342)', () => {
     const texto = document.body.textContent
 
     expect(texto).not.toContain('bidireccional')
-    expect(texto).toContain('El stock va de AdminApp a tu tienda')
-    expect(texto).toContain('Los pedidos vienen de tu tienda a AdminApp')
+    expect(texto).toContain('El stock va de Favalio a tu tienda')
+    expect(texto).toContain('Los pedidos vienen de tu tienda a Favalio')
   })
 
   it('dice de qué sucursal y qué número publica', async () => {
@@ -825,7 +825,7 @@ describe('El resultado del OAuth vuelve a /tiendanube (T1342)', () => {
     const delOtroLado = screen.getByRole('alert').textContent
 
     expect(vencido).toMatch(/de un solo uso/)
-    expect(delOtroLado).toMatch(/No es un problema de AdminApp/)
+    expect(delOtroLado).toMatch(/No es un problema de Favalio/)
     expect(vencido).not.toBe(delOtroLado)
   })
 })

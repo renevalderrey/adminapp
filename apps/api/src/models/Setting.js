@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelo: Setting (Configuración)
+//  FAVALIO · Modelo: Setting (Configuración)
 //  Key-Value para configuraciones globales
 //  Migra: cf_permisos, cf_gv, y otros datos de cf_datos
 // ════════════════════════════════════════════

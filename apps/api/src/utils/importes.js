@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Lectura de importes escritos por una persona
+//  FAVALIO · Lectura de importes escritos por una persona
 //
 //  Un importe argentino se escribe 1.234,50: el punto separa los miles y la
 //  coma es el decimal. Leerlo al reves —que es lo que hace parseFloat, que

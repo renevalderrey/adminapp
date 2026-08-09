@@ -26,7 +26,7 @@ import { diasHastaVencer } from '@/utils/puestaEnMarchaAfip'
 import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · /facturacion — Facturación electrónica (ARCA/AFIP)
+//  FAVALIO · /facturacion — Facturación electrónica (ARCA/AFIP)
 //
 //  ── Las tres frases que esta pantalla NO copia de la maqueta ──
 //
@@ -37,7 +37,7 @@ import { faltaElPermiso } from '@/utils/permisos'
 //
 //  Lo que es cierto, y es lo que dice esta pantalla:
 //
-//   · el certificado y la clave se guardan **en la base de datos de AdminApp, sin
+//   · el certificado y la clave se guardan **en la base de datos de Favalio, sin
 //     cifrar** (FR-093). Cifrarlos es el proyecto 6 de `PROXIMOS-PROYECTOS.md`,
 //     junto con el token de TiendaNube, y esta funcionalidad **no lo hace**;
 //   · la clave **no sale nunca de la API**: `GET /api/settings` la excluye
@@ -220,7 +220,7 @@ export default function Settings() {
   const generarCsr = async () => {
     setGenerando(true)
     try {
-      const res = await generarCsrAfip('AdminApp')
+      const res = await generarCsrAfip('Favalio')
       setArchivosDelCsr(res.data?.data || null)
       toast.success('Archivos generados. Descargá los dos antes de cerrar esta pantalla.')
     } catch (err) {
@@ -517,14 +517,14 @@ export default function Settings() {
                     <button
                       type="button"
                       className={BOTON_SECUNDARIO}
-                      onClick={() => descargar(archivosDelCsr.key, 'adminapp_privada.key')}
+                      onClick={() => descargar(archivosDelCsr.key, 'favalio_privada.key')}
                     >
                       <Download className="h-3.5 w-3.5 text-fg-3" /> Descargar .key
                     </button>
                     <button
                       type="button"
                       className={BOTON_SECUNDARIO}
-                      onClick={() => descargar(archivosDelCsr.csr, 'adminapp_pedido.csr')}
+                      onClick={() => descargar(archivosDelCsr.csr, 'favalio_pedido.csr')}
                     >
                       <Download className="h-3.5 w-3.5 text-fg-3" /> Descargar .csr
                     </button>
@@ -566,7 +566,7 @@ export default function Settings() {
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-fg-3" />
             <p className="max-w-[70ch] text-[12.5px] leading-relaxed text-fg-2">
               El certificado y la clave privada se guardan <strong>en la base de datos de
-              AdminApp, sin cifrar</strong>. Cifrarlos en reposo es un proyecto abierto y todavía
+              Favalio, sin cifrar</strong>. Cifrarlos en reposo es un proyecto abierto y todavía
               no está hecho: decimos qué hay para que puedas decidir con el dato. Lo que sí está:
               la clave <strong>no sale nunca de la API</strong> —ni en esta pantalla, ni
               enmascarada, ni en un respaldo— y queda tapada en los registros del servidor.

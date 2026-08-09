@@ -6,7 +6,7 @@ import useStore from '@/store/useStore'
 import Inventory from '@/pages/Inventory'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Inventario, renderizado
+//  FAVALIO · Inventario, renderizado
 //
 //  El primer archivo de tests de render del repositorio. Existe por un motivo
 //  concreto: `sdd-verify` encontró seis incumplimientos en la funcionalidad 010

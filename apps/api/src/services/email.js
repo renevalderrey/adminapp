@@ -2,7 +2,7 @@ const { Resend } = require('resend');
 const logger = require('../utils/logger');
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@adminapp.app';
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'noreply@favalio.com';
 
 let resend = null;
 if (RESEND_API_KEY) {
@@ -68,7 +68,7 @@ function welcomeEmail(usuarioNombre, empresaNombre) {
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h1 style="color: #6d28d9;">Bienvenido a Admin App</h1>
+      <h1 style="color: #6d28d9;">Bienvenido a Favalio</h1>
       <p>Hola ${usuarioNombre},</p>
       <p>Tu empresa <strong>${empresaNombre}</strong> ha sido creada exitosamente.</p>
       <p>Ya podés empezar a gestionar tus ventas, inventario y más.</p>
@@ -131,7 +131,7 @@ function invitationEmail(invitadorNombre, empresaNombre, token) {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
       <h1 style="color: #6d28d9;">Te invitaron a unirte a ${empresaNombre}</h1>
-      <p><strong>${invitadorNombre}</strong> te ha invitado a formar parte de <strong>${empresaNombre}</strong> en Admin App.</p>
+      <p><strong>${invitadorNombre}</strong> te ha invitado a formar parte de <strong>${empresaNombre}</strong> en Favalio.</p>
       <p>Hacé clic en el siguiente enlace para aceptar la invitación:</p>
       <p style="margin-top: 24px;">
         <a href="${acceptUrl}"
@@ -182,7 +182,7 @@ function trialPorVencerEmail(empresaNombre, diasRestantes) {
   const plural = diasRestantes === 1 ? 'día' : 'días';
 
   return plantillaBase({
-    titulo: `Tu prueba de AdminApp termina en ${diasRestantes} ${plural}`,
+    titulo: `Tu prueba de Favalio termina en ${diasRestantes} ${plural}`,
     cuerpo: `
       <p>Hola,</p>
       <p>El período de prueba de <strong>${empresaNombre}</strong> termina en
@@ -229,7 +229,7 @@ function suscripcionActivadaEmail(empresaNombre, plan, hasta) {
       <p>Hola,</p>
       <p>Registramos el pago de <strong>${empresaNombre}</strong>.</p>
       <p>Plan <strong>${plan}</strong>${fecha ? `, activo hasta el <strong>${fecha}</strong>` : ''}.</p>
-      <p>Gracias por confiar en AdminApp.</p>
+      <p>Gracias por confiar en Favalio.</p>
     `,
     cta: { texto: 'Ir al panel' },
   });

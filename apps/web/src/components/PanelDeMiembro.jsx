@@ -14,7 +14,7 @@ import {
 } from '@/utils/equipo'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Panel de un miembro del equipo
+//  FAVALIO · Panel de un miembro del equipo
 //
 //  Es un panel lateral y no un modal por el mismo motivo que el del producto y
 //  el de la orden: se cambia el rol de alguien **mirando el resto del equipo**,

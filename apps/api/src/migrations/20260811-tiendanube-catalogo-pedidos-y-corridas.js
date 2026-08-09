@@ -24,7 +24,7 @@
  * índice de consulta: es el mecanismo.
  *
  * No es una segunda fuente de verdad. El catálogo de TiendaNube no es un dato de
- * AdminApp —es la respuesta de un tercero, con la fecha en que se pidió a la
+ * Favalio —es la respuesta de un tercero, con la fecha en que se pidió a la
  * vista— y `stock_publicado` es el registro de **lo que se mandó**, que es un
  * hecho histórico. La fuente del stock sigue siendo `stock.available` de la
  * sucursal designada, leída en el momento de empujar.

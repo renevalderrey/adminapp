@@ -183,7 +183,7 @@ abiertas:
 ### 7. ⚠ La decisión 2 se implementa igual, y hoy no cambia ningún número
 
 «Un producto con 10 en depósito y 3 comprometidos publica 7» describe un estado
-que **AdminApp no puede producir**: no hay concepto de comprometido. Los ocho
+que **Favalio no puede producir**: no hay concepto de comprometido. Los ocho
 caminos que escriben `stock` mueven `quantity` y `available` con el mismo delta,
 y **cuatro le asignan directamente `available = quantity`**
 (`productionService.js:378` y `:508`, `import.js:438`, `products.js:329`),
@@ -1084,7 +1084,7 @@ US3 del lado del servidor, criterios 8 y 9. Es donde vive el ajuste 2 del plan:
       **(b) `errorDeTiendanube(err)`**, que clasifica con `clasificarError` de
       T1321 y devuelve un `ErrorDeNegocio` con el texto que corresponde —la tabla
       de la decisión 11 del plan—, de forma que **un fallo de TiendaNube y un
-      fallo de AdminApp no se vean iguales** (FR-062);
+      fallo de Favalio no se vean iguales** (FR-062);
       **(c) `getProducts` recorre todas las páginas** —`?page=N&per_page=200`
       hasta que una vuelva vacía o corta— con reintento ante 429 (FR-048).
       **Y la guardia (FR-047)**, en `apps/api/src/tests/observabilidad.test.js`:
@@ -1096,7 +1096,7 @@ US3 del lado del servidor, criterios 8 y 9. Es donde vive el ajuste 2 del plan:
       más en `tiendanubeRutas.test.js`:
       `it('un 401 de TiendaNube se traduce a «hay que volver a vincular» y no a un
       fallo genérico')` —FR-049, US6 escenario 3—;
-      `it('un 5xx se distingue de un error de AdminApp en el texto')`;
+      `it('un 5xx se distingue de un error de Favalio en el texto')`;
       `it('un timeout se distingue de los dos')`;
       `it('getProducts pide todas las páginas hasta que una vuelve corta')`.
       **Cómo se comprueba que el test sirve**: se saca el `timeout` de una de las
@@ -1773,7 +1773,7 @@ a `/pos`. Es el riesgo 2.
       **(a)** un pedido de la tienda **baja inventario y no registra una venta**,
       así que no aparece en facturación, ni en caja, ni en reportes (FR-073);
       **(b)** **no dice «bidireccional»** sin aclarar qué va en cada sentido:
-      stock hacia la tienda, pedidos hacia AdminApp (FR-074);
+      stock hacia la tienda, pedidos hacia Favalio (FR-074);
       **(c)** dice **de qué sucursal** sale el stock que se publica y **qué
       número** publica —`available`, «lo que se puede vender»— (US7 escenario 3);
       **(d)** dice que un pedido cancelado o devuelto **no repone el stock solo**
@@ -1997,7 +1997,7 @@ literales en `services/tiendanubeService.js` y ponerle una variable está **Fuer
 de alcance**. Todo lo de arriba dobla la API del tercero. Consecuencia:
 
 - **El nombre de la cabecera de la firma** (`x-linkedstore-hmac-sha256`) no lo
-  verifica nada. El test de la firma prueba que AdminApp verifica lo que AdminApp
+  verifica nada. El test de la firma prueba que Favalio verifica lo que Favalio
   firmó: **el circuito, no el algoritmo del otro lado.**
 - **El formato de la paginación** —si es `page`/`per_page`, si el fin de las
   páginas se detecta por una respuesta vacía o por una cabecera— tampoco.
@@ -2098,7 +2098,7 @@ pruebas como **superadmin**. Está escrito en
 `docs/specs/012-proveedores-y-ordenes-de-compra/tasks.md`, sección «P0».
 
 ⚠ **El puerto 55432 es el mismo que usa el contenedor del arnés de integración**
-(`adminapp-pg-integracion`). Los dos no pueden estar arriba a la vez.
+(`favalio-pg-integracion`). Los dos no pueden estar arriba a la vez.
 
 ---
 

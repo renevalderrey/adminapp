@@ -5,7 +5,7 @@ import api from '@/services/api'
 import Comparador from '@/pages/Comparador'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Comparador de proveedores, renderizado
+//  FAVALIO · Comparador de proveedores, renderizado
 //
 //  ── Por qué esta pantalla necesitaba tests antes que ninguna otra ──
 //

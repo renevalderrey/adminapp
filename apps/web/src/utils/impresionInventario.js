@@ -5,7 +5,7 @@ import { esStockBajo } from '@/utils/stockBajo'
 import { pesos } from '@/utils/formato'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · La vista de impresión del inventario
+//  FAVALIO · La vista de impresión del inventario
 //
 //  El PDF se resuelve con la vista de impresión del navegador: NO se agrega
 //  ninguna biblioteca de PDF al proyecto. «Guardar como PDF» ya está en el
@@ -183,7 +183,7 @@ export function armarHtml({
     </tfoot>
   </table>
 
-  <p class="pie">Generado por AdminApp.</p>
+  <p class="pie">Generado por Favalio.</p>
 </body>
 </html>`
 }

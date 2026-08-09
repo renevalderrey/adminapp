@@ -1,6 +1,6 @@
-# Sistema de diseño · AdminApp
+# Sistema de diseño · Favalio
 
-**Origen:** maqueta «AdminApp Rediseño» (Claude Design, proyecto
+**Origen:** maqueta «Favalio Rediseño» (Claude Design, proyecto
 `da78da8f-639e-4489-8c2f-4f0bf0bb2f58`).
 **Implementación:** `apps/web/src/index.css`.
 **Vigencia:** desde el 1 de agosto de 2026, para todo lo que se construya de acá
@@ -242,7 +242,7 @@ Todas las pantallas arrancan igual: título, una línea que explica para qué si
 y las acciones a la derecha.
 
 **Salvo el punto de venta**, que es la única sin `h1` y sin descripción. La
-barra de búsqueda ocupa ese lugar (`AdminApp-Rediseno.dc.html:339-358`) y la
+barra de búsqueda ocupa ese lugar (`Favalio-Rediseno.dc.html:339-358`) y la
 miga de pan del `AppTopbar` ya dice «Punto de venta», así que el título no
 informaría nada nuevo. Sesenta píxeles de alto en la pantalla que se usa ocho
 horas por día valen más que eso. Es una excepción **de esa pantalla y de ninguna

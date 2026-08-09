@@ -1,7 +1,7 @@
 import Pagination from '@/components/Pagination'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · «Mostrando 25 de 312 productos», y las páginas
+//  FAVALIO · «Mostrando 25 de 312 productos», y las páginas
 //
 //  ── Por qué las dos cosas van juntas ──
 //

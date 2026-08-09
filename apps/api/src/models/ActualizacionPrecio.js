@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelo: ActualizacionPrecio
+//  FAVALIO · Modelo: ActualizacionPrecio
 //
 //  Cada vez que se cambian precios en masa se guarda una foto de como estaban
 //  antes. Es lo que permite deshacer.

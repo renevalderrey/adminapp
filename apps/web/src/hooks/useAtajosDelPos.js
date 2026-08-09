@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { atajoDe } from '@/utils/atajosDelPos'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El escuchador de teclado del punto de venta
+//  FAVALIO · El escuchador de teclado del punto de venta
 //
 //  Se suscribe UNA vez al montar y se desuscribe UNA vez al desmontar. Eso es
 //  lo que hace verdadero a FR-040 —fuera del punto de venta, `/` no hace nada—

@@ -7,7 +7,7 @@ import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
 import PurchaseOrders from '@/pages/PurchaseOrders'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · /ordenes-compra, renderizado
+//  FAVALIO · /ordenes-compra, renderizado
 //
 //  Lo que se afirma acá es EL DIBUJO Y EL EFECTO, no las reglas: de qué color va
 //  la etiqueta, cuántas órdenes entran en un segmento y qué porcentaje llegó ya

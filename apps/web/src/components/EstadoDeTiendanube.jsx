@@ -14,7 +14,7 @@ import {
 import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El bloque de conexión de /tiendanube
+//  FAVALIO · El bloque de conexión de /tiendanube
 //
 //  Los cuatro estados de FR-006 —`sin_configurar`, `no_vinculada`, `vinculada`
 //  y `vinculada_con_error`— más el quinto **de la pantalla**, `no_comprobada`.

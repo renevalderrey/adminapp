@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelo: GastoVariable
+//  FAVALIO · Modelo: GastoVariable
 //
 //  Gastos que cambian mes a mes y se atribuyen a una persona: viaticos,
 //  combustible, adelantos, compras sueltas.

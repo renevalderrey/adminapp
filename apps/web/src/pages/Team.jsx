@@ -33,7 +33,7 @@ import { faltaElPermiso } from '@/utils/permisos'
 import EstadoVacio from '@/components/EstadoVacio'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · /equipo
+//  FAVALIO · /equipo
 //
 //  ── Lo que esta pantalla dejaba de decir ──
 //
@@ -69,7 +69,7 @@ import EstadoVacio from '@/components/EstadoVacio'
 //  ── Y lo que afirma, que tiene que ser cierto ──
 //
 //  Que la persona invitada tiene que registrarse **con ese mismo email**.
-//  AdminApp no crea nada en Auth0: el usuario se auto-registra y la API lo da de
+//  Favalio no crea nada en Auth0: el usuario se auto-registra y la API lo da de
 //  alta desde el JWT (`middleware/auth.js`). Si se registra con otra dirección,
 //  el token de la invitación no le va a corresponder y
 //  `POST /accept-invite/:token` responde `INVITACION_DE_OTRO_EMAIL` (E14,
@@ -366,12 +366,12 @@ export default function Team() {
             </button>
           </div>
 
-          {/* E14 / FR-125. AdminApp no crea nada en Auth0: quien recibe el enlace
+          {/* E14 / FR-125. Favalio no crea nada en Auth0: quien recibe el enlace
               se registra solo, y la invitación se busca por el email de la
               sesión. Con otra dirección, aceptar responde
               INVITACION_DE_OTRO_EMAIL y la persona no entiende por qué. */}
           <p className="mt-3 max-w-[70ch] text-[12.5px] leading-relaxed text-fg-2">
-            La persona tiene que registrarse en AdminApp <strong>con este mismo email</strong>.
+            La persona tiene que registrarse en Favalio <strong>con este mismo email</strong>.
             No le creamos la cuenta: el enlace la lleva al registro y la invitación se le asigna
             por su dirección. Si se registra con otra, el enlace no le va a servir.
           </p>

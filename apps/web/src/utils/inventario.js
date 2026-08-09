@@ -1,7 +1,7 @@
 import { esStockBajo } from '@/utils/stockBajo'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · La lógica de la pantalla de Inventario, fuera del componente
+//  FAVALIO · La lógica de la pantalla de Inventario, fuera del componente
 //
 //  Todo lo que la pantalla **decide** —qué filas entran, cuánto suma cada
 //  indicador, de qué color va cada badge, qué sucursales pueden ser columna—

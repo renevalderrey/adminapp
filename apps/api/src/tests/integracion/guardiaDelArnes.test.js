@@ -152,12 +152,12 @@ describe('El arnés se niega a truncar una base que no es de prueba', () => {
   it('RECHAZA una base cuyo nombre no dice que es de prueba', () => {
     // Cada test hace TRUNCATE de todo el esquema. Esta es la única cosa entre
     // un `DATABASE_URL_TEST` mal copiado y los datos de alguien.
-    expect(() => verificarQueEsDePrueba('postgresql://u:p@localhost:5432/adminapp'))
+    expect(() => verificarQueEsDePrueba('postgresql://u:p@localhost:5432/favalio'))
       .toThrow(/se niega a trabajar/);
   });
 
   it('RECHAZA algo que no es una URL', () => {
-    expect(() => verificarQueEsDePrueba('adminapp_test')).toThrow(/no se puede interpretar/);
+    expect(() => verificarQueEsDePrueba('favalio_test')).toThrow(/no se puede interpretar/);
   });
 });
 

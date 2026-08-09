@@ -9,7 +9,7 @@ import { fechaDeHoy } from '@/utils/formato'
 import { nombreDelMes } from '@/utils/gastos'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Gastos, renderizado
+//  FAVALIO · Gastos, renderizado
 //
 //  Los cuatro defectos que esta pantalla arrastraba y que se ven acá:
 //

@@ -145,7 +145,7 @@ function generarPar(cuit) {
   // `serialNumber` en el subject es donde ARCA escribe el CUIT, con la forma
   // `CUIT 30111111118`. Es de ahí que `GET /afip/cert-info` lo saca.
   cert.setSubject([
-    { name: 'commonName', value: 'AdminApp' },
+    { name: 'commonName', value: 'Favalio' },
     { name: 'serialNumber', value: `CUIT ${cuit}` },
   ]);
   cert.setIssuer([{ name: 'commonName', value: 'Computadores' }]);

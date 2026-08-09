@@ -11,7 +11,7 @@ import useStore from '@/store/useStore'
 import Settings from '@/pages/Settings'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · /facturacion, renderizado
+//  FAVALIO · /facturacion, renderizado
 //
 //  Lo que se afirma acá es EL DIBUJO Y EL EFECTO. Las reglas —qué estado tiene
 //  cada paso del checklist, cuándo un certificado está vencido, cuántos días
@@ -656,7 +656,7 @@ describe('la guía y la pantalla dicen lo mismo sobre la clave privada', () => {
     // Sin esto la guardia podría estar fallando siempre, que es tan inútil como
     // no fallar nunca: nadie convive con una guardia que le prohíbe escribir la
     // verdad. Las dos formas de abajo son las que la guía y la pantalla usan.
-    expect(afirmaCifrado('Se guardan en la base de datos de AdminApp, sin cifrar.')).toEqual([])
+    expect(afirmaCifrado('Se guardan en la base de datos de Favalio, sin cifrar.')).toEqual([])
     expect(afirmaCifrado('Cifrarlos en reposo es un proyecto abierto.')).toEqual([])
   })
 

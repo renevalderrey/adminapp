@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · La condicion de IVA del receptor, como la espera ARCA
+//  FAVALIO · La condicion de IVA del receptor, como la espera ARCA
 //
 //  Son dos mundos distintos y hasta ahora nadie los unia:
 //

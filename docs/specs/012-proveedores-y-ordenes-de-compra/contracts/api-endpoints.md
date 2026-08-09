@@ -217,7 +217,7 @@ GET /api/suppliers/7/movimientos/export?desde=2026-01-01&hasta=2026-07-31
 
 **Las seis columnas son las que decidió [PENDIENTE 4]**: fecha, tipo, descripción,
 debe, haber y saldo. **No es un asiento contable formal** —eso necesita un plan de
-cuentas que AdminApp no tiene— y está escrito así en la spec para que nadie lo
+cuentas que Favalio no tiene— y está escrito así en la spec para que nadie lo
 descubra en la reunión con el contador.
 
 | Regla | Por qué |

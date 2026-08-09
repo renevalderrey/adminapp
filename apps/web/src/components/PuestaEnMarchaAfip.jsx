@@ -3,7 +3,7 @@ import { puestaEnMarchaAfip } from '@/utils/puestaEnMarchaAfip'
 import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · «Puesta en marcha», el checklist de facturación
+//  FAVALIO · «Puesta en marcha», el checklist de facturación
 //
 //  Es el bloque que evita la llamada «no puedo facturar»: cuatro pasos, cada uno
 //  con su estado real y con qué hacer si no está.

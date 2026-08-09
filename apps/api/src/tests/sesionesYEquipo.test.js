@@ -11,7 +11,7 @@ const {
 } = require('../utils/equipo');
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Las reglas del equipo
+//  FAVALIO · Las reglas del equipo
 //
 //  Las dos que hasta la 014 no aplicaba nadie —«no te podés tocar a vos mismo» y
 //  «el último administrador activo no se degrada»— más la tabla de nombres de

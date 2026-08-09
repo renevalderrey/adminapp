@@ -3,7 +3,7 @@ import { render, screen, act, cleanup, fireEvent } from '@testing-library/react'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · La confirmación de toda la aplicación
+//  FAVALIO · La confirmación de toda la aplicación
 //
 //  Veintiséis lugares dependen de este hook, y el que se colgaba no dejaba nada
 //  escrito: el handler quedaba detenido en su `await`, con su `finally` sin

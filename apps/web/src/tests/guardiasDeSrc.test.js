@@ -4,7 +4,7 @@ import path from 'node:path'
 import url from 'node:url'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Guardias estáticas sobre todo el árbol de `src`
+//  FAVALIO · Guardias estáticas sobre todo el árbol de `src`
 //
 //  Dos propiedades que no son de una pantalla sino de TODAS, y que por eso se
 //  verifican leyendo los archivos en vez de montando componentes: que toda

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { NOMBRE_LARGO } from './preparacion.js'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El maquetado del punto de venta
+//  FAVALIO · El maquetado del punto de venta
 //
 //  Son los pasos manuales **1, 2, 3 y 4** de
 //  `docs/specs/011-punto-de-venta/tasks.md`, que hasta ahora nadie podía correr.

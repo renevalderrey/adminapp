@@ -67,8 +67,8 @@
  *  corresponde. Cualquier diferencia de esquema se imprime como una lista de
  *  líneas «sobra» / «falta», que es lo que hay que arreglar.
  *
- *  ⚠ La base la crea y la borra este script (`adminapp-pg-reversibilidad`, puerto
- *  55433). **No usa `adminapp-pg-integracion`**: esa es de los tests de
+ *  ⚠ La base la crea y la borra este script (`favalio-pg-reversibilidad`, puerto
+ *  55433). **No usa `favalio-pg-integracion`**: esa es de los tests de
  *  integración y revertirle migraciones la dejaría con el esquema movido.
  * ════════════════════════════════════════════
  */
@@ -85,10 +85,10 @@ const RAIZ_API = path.resolve(__dirname, '..');
 const RUTA_MIGRACIONES = path.join(RAIZ_API, 'src', 'migrations');
 
 /** Nombre propio y puerto propio: no se pisa con ninguna otra base del árbol. */
-const CONTENEDOR = 'adminapp-pg-reversibilidad';
+const CONTENEDOR = 'favalio-pg-reversibilidad';
 const PUERTO = 55433;
 const IMAGEN = 'postgres:16-alpine';
-const URL_POR_DEFECTO = `postgres://postgres:postgres@localhost:${PUERTO}/adminapp_reversibilidad`;
+const URL_POR_DEFECTO = `postgres://postgres:postgres@localhost:${PUERTO}/favalio_reversibilidad`;
 
 /**
  * La última migración que NO se verifica.

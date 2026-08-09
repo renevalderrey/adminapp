@@ -100,7 +100,7 @@ async function avisarVencimientosProximos() {
 
       const envio = await sendEmail({
         to: destinatario,
-        subject: `Tu prueba de AdminApp termina en ${dias} ${dias === 1 ? 'día' : 'días'}`,
+        subject: `Tu prueba de Favalio termina en ${dias} ${dias === 1 ? 'día' : 'días'}`,
         html: trialPorVencerEmail(s.empresa?.name || 'tu empresa', dias),
       });
 

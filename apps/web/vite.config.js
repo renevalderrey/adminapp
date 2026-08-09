@@ -31,7 +31,7 @@ import path from 'path'
 // ════════════════════════════════════════════
 function aliasDeLaSesionDePrueba(command) {
   if (command !== 'serve') return {}
-  if (process.env.ADMINAPP_SESION_DE_PRUEBA !== '1') return {}
+  if (process.env.FAVALIO_SESION_DE_PRUEBA !== '1') return {}
 
   // Va PRIMERO en el objeto: `resolve.alias` se resuelve en orden y `'@'`
   // matchea todo lo que empiece con `@/`, incluido este especificador.

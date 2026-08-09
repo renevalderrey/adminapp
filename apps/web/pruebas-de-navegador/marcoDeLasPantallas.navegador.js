@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El marco de las dieciocho pantallas
+//  FAVALIO · El marco de las dieciocho pantallas
 //
 //  Es el paso manual **5** de `docs/specs/011-punto-de-venta/tasks.md`, que
 //  pedía abrir tres pantallas a ojo, más la pregunta que quedó abierta cuando

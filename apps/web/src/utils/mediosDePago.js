@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Los medios de pago del punto de venta
+//  FAVALIO · Los medios de pago del punto de venta
 //
 //  Esta lista estaba escrita TRES veces —acá no estaba, estaba adentro de
 //  `Billing.jsx`, de `components/PanelVenta.jsx` y de

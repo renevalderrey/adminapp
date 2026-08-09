@@ -123,7 +123,7 @@ la guardia, es que el archivo esté donde la guardia mira. Ver la decisión 1.
 **3. No hay ninguna reserva de stock en el sistema, así que hoy `available` y
 `quantity` son el mismo número — y cuatro escritores pisan la diferencia.**
 La decisión 2 del usuario dice «un producto con 10 en depósito y 3 comprometidos
-publica 7». Ese estado **AdminApp no lo produce**: no hay concepto de
+publica 7». Ese estado **Favalio no lo produce**: no hay concepto de
 comprometido. Los ocho caminos que escriben `stock` mueven las dos columnas
 juntas, y cuatro de ellos **le asignan a `available` el valor de `quantity`**,
 borrando cualquier diferencia que existiera:
@@ -256,7 +256,7 @@ defecto que FR-057 viene a cerrar, con otro nombre.
 
 No es una caché de conveniencia: es la única forma de que los tres requisitos
 coexistan. Y la instantánea **no es una segunda fuente de verdad** —el catálogo
-de TiendaNube no es un dato de AdminApp— a diferencia de un `saldo`
+de TiendaNube no es un dato de Favalio— a diferencia de un `saldo`
 desnormalizado, que sí lo sería.
 
 ### 3. La decisión 2 es correcta y hoy no cambia ningún número
@@ -570,7 +570,7 @@ lo que agrupa los empujones sin ningún temporizador (decisión 8). Dos tablas
 obligarían a un `join` en cada carga de pantalla para dibujar una fila.
 
 **Por qué no es una segunda fuente de verdad.** El catálogo de TiendaNube no es
-un dato de AdminApp: es la respuesta de un tercero, con la fecha en que se pidió
+un dato de Favalio: es la respuesta de un tercero, con la fecha en que se pidió
 a la vista. `stock_publicado` tampoco: es el registro de **lo que se mandó**, que
 es un hecho histórico, no una copia del stock. La fuente del stock sigue siendo
 `stock.available` de la sucursal designada, y se lee en el momento de empujar.
@@ -746,7 +746,7 @@ privadas **sí** queden cortadas.
 paywall eludible que `CONVENCIONES.md` cita entre los tres errores más caros del
 proyecto: una empresa con la suscripción vencida sigue sincronizando su tienda.
 
-### 11. Los tres errores de TiendaNube se distinguen entre sí y del error de AdminApp
+### 11. Los tres errores de TiendaNube se distinguen entre sí y del error de Favalio
 
 **Se eligió:** una función `errorDeTiendanube(err)` en
 `services/tiendanubeService.js` que clasifica lo que devuelve axios y lo
@@ -756,8 +756,8 @@ convierte en un `ErrorDeNegocio` con el texto que corresponde:
 |---|---|---|---|
 | No contesta | `code: 'ECONNABORTED'` (el `timeout`) | «TiendaNube no respondió a tiempo. Volvé a intentar en unos minutos.» | `ultima_comunicacion_ok = false` |
 | 429 | `status === 429` | No es un error: se reintenta con espera. Solo se ve si se agotan los intentos | La variante queda encolada |
-| 401 | `status === 401` | «Tu tienda desconectó AdminApp. Hay que volver a vincularla.» | Estado **«vinculada con error»** (FR-049, FR-006) |
-| 5xx | `status >= 500` | «TiendaNube tuvo un problema. No es de AdminApp.» | idem |
+| 401 | `status === 401` | «Tu tienda desconectó Favalio. Hay que volver a vincularla.» | Estado **«vinculada con error»** (FR-049, FR-006) |
+| 5xx | `status >= 500` | «TiendaNube tuvo un problema. No es de Favalio.» | idem |
 | Cualquier otra cosa | — | El mensaje genérico de `fallo` | — |
 
 **Todo esto necesita `timeout`, y hoy no hay ninguno.** Las tres llamadas
@@ -1138,7 +1138,7 @@ arriba dobla la API de TiendaNube. Consecuencia, dicha sin adornos: **el contrat
 real del tercero no lo verifica ni un solo test.** Ni el nombre de la cabecera de
 la firma (`x-linkedstore-hmac-sha256`), ni el formato de la paginación, ni la
 forma del cuerpo del webhook, ni que `PUT .../variants/{id}` acepte `{ stock }`.
-El test de la firma HMAC prueba que AdminApp verifica lo que AdminApp firmó, que
+El test de la firma HMAC prueba que Favalio verifica lo que Favalio firmó, que
 es el circuito, no el algoritmo del otro lado.
 
 | # | Paso manual | Por qué no hay test |

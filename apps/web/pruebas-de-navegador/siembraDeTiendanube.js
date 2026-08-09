@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · La tienda de prueba y su catálogo
+//  FAVALIO · La tienda de prueba y su catálogo
 //
 //  Lo que `/tiendanube` necesita para dibujar algo que se pueda medir: una
 //  tienda vinculada y una instantánea de catálogo con variantes.
@@ -28,7 +28,7 @@
 //  filas se escriben en la base de verdad, y **la pantalla las recibe por
 //  `GET /api/tiendanube/status` y `GET /api/tiendanube/variantes` reales**, con
 //  sus `count`, su paginado, su unión de mapeos en JS y su cálculo de
-//  `motivo_no_publicado`. Lo que se saltea es el tercero, no AdminApp.
+//  `motivo_no_publicado`. Lo que se saltea es el tercero, no Favalio.
 //
 //  Dos cosas sostienen que las filas sean las que el sistema produciría:
 //
@@ -61,9 +61,9 @@ const RUTA_DE_PG = path.resolve(AQUI, '../../api/node_modules/pg')
  *
  * Los tres escalones, en orden:
  *
- *  1. `ADMINAPP_DB_DE_PRUEBAS` — el explícito. Existe para el caso, que ya pasó,
+ *  1. `FAVALIO_DB_DE_PRUEBAS` — el explícito. Existe para el caso, que ya pasó,
  *     de que el 55432 lo esté ocupando el contenedor del arnés de integración
- *     (`adminapp-pg-integracion`): los dos no pueden estar arriba a la vez.
+ *     (`favalio-pg-integracion`): los dos no pueden estar arriba a la vez.
  *  2. `DATABASE_URL` — es lo que el job del navegador de `ci.yml` define a nivel
  *     de job, así que allá esto sale solo.
  *  3. El del comando documentado en `COMO_LEVANTAR_LA_API`.
@@ -73,9 +73,9 @@ const RUTA_DE_PG = path.resolve(AQUI, '../../api/node_modules/pg')
  * es una comodidad: es lo que convierte «le escribí a la base equivocada» en un
  * fallo con nombre, antes de tocar nada.
  */
-const BASE = process.env.ADMINAPP_DB_DE_PRUEBAS
+const BASE = process.env.FAVALIO_DB_DE_PRUEBAS
   || process.env.DATABASE_URL
-  || 'postgres://adminapp:adminapp@localhost:55432/adminapp_e2e'
+  || 'postgres://favalio:favalio@localhost:55432/favalio_e2e'
 
 /** El id de tienda de la tienda de prueba. Fijo, para que la siembra sea repetible. */
 export const TIENDA_DE_PRUEBA = 9100001
@@ -186,7 +186,7 @@ async function mismaBaseQueLaApi(cliente, empresaId, segunLaApi) {
     `La base ${BASE} NO es la que está usando la API: no se escribió nada.\n\n`
     + `  La API dice que la empresa ${empresaId} es «${segunLaApi.name}», creada el ${segunLaApi.createdAt}.\n`
     + `  Esa base dice ${enLaBase ? `«${enLaBase.name}», creada el ${new Date(enLaBase.created_at).toISOString()}` : 'que esa empresa no existe'}.\n\n`
-    + 'Pasá la cadena correcta en ADMINAPP_DB_DE_PRUEBAS. Ojo con DATABASE_URL exportada '
+    + 'Pasá la cadena correcta en FAVALIO_DB_DE_PRUEBAS. Ojo con DATABASE_URL exportada '
     + 'en la terminal: apunta a la base de desarrollo y no a la descartable.'
   )
   err.baseEquivocada = true
@@ -226,7 +226,7 @@ export async function sembrarLaTienda(empresaId, puntoDeVentaId, empresaSegunLaA
     throw new Error(
       `No se pudo conectar a la base de pruebas (${BASE}).\n\n`
       + 'Tiene que ser LA MISMA base contra la que corre la API descartable. Si la '
-      + 'levantaste en otro puerto, pasala en ADMINAPP_DB_DE_PRUEBAS.\n\n'
+      + 'levantaste en otro puerto, pasala en FAVALIO_DB_DE_PRUEBAS.\n\n'
       + `Motivo: ${err.message}`
     )
   }
@@ -298,7 +298,7 @@ export async function sembrarLaTienda(empresaId, puntoDeVentaId, empresaSegunLaA
       'No se pudo sembrar la tienda de TiendaNube.\n\n'
       + 'Si la base es anterior a este hito, las cinco tablas de TiendaNube no existen. '
       + 'Lo más rápido es tirarla y volver a empezar:\n\n'
-      + '  docker rm -f adminapp-e2e-pg\n\n'
+      + '  docker rm -f favalio-e2e-pg\n\n'
       + `Motivo: ${err.message}`
     )
   } finally {

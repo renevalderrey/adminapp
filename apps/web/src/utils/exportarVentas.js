@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El archivo de ventas
+//  FAVALIO · El archivo de ventas
 //
 //  Arma la hoja del `.xlsx` a partir de las filas que devuelve
 //  GET /api/sales/export, que ya vienen con las diez columnas hechas.

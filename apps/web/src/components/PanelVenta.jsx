@@ -15,7 +15,7 @@ import { pesos, fechaCorta } from '@/utils/formato'
 import { AlertTriangle, Loader2, Printer } from 'lucide-react'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Panel de detalle de un comprobante
+//  FAVALIO · Panel de detalle de un comprobante
 //
 //  Lo que la fila no entra a mostrar: ítems, CUIT, condición de IVA, medio de
 //  pago, sucursal, vencimiento del CAE. Es un panel lateral y no un modal

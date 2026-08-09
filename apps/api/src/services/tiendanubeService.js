@@ -18,7 +18,7 @@ const logger = require('../utils/logger');
  *
  * ⚠ **Hasta este hito ninguna de las tres llamadas tenía `timeout`.** Una
  * llamada colgada deja el request de la aplicación esperando para siempre y
- * ocupa una conexión del pool: con unas cuantas, el resto de AdminApp se queda
+ * ocupa una conexión del pool: con unas cuantas, el resto de Favalio se queda
  * sin conexiones y el síntoma no se parece en nada a «TiendaNube no contesta».
  * El precedente está escrito y comentado en `afipService.js:86-89`.
  *
@@ -335,7 +335,7 @@ class TiendaNubeService {
    * **Devuelve el error original cuando el problema es nuestro** —un 4xx que no
    * es 401 ni 429, o algo que no sabemos leer—: así `fallo` responde su 500
    * genérico con el `requestId` con el que se encuentra la línea en los logs.
-   * Decirle «TiendaNube tuvo un problema» a alguien cuyo problema es de AdminApp
+   * Decirle «TiendaNube tuvo un problema» a alguien cuyo problema es de Favalio
    * es peor que no decir nada.
    *
    * @returns {Error} Un `ErrorDeNegocio` con su status, o el mismo `err`.

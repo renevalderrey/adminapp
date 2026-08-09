@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Quién está usando la aplicación
+//  FAVALIO · Quién está usando la aplicación
 //
 //  Es el `Auth0Provider` que hasta ahora estaba escrito adentro de `main.jsx`.
 //  Bajó a un archivo propio para que exista **una sola costura** por la que se

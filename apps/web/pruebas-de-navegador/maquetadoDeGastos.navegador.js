@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { PREFIJO, NOMBRE_DE_GASTO_LARGO } from './preparacion.js'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El maquetado de /gastos
+//  FAVALIO · El maquetado de /gastos
 //
 //  UNA afirmación, y es la única del corte 4 que necesita un motor de
 //  maquetado: **el nombre de un gasto largo no se mete en la columna de

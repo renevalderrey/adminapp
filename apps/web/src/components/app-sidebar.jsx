@@ -91,7 +91,7 @@ function Contenido({ abierta = true, onAlternar }) {
         {abierta && (
           <>
             <span className="min-w-0 flex-1 truncate text-[14.5px] font-semibold tracking-[-0.01em]">
-              {empresaActiva?.name || 'AdminApp'}
+              {empresaActiva?.name || 'Favalio'}
             </span>
             {onAlternar && (
               <button

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelo: ListaProveedor
+//  FAVALIO · Modelo: ListaProveedor
 //
 //  Una lista de precios tal como la mandó un proveedor. Se guarda entera y sin
 //  tocar: los items van en JSONB, con el nombre exacto que usó el proveedor.

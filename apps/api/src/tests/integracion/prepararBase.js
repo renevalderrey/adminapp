@@ -34,7 +34,7 @@ const { Client } = require('pg');
 const { urlDeLaBaseDePruebas } = require('./urlDeLaBaseDePruebas');
 
 /** Nombre del contenedor descartable. Fijo, para poder bajarlo después. */
-const CONTENEDOR = 'adminapp-pg-integracion';
+const CONTENEDOR = 'favalio-pg-integracion';
 
 /** La imagen es la MISMA que usa CI: probar contra otra versión no prueba CI. */
 const IMAGEN = 'postgres:16-alpine';

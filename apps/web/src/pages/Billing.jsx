@@ -21,7 +21,7 @@ import TicketDelPos from '@/components/pos/TicketDelPos'
 import { nombreDeRuta } from '@/components/navegacion'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Punto de venta
+//  FAVALIO · Punto de venta
 //
 //  Dos columnas: el catálogo a la izquierda ocupando el ancho restante y el
 //  ticket a la derecha con 400px fijos. Cada una administra SU PROPIO scroll y

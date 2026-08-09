@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · La aritmética de la cuenta corriente de un proveedor
+//  FAVALIO · La aritmética de la cuenta corriente de un proveedor
 //
 //  Decisión 4 del plan: **el saldo lo calcula el servidor**. Hasta este hito lo
 //  sumaba el navegador (`Orders.jsx:93-98`), acumulando `parseFloat` sobre
@@ -174,7 +174,7 @@ function conSaldoAcumulado(movimientos = [], saldoInicial = 0) {
  * Una fila del archivo del contador: las seis columnas más el CUIT.
  *
  * **No es un asiento contable formal** —eso necesita un plan de cuentas que
- * AdminApp no tiene— y está escrito así en la spec para que nadie lo descubra en
+ * Favalio no tiene— y está escrito así en la spec para que nadie lo descubra en
  * la reunión con el contador.
  *
  * @param {object} movimiento

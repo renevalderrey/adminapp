@@ -54,7 +54,7 @@ distinta a propósito.
 | Patrón | ¿Aplica? | Dónde y por qué |
 |---|---|---|
 | `MarcoDePantalla` (dos capas: la de afuera scrollea a ancho completo, la de adentro centra a 1320px) | **Sí, las dos pantallas** | `App.jsx:283-284` ya las envuelve. **Ninguna de las dos se sale del marco**, a diferencia del POS: no hay dos zonas de scroll independientes ni nada que pida el alto completo. `pruebas-de-navegador/marcoDeLasPantallas.navegador.js:42` ya las incluye en las diecisiete |
-| `TablaGrid` / `Encabezado` / `Fila` / `BotonDeFila` | **Sí, en Órdenes de compra** | La maqueta la dibuja completa (`AdminApp-Rediseno.dc.html:657-682`) con las cuatro piezas: encabezado en `surface-2` con `11px 20px`, filas con `15px 20px`, `gap 0 16px`, botón de acción de 29px, fila entera clickeable, opacidad `.55` en las anuladas (`:1363`) |
+| `TablaGrid` / `Encabezado` / `Fila` / `BotonDeFila` | **Sí, en Órdenes de compra** | La maqueta la dibuja completa (`Favalio-Rediseno.dc.html:657-682`) con las cuatro piezas: encabezado en `surface-2` con `11px 20px`, filas con `15px 20px`, `gap 0 16px`, botón de acción de 29px, fila entera clickeable, opacidad `.55` en las anuladas (`:1363`) |
 | `TablaGrid` en Proveedores | **Sí, para el historial de cuenta** | La lista de proveedores de la izquierda **no** es una tabla —es una lista de selección, como el catálogo del POS—, pero el historial de movimientos de la derecha sí lo es, y hoy es un `<Table>` de shadcn (`Orders.jsx:413-447`), que es exactamente lo que `guardiasDeDiseno.test.js` prohíbe |
 | La disciplina del `grid-template-columns` | **Sí, sin excepción** | El encabezado y las filas comparten el **mismo string**. En Órdenes de compra ese string ya está escrito en la maqueta: `96px minmax(0,1fr) 112px 96px 148px 132px 120px` |
 | Panel lateral (`ui/sheet.jsx`, con `PanelVenta.jsx` y `PanelProducto.jsx` de ejemplo) | **Sí, en Órdenes de compra** | El pedido lo nombra y la maqueta lo dibuja (`:807-878`): 520px, `max-w-[92vw]`, kicker + título + subtítulo, bloques de datos en grilla de dos columnas, tabla de ítems con `minmax(0,1fr) 64px 96px 100px`, total en mono a 19px, nota de color, y pie con acción destructiva a la izquierda + secundaria + principal. Hoy son **dos modales** (`PurchaseOrders.jsx:310` y `:367`) |
@@ -133,7 +133,7 @@ importar.
 `legacy/index-legacy.html`, módulo «Cuentas con proveedores» (`:7484-8470`). Es
 la mejor fuente sobre qué espera Comprafit.
 
-| Función del legacy | Dónde | ¿Está en AdminApp? |
+| Función del legacy | Dónde | ¿Está en Favalio? |
 |---|---|---|
 | Saldo = total pedidos − total pagos | `:7517` (`ccTotalDeuda`) | Sí, pero calculado en el navegador y **sobre otra definición de deuda**. Ver [PENDIENTE 2] |
 | Cuatro estados: Sin pedidos / Saldado / Pago parcial / Con deuda | `:7522` (`ccEstado`) | **No.** Hay un importe coloreado en dos tonos |
@@ -328,7 +328,7 @@ Sin esto, «deuda» quiere decir tres cosas distintas en la misma pantalla.
 | **Deuda** | La suma de los movimientos de tipo `deuda`. **Hoy la genera la recepción, no la emisión de la orden.** El legacy contaba al revés: [PENDIENTE 2] |
 | **Pagado** | La suma de los movimientos de tipo `pago` |
 | **Saldo** | `deuda − pagado`. **Positivo = se le debe al proveedor.** El signo importa: `Orders.jsx:267` ya usa esa convención y el color va atado a ella |
-| **Documento** | Una factura, remito o presupuesto del proveedor, guardado como **enlace** a Drive / Dropbox / OneDrive. **AdminApp no almacena el archivo**, ni el legacy tampoco (`legacy:2516-2518`) | `supplier_documents` |
+| **Documento** | Una factura, remito o presupuesto del proveedor, guardado como **enlace** a Drive / Dropbox / OneDrive. **Favalio no almacena el archivo**, ni el legacy tampoco (`legacy:2516-2518`) | `supplier_documents` |
 | **Asiento contable** | La vista DEBE / HABER de la cuenta corriente, que es como la lee un contador. En el legacy es texto plano (`legacy:8268`) |
 
 ### Los cuatro estados de una orden
@@ -431,7 +431,7 @@ lee de un vistazo, con el estado de recepción visible en la fila, para saber qu
 está por llegar sin abrir nada.
 
 **Why this priority**: es la mitad «diseño» del pedido y **la única de las dos
-pantallas que la maqueta dibuja completa** (`AdminApp-Rediseno.dc.html:632-684`).
+pantallas que la maqueta dibuja completa** (`Favalio-Rediseno.dc.html:632-684`).
 Todo lo demás de esta funcionalidad se apoya en ella.
 
 **Independent Test**: abrir `/ordenes-compra` con seis órdenes en los cuatro
@@ -660,7 +660,7 @@ estados y verificar que cada badge es el que corresponde y que el saldo grande
 del seleccionado coincide con su columna de la lista.
 
 **Nota de contexto**: **la maqueta no dibuja esta pantalla.** `proveedores` es
-un ítem del menú (`AdminApp-Rediseno.dc.html:956`, `:1161`) y cae en `isStub`
+un ítem del menú (`Favalio-Rediseno.dc.html:956`, `:1161`) y cae en `isStub`
 (`:1282`). El diseño sale del texto del plan más los primitivos que la maqueta
 sí fijó —tabla en grid, badges, segmentos, estado vacío, saldo en mono— y de la
 referencia viva, `pages/Comparador.jsx`.
@@ -773,7 +773,7 @@ que el badge de «sin factura» del proveedor desapareció.
    fecha y enlace.
 2. **Given** el bloque, **When** cargo un documento, **Then** pido nombre,
    tipo —factura / remito / presupuesto / otro, los del modelo
-   (`models/Supplier.js:163`)— y el enlace, y **AdminApp no sube ningún
+   (`models/Supplier.js:163`)— y el enlace, y **Favalio no sube ningún
    archivo**: guarda el enlace, como el legacy (`legacy:2516-2518`).
 3. **Given** un enlace que no empieza con `http`, **When** intento guardarlo,
    **Then** la pantalla lo rechaza con un mensaje legible, como el legacy
@@ -971,7 +971,7 @@ y verificar que la fila de `Stock` que creció es la de esa sucursal.
 - **Nombre de proveedor muy largo.** Trunca con elipsis y el nombre completo
   queda en el `title` o en la cuenta. **Que no se meta en la columna del saldo
   es una prueba de navegador.**
-- **Documento con enlace roto o privado.** AdminApp no puede saberlo: guarda y
+- **Documento con enlace roto o privado.** Favalio no puede saberlo: guarda y
   abre. Se dice explícitamente en «Fuera de alcance».
 - **Documento con un enlace que no es de ninguna nube conocida.** Se acepta si
   empieza con `http` y se etiqueta «otro».
@@ -1151,7 +1151,7 @@ y verificar que la fila de `Stock` que creció es la de esa sucursal.
 - **FR-080**: La cuenta DEBE tener un bloque de documentos con nombre, tipo,
   fecha y enlace, sobre `SupplierDocument` y sus dos endpoints, **sin cambiar el
   modelo**.
-- **FR-081**: AdminApp **no** DEBE almacenar archivos: guarda el enlace.
+- **FR-081**: Favalio **no** DEBE almacenar archivos: guarda el enlace.
 - **FR-082**: Un enlace que no empieza con `http` DEBE rechazarse antes de
   mandar la llamada.
 - **FR-083**: La nube del enlace —Drive, Dropbox, OneDrive, otro— DEBE
@@ -1291,10 +1291,10 @@ y verificar que la fila de `Stock` que creció es la de esa sucursal.
 
 Explícito, para que no se discuta después si estaba incluido.
 
-- **Subir archivos a AdminApp.** Los documentos son **enlaces**. Ni el legacy
+- **Subir archivos a Favalio.** Los documentos son **enlaces**. Ni el legacy
   guardaba el archivo, y almacenar facturas de terceros trae obligaciones que no
   están evaluadas.
-- **Verificar que un enlace de Drive funcione o sea público.** AdminApp no puede
+- **Verificar que un enlace de Drive funcione o sea público.** Favalio no puede
   saberlo sin permisos sobre la cuenta del usuario.
 - **Extraer los ítems de una factura con IA.** El legacy lo tenía
   (`:7681`, `ccPdfExtraer`) y es un proyecto propio, no un renglón de este hito.
@@ -1346,7 +1346,7 @@ un año, por qué el costo pide confirmación en vez de pisarse solo.
 | # | Decisión | Quién decidió |
 |---|---|---|
 | 1 | **Sí, actualiza el costo, pero confirmando** (opción D). Al recibir, la pantalla muestra «Colágeno pasa de $900 a $1.200» y se puede aceptar o rechazar **línea por línea**. Se eligió sobre pisar el costo directo porque a veces se compra más caro por urgencia y eso no tiene que mover los precios de venta. Lo aceptado queda en `ProductCostHistory` con su motivo, igual que producción | Usuario |
-| 2 | **La deuda es la mercadería recibida** (opción B, como AdminApp hoy). Una orden emitida y no entregada no genera deuda: si el proveedor nunca manda, no se debe nada. Difiere del sistema viejo, que contaba la orden al emitirse, así que la pantalla muestra **aparte** «pedido pendiente de recibir» para que el número que Comprafit venía leyendo siga estando a la vista | Usuario |
+| 2 | **La deuda es la mercadería recibida** (opción B, como Favalio hoy). Una orden emitida y no entregada no genera deuda: si el proveedor nunca manda, no se debe nada. Difiere del sistema viejo, que contaba la orden al emitirse, así que la pantalla muestra **aparte** «pedido pendiente de recibir» para que el número que Comprafit venía leyendo siga estando a la vista | Usuario |
 | 3 | **El saldo lo calcula el servidor.** No es una preferencia: hoy la pantalla suma `DECIMAL` que Sequelize devuelve como texto, en punto flotante, sobre todos los movimientos que le llegaron — y `GET /suppliers` no pagina. El cliente sumando plata es el mismo error que ya apareció en el total de una venta | Por defecto |
 | 4 | **Exportación de movimientos, con la forma de la de ventas**: fecha, tipo, descripción, debe, haber y saldo, en xlsx. Reusa `filaDeExport`/`armarHoja`, incluido su manejo de importes argentinos. **No es un asiento contable formal** —eso necesita un plan de cuentas que el sistema no tiene—; si el contador de Comprafit pide otro formato, se ajusta entonces | Usuario |
 | 5 | **Sí, se crean órdenes desde la pantalla.** El plan dice «solo diseño» pero la maqueta dibuja el botón «Nueva orden», y manda la maqueta — mismo criterio que en la funcionalidad 011 con `Enter` | Por defecto |
@@ -1395,7 +1395,7 @@ mercadería recibida?**
 
 Las dos definiciones conviven hoy y **no dan el mismo número**:
 
-- **AdminApp**: la deuda la crea la **recepción** (`purchaseService.js:162-171`).
+- **Favalio**: la deuda la crea la **recepción** (`purchaseService.js:162-171`).
   `createOrder` no genera ningún movimiento. Una orden emitida y no recibida
   **no** aparece en el saldo.
 - **El legacy**: la deuda era la suma de **todos los pedidos**, recibidos o no
@@ -1403,9 +1403,9 @@ Las dos definiciones conviven hoy y **no dan el mismo número**:
 
 Comprafit leyó el número del legacy durante años. Si migra y su saldo baja
 porque las órdenes en tránsito dejaron de contar, la conclusión va a ser que
-AdminApp está mal.
+Favalio está mal.
 
-- **A — Como AdminApp**: deuda = mercadería recibida. Es lo contablemente más
+- **A — Como Favalio**: deuda = mercadería recibida. Es lo contablemente más
   defendible —se debe lo que llegó— y deja el saldo del legacy sin explicar.
 - **B — Como el legacy**: deuda = órdenes emitidas. Hace falta crear el
   movimiento en `createOrder`, ajustarlo en cada recepción parcial y revertirlo
@@ -1450,7 +1450,7 @@ Hay que decidir tres cosas:
 3. **Columnas**: un listado de movimientos (fecha, tipo, notas, debe, haber,
    saldo acumulado), o el par DEBE / HABER con cuentas contables
    —«Mercaderías», «Proveedores a pagar», «Caja»/«Banco»— como el legacy.
-   La segunda supone un plan de cuentas que AdminApp no tiene.
+   La segunda supone un plan de cuentas que Favalio no tiene.
 
 **Bloquea** porque define las columnas, la función pura y sus tests, y si hay
 que escribir una vista de asiento en pantalla además del archivo.
@@ -1460,7 +1460,7 @@ compra?**
 
 El plan dice de 4.5: «Función. Completa. **Solo diseño.**» La maqueta dibuja un
 botón principal **«Nueva orden»** arriba a la derecha
-(`AdminApp-Rediseno.dc.html:640`). Hoy una orden solo se crea desde la pantalla
+(`Favalio-Rediseno.dc.html:640`). Hoy una orden solo se crea desde la pantalla
 de Proveedores (`Orders.jsx:513-580`), en un modal.
 
 - **A — El botón no existe**, como dice el plan. La pantalla es de seguimiento y
@@ -1580,7 +1580,7 @@ se corresponde con nada.
 ### 15 · La decisión 5 no era un botón: era mudar el formulario
 
 La decisión 5 dice «sí, se crean órdenes desde la pantalla de Órdenes de compra»
-y la maqueta dibuja el botón (`AdminApp-Rediseno.dc.html:640`). **Lo que costó
+y la maqueta dibuja el botón (`Favalio-Rediseno.dc.html:640`). **Lo que costó
 fue otra cosa.** Hasta este hito `createSupplierOrder` se llamaba desde **un solo
 lugar de todo `apps/web`**: el modal de `/proveedores`. Cumplir la decisión no
 fue agregar un botón, fue **mudar el formulario entero** a `/ordenes-compra` y
@@ -1621,7 +1621,7 @@ empezar.
    cuál.
 5. **`SupplierOrder.detail` sigue siendo un JSONB.** Normalizarlo a una tabla de
    líneas es un cambio de modelo que ninguna de las dos secciones del plan pide.
-6. **Los enlaces de documentos apuntan afuera y AdminApp no los valida.** Solo
+6. **Los enlaces de documentos apuntan afuera y Favalio no los valida.** Solo
    se verifica que empiecen con `http`, como el legacy.
 7. **La deuda se sigue expresando en pesos.** No hay moneda por proveedor ni
    compras en dólares. Nada en el modelo lo contempla.

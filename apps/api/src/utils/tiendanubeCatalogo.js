@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · TiendaNube · la respuesta del tercero, normalizada
+//  FAVALIO · TiendaNube · la respuesta del tercero, normalizada
 //
 //  Dos funciones puras y nada más: acá no hay ni una llamada de red ni una
 //  consulta. Lo que hace red —recorrer las páginas, escribir la instantánea—

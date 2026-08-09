@@ -209,7 +209,7 @@ silencio es lo que rompe un retiro de producto.
 ### 2. FR-002 y FR-004 no dicen lo mismo sobre las columnas
 
 FR-002 fija el string `minmax(0,1.6fr) 116px 116px 104px 104px` + una por
-sucursal + `56px`, copiado de la maqueta (`AdminApp-Rediseno.dc.html:599`).
+sucursal + `56px`, copiado de la maqueta (`Favalio-Rediseno.dc.html:599`).
 FR-004 dice que las columnas son «selección, Producto, Marca, Categoría, Costo,
 Precio, una por sucursal, Acciones» — ocho grupos, nueve con tres sucursales. La
 maqueta se dibujó antes de que existiera la selección para precios masivos, que

@@ -797,7 +797,7 @@ en una sola fila**.
       sucursal.
 
 **Checkpoint**: la pantalla se ve como el bloque `isInv` de la maqueta
-(`AdminApp-Rediseno.dc.html:558-627`), el stock de todas las sucursales se lee en
+(`Favalio-Rediseno.dc.html:558-627`), el stock de todas las sucursales se lee en
 una fila, los filtros y la paginación andan, y la guardia de diseño está en
 verde. Todavía no hay panel, ni transferencia nueva, ni importar pegando, ni
 export.

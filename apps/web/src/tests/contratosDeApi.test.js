@@ -523,7 +523,7 @@ describe('todos los requests llevan X-Sesion-Id, y es el mismo entre dos llamada
     // mostraría una fila por pestaña abierta desde que la persona entró.
     const primero = alPedir()({ headers: {} }).headers['X-Sesion-Id']
 
-    expect(localStorage.getItem('adminapp.dispositivo')).toBe(primero)
+    expect(localStorage.getItem('favalio.dispositivo')).toBe(primero)
   })
 
   it('la manda SIEMPRE, incluso sin empresa elegida', () => {
@@ -559,7 +559,7 @@ describe('un 401 SESION_CERRADA borra el identificador; un 401 cualquiera NO', (
 
     // Si volviera con el mismo identificador chocaría contra la fila cerrada y
     // nadie podría volver a entrar desde esta computadora nunca más.
-    expect(localStorage.getItem('adminapp.dispositivo')).toBeNull()
+    expect(localStorage.getItem('favalio.dispositivo')).toBeNull()
     expect(identificadorDeDispositivo()).not.toBe(antes)
   })
 
@@ -572,7 +572,7 @@ describe('un 401 SESION_CERRADA borra el identificador; un 401 cualquiera NO', (
 
     await fallo(401, { error: 'Token inválido o expirado' })
 
-    expect(localStorage.getItem('adminapp.dispositivo')).toBe(antes)
+    expect(localStorage.getItem('favalio.dispositivo')).toBe(antes)
     expect(identificadorDeDispositivo()).toBe(antes)
   })
 

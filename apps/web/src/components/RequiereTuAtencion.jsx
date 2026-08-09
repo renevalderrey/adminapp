@@ -11,7 +11,7 @@ import {
 import { etiquetaDeAviso, ordenarAvisos, tonoDeAviso } from '@/utils/panel'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · «Requiere tu atención»
+//  FAVALIO · «Requiere tu atención»
 //
 //  Lo que hay que mirar hoy, ordenado por urgencia, y **cada renglón lleva a la
 //  pantalla que lo detalla**.

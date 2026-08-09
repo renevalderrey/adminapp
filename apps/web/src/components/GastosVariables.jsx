@@ -11,7 +11,7 @@ import { fechaDeHoy, pesos } from '@/utils/formato'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Gastos variables
+//  FAVALIO · Gastos variables
 //
 //  Los que cambian mes a mes y tienen un responsable: viáticos, combustible,
 //  adelantos, compras sueltas. El sistema anterior los cargaba así —por persona

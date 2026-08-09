@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelo: TiendanubeVariante
+//  FAVALIO · Modelo: TiendanubeVariante
 //  La instantánea del catálogo de la tienda **y** la cola de empujones
 //
 //  Son la misma pregunta —«¿cómo está esta variante?»— y por eso es una tabla y
@@ -10,7 +10,7 @@
 //
 //  ── Por qué la instantánea no es una segunda fuente de verdad ──
 //
-//  El catálogo de TiendaNube no es un dato de AdminApp: es la respuesta de un
+//  El catálogo de TiendaNube no es un dato de Favalio: es la respuesta de un
 //  tercero, con la fecha en que se pidió a la vista (`vista_en`, y
 //  `tiendanube_tiendas.catalogo_refrescado_en`). Y `stock_publicado` es el
 //  registro de **lo que se mandó**, que es un hecho histórico, no una copia del

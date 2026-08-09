@@ -5,7 +5,7 @@
  * cualquiera de estas exige un rebuild del sitio.
  */
 
-export const BRAND = 'AdminApp';
+export const BRAND = 'Favalio';
 
 /** URL de la app. En produccion, el subdominio app.<dominio>. */
 export const APP_URL =
@@ -21,5 +21,5 @@ export const LOGIN_URL = APP_URL;
 
 /** Contacto. Cambiar cuando haya dominio propio. */
 export const CONTACT_EMAIL =
-  import.meta.env.VITE_CONTACT_EMAIL || 'hola@adminapp.com';
+  import.meta.env.VITE_CONTACT_EMAIL || 'hola@favalio.com';
 export const CONTACT_URL = `mailto:${CONTACT_EMAIL}`;

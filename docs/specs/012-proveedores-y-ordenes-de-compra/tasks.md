@@ -1134,7 +1134,7 @@ Corte 6 del plan. El criterio fue uno solo: **¿se puede afirmar sin un DOM?**
       `nubeDelEnlace(url)` —Google Drive, Dropbox, OneDrive, «otro»—,
       `esEnlaceAceptable(url)` y `TIPOS` —factura / remito / presupuesto / otro,
       los del modelo (`models/Supplier.js:163`)—.
-      **AdminApp no valida los enlaces** (supuesto 6): solo verifica que empiecen
+      **Favalio no valida los enlaces** (supuesto 6): solo verifica que empiecen
       con `http`, como el legacy. Un enlace roto o privado no se puede saber desde
       acá y está en «Fuera de alcance».
       **Verificación**: `npm --prefix apps/web test -- documentosDeProveedor`.
@@ -1694,7 +1694,7 @@ tienen un botón.
 - [x] **T1243** [P] Escribir `apps/web/src/components/BloqueDeDocumentos.jsx`
       (creado vacío en T1231) y engancharlo en la cuenta de `Orders.jsx`. Nombre,
       tipo, fecha y enlace (FR-080); alta con los cuatro tipos del modelo;
-      **AdminApp no sube ningún archivo, guarda el enlace** (FR-081); un enlace
+      **Favalio no sube ningún archivo, guarda el enlace** (FR-081); un enlace
       sin `http` se rechaza **antes de mandar la llamada** con
       `esEnlaceAceptable` de T1228 (FR-082); la nube se deriva del enlace con
       `nubeDelEnlace` (FR-083); los enlaces abren en pestaña nueva **con
@@ -2199,9 +2199,9 @@ la reversibilidad de las migraciones la verifica
 
 ```bash
 # ── La base descartable. Vacía o migrada: las dos levantan. ──
-docker run -d --name adminapp-e2e-pg \
-  -e POSTGRES_USER=adminapp -e POSTGRES_PASSWORD=adminapp \
-  -e POSTGRES_DB=adminapp_e2e -p 55432:5432 postgres:16-alpine
+docker run -d --name favalio-e2e-pg \
+  -e POSTGRES_USER=favalio -e POSTGRES_PASSWORD=favalio \
+  -e POSTGRES_DB=favalio_e2e -p 55432:5432 postgres:16-alpine
 
 # NO se corren las migraciones sobre esta base. El arranque en desarrollo crea
 # el esquema con sync(), siembra los permisos, la empresa 1 con sus tres
@@ -2214,13 +2214,13 @@ docker run -d --name adminapp-e2e-pg \
 # Es seguro fuera de produccion y SOLO fuera de produccion: con
 # NODE_ENV=production, checkPermission responde 500 y loguea «BYPASS_AUTH esta
 # activo en produccion». Nunca ponerlo en Railway.
-cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55432/adminapp_e2e \
+cd apps/api && DATABASE_URL=postgres://favalio:favalio@localhost:55432/favalio_e2e \
   DB_SSL=false NODE_ENV=development BYPASS_AUTH=true PORT=5099 \
   ALLOWED_ORIGINS=http://localhost:5199 node src/server.js
 ```
 
 ⚠ **El puerto 55432 es el mismo que usa el contenedor del arnés de integración
-(`adminapp-pg-integracion`).** Los dos no pueden estar arriba a la vez: o se baja
+(`favalio-pg-integracion`).** Los dos no pueden estar arriba a la vez: o se baja
 uno (`npm --prefix apps/api run test:db:bajar`) o esta base A se levanta en otro
 puerto. Es la clase de choque que se ve como «la API no arranca» y no como «hay
 dos Postgres peleando por un puerto».
@@ -2241,19 +2241,19 @@ pantallas redirigen a `/pos` y la prueba del marco no prueba nada.
 
 ```bash
 cd apps/api && DATABASE_URL=<la de pruebas> DB_SSL=false \
-  node scripts/superadmin.js activar dev@adminapp.app
+  node scripts/superadmin.js activar dev@favalio.com
 ```
 
 Y si querés partir del camino migrado —que ahora es el mismo que el de
 producción— en vez de dejar que `sync` cree el esquema:
 
 ```bash
-cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55432/adminapp_e2e \
+cd apps/api && DATABASE_URL=postgres://favalio:favalio@localhost:55432/favalio_e2e \
   DB_SSL=false npm run db:migrate
 
 # El chequeo de esquema NO necesita levantar el servidor: hace un findOne por
 # modelo, y además compara el TIPO declarado contra information_schema.
-cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55432/adminapp_e2e \
+cd apps/api && DATABASE_URL=postgres://favalio:favalio@localhost:55432/favalio_e2e \
   DB_SSL=false npm run verificar:esquema
 ```
 

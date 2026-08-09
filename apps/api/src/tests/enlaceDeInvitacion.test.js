@@ -40,7 +40,7 @@ beforeEach(() => {
   // función cae a '#' y la afirmación se volvería sobre un enlace que nadie
   // podría abrir. Un test que depende de una variable que nadie declaró falla
   // en el peor momento y por el motivo que menos se sospecha.
-  process.env.FRONTEND_URL = 'https://app.adminapp.test';
+  process.env.FRONTEND_URL = 'https://app.favalio.test';
 });
 
 afterAll(() => {
@@ -52,7 +52,7 @@ describe('el enlace del mail apunta a una ruta que App.jsx atiende, y /accept-in
   it('el HTML linkea a /?invite=<token>', () => {
     const html = invitationEmail('Renée', 'Panadería del Centro', TOKEN);
 
-    expect(html).toContain(`https://app.adminapp.test/?invite=${TOKEN}`);
+    expect(html).toContain(`https://app.favalio.test/?invite=${TOKEN}`);
   });
 
   it('el HTML NO contiene /accept-invite/, que es la ruta que no existe', () => {
@@ -97,7 +97,7 @@ describe('el enlace del mail apunta a una ruta que App.jsx atiende, y /accept-in
     // que tiene que ser el mismo es el enlace.
     const html = invitationEmail('Renée', 'Panadería del Centro', TOKEN);
 
-    expect(enlaceDeInvitacion(TOKEN)).toBe(`https://app.adminapp.test/?invite=${TOKEN}`);
+    expect(enlaceDeInvitacion(TOKEN)).toBe(`https://app.favalio.test/?invite=${TOKEN}`);
     expect(html).toContain(enlaceDeInvitacion(TOKEN));
   });
 

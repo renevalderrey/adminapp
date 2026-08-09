@@ -30,7 +30,7 @@ const tiendanubeSincronizacion = require('../../services/tiendanubeSincronizacio
 //  ── Qué NO contesta este archivo ──
 //
 //  Que el contrato real de TiendaNube funcione. `axios.post` está espiado: lo
-//  que se verifica es el circuito de AdminApp —el canje se dispara una vez, el
+//  que se verifica es el circuito de Favalio —el canje se dispara una vez, el
 //  token queda bajo la empresa correcta—, no que TiendaNube conteste eso. Ese es
 //  el paso manual P1 y no lo verifica ningún test.
 // ════════════════════════════════════════════

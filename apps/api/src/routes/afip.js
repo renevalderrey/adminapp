@@ -145,7 +145,7 @@ function sonPareja(certPem, keyPem) {
     const clave = forge.pki.privateKeyFromPem(keyPem);
 
     const md = forge.md.sha256.create();
-    md.update('adminapp: verificación de la pareja certificado-clave', 'utf8');
+    md.update('favalio: verificación de la pareja certificado-clave', 'utf8');
 
     return cert.publicKey.verify(md.digest().bytes(), clave.sign(md));
   } catch {
@@ -508,7 +508,7 @@ router.post('/generate-csr', checkPermission('config.editar'), async (req, res) 
     }
 
     const result = await afipService.createCSR(
-      alias || (empresa && empresa.name) || 'AdminApp',
+      alias || (empresa && empresa.name) || 'Favalio',
       cuit,
       (empresa && empresa.name) || alias
     );

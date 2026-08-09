@@ -3,7 +3,7 @@ import { cleanup } from '@testing-library/react'
 import { afterEach } from 'vitest'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Preparación del entorno de tests de la web
+//  FAVALIO · Preparación del entorno de tests de la web
 //
 //  Se carga antes de CADA archivo de test (`setupFiles` en `vite.config.js`).
 //  Hace tres cosas y ninguna más:

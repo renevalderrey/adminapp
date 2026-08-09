@@ -425,8 +425,8 @@ FR-057.
 |---|---|
 | `200` | Refrescado |
 | `409` | No hay tienda vinculada, **o** hay un refresco/sincronización en curso (el arriendo de FR-044) |
-| `401→400` | El token de TiendaNube ya no vale: `ErrorDeNegocio` «Tu tienda desconectó AdminApp. Hay que volver a vincularla.» y la tienda queda en `vinculada_con_error` (FR-049) |
-| `502` | TiendaNube no contesta o contesta 5xx, con el texto que lo distingue de un error de AdminApp (FR-062) |
+| `401→400` | El token de TiendaNube ya no vale: `ErrorDeNegocio` «Tu tienda desconectó Favalio. Hay que volver a vincularla.» y la tienda queda en `vinculada_con_error` (FR-049) |
+| `502` | TiendaNube no contesta o contesta 5xx, con el texto que lo distingue de un error de Favalio (FR-062) |
 
 ---
 
@@ -725,7 +725,7 @@ el que se encuentra la línea en los logs de Render (`OPERACION.md:78`).
 | Error del servidor | `fallo(req, res, err, 'mensaje en castellano')` → 500 con `requestId`, sin nombres de tabla ni de constraint (FR-063) |
 | Condición prevista | `throw new ErrorDeNegocio(mensaje, 400 \| 404 \| 409)`; `fallo` responde **su** status y **su** mensaje (`errores.js:60-73`) |
 | Recurso ajeno | **404**, nunca 403: un 403 confirma que existe en otra empresa y permite enumerar ids |
-| Error de TiendaNube | `ErrorDeNegocio` con el texto que lo distingue de un error de AdminApp (FR-062), clasificado por `errorDeTiendanube` (decisión 11) |
+| Error de TiendaNube | `ErrorDeNegocio` con el texto que lo distingue de un error de Favalio (FR-062), clasificado por `errorDeTiendanube` (decisión 11) |
 
 **Ningún camino usa `console.error`** (FR-060). El de hoy —
 `tiendanubeService.js:35`, con `error.response?.data`— es el **único** lugar

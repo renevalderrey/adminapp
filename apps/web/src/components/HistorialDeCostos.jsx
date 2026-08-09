@@ -4,7 +4,7 @@ import { Loader2, TrendingDown, TrendingUp } from 'lucide-react'
 import { pesos, fechaCortaDeMomento } from '@/utils/formato'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Historial de costos de un producto
+//  FAVALIO · Historial de costos de un producto
 //
 //  Contesta «quién movió este costo y desde cuándo», que es la pregunta que se
 //  hace el dueño cuando el margen de un producto cambió y nadie sabe por qué.

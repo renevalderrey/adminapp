@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Quien registra un cambio de costo
+//  FAVALIO · Quien registra un cambio de costo
 //
 //  Hay CINCO caminos que cambian el costo de un producto: la edicion manual,
 //  la carga masiva, la actualizacion masiva de precios (y su deshacer), la

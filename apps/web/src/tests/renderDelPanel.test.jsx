@@ -8,7 +8,7 @@ import RequiereTuAtencion from '@/components/RequiereTuAtencion'
 import TarjetaDeIndicador from '@/components/TarjetaDeIndicador'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · /panel, renderizado
+//  FAVALIO · /panel, renderizado
 //
 //  Las reglas —severidad, orden, etiqueta y alturas del sparkline— están en
 //  `panel.test.js`, que es cien veces más barato. Acá se verifica lo único que

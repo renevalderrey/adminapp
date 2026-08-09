@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelo: TiendanubeCorrida
+//  FAVALIO · Modelo: TiendanubeCorrida
 //  El registro de las corridas EXPLÍCITAS de sincronización
 //
 //  Una fila por corrida **manual** —el botón— o de **reconciliación** —el cron

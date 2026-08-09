@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelos: Supplier, SupplierAccount, SupplierMovement
+//  FAVALIO · Modelos: Supplier, SupplierAccount, SupplierMovement
 //  Migra CUENTAS_PROV[] del sistema original
 // ════════════════════════════════════════════
 

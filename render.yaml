@@ -1,5 +1,5 @@
 # ══════════════════════════════════════════════════════════════
-#  AdminApp · Render Blueprint
+#  Favalio · Render Blueprint
 #
 #  Despliega la API. El frontend (apps/web) y la landing (apps/landing)
 #  van en Vercel — ver apps/*/vercel.json.
@@ -11,7 +11,7 @@
 
 services:
   - type: web
-    name: adminapp-api
+    name: favalio-api
     runtime: docker
     plan: free
     region: oregon
@@ -47,14 +47,14 @@ services:
 
       # ── Origenes permitidos por CORS ──
       # Lista separada por comas: app + landing.
-      # Ej: https://app.adminapp.com,https://adminapp.com
+      # Ej: https://app.favalio.com,https://favalio.com
       - key: ALLOWED_ORIGINS
         sync: false
       # URL de la app, usada tambien en los links de los emails.
       - key: FRONTEND_URL
         sync: false
       # Opcional: regex para habilitar los deploy previews de Vercel.
-      # Ej: ^https://adminapp-web-.*\.vercel\.app$
+      # Ej: ^https://favalio-web-.*\.vercel\.app$
       - key: VERCEL_PREVIEW_PATTERN
         sync: false
 

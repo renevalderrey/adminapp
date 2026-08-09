@@ -7,7 +7,7 @@ import api from '@/services/api'
 import InvoicesList, { filtrosDeLaUrl } from '@/pages/InvoicesList'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Historial de ventas, renderizado
+//  FAVALIO · Historial de ventas, renderizado
 //
 //  Dos defectos, y los dos son de los que no fallan solos:
 //

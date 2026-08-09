@@ -36,7 +36,7 @@ maqueta dibuja distinta a propósito.
 | Patrón | ¿Aplica en el POS? | Por qué |
 |---|---|---|
 | Tokens de `index.css`, cero hex, cero `dark:` | **Sí, sin excepción** | Es la regla del sistema. Hoy `Billing.jsx` la rompe en cuatro lugares (ver defecto 6) |
-| `.eyebrow` para las etiquetas de columna | **Sí** | La maqueta lo usa en el encabezado del catálogo (`AdminApp-Rediseno.dc.html:361`) |
+| `.eyebrow` para las etiquetas de columna | **Sí** | La maqueta lo usa en el encabezado del catálogo (`Favalio-Rediseno.dc.html:361`) |
 | `.num` para todo lo comparable | **Sí** | Precios, cantidades, total, vuelto, CUIT |
 | `guardiasDeDiseno.test.js` | **Sí** | `pages/Billing.jsx` y los componentes nuevos entran a la lista (`guardiasDeDiseno.test.js:48`) **antes** de reescribir la pantalla |
 | Estados vacíos con ícono apagado y dos líneas | **Sí** | La maqueta dibuja dos: catálogo sin resultados (`:384-390`) y ticket vacío (`:431-437`) |
@@ -243,7 +243,7 @@ están los tres visibles al mismo tiempo.
 
 **Independent Test**: abrir la pantalla con veinte productos y tres líneas en el
 ticket, y comparar contra el bloque `isPos` de la maqueta
-(`AdminApp-Rediseno.dc.html:336-489`).
+(`Favalio-Rediseno.dc.html:336-489`).
 
 **Acceptance Scenarios**:
 
@@ -701,7 +701,7 @@ anulación.
   que la pantalla usa fuera del sistema es un hexadecimal.
 - **FR-007**: El encabezado del catálogo y sus filas DEBEN compartir el **mismo
   string** de `grid-template-columns` (`minmax(0,1fr) 104px 104px 104px 44px`,
-  `gap: 0 16px`, `AdminApp-Rediseno.dc.html:361`).
+  `gap: 0 16px`, `Favalio-Rediseno.dc.html:361`).
 - **FR-008**: Las filas del catálogo DEBEN ser tarjetas separadas
   (`rounded-[11px]`, borde, `gap` de 8px), **no** filas de `TablaGrid`. El marco
   de tabla NO aplica en esta pantalla, y el motivo DEBE quedar escrito en el
@@ -982,7 +982,7 @@ Explícito, para que no se discuta después si estaba incluido:
 - **Atajos para cambiar el medio de pago, el comprobante o la cantidad.** Tres
   atajos, no dieciocho. Los que entran son los que el pedido nombra.
 - **Vista mobile o para tablet.** La pantalla es de escritorio, con
-  `min-width` propio (`AdminApp-Rediseno.dc.html:337`).
+  `min-width` propio (`Favalio-Rediseno.dc.html:337`).
 - **Migrar las ventas viejas para completarles la sucursal.** Ese dato no existe
   y no se puede inferir.
 - **Rediseñar Proveedores, Órdenes de compra, Gastos, Panel o Equipo.** Cada una

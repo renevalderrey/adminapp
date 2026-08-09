@@ -7,7 +7,7 @@ import api from '@/services/api'
 import BloqueDeDocumentos from '@/components/BloqueDeDocumentos'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El bloque de documentos del proveedor, renderizado
+//  FAVALIO · El bloque de documentos del proveedor, renderizado
 //
 //  Lo que se afirma acá es el DIBUJO y lo que dispara cada botón. Las reglas
 //  —qué enlace es aceptable y de qué nube es— ya están cubiertas por

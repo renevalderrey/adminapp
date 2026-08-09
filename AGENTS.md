@@ -1,4 +1,4 @@
-# AdminApp
+# Favalio
 
 SaaS multi-empresa de gestión comercial y facturación electrónica (AFIP).
 Monorepo: `apps/api` (Node + Express + Sequelize + PostgreSQL), `apps/web`

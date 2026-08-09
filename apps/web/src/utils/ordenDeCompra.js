@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Los cuatro estados de una orden de compra, y lo que se decide con ellos
+//  FAVALIO · Los cuatro estados de una orden de compra, y lo que se decide con ellos
 //
 //  La lista de estados estaba escrita DOS veces —`pages/Orders.jsx:47` y
 //  `pages/PurchaseOrders.jsx:51`— y con etiquetas que ya no eran iguales entre

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelo: TiendanubePedido
+//  FAVALIO · Modelo: TiendanubePedido
 //  La idempotencia del webhook, y qué pasó con cada ítem
 //
 //  ── Por qué esta tabla y no un índice único sobre `stock_movements` ──

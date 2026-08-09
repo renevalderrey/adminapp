@@ -1,7 +1,7 @@
 {
-  "name": "adminapp-api",
+  "name": "favalio-api",
   "version": "1.0.0",
-  "description": "AdminApp · API Backend — Node.js + Express + PostgreSQL + Auth0",
+  "description": "Favalio · API Backend — Node.js + Express + PostgreSQL + Auth0",
   "main": "src/server.js",
   "engines": {
     "node": ">=22"
@@ -17,7 +17,7 @@
     "test:integracion": "node src/tests/integracion/prepararBase.js && jest --runInBand --forceExit --testPathPatterns \"\\.integracion\\.test\\.js$\"",
     "test:db:levantar": "node src/tests/integracion/prepararBase.js --levantar",
     "test:db:migrar": "node src/tests/integracion/prepararBase.js",
-    "test:db:bajar": "docker rm -f adminapp-pg-integracion",
+    "test:db:bajar": "docker rm -f favalio-pg-integracion",
     "test:watch": "jest --watch --testPathIgnorePatterns \"/node_modules/\" \"\\.integracion\\.test\\.js$\"",
     "test:coverage": "jest --coverage --testPathIgnorePatterns \"/node_modules/\" \"\\.integracion\\.test\\.js$\"",
     "db:migrate:raw": "npx sequelize-cli db:migrate --config src/config/sequelize-cli.js --migrations-path src/migrations",

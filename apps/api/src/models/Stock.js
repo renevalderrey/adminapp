@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelo: Stock
+//  FAVALIO · Modelo: Stock
 //  Migra STOCK[], STOCK_ORTIZ[], STOCK_MAYO[]
 //  Campos originales: { n, sku, t, cant, disp, marca }
 // ════════════════════════════════════════════

@@ -23,7 +23,7 @@ vi.mock('xlsx', async (importarOriginal) => {
 })
 
 // ════════════════════════════════════════════
-//  ADMINAPP · /proveedores, renderizado
+//  FAVALIO · /proveedores, renderizado
 //
 //  Lo que se afirma acá es EL DIBUJO Y EL EFECTO. Las reglas —cuál de los cuatro
 //  estados describe una cuenta, qué tonos le tocan, cómo se escribe un importe y

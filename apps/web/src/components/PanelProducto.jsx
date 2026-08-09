@@ -11,7 +11,7 @@ import { AlertTriangle, Loader2, RotateCcw, Trash2 } from 'lucide-react'
 import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Panel del producto
+//  FAVALIO · Panel del producto
 //
 //  Reemplaza a `ProductForm.jsx`. Es un panel lateral y no un modal por el mismo
 //  motivo que el de ventas: el usuario corrige un costo o un mínimo **mirando el

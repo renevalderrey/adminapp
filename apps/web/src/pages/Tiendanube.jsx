@@ -38,7 +38,7 @@ import EstadoVacio from '@/components/EstadoVacio'
 import PieDeTabla from '@/components/PieDeTabla'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · /tiendanube
+//  FAVALIO · /tiendanube
 //
 //  La pantalla que el hito 7 pide y que **no existía**: hasta ahora la
 //  vinculación era una tarjeta de treinta líneas al final de Ajustes
@@ -133,11 +133,11 @@ const MOTIVOS_DEL_CALLBACK = {
   tienda_ocupada:
     'Esa tienda ya está vinculada a otra empresa. Desvinculala de allá antes de conectarla acá.',
   tiendanube:
-    'TiendaNube no pudo completar la conexión. No es un problema de AdminApp: probá de nuevo en unos minutos.',
+    'TiendaNube no pudo completar la conexión. No es un problema de Favalio: probá de nuevo en unos minutos.',
   sin_sucursal:
     'Tu empresa no tiene ninguna sucursal cargada, y hace falta una para saber de dónde sale el stock que se publica.',
   error_interno:
-    'La conexión falló del lado de AdminApp, no de TiendaNube. No se guardó nada: volvé a intentar y, si sigue igual, avisá con la hora exacta.',
+    'La conexión falló del lado de Favalio, no de TiendaNube. No se guardó nada: volvé a intentar y, si sigue igual, avisá con la hora exacta.',
 }
 
 const MOTIVO_DESCONOCIDO =
@@ -583,7 +583,7 @@ export default function Tiendanube() {
     <div className="anim-subida flex flex-col gap-6">
       <PageHeader
         titulo="TiendaNube"
-        descripcion="Conectá tu tienda online, decí qué producto del sistema es cada variante y empujales el stock. El stock va de AdminApp a tu tienda; los pedidos vienen de tu tienda a AdminApp."
+        descripcion="Conectá tu tienda online, decí qué producto del sistema es cada variante y empujales el stock. El stock va de Favalio a tu tienda; los pedidos vienen de tu tienda a Favalio."
         icono={Store}
       >
         {hayTienda && (
@@ -710,9 +710,9 @@ export default function Tiendanube() {
           </Advertencia>
 
           <Advertencia>
-            <strong>Cada dato va en un solo sentido.</strong> El stock va de AdminApp a tu
-            tienda, y AdminApp manda: la sincronización pisa el número de la tienda. Los
-            pedidos vienen de tu tienda a AdminApp. Los precios, las fotos y el alta de
+            <strong>Cada dato va en un solo sentido.</strong> El stock va de Favalio a tu
+            tienda, y Favalio manda: la sincronización pisa el número de la tienda. Los
+            pedidos vienen de tu tienda a Favalio. Los precios, las fotos y el alta de
             productos no viajan en ninguna dirección.
           </Advertencia>
 

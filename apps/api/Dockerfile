@@ -1,4 +1,4 @@
-# ── AdminApp API: Node.js + Express + PostgreSQL ──
+# ── Favalio API: Node.js + Express + PostgreSQL ──
 # Build context: apps/api (Root Directory del servicio en Render/Railway)
 FROM node:22-alpine
 

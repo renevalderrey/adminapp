@@ -6,7 +6,7 @@ import api from '@/services/api'
 import PanelProducto from '@/components/PanelProducto'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El panel del producto, renderizado
+//  FAVALIO · El panel del producto, renderizado
 //
 //  Los otros dos de los cuatro incumplimientos que pasaron los 274 tests de la
 //  web sin ponerse en rojo (los dos primeros están en

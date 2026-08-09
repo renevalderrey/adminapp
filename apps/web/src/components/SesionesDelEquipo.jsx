@@ -14,7 +14,7 @@ import { etiquetaDeDispositivo, haceCuanto } from '@/utils/sesiones'
 import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Sesiones activas del equipo
+//  FAVALIO · Sesiones activas del equipo
 //
 //  El legacy las tenía y no estaban (`legacy:3070-3084`, `:10016-10088`): una
 //  fila por dispositivo, el badge «Este dispositivo», un botón de cerrar por

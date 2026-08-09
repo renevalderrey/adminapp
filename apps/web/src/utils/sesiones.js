@@ -1,7 +1,7 @@
 import { fechaCorta } from '@/utils/formato'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Las reglas de la lista de sesiones
+//  FAVALIO · Las reglas de la lista de sesiones
 //
 //  Función pura antes que test de render, como manda `CONVENCIONES.md`: qué dice
 //  la etiqueta de un dispositivo y cómo se lee «hace cuánto» son **reglas**, y un

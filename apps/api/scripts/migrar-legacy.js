@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ════════════════════════════════════════════
-//  ADMINAPP · Migracion de datos desde el sistema legacy (Comprafit PHP)
+//  FAVALIO · Migracion de datos desde el sistema legacy (Comprafit PHP)
 //
 //  Reemplaza a src/migrate.js, que quedo inservible y peligroso cuando el
 //  sistema paso a ser multi-empresa:
@@ -166,7 +166,7 @@ async function migrar() {
   const args = leerArgumentos(process.argv);
 
   console.log('═══════════════════════════════════════════');
-  console.log('  Migracion legacy (Comprafit) → AdminApp');
+  console.log('  Migracion legacy (Comprafit) → Favalio');
   console.log('═══════════════════════════════════════════\n');
 
   if (!Number.isInteger(args.empresa) || args.empresa <= 0) {
@@ -514,7 +514,7 @@ async function migrar() {
       });
 
       console.log('   Gastos variables guardados como referencia en settings.');
-      console.log('   AdminApp todavia no tiene pantalla para gastos variables.');
+      console.log('   Favalio todavia no tiene pantalla para gastos variables.');
     }
 
     // ── Cierre ──

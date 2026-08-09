@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelos: Sale y SaleItem
+//  FAVALIO · Modelos: Sale y SaleItem
 //  Migra cf_ventas y la tabla cf_ventas de MySQL
 //  Campos originales: { id, fecha, hora, items, total, metodo, obs }
 // ════════════════════════════════════════════

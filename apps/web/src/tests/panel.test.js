@@ -9,7 +9,7 @@ import {
 } from '@/utils/panel'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · Las reglas del Panel de control
+//  FAVALIO · Las reglas del Panel de control
 //
 //  Cuatro funciones puras y sus bordes. Lo que NO se prueba acá es el dibujo:
 //  que la tarjeta no deje un hueco sin serie y que el bloque vacío diga algo

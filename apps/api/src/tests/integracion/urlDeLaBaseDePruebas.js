@@ -16,7 +16,7 @@
 // ════════════════════════════════════════════
 
 /** El Postgres descartable que levanta `npm run test:db:levantar`. */
-const URL_POR_DEFECTO = 'postgresql://adminapp:adminapp@localhost:55432/adminapp_integracion';
+const URL_POR_DEFECTO = 'postgresql://favalio:favalio@localhost:55432/favalio_integracion';
 
 /**
  * Las palabras que tiene que contener el nombre de la base para que el arnés

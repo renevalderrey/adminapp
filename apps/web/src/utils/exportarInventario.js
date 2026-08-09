@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx'
 import { calcularPrecios } from '@/utils/precios'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El archivo de inventario
+//  FAVALIO · El archivo de inventario
 //
 //  Mismo molde que `utils/exportarVentas.js`: `COLUMNAS`, `celda()` con los
 //  tipos forzados, `armarHoja` y `nombreDelArchivo`. Lo que cambia es que acá

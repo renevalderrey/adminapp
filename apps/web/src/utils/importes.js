@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Lectura de importes escritos por una persona (navegador)
+//  FAVALIO · Lectura de importes escritos por una persona (navegador)
 //
 //  Es la misma función que `apps/api/src/utils/importes.js`, y está duplicada a
 //  propósito: no hay paquete compartido entre `apps/api` y `apps/web`, y la

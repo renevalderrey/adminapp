@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { variante } from './siembraDeTiendanube.js'
 
 // ════════════════════════════════════════════
-//  ADMINAPP · El maquetado de /tiendanube
+//  FAVALIO · El maquetado de /tiendanube
 //
 //  DOS afirmaciones del hito 013, y ninguna más:
 //

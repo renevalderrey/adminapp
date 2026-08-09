@@ -1,4 +1,4 @@
-# AdminApp · Diagnóstico y plan de análisis
+# Favalio · Diagnóstico y plan de análisis
 
 **Fecha:** 30 de julio de 2026
 **Alcance:** estado del producto de cara a salir a venta, y plan para auditar

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Qué atajo dispara cada tecla en el punto de venta
+//  FAVALIO · Qué atajo dispara cada tecla en el punto de venta
 //
 //  Es PURA: recibe una descripción del evento —`{ key, ctrlKey, metaKey,
 //  altKey, shiftKey, defaultPrevented, target: { tagName, isContentEditable,

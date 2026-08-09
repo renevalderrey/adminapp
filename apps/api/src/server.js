@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Server Entry Point
+//  FAVALIO · Server Entry Point
 //  Express + PostgreSQL + Auth0
 // ════════════════════════════════════════════
 
@@ -120,7 +120,7 @@ const allowedOrigins = [
 ].filter(Boolean);
 
 // Los deploy previews de Vercel usan subdominios efimeros. Se permiten solo
-// si se define VERCEL_PREVIEW_PATTERN (ej: "adminapp-.*\.vercel\.app$").
+// si se define VERCEL_PREVIEW_PATTERN (ej: "favalio-.*\.vercel\.app$").
 const previewPattern = process.env.VERCEL_PREVIEW_PATTERN
   ? new RegExp(process.env.VERCEL_PREVIEW_PATTERN)
   : null;
@@ -189,7 +189,7 @@ app.use(express.json({ limit: '10mb' }));
 // cabeceras CORS: un fetch desde el navegador para despertar la API (util con
 // el cold start de ~50s del free tier de Render) quedaba bloqueado.
 app.get('/api/ping', (req, res) => {
-  res.json({ ok: true, msg: 'AdminApp API OK', time: new Date().toISOString() });
+  res.json({ ok: true, msg: 'Favalio API OK', time: new Date().toISOString() });
 });
 
 // ── Health check profundo ──

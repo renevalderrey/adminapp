@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelo: TiendanubeTienda — la vinculación de UNA empresa
+//  FAVALIO · Modelo: TiendanubeTienda — la vinculación de UNA empresa
 //
 //  Reemplaza a las dos filas de `settings` donde vivía la vinculación, menos el
 //  token: `settings.tiendanube_access_token` **se queda donde está**. Esta

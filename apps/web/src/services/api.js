@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · API Service
+//  FAVALIO · API Service
 //  Centraliza todas las llamadas al backend
 // ════════════════════════════════════════════
 
@@ -51,7 +51,7 @@ const api = axios.create({
 //  miembro, que la API aplica en el request siguiente.
 // ════════════════════════════════════════════
 
-const CLAVE_DE_DISPOSITIVO = 'adminapp.dispositivo';
+const CLAVE_DE_DISPOSITIVO = 'favalio.dispositivo';
 
 /** Un UUID v4. `crypto.randomUUID` no existe fuera de contextos seguros. */
 function nuevoIdentificador() {

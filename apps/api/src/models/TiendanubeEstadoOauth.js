@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Modelo: TiendanubeEstadoOauth — el `state` del OAuth
+//  FAVALIO · Modelo: TiendanubeEstadoOauth — el `state` del OAuth
 //
 //  Una fila por flujo de vinculación iniciado. El `state` es un token opaco de
 //  un solo uso, guardado del lado del servidor (decisión 1 del usuario).

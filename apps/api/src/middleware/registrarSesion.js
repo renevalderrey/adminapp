@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Registrar la sesión de este dispositivo, y cortarla si la cerraron
+//  FAVALIO · Registrar la sesión de este dispositivo, y cortarla si la cerraron
 //
 //  ⚠ **Esto corre en TODOS los requests.** Es el único cambio del hito 8 que
 //  puede dejar la aplicación entera sin funcionar, y por eso se monta con **una

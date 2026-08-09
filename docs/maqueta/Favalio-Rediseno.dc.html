@@ -113,10 +113,10 @@ input:focus-visible,button:focus-visible,select:focus-visible,[tabindex]:focus-v
 
   <aside style="width:{{ navWidth }};flex-shrink:0;display:flex;flex-direction:column;background:var(--surface);border-right:1px solid var(--border);transition:width .18s ease;overflow:hidden">
     <div style="display:flex;align-items:center;gap:10px;height:60px;padding:0 14px;flex-shrink:0">
-      <img src="assets/logo_sin_fondo.png" alt="AdminApp" style="width:28px;height:28px;object-fit:contain;border-radius:7px;flex-shrink:0" />
+      <img src="assets/logo_sin_fondo.png" alt="Favalio" style="width:28px;height:28px;object-fit:contain;border-radius:7px;flex-shrink:0" />
       <sc-if value="{{ navOpen }}" hint-placeholder-val="{{ true }}">
         <div style="display:flex;flex-direction:column;min-width:0;flex:1">
-          <span style="font-size:14.5px;font-weight:650;letter-spacing:-.01em;white-space:nowrap">AdminApp</span>
+          <span style="font-size:14.5px;font-weight:650;letter-spacing:-.01em;white-space:nowrap">Favalio</span>
         </div>
         <button onClick="{{ toggleNav }}" title="Contraer barra lateral" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-3);flex-shrink:0" style-hover="background:var(--surface-3);color:var(--fg-2)">
           <svg style="width:16px;height:16px"><use href="#i-sidebar"></use></svg>
@@ -1377,8 +1377,8 @@ class Component extends DCLogic {
         { n:'4', done:true, pending:false, title:'Cargar las credenciales y verificar', body:'Subís .key y .crt, completás CUIT y punto de venta, y el sistema pide un CAE de prueba antes de habilitar la emisión.', action:'Ver registro', actionIcon:'#i-cright', bg:'var(--ok)', fg:'#fff', line:'var(--ok)' },
       ],
       creds: [
-        { file:'adminapp_privada.key', meta:'Cargado el 14/03/2026 · cifrado en servidor' },
-        { file:'adminapp_certificado.crt', meta:'Vence el 14/03/2028 · 595 días restantes' },
+        { file:'favalio_privada.key', meta:'Cargado el 14/03/2026 · cifrado en servidor' },
+        { file:'favalio_certificado.crt', meta:'Vence el 14/03/2028 · 595 días restantes' },
       ],
 
       ...sheet,

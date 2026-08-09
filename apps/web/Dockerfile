@@ -1,4 +1,4 @@
-# ── AdminApp Web: React + Vite SPA ──
+# ── Favalio Web: React + Vite SPA ──
 # Solo se usa para Railway/self-host. En Vercel el build es nativo (ver vercel.json).
 FROM node:22-alpine AS build
 

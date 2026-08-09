@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · El reintento que el servidor reconoce como ya registrada
+//  FAVALIO · El reintento que el servidor reconoce como ya registrada
 //
 //  `POST /api/sales` es idempotente por `id`: un reintento del mismo ticket
 //  —la red se cortó DESPUÉS de que el servidor commiteó, que es la ventana que

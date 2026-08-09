@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · La búsqueda del punto de venta
+//  FAVALIO · La búsqueda del punto de venta
 //
 //  El mismo campo lo usan dos cosas que se contradicen: el operador buscando
 //  «la creatina esa» y el lector de código de barras escaneando un EAN.

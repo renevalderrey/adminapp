@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════
-//  ADMINAPP · Documentos de proveedor: qué enlace se acepta y de qué nube salió
+//  FAVALIO · Documentos de proveedor: qué enlace se acepta y de qué nube salió
 //
-//  AdminApp NO guarda archivos: guarda el enlace a la nube donde el usuario ya
+//  Favalio NO guarda archivos: guarda el enlace a la nube donde el usuario ya
 //  tiene la factura. Es lo mismo que hacía el sistema viejo
 //  (`legacy:2516-2518`) y está escrito en «Fuera de alcance» de la spec 012:
 //  almacenar facturas de terceros trae obligaciones que nadie evaluó, y el
@@ -12,7 +12,7 @@
 //  Lo único que se puede afirmar desde el navegador es que el texto pegado
 //  PARECE un enlace. Si el archivo existe, si es público, si el permiso alcanza
 //  para que lo abra el contador — nada de eso se sabe sin credenciales sobre la
-//  cuenta de Drive del usuario, y AdminApp no las tiene ni las quiere. La spec
+//  cuenta de Drive del usuario, y Favalio no las tiene ni las quiere. La spec
 //  lo dice en dos lugares: «Documento con enlace roto o privado» entre los
 //  casos de borde, y «Verificar que un enlace de Drive funcione o sea público»
 //  en «Fuera de alcance».

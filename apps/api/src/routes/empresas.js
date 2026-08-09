@@ -142,7 +142,7 @@ router.post('/onboarding', (req, res, next) => {
     // adentro: se registra y se sigue.
     const envio = await sendEmail({
       to: usuario.email,
-      subject: `Bienvenido a Admin App — ${name}`,
+      subject: `Bienvenido a Favalio — ${name}`,
       html: welcomeEmail(usuario.nombre || usuario.email, name),
     });
 
@@ -918,7 +918,7 @@ router.post('/:empresaId/invitar', checkPermission('equipo.invitar'), requireEmp
 // 014 esta ruta buscaba el token **sin acotar a ninguna empresa**. El token es
 // aleatorio de 32 bytes, asi que adivinarlo no es el riesgo; el riesgo es que
 // cualquiera con `equipo.invitar` en SU empresa que consiguiera un token de otra
-// —de un mail reenviado, de un log, de una captura— podia hacer que AdminApp le
+// —de un mail reenviado, de un log, de una captura— podia hacer que Favalio le
 // mandara de nuevo la invitacion al invitado de un cliente ajeno, y ademas leia
 // el nombre de esa empresa por el `include`. Con el `where` acotado, la
 // invitacion de otra empresa da 404, igual que `findScoped`.
