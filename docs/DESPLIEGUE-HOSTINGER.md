@@ -188,13 +188,17 @@ echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```bash
 sudo mkdir -p /opt/favalio
 sudo chown favalio:favalio /opt/favalio
-git clone https://github.com/renevalderrey/adminapp.git /opt/favalio
+git clone https://github.com/renevalderrey/favalio.git /opt/favalio
 cd /opt/favalio
 ```
 
-> El repositorio de GitHub sigue llamándose `adminapp`: el renombre fue de
-> marca y no tocó el remoto. Si algún día se renombra, hay que actualizar acá
-> el `origin` con `git remote set-url origin <url nueva>`.
+> El repositorio se llamaba `adminapp` y se renombró a `favalio`. GitHub deja
+> una redirección, así que un clon viejo sigue funcionando, pero conviene
+> actualizarlo en cada máquina donde exista uno:
+>
+> ```bash
+> git remote set-url origin https://github.com/renevalderrey/favalio.git
+> ```
 
 Si el repositorio es privado, la forma limpia de que el VPS pueda hacer `git
 pull` sin credenciales personales es una **deploy key**: generar la clave en el
@@ -447,12 +451,13 @@ sirven si algún día conviene volver a separar las piezas, y no molestan.
 `docs/OPERACION.md` menciona a Render en algunos runbooks; lo que dice sobre la
 aplicación vale igual, cambia dónde se ejecutan los comandos.
 
-Tres cosas conservan el nombre viejo a propósito, porque renombrarlas rompe
-URLs en uso y no aporta nada:
+Dos cosas conservan el nombre viejo, porque renombrarlas rompe URLs en uso y no
+aporta nada mientras sigan en pie:
 
-- el repositorio de GitHub, `renevalderrey/adminapp`;
-- el servicio de Render, si se lo deja creado;
-- la base de Neon, si se la deja.
+- el servicio de Render, `adminapp-api.onrender.com`, si se lo deja creado;
+- la base de Neon, `adminapp`, si se la deja.
+
+El repositorio de GitHub sí se renombró a `renevalderrey/favalio`.
 
 Cuando la base del VPS tenga los datos buenos y el respaldo esté probado,
 Render, Vercel y Neon se pueden dar de baja.
