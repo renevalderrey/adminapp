@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import useStore from '@/store/useStore'
-import { getStockTransfers, getProducts } from '@/services/api'
+import { getStockTransfers, getProducts, marcarPublicables } from '@/services/api'
 import { calcularPrecios } from '@favalio/precios'
 import {
   TODAS_LAS_CATEGORIAS, TODAS_LAS_SUCURSALES, filaDeStock, filtrarInventario,
@@ -16,7 +16,7 @@ import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import {
   Package, Plus, Search, Edit2, ArrowRightLeft, FileSpreadsheet, Loader2, Tags, X,
-  FilterX, AlertTriangle, Archive, SlidersHorizontal, Download, Printer,
+  FilterX, AlertTriangle, Archive, SlidersHorizontal, Download, Printer, Globe,
 } from 'lucide-react'
 import { Can } from '@/components/Can'
 import { usePermission } from '@/hooks/usePermission'
@@ -211,6 +211,8 @@ const Inventory = () => {
   // una copia del producto quedaría desactualizada.
   const [seleccionados, setSeleccionados] = useState(new Set())
   const [preciosAbierto, setPreciosAbierto] = useState(false)
+  /** Mientras el `PATCH` de publicables está en vuelo. */
+  const [marcandoPublicables, setMarcandoPublicables] = useState(false)
 
   /** Con qué se abre el panel de transferencia cuando sale de una fila. */
   const [precargaDeTransferencia, setPrecargaDeTransferencia] = useState(null)
@@ -337,6 +339,74 @@ const Inventory = () => {
     }
 
     actualizarProducto({ id, ...cambios })
+  }
+
+  /**
+   * Marca o desmarca en lote los productos seleccionados.
+   *
+   * ── Esto NO publica nada ──
+   *
+   * Va contra `PATCH /api/products/publicables`, que escribe una columna del
+   * producto. Un producto sale a una tienda recién cuando se lo agrega a un
+   * catálogo, y esta pantalla no agrega a ningún catálogo: por eso la llamada
+   * es a productos y no a catálogos.
+   *
+   * ── Los dos números de la respuesta ──
+   *
+   * `actualizados` puede ser MENOR que `pedidos`: los que faltan eran de otra
+   * empresa o ya no existen. Cuando difieren hay que decirlo. «Listo, 60»
+   * cuando se marcaron 58 es una afirmación falsa sobre una operación que ya
+   * pasó, y el usuario se entera —si se entera— el día que dos productos no
+   * aparecen donde los esperaba.
+   *
+   * ⚠ La selección NO se limpia después, y ahí difiere a propósito de
+   * «Actualizar precios». Allá se limpia porque aplicar el mismo ajuste dos
+   * veces sube el costo dos veces; acá la operación es idempotente —marcar lo
+   * ya marcado no cambia nada— y lo más frecuente después de marcar es
+   * arrepentirse y desmarcar el mismo conjunto.
+   */
+  const cambiarPublicables = async (publicable) => {
+    const ids = [...seleccionados]
+
+    if (ids.length === 0 || marcandoPublicables) return
+
+    setMarcandoPublicables(true)
+    try {
+      const res = await marcarPublicables(ids, publicable)
+      const datos = res.data?.data || {}
+      const pedidos = Number(datos.pedidos ?? ids.length)
+      const actualizados = Number(datos.actualizados ?? 0)
+
+      if (actualizados === pedidos) {
+        // Se parchean las filas sin recargar (FR-035): la operación ya ocurrió
+        // y se sabe exactamente qué cambió en cuáles.
+        for (const id of ids) parchearProducto(id, { publicable })
+
+        const s = actualizados === 1 ? '' : 's'
+
+        // ⚠ El mensaje de marcar dice lo que la acción NO hizo, y no es
+        // redundante: «marcado como publicable» se lee como «publicado», que es
+        // justo lo que no pasó.
+        toast.success(publicable
+          ? `${actualizados} producto${s} marcado${s} como publicable${s}. Para que aparezcan en una página hay que agregarlos a un catálogo.`
+          : `${actualizados} producto${s} desmarcado${s}: ya no ${actualizados === 1 ? 'puede' : 'pueden'} salir a una página pública.`)
+      } else {
+        // La respuesta trae el CONTEO y no los ids, así que no se sabe cuáles
+        // quedaron afuera: parchear las filas a mano dejaría en pantalla
+        // productos marcados que en la base no lo están, que es peor que perder
+        // la página. Se recarga.
+        toast.warning(
+          `Se ${publicable ? 'marcaron' : 'desmarcaron'} ${actualizados} de ${pedidos}. `
+          + `${pedidos - actualizados} ya no ${pedidos - actualizados === 1 ? 'existe' : 'existen'} o `
+          + 'no son de esta empresa.'
+        )
+        initialize()
+      }
+    } catch (err) {
+      toast.error(mensajeDeError(err, 'No se pudo cambiar qué productos son publicables.'))
+    } finally {
+      setMarcandoPublicables(false)
+    }
   }
 
   /**
@@ -1020,7 +1090,55 @@ const Inventory = () => {
               <X className="h-3.5 w-3.5" /> Limpiar
             </button>
 
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-2">
+              {/* ── Página pública ──
+                  Las dos acciones van juntas adentro de un menú y no como dos
+                  botones sueltos, por el mismo motivo que «Exportar» de arriba:
+                  son la misma decisión —«qué hago con la publicabilidad de
+                  estos»— y separadas serían dos secundarios más compitiendo con
+                  el principal de al lado.
+
+                  Y es secundario, no principal: el principal de esta barra ya
+                  es «Actualizar precios». */}
+              <Can codigo="products.editar">
+                <MenuDesplegable
+                  claseDelBoton={BOTON_SECUNDARIO}
+                  boton={
+                    <>
+                      {marcandoPublicables
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin text-fg-3" />
+                        : <Globe className="h-3.5 w-3.5 text-fg-3" />}
+                      Página pública
+                    </>
+                  }
+                >
+                  <div>
+                    <button
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={marcandoPublicables}
+                      onClick={() => cambiarPublicables(true)}
+                    >
+                      <Globe className="h-3.5 w-3.5 text-fg-3" />
+                      Marcar como publicables
+                    </button>
+                    <button
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={marcandoPublicables}
+                      onClick={() => cambiarPublicables(false)}
+                    >
+                      <X className="h-3.5 w-3.5 text-fg-3" />
+                      Quitar de publicables
+                    </button>
+                    {/* Lo que el menú tiene que decir y el nombre de la acción
+                        no dice: marcar no publica nada. */}
+                    <p className="px-2.5 py-2 text-[11.5px] text-fg-3">
+                      Marcarlos no los publica: para que aparezcan en una página
+                      hay que agregarlos a un catálogo.
+                    </p>
+                  </div>
+                </MenuDesplegable>
+              </Can>
+
               <Can codigo="products.editar">
                 <button className={BOTON_PRINCIPAL} onClick={() => setPreciosAbierto(true)}>
                   <Tags className="h-4 w-4" /> Actualizar precios

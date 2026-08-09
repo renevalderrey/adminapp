@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { act, render, screen, within, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import useStore from '@/store/useStore'
 import api from '@/services/api'
@@ -320,5 +320,111 @@ describe('Sin permiso los campos quedan deshabilitados, no ausentes', () => {
     await montar({ producto: { id: 5, name: 'Colágeno', cost: '1000', stock: [] }, permisos: ['products.editar'] })
 
     expect(screen.queryByRole('button', { name: 'Desactivar' })).not.toBeInTheDocument()
+  })
+})
+
+// ════════════════════════════════════════════
+//  El interruptor de «página pública» (T1415)
+//
+//  Contesta «¿este producto PODRÍA salir a una página pública?», y es la
+//  pregunta que más fácil se confunde con otras dos:
+//
+//   · con `is_active`, que dice si se puede vender en el mostrador;
+//   · con «está publicado», que no es esto: marcarlo NO publica nada. Un
+//     producto sale a una tienda recién cuando se lo agrega a un catálogo.
+//
+//  Por eso lo que se afirma acá no es solo que el interruptor exista, sino QUÉ
+//  dice y CONTRA QUÉ endpoint escribe.
+// ════════════════════════════════════════════
+
+describe('El interruptor de página pública dice lo que hace, y lo que no', () => {
+  const COLAGENO = { id: 5, name: 'Colágeno', cost: '1000', stock: [] }
+
+  /** El interruptor, por su etiqueta. */
+  const interruptor = () =>
+    screen.getByRole('checkbox', { name: 'Este producto puede salir a una página pública' })
+
+  it('refleja el valor guardado del producto, en los dos sentidos', async () => {
+    await montar({ producto: { ...COLAGENO, publicable: true } })
+    expect(interruptor()).toBeChecked()
+
+    cleanup()
+
+    await montar({ producto: { ...COLAGENO, publicable: false } })
+    expect(interruptor()).not.toBeChecked()
+  })
+
+  it('dice que marcarlo NO publica nada y que no es lo mismo que estar activo', async () => {
+    // Es el texto que la pantalla existe para decir. Sin él, el interruptor se
+    // lee como «publicar», que es lo que no hace.
+    await montar({ producto: COLAGENO })
+
+    expect(screen.getByText(/Marcarlo no publica nada/)).toBeInTheDocument()
+    expect(screen.getByText(/se lo agrega a un catálogo/)).toBeInTheDocument()
+    expect(screen.getByText(/distinto de estar activo/)).toBeInTheDocument()
+  })
+
+  it('marcar publicable no publica nada: el producto sigue sin aparecer en ningún catálogo', async () => {
+    // Se afirma sobre LA LLAMADA: guardar el interruptor escribe una columna del
+    // producto —`PUT /products/:id`— y no toca ningún catálogo. Si algún día
+    // esto empezara a agregar el producto a una tienda, el cambio pasaría por
+    // acá.
+    const usuario = userEvent.setup()
+    await montar({ producto: COLAGENO })
+
+    await usuario.click(interruptor())
+    await usuario.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1))
+
+    const [ruta, cuerpo] = api.put.mock.calls[0]
+
+    expect(ruta).toBe('/products/5')
+    expect(cuerpo.publicable).toBe(true)
+
+    // Ninguna llamada, de ningún método, va contra un catálogo.
+    const rutas = [
+      ...api.put.mock.calls, ...api.post.mock.calls, ...api.get.mock.calls,
+    ].map(([r]) => String(r))
+
+    expect(rutas.filter((r) => /catalog/i.test(r))).toEqual([])
+
+    // Y `publicable` no es `is_active`: el cuerpo no lo menciona, así que
+    // marcar el producto como publicable no lo activa ni lo desactiva.
+    expect(cuerpo).not.toHaveProperty('is_active')
+  })
+
+  it('sin `products.editar` el interruptor está deshabilitado y dice por qué', async () => {
+    // Deshabilitado y NO ausente: uno que desaparece deja a la persona sin
+    // saber si el producto es publicable ni por qué no puede decidirlo. El
+    // motivo va en el `title` —la regla del sistema— y también a la vista.
+    await montar({ producto: COLAGENO, permisos: ['stock.editar'] })
+
+    expect(interruptor()).toBeInTheDocument()
+    expect(interruptor()).toBeDisabled()
+    expect(interruptor()).toHaveAttribute('title', 'Necesitás el permiso «products.editar»')
+    expect(
+      screen.getByText('Necesitás el permiso «products.editar» para cambiarlo.')
+    ).toBeInTheDocument()
+
+    // Y el texto que explica qué es sigue estando: quien no puede cambiarlo
+    // igual tiene que poder entender qué dice el interruptor que está mirando.
+    expect(screen.getByText(/Marcarlo no publica nada/)).toBeInTheDocument()
+  })
+
+  it('en el alta el permiso que pide el interruptor es `products.crear`', async () => {
+    // El alta escribe con `POST /products`, que exige `products.crear`. Pedir
+    // `products.editar` acá apagaría el interruptor para alguien que la API sí
+    // deja marcar.
+    await montar({ producto: null, permisos: ['products.editar', 'stock.editar'] })
+
+    expect(interruptor()).toBeDisabled()
+    expect(interruptor()).toHaveAttribute('title', 'Necesitás el permiso «products.crear»')
+
+    cleanup()
+
+    await montar({ producto: null, permisos: ['products.crear'] })
+
+    expect(interruptor()).toBeEnabled()
   })
 })

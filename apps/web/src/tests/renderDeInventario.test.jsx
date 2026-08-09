@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import api from '@/services/api'
 import useStore from '@/store/useStore'
 import Inventory from '@/pages/Inventory'
@@ -151,6 +152,14 @@ function indicador(etiqueta) {
 
 beforeEach(() => {
   useStore.setState({ products: [], sucursales: [], permisos: [] })
+})
+
+// Los espías se ponen adentro de cada caso —`api.get` para el historial,
+// `api.patch` para la acción masiva— y sin esto quedarían puestos para los que
+// siguen: un test que no espía nada terminaría corriendo contra el doble que
+// dejó otro, y el orden de los casos pasaría a importar.
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 // ════════════════════════════════════════════
@@ -488,5 +497,127 @@ describe('El contador de transferencias dice cuántas hay, no cuántas entraron'
 
     expect(contador().textContent).toBe('1')
     expect(within(seccion()).queryByText(/Mostrando/)).toBeNull()
+  })
+})
+
+// ════════════════════════════════════════════
+//  La acción masiva de «página pública» (T1415)
+//
+//  Marca en lote qué productos PODRÍAN salir a una página pública. Las dos
+//  cosas que se pueden romper acá no son de dibujo:
+//
+//   1. **Que marque contra el lugar equivocado.** `publicable` es una columna
+//      del producto; agregarlo a un catálogo es otra operación y otra pantalla.
+//      Si esto escribiera en un catálogo, marcar diez productos los publicaría
+//      —que es exactamente lo que la pantalla promete que NO hace—.
+//   2. **Que mienta sobre cuántos se marcaron.** La respuesta trae
+//      `actualizados` y `pedidos`, y pueden diferir: los que faltan eran de otra
+//      empresa o ya no existen. Un «listo» a secas afirma algo que no pasó.
+// ════════════════════════════════════════════
+
+describe('Marcar publicables escribe en el producto, no en un catálogo', () => {
+  const CON_PERMISO = ['products.ver', 'products.editar']
+
+  /** La respuesta del endpoint, con los dos números por separado. */
+  function responde({ actualizados, pedidos }) {
+    return vi.spyOn(api, 'patch').mockResolvedValue({
+      data: { ok: true, data: { actualizados, pedidos, publicable: true } },
+    })
+  }
+
+  /**
+   * Selecciona un producto y dispara una de las dos acciones del menú.
+   *
+   * El menú es el `MenuDesplegable` de la barra de selección: un `<details>`
+   * con las dos opciones adentro. Se abre por su `summary` igual que lo haría
+   * una persona, y no llamando al handler a mano: lo que se verifica es que la
+   * acción esté ALCANZABLE desde la pantalla.
+   */
+  async function marcarDesdeElMenu(nombreDeLaOpcion, opciones = {}) {
+    const usuario = userEvent.setup()
+    montar({ productos: [COLAGENO, WHEY], permisos: CON_PERMISO, ...opciones })
+
+    await usuario.click(within(filaDe('Colágeno')).getByRole('checkbox'))
+    await usuario.click(screen.getByText('Página pública'))
+    await usuario.click(screen.getByRole('button', { name: nombreDeLaOpcion }))
+
+    return usuario
+  }
+
+  it('marcar publicable no publica nada: el producto sigue sin aparecer en ningún catálogo', async () => {
+    const patch = responde({ actualizados: 1, pedidos: 1 })
+
+    await marcarDesdeElMenu('Marcar como publicables')
+
+    // La llamada es la afirmación: un `PATCH` a PRODUCTOS. Marcar cambia una
+    // columna del producto y nada más — para que aparezca en una página hay que
+    // agregarlo a un catálogo, que es otra operación que esta pantalla no hace.
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1))
+
+    const [ruta] = patch.mock.calls[0]
+
+    expect(ruta).toBe('/products/publicables')
+    expect(ruta).not.toMatch(/catalog/i)
+
+    // Y ninguna otra llamada, de ningún método, va contra un catálogo.
+    const rutas = [
+      ...patch.mock.calls,
+      ...(api.post.mock?.calls || []),
+      ...(api.put.mock?.calls || []),
+    ].map(([r]) => String(r))
+
+    expect(rutas.filter((r) => /catalog/i.test(r))).toEqual([])
+  })
+
+  it('manda los ids de la selección y el booleano que corresponde', async () => {
+    const patch = responde({ actualizados: 1, pedidos: 1 })
+
+    await marcarDesdeElMenu('Marcar como publicables')
+
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1))
+    expect(patch.mock.calls[0][1]).toEqual({ ids: [COLAGENO.id], publicable: true })
+  })
+
+  it('«Quitar de publicables» manda `publicable: false`, no otra ruta', async () => {
+    // Es la misma llamada con el booleano al revés. Con dos endpoints —uno para
+    // marcar y otro para desmarcar— el día que uno cambie el otro se queda como
+    // estaba.
+    const patch = responde({ actualizados: 1, pedidos: 1 })
+
+    await marcarDesdeElMenu('Quitar de publicables')
+
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1))
+    expect(patch.mock.calls[0][0]).toBe('/products/publicables')
+    expect(patch.mock.calls[0][1]).toEqual({ ids: [COLAGENO.id], publicable: false })
+  })
+
+  it('cuando se marcaron MENOS de los pedidos, la pantalla lo dice', async () => {
+    // Callarlo es mentir sobre lo que pasó: el usuario cierra la pantalla
+    // creyendo que marcó diez y se entera —si se entera— cuando dos productos
+    // no aparecen donde los esperaba.
+    const aviso = vi.spyOn(toast, 'warning').mockImplementation(() => {})
+    responde({ actualizados: 8, pedidos: 10 })
+
+    await marcarDesdeElMenu('Marcar como publicables')
+
+    await waitFor(() => expect(aviso).toHaveBeenCalledTimes(1))
+
+    const mensaje = aviso.mock.calls[0][0]
+
+    expect(mensaje).toContain('8')
+    expect(mensaje).toContain('10')
+    expect(mensaje).toMatch(/no exist|de esta empresa/)
+  })
+
+  it('sin `products.editar` la acción masiva no se ofrece', async () => {
+    const usuario = userEvent.setup()
+    montar({ productos: [COLAGENO, WHEY], permisos: ['products.ver'] })
+
+    await usuario.click(within(filaDe('Colágeno')).getByRole('checkbox'))
+
+    // La barra de selección aparece igual —seleccionar no exige permiso— pero
+    // sin la acción que no se puede hacer. La API la rechaza de todos modos.
+    expect(screen.getByText('1 seleccionado')).toBeInTheDocument()
+    expect(screen.queryByText('Página pública')).not.toBeInTheDocument()
   })
 })

@@ -269,6 +269,35 @@ export const updateProduct = (id, data) => api.put(`/products/${id}`, data);
 export const deleteProduct = (id) => api.delete(`/products/${id}`);
 export const bulkProducts = (products) => api.post('/products/bulk', { products });
 
+/**
+ * Marca o desmarca en lote qué productos PODRÍAN salir a una página pública.
+ *
+ * ── `publicable` no es `is_active` ──
+ *
+ * `is_active` dice si el producto se puede vender en el mostrador. `publicable`
+ * contesta otra pregunta: si tiene permitido aparecer en una página pública. Un
+ * producto puede estar activo y no ser publicable, y al revés.
+ *
+ * ── Y marcarlo NO publica nada ──
+ *
+ * Un producto sale a una tienda recién cuando se lo agrega a un catálogo. Este
+ * `PATCH` es contra `/products` justamente por eso: escribe una columna del
+ * producto y no toca ningún catálogo.
+ *
+ * ── La respuesta tiene DOS números, y hay que mirar los dos ──
+ *
+ * Vuelve `{ actualizados, pedidos, publicable }`, y `actualizados` puede ser
+ * **menor** que `pedidos`: los que faltan eran de otra empresa o ya no existen.
+ * Quien llame tiene que decirlo. Mostrar «listo, 60» cuando se marcaron 58 es
+ * afirmar algo que no pasó, y quien lo lee se entera —si se entera— el día que
+ * dos productos no aparecen en su página.
+ *
+ * @param {Array<number>} ids Al menos uno: con la lista vacía la API responde 400.
+ * @param {boolean} publicable Va siempre y es booleano: sin él, también es 400.
+ */
+export const marcarPublicables = (ids, publicable) =>
+  api.patch('/products/publicables', { ids, publicable });
+
 // ═══════ VENTAS ═══════
 
 /**

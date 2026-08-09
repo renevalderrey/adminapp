@@ -8,6 +8,7 @@ import { usePermission } from '@/hooks/usePermission'
 import HistorialDeCostos from '@/components/HistorialDeCostos'
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { AlertTriangle, Loader2, RotateCcw, Trash2 } from 'lucide-react'
+import { Can } from '@/components/Can'
 import { faltaElPermiso } from '@/utils/permisos'
 
 // ════════════════════════════════════════════
@@ -69,6 +70,9 @@ const FORMULARIO_VACIO = {
   unit_size: '',
   taxed: true,
   image_url: '',
+  // ¿Este producto PODRÍA salir a una página pública? Nace apagado, igual que
+  // la columna. Ver el bloque «Página pública» más abajo.
+  publicable: false,
 }
 
 const BOTON_PRINCIPAL =
@@ -92,6 +96,51 @@ function Campo({ etiqueta, children, ancho = '' }) {
       <span className="eyebrow">{etiqueta}</span>
       {children}
     </label>
+  )
+}
+
+/**
+ * El interruptor de «este producto puede salir a una página pública».
+ *
+ * Se dibuja dos veces —encendido y apagado— y por eso es un componente y no
+ * JSX repetido: la versión sin permiso tiene que decir exactamente lo mismo que
+ * la otra, y dos copias del texto de ayuda son dos textos que divergen.
+ *
+ * `motivo` es lo que se lee cuando está apagado, y va en el `title` **y** a la
+ * vista. En el `title` porque es la regla del sistema —apagar con el motivo, no
+ * esconder—, y a la vista porque un `title` solo lo encuentra quien ya sospecha
+ * que hay algo que leer ahí.
+ */
+function InterruptorPublicable({ marcado, alCambiar, motivo = null }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="flex items-center gap-2.5 text-[13px]">
+        <input
+          type="checkbox"
+          // Nunca `disabled:pointer-events-none`: eso lo saca del hit-testing y
+          // el navegador deja de mostrar el `title`, o sea que apaga justo la
+          // explicación de por qué está apagado.
+          className="h-4 w-4 accent-brand disabled:cursor-not-allowed"
+          checked={marcado}
+          disabled={!!motivo}
+          title={motivo || undefined}
+          onChange={(e) => alCambiar(e.target.checked)}
+        />
+        Este producto puede salir a una página pública
+      </label>
+
+      {/* ⚠ Este texto es el que evita la confusión que la pantalla tiene que
+          evitar, y por eso no es opcional ni un `title`. Son dos cosas
+          distintas y las dos hay que decirlas: que marcarlo no publica nada, y
+          que esto no es «activo». */}
+      <p className="text-[11.5px] text-fg-3">
+        Marcarlo no publica nada: el producto sale a una tienda recién cuando se
+        lo agrega a un catálogo. Y es distinto de estar activo, que es si se
+        puede vender en el mostrador.
+      </p>
+
+      {motivo && <p className="text-[11.5px] text-fg-3">{motivo} para cambiarlo.</p>}
+    </div>
   )
 }
 
@@ -129,7 +178,14 @@ export default function PanelProducto({
   // El alta y la edición piden permisos distintos, así que «puede tocar los
   // campos» depende de en cuál de las dos está el panel.
   const esAlta = !producto
-  const puedeEditar = esAlta ? can('products.crear') : can('products.editar')
+  /**
+   * El permiso que gobierna los campos del producto en el modo en que está el
+   * panel. Está en una constante porque lo miran tres lugares —si se puede
+   * escribir, el `title` del botón de guardar y el guarda del interruptor de
+   * publicable— y escrito tres veces se desincroniza en el primer cambio.
+   */
+  const permisoDeEdicion = esAlta ? 'products.crear' : 'products.editar'
+  const puedeEditar = can(permisoDeEdicion)
   const puedeEditarStock = can('stock.editar')
   const puedeDarDeBaja = !esAlta && can('products.eliminar')
 
@@ -256,6 +312,9 @@ export default function PanelProducto({
     unit_size: limpiar(form.unit_size),
     taxed: form.taxed,
     image_url: limpiar(form.image_url),
+    // Booleano y no `limpiar()`: `false` es un valor, no un vacío, y mandarlo
+    // como `null` haría fallar la columna, que es NOT NULL.
+    publicable: !!form.publicable,
   })
 
   /** Lo que no se puede guardar, o `null`. */
@@ -685,6 +744,38 @@ export default function PanelProducto({
               </label>
             </div>
 
+            {/* ── Página pública ──
+                Sección propia y no una casilla más en «Clasificación»: la
+                pregunta que contesta —«¿este producto PODRÍA salir a una página
+                pública?»— no es de la misma familia que la marca o la unidad, y
+                sobre todo no es `is_active`. Las dos son casillas booleanas de
+                un producto, así que juntas se leen como variantes de lo mismo,
+                y ahí es donde alguien desactiva un producto creyendo que lo
+                está sacando de su tienda. */}
+            <div className="flex flex-col gap-3">
+              <h2>Página pública</h2>
+
+              {/* Sin el permiso, deshabilitado CON la explicación y no ausente:
+                  un interruptor que desaparece deja a la persona sin saber si
+                  el producto es publicable ni por qué no puede decidirlo. El
+                  `fallback` dibuja el mismo control apagado, no otra cosa. */}
+              <Can
+                codigo={permisoDeEdicion}
+                fallback={
+                  <InterruptorPublicable
+                    marcado={!!form.publicable}
+                    alCambiar={() => {}}
+                    motivo={faltaElPermiso(permisoDeEdicion)}
+                  />
+                }
+              >
+                <InterruptorPublicable
+                  marcado={!!form.publicable}
+                  alCambiar={cambiar('publicable')}
+                />
+              </Can>
+            </div>
+
             {/* ── Stock por sucursal ── */}
             <div className="flex flex-col gap-3">
               <h2>Stock por sucursal</h2>
@@ -810,9 +901,7 @@ export default function PanelProducto({
               <button
                 className={BOTON_PRINCIPAL}
                 disabled={!puedeEditar || guardando || !hayCambios}
-                title={puedeEditar
-                  ? undefined
-                  : faltaElPermiso(`products.${esAlta ? 'crear' : 'editar'}`)}
+                title={puedeEditar ? undefined : faltaElPermiso(permisoDeEdicion)}
                 onClick={guardar}
               >
                 {guardando
