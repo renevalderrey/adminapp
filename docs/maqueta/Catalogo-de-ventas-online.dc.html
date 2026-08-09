@@ -1,0 +1,1680 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F6F7F8; --fg:#101418; --sf:#FFFFFF; --sf2:#FAFBFB; --sf3:#F1F3F4;
+    --fg2:#5A646E; --fg3:#8B959E; --bd:#E5E8EA; --bd2:#D5DADE;
+    --br:#00B4B6; --brd:#008B8E; --brs:#E4F6F6; --brl:#9FE0E0;
+    --ok:#0F7B45; --oks:#E6F4EC; --okl:#A7D9BE;
+    --wa:#9A5B08; --was:#FBF0DE; --wal:#EBC48A;
+    --da:#C42B2B; --das:#FBEAEA; --dal:#EFB4B4;
+    --in:#1F5FA8; --ins:#E8F0FA; --inl:#A9C6E8;
+    --pf:#FFFFFF; --n1:0 1px 2px rgba(16,24,40,.06); --n2:0 4px 16px rgba(16,24,40,.08); --n3:0 24px 60px rgba(16,24,40,.16);
+  }
+  [data-tema="oscuro"]{
+    --bg:#0A0C0D; --fg:#EDF0F2; --sf:#131719; --sf2:#171B1E; --sf3:#1E2326;
+    --fg2:#98A3AC; --fg3:#6C777F; --bd:#262C30; --bd2:#333A3F;
+    --br:#00C2C4; --brd:#00C2C4; --brs:#0E2C2D; --brl:#1C4E4F;
+    --ok:#4ADE80; --oks:#0F2A1B; --okl:#1E5136;
+    --wa:#F0B45E; --was:#2C2010; --wal:#57411D;
+    --da:#F27272; --das:#2E1414; --dal:#5A2626;
+    --in:#7FB2F0; --ins:#122033; --inl:#24405F;
+    --pf:#06181A; --n1:0 1px 2px rgba(0,0,0,.4); --n2:0 4px 16px rgba(0,0,0,.45); --n3:0 24px 60px rgba(0,0,0,.6);
+  }
+  body{margin:0;background:#E8EAEC;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#101418;-webkit-font-smoothing:antialiased;text-wrap:pretty}
+  a{color:#008B8E;text-decoration:none}
+  a:hover{color:#00B4B6}
+  *{box-sizing:border-box}
+  @keyframes brillo{0%{background-position:-320px 0}100%{background-position:320px 0}}
+  @keyframes panelIn{from{transform:translateX(28px);opacity:0}to{transform:none;opacity:1}}
+</style>
+</helmet>
+
+<section style="padding:56px 56px 40px;max-width:1760px;margin:0 auto">
+  <div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:32px;justify-content:space-between">
+    <div style="max-width:64ch">
+      <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#8B959E">Favalio · Módulo de venta online</div>
+      <h1 style="margin:8px 0 0;font-size:34px;font-weight:660;letter-spacing:-0.022em">Catálogo de ventas online y su panel</h1>
+      <p style="margin:12px 0 0;font-size:14.5px;line-height:1.5;color:#5A646E">Dos superficies con reglas distintas. La tienda es la cara del comercio: mobile primero, neutra, con un solo color configurable. El panel vive adentro de Favalio y usa el sistema de diseño tal cual está en el repositorio.</p>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <span style="font-size:12px;color:#5A646E">Color del catálogo</span>
+      <div style="display:flex;gap:6px">
+        <button onClick="{{ marcaTurquesa }}" title="Turquesa" style="width:28px;height:28px;border-radius:8px;border:1px solid rgba(0,0,0,.14);background:#00B4B6;cursor:pointer"></button>
+        <button onClick="{{ marcaNaranja }}" title="Naranja" style="width:28px;height:28px;border-radius:8px;border:1px solid rgba(0,0,0,.14);background:#F0641E;cursor:pointer"></button>
+        <button onClick="{{ marcaNegro }}" title="Negro" style="width:28px;height:28px;border-radius:8px;border:1px solid rgba(0,0,0,.14);background:#101418;cursor:pointer"></button>
+        <button onClick="{{ marcaAzul }}" title="Azul del logo" style="width:28px;height:28px;border-radius:8px;border:1px solid rgba(0,0,0,.14);background:#1A1AFF;cursor:pointer"></button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="tienda" style="{{ estiloTienda }}">
+  <div style="display:flex;align-items:baseline;gap:14px;border-top:1px solid #D5DADE;padding-top:22px;margin-bottom:28px">
+    <span style="font-size:22px;font-weight:660;letter-spacing:-0.02em">A · La tienda pública</span>
+    <span style="font-size:13px;color:#5A646E">390px · tema del comercio · se abre escaneando el QR del gimnasio</span>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start">
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <span style="font-size:13.5px;font-weight:640">Prototipo navegable</span>
+        <span style="font-size:12px;color:#8B959E">catálogo → ficha → carrito → 3 pasos → confirmado</span>
+      </div>
+
+      <div data-screen-label="Tienda · prototipo" style="{{ estiloTienda }}" >
+        <div style="width:390px;height:844px;background:#FFFFFF;border:1px solid #D5DADE;border-radius:28px;overflow:hidden;box-shadow:0 24px 60px rgba(16,24,40,.16);display:flex;flex-direction:column;position:relative">
+
+          <div style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:12.5px;font-weight:600;color:#101418">
+            <span style="font-variant-numeric:tabular-nums">9:41</span>
+            <span style="display:flex;gap:5px;align-items:center">
+              <span style="width:16px;height:11px;border:1.4px solid #101418;border-radius:3px;display:inline-block"></span>
+              <span style="width:15px;height:11px;background:#101418;border-radius:2px;display:inline-block"></span>
+            </span>
+          </div>
+
+          <sc-if value="{{ esCatalogo }}" hint-placeholder-val="{{ true }}">
+            <div style="flex:1;overflow-y:auto;overflow-x:hidden">
+              <div style="height:132px;position:relative;background:repeating-linear-gradient(135deg,rgba(0,0,0,.045) 0 5px,rgba(0,0,0,0) 5px 11px),linear-gradient(160deg,color-mix(in srgb,var(--marca,#00B4B6) 30%,#fff),color-mix(in srgb,var(--marca,#00B4B6) 12%,#fff))">
+                <span style="position:absolute;right:12px;bottom:10px;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:rgba(16,20,24,.45)">portada 1200×480</span>
+                <div style="position:absolute;left:16px;bottom:-30px;width:76px;height:76px;border-radius:18px;background:#fff;border:1px solid #E5E8EA;box-shadow:0 4px 16px rgba(16,24,40,.10);display:grid;place-items:center;padding:9px">
+                  <img src="assets/comprafit.webp" alt="Comprafit" style="width:100%;height:auto;object-fit:contain">
+                </div>
+              </div>
+
+              <div style="padding:40px 16px 0">
+                <h2 style="margin:0;font-size:20px;font-weight:660;letter-spacing:-0.02em">Comprafit / Fitnet</h2>
+                <p style="margin:5px 0 0;font-size:13px;line-height:1.45;color:#5A646E">Suplementos con precio de socio para los que entrenan en Fitnet. Retirás en el gimnasio o te lo llevamos.</p>
+              </div>
+
+              <div style="position:sticky;top:0;z-index:3;background:#fff;padding:14px 16px 10px">
+                <div style="display:flex;align-items:center;gap:8px;height:40px;border:1px solid #E5E8EA;border-radius:10px;padding:0 11px;background:#FAFBFB">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#8B959E" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex:none;display:block"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg>
+                  <input value="{{ busqueda }}" onChange="{{ alBuscar }}" placeholder="Buscar producto o marca" style="border:0;outline:none;background:transparent;font:inherit;font-size:14px;width:100%;color:#101418">
+                </div>
+                <div style="display:flex;gap:7px;overflow-x:auto;padding:10px 0 2px;margin:0 -16px;padding-left:16px;padding-right:16px">
+                  <sc-for list="{{ categorias }}" as="c" hint-placeholder-count="5">
+                    <button onClick="{{ c.elegir }}" style="{{ c.estilo }}">{{ c.nombre }}</button>
+                  </sc-for>
+                </div>
+              </div>
+
+              <sc-if value="{{ sinResultados }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:44px 24px 60px;text-align:center">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#8B959E" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:28px;height:28px;flex:none;display:block"><path d="m13.5 8.5-5 5" /><path d="m8.5 8.5 5 5" /><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                  <p style="margin:10px 0 0;font-size:14px;font-weight:640">No encontramos nada con eso</p>
+                  <p style="margin:5px 0 0;font-size:13px;color:#5A646E">Probá con el nombre del producto o la marca.</p>
+                  <button onClick="{{ limpiarBusqueda }}" style="margin-top:16px;height:38px;padding:0 16px;border-radius:10px;border:1px solid #E5E8EA;background:#fff;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer">Limpiar la búsqueda</button>
+                </div>
+              </sc-if>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px 16px 132px">
+                <sc-for list="{{ visibles }}" as="p" hint-placeholder-count="4">
+                  <div style="border:1px solid #E5E8EA;border-radius:14px;overflow:hidden;background:#fff;display:flex;flex-direction:column">
+                    <div onClick="{{ p.abrir }}" style="{{ p.estiloFoto }}">
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#8B959E;letter-spacing:.02em">{{ p.etiquetaFoto }}</span>
+                      <sc-if value="{{ p.agotado }}" hint-placeholder-val="{{ false }}">
+                        <span style="position:absolute;left:8px;top:8px;background:#101418;color:#fff;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:3px 7px;border-radius:6px">Agotado</span>
+                      </sc-if>
+                    </div>
+                    <div style="padding:10px 10px 11px;display:flex;flex-direction:column;gap:2px;flex:1">
+                      <span style="font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#8B959E">{{ p.marca }}</span>
+                      <span onClick="{{ p.abrir }}" style="font-size:13px;font-weight:600;line-height:1.3;cursor:pointer">{{ p.nombre }}</span>
+                      <div style="margin-top:6px;display:flex;align-items:baseline;gap:6px">
+                        <span style="font-size:15px;font-weight:660;font-variant-numeric:tabular-nums;letter-spacing:-0.01em">{{ p.precio }}</span>
+                        <sc-if value="{{ mostrarLista }}" hint-placeholder-val="{{ true }}">
+                          <span style="font-size:11.5px;color:#8B959E;text-decoration:line-through;font-variant-numeric:tabular-nums">{{ p.lista }}</span>
+                        </sc-if>
+                      </div>
+                      <button onClick="{{ p.agregar }}" style="{{ p.estiloBoton }}">{{ p.textoBoton }}</button>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #E5E8EA;padding:10px 16px 18px">
+              <button onClick="{{ irCarrito }}" style="{{ estiloBarraCarrito }}">
+                <span style="display:flex;align-items:center;gap:9px">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px;flex:none;display:block"><circle cx="8" cy="21" r="1" /><circle cx="19" cy="21" r="1" /><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" /></svg>
+                  <span style="font-size:14px;font-weight:600">{{ textoItems }}</span>
+                </span>
+                <span style="font-size:15px;font-weight:660;font-variant-numeric:tabular-nums">{{ totalTexto }}</span>
+              </button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ esProducto }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;overflow-y:auto;position:relative">
+              <div style="position:sticky;top:0;z-index:2;height:52px;display:flex;align-items:center;gap:10px;padding:0 12px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid #E5E8EA">
+                <button onClick="{{ volverCatalogo }}" style="width:34px;height:34px;border-radius:9px;border:1px solid #E5E8EA;background:#fff;display:grid;place-items:center;cursor:pointer">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#101418" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px;flex:none;display:block"><path d="m15 18-6-6 6-6" /></svg>
+                </button>
+                <span style="font-size:13.5px;font-weight:600">Volver al catálogo</span>
+              </div>
+              <div style="height:300px;display:grid;place-items:center;background:repeating-linear-gradient(135deg,#F1F3F4 0 10px,#E9ECEE 10px 20px);border-bottom:1px solid #E5E8EA">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#8B959E">{{ detalle.etiquetaFoto }}</span>
+              </div>
+              <div style="padding:18px 16px 150px">
+                <span style="font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#8B959E">{{ detalle.marca }}</span>
+                <h2 style="margin:5px 0 0;font-size:21px;font-weight:660;letter-spacing:-0.02em;line-height:1.25">{{ detalle.nombre }}</h2>
+                <div style="margin-top:10px;display:flex;align-items:baseline;gap:9px">
+                  <span style="font-size:26px;font-weight:660;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">{{ detalle.precio }}</span>
+                  <span style="font-size:14px;color:#8B959E;text-decoration:line-through;font-variant-numeric:tabular-nums">{{ detalle.lista }}</span>
+                  <span style="font-size:11.5px;font-weight:600;color:var(--marca,#00B4B6)">{{ detalle.ahorro }}</span>
+                </div>
+                <p style="margin:14px 0 0;font-size:13.5px;line-height:1.55;color:#5A646E">{{ detalle.desc }}</p>
+                <div style="margin-top:18px;padding-top:16px;border-top:1px solid #E5E8EA;display:flex;align-items:center;justify-content:space-between">
+                  <span style="font-size:13.5px;font-weight:600">Cantidad</span>
+                  <div style="display:flex;align-items:center;gap:2px;border:1px solid #E5E8EA;border-radius:10px;padding:3px">
+                    <button onClick="{{ menosCantidad }}" style="width:36px;height:36px;border:0;background:transparent;border-radius:8px;display:grid;place-items:center;cursor:pointer">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="#101418" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;flex:none;display:block"><path d="M5 12h14" /></svg>
+                    </button>
+                    <span style="min-width:34px;text-align:center;font-size:15px;font-weight:640;font-variant-numeric:tabular-nums">{{ cantidad }}</span>
+                    <button onClick="{{ masCantidad }}" style="width:36px;height:36px;border:0;background:transparent;border-radius:8px;display:grid;place-items:center;cursor:pointer">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="#101418" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;flex:none;display:block"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #E5E8EA;padding:12px 16px 18px">
+              <button onClick="{{ agregarDesdeDetalle }}" style="{{ estiloBotonPrincipal }}">{{ detalle.textoAgregar }}</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ esCarrito }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;overflow-y:auto">
+              <div style="height:52px;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid #E5E8EA">
+                <button onClick="{{ volverCatalogo }}" style="width:34px;height:34px;border-radius:9px;border:1px solid #E5E8EA;background:#fff;display:grid;place-items:center;cursor:pointer">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#101418" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px;flex:none;display:block"><path d="m15 18-6-6 6-6" /></svg>
+                </button>
+                <span style="font-size:15px;font-weight:640">Tu pedido</span>
+              </div>
+
+              <sc-if value="{{ carritoVacio }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:80px 30px;text-align:center">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#8B959E" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:30px;height:30px;flex:none;display:block"><circle cx="8" cy="21" r="1" /><circle cx="19" cy="21" r="1" /><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" /></svg>
+                  <p style="margin:12px 0 0;font-size:15px;font-weight:640">Tu pedido está vacío</p>
+                  <p style="margin:6px 0 0;font-size:13px;line-height:1.5;color:#5A646E">Agregá productos del catálogo y los vas a ver acá antes de pagar.</p>
+                  <button onClick="{{ volverCatalogo }}" style="{{ estiloBotonPrincipalChico }}">Ver el catálogo</button>
+                </div>
+              </sc-if>
+
+              <div style="padding:6px 16px 200px">
+                <sc-for list="{{ lineas }}" as="l" hint-placeholder-count="2">
+                  <div style="display:flex;gap:12px;padding:14px 0;border-bottom:1px solid #E5E8EA">
+                    <div style="width:64px;height:64px;flex:none;border-radius:10px;background:repeating-linear-gradient(135deg,#F1F3F4 0 8px,#E9ECEE 8px 16px)"></div>
+                    <div style="flex:1;min-width:0">
+                      <div style="display:flex;justify-content:space-between;gap:8px">
+                        <div style="min-width:0">
+                          <p style="margin:0;font-size:13.5px;font-weight:600;line-height:1.3">{{ l.nombre }}</p>
+                          <p style="margin:2px 0 0;font-size:11.5px;color:#8B959E">{{ l.marca }}</p>
+                        </div>
+                        <button onClick="{{ l.eliminar }}" style="width:28px;height:28px;flex:none;border:0;background:transparent;border-radius:7px;display:grid;place-items:center;cursor:pointer">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#8B959E" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;flex:none;display:block"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                        </button>
+                      </div>
+                      <div style="margin-top:9px;display:flex;align-items:center;justify-content:space-between">
+                        <div style="display:flex;align-items:center;gap:2px;border:1px solid #E5E8EA;border-radius:9px;padding:2px">
+                          <button onClick="{{ l.menos }}" style="width:30px;height:30px;border:0;background:transparent;border-radius:7px;display:grid;place-items:center;cursor:pointer">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="#101418" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex:none;display:block"><path d="M5 12h14" /></svg>
+                          </button>
+                          <span style="min-width:26px;text-align:center;font-size:13.5px;font-weight:640;font-variant-numeric:tabular-nums">{{ l.cantidad }}</span>
+                          <button onClick="{{ l.mas }}" style="width:30px;height:30px;border:0;background:transparent;border-radius:7px;display:grid;place-items:center;cursor:pointer">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="#101418" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;flex:none;display:block"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
+                          </button>
+                        </div>
+                        <span style="font-size:14.5px;font-weight:640;font-variant-numeric:tabular-nums">{{ l.subtotal }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #E5E8EA;padding:14px 16px 18px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+                <span style="font-size:13.5px;color:#5A646E">Subtotal</span>
+                <span style="font-size:19px;font-weight:660;font-variant-numeric:tabular-nums">{{ totalTexto }}</span>
+              </div>
+              <button onClick="{{ irDatos }}" style="{{ estiloBotonPrincipal }}">Continuar con mis datos</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ esCheckout }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;overflow-y:auto">
+              <div style="height:52px;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid #E5E8EA">
+                <button onClick="{{ atras }}" style="width:34px;height:34px;border-radius:9px;border:1px solid #E5E8EA;background:#fff;display:grid;place-items:center;cursor:pointer">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#101418" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px;flex:none;display:block"><path d="m15 18-6-6 6-6" /></svg>
+                </button>
+                <span style="font-size:15px;font-weight:640">{{ tituloPaso }}</span>
+                <span style="margin-left:auto;font-size:12px;color:#8B959E;font-variant-numeric:tabular-nums">{{ pasoTexto }}</span>
+              </div>
+              <div style="display:flex;gap:5px;padding:12px 16px 0">
+                <span style="{{ estiloPaso1 }}"></span>
+                <span style="{{ estiloPaso2 }}"></span>
+                <span style="{{ estiloPaso3 }}"></span>
+              </div>
+
+              <sc-if value="{{ esDatos }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:18px 16px 160px;display:flex;flex-direction:column;gap:14px">
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <label style="font-size:12.5px;font-weight:600">Nombre y apellido</label>
+                    <input value="Martina Olivera" style="height:46px;border:1px solid #E5E8EA;border-radius:10px;padding:0 12px;font:inherit;font-size:15px;background:#fff">
+                  </div>
+                  <div style="display:flex;gap:10px">
+                    <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                      <label style="font-size:12.5px;font-weight:600">Teléfono</label>
+                      <input value="11 5478 2210" style="height:46px;border:1px solid #E5E8EA;border-radius:10px;padding:0 12px;font:inherit;font-size:15px;font-variant-numeric:tabular-nums;background:#fff">
+                    </div>
+                    <div style="width:132px;display:flex;flex-direction:column;gap:6px">
+                      <label style="font-size:12.5px;font-weight:600">DNI</label>
+                      <input value="38.204.117" style="height:46px;border:1px solid #E5E8EA;border-radius:10px;padding:0 12px;font:inherit;font-size:15px;font-variant-numeric:tabular-nums;background:#fff">
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <label style="font-size:12.5px;font-weight:600">Email</label>
+                    <input value="martina.olivera@gmail.com" style="height:46px;border:1px solid #E5E8EA;border-radius:10px;padding:0 12px;font:inherit;font-size:15px;background:#fff">
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <label style="font-size:12.5px;font-weight:600">N° de socio de Fitnet</label>
+                    <input value="F-4412" style="height:46px;border:1px solid #E5E8EA;border-radius:10px;padding:0 12px;font:inherit;font-size:15px;font-variant-numeric:tabular-nums;background:#fff">
+                    <span style="font-size:11.5px;color:#8B959E">Es el número de tu carnet. Con eso aplicamos el precio de socio.</span>
+                  </div>
+                  <label onClick="{{ alternarConsentimiento }}" style="display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid #E5E8EA;border-radius:11px;cursor:pointer">
+                    <span style="{{ estiloCasilla }}">
+                      <sc-if value="{{ consentimiento }}" hint-placeholder-val="{{ false }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex:none;display:block"><path d="M20 6 9 17l-5-5" /></svg>
+                      </sc-if>
+                    </span>
+                    <span style="font-size:12.5px;line-height:1.45;color:#5A646E">Quiero recibir novedades y ofertas de Comprafit por email o WhatsApp.</span>
+                  </label>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ esEntrega }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:18px 16px 160px;display:flex;flex-direction:column;gap:10px">
+                  <sc-for list="{{ opcionesEntrega }}" as="o" hint-placeholder-count="4">
+                    <div onClick="{{ o.elegir }}" style="{{ o.estilo }}">
+                      <span style="{{ o.estiloRadio }}"></span>
+                      <span style="flex:1;min-width:0">
+                        <span style="display:block;font-size:14px;font-weight:640">{{ o.titulo }}</span>
+                        <span style="display:block;margin-top:2px;font-size:12.5px;line-height:1.4;color:#5A646E">{{ o.detalle }}</span>
+                      </span>
+                      <span style="font-size:13px;font-weight:640;font-variant-numeric:tabular-nums;white-space:nowrap">{{ o.costo }}</span>
+                    </div>
+                  </sc-for>
+
+                  <sc-if value="{{ esDomicilio }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;flex-direction:column;gap:12px;padding:14px;border:1px solid #E5E8EA;border-radius:12px;background:#FAFBFB">
+                      <div style="display:flex;flex-direction:column;gap:6px">
+                        <label style="font-size:12.5px;font-weight:600">Dirección</label>
+                        <input value="Av. Rivadavia 4821, 3° B" style="height:44px;border:1px solid #E5E8EA;border-radius:10px;padding:0 12px;font:inherit;font-size:14.5px;background:#fff">
+                      </div>
+                      <div style="display:flex;gap:10px">
+                        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                          <label style="font-size:12.5px;font-weight:600">Localidad</label>
+                          <input value="Caballito, CABA" style="height:44px;border:1px solid #E5E8EA;border-radius:10px;padding:0 12px;font:inherit;font-size:14.5px;background:#fff">
+                        </div>
+                        <div style="width:104px;display:flex;flex-direction:column;gap:6px">
+                          <label style="font-size:12.5px;font-weight:600">CP</label>
+                          <input value="1424" style="height:44px;border:1px solid #E5E8EA;border-radius:10px;padding:0 12px;font:inherit;font-size:14.5px;font-variant-numeric:tabular-nums;background:#fff">
+                        </div>
+                      </div>
+                      <p style="margin:0;font-size:12px;line-height:1.45;color:#5A646E">{{ textoEnvio }}</p>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ esPago }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:18px 16px 190px;display:flex;flex-direction:column;gap:10px">
+                  <sc-for list="{{ opcionesPago }}" as="o" hint-placeholder-count="3">
+                    <div onClick="{{ o.elegir }}" style="{{ o.estilo }}">
+                      <span style="{{ o.estiloRadio }}"></span>
+                      <span style="flex:1;min-width:0">
+                        <span style="display:block;font-size:14px;font-weight:640">{{ o.titulo }}</span>
+                        <span style="display:block;margin-top:2px;font-size:12.5px;line-height:1.4;color:#5A646E">{{ o.detalle }}</span>
+                      </span>
+                    </div>
+                  </sc-for>
+
+                  <sc-if value="{{ esTransferencia }}" hint-placeholder-val="{{ false }}">
+                    <div style="padding:14px;border:1px solid #E5E8EA;border-radius:12px;background:#FAFBFB;display:flex;flex-direction:column;gap:11px">
+                      <div>
+                        <p style="margin:0;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#8B959E">Titular</p>
+                        <p style="margin:3px 0 0;font-size:13.5px;font-weight:600">Comprafit S.R.L.</p>
+                      </div>
+                      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px">
+                        <div style="min-width:0">
+                          <p style="margin:0;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#8B959E">CBU</p>
+                          <p style="margin:3px 0 0;font-family:'JetBrains Mono',monospace;font-size:13px;font-variant-numeric:tabular-nums">0720123488000012345678</p>
+                        </div>
+                        <button onClick="{{ copiarCbu }}" style="{{ estiloBotonCopiar }}">{{ textoCopiarCbu }}</button>
+                      </div>
+                      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px">
+                        <div style="min-width:0">
+                          <p style="margin:0;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#8B959E">Alias</p>
+                          <p style="margin:3px 0 0;font-family:'JetBrains Mono',monospace;font-size:13px">COMPRAFIT.SUPLE</p>
+                        </div>
+                        <button onClick="{{ copiarAlias }}" style="{{ estiloBotonCopiar }}">{{ textoCopiarAlias }}</button>
+                      </div>
+                      <p style="margin:0;font-size:12px;line-height:1.45;color:#5A646E">Después de transferir, mandanos el comprobante por WhatsApp. El pedido queda reservado 24 horas.</p>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #E5E8EA;padding:12px 16px 18px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;font-size:13px;color:#5A646E">
+                <span>{{ resumenPie }}</span>
+                <span style="font-size:17px;font-weight:660;color:#101418;font-variant-numeric:tabular-nums">{{ totalConEnvio }}</span>
+              </div>
+              <button onClick="{{ avanzar }}" style="{{ estiloBotonPrincipal }}">{{ textoAvanzar }}</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ esConfirmado }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;overflow-y:auto;padding:0 0 120px">
+              <div style="padding:36px 20px 22px;text-align:center;border-bottom:1px solid #E5E8EA">
+                <span style="{{ estiloTilde }}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px;flex:none;display:block"><path d="M20 6 9 17l-5-5" /></svg>
+                </span>
+                <p style="margin:14px 0 0;font-size:13.5px;color:#5A646E">Tu pedido</p>
+                <p style="margin:2px 0 0;font-family:'JetBrains Mono',monospace;font-size:38px;font-weight:600;letter-spacing:-0.02em">#A-1042</p>
+                <p style="margin:8px auto 0;max-width:34ch;font-size:13.5px;line-height:1.5;color:#5A646E">Te mandamos el detalle por email a martina.olivera@gmail.com</p>
+              </div>
+              <div style="padding:18px 16px">
+                <p style="margin:0 0 10px;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#8B959E">Resumen</p>
+                <sc-for list="{{ lineas }}" as="l" hint-placeholder-count="2">
+                  <div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;font-size:13.5px">
+                    <span style="min-width:0"><span style="font-variant-numeric:tabular-nums;color:#8B959E">{{ l.cantidad }}×</span> {{ l.nombre }}</span>
+                    <span style="font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap">{{ l.subtotal }}</span>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ hayEnvio }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;font-size:13.5px;color:#5A646E">
+                    <span>Envío a domicilio</span>
+                    <span style="font-variant-numeric:tabular-nums;font-weight:600;color:#101418">{{ costoEnvio }}</span>
+                  </div>
+                </sc-if>
+                <div style="display:flex;justify-content:space-between;padding:12px 0 0;margin-top:8px;border-top:1px solid #E5E8EA;font-size:15px;font-weight:660">
+                  <span>Total</span>
+                  <span style="font-variant-numeric:tabular-nums">{{ totalConEnvio }}</span>
+                </div>
+              </div>
+              <div style="margin:6px 16px 0;padding:14px;border:1px solid #E5E8EA;border-radius:12px;background:#FAFBFB">
+                <p style="margin:0 0 8px;font-size:13px;font-weight:640">Qué pasa ahora</p>
+                <p style="margin:0;font-size:12.5px;line-height:1.55;color:#5A646E">{{ textoQuePasa }}</p>
+              </div>
+            </div>
+            <div style="position:absolute;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #E5E8EA;padding:12px 16px 18px;display:flex;flex-direction:column;gap:8px">
+              <button style="{{ estiloBotonPrincipal }}">Mandar el detalle por WhatsApp</button>
+              <button onClick="{{ volverAlInicio }}" style="width:100%;height:44px;border-radius:12px;border:1px solid #E5E8EA;background:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer">Volver al catálogo</button>
+            </div>
+          </sc-if>
+
+          <div style="position:absolute;left:0;right:0;bottom:0;pointer-events:none;height:0"></div>
+        </div>
+      </div>
+
+      <p style="margin:0;max-width:390px;font-size:12px;line-height:1.5;color:#5A646E"><strong style="font-weight:640;color:#101418">Jerarquía:</strong> el precio y el botón de agregar son lo único con peso en cada tarjeta; el color de marca aparece solo en lo que se toca, así el catálogo se ve igual de sobrio con turquesa que con negro.</p>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:26px;flex:1;min-width:540px">
+
+      <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start">
+        <div style="width:330px">
+          <div style="font-size:13.5px;font-weight:640;margin-bottom:10px">El pie, en todas las pantallas</div>
+          <div style="border:1px solid #D5DADE;border-radius:14px;overflow:hidden;background:#FAFBFB;padding:22px 16px 24px;text-align:center">
+            <p style="margin:0;font-size:12.5px;color:#5A646E">Comprafit · CUIT 30-71455892-4</p>
+            <p style="margin:4px 0 0;font-size:12.5px;color:#5A646E">Preguntas al 11 4402 9915</p>
+            <p style="margin:16px 0 0;font-size:11.5px;color:#8B959E">powered by <strong style="font-weight:640;color:#5A646E">favalio</strong></p>
+          </div>
+        </div>
+        <div style="flex:1;min-width:300px">
+          <div style="font-size:13.5px;font-weight:640;margin-bottom:10px">Escritorio</div>
+          <div style="border:1px solid #D5DADE;border-radius:14px;background:#fff;padding:16px;display:flex;flex-direction:column;gap:12px">
+            <div style="padding-bottom:10px;border-bottom:1px solid #E5E8EA;display:flex;align-items:center;gap:8px">
+              <span style="width:18px;height:18px;border-radius:5px;background:var(--marca,#00B4B6)"></span>
+              <span style="font-size:12.5px;font-weight:640">Comprafit / Fitnet</span>
+              <span style="margin-left:auto;font-size:11.5px;color:#8B959E">720px de contenido, centrado</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:460px;margin:0 auto;width:100%">
+              <div style="height:96px;border:1px solid #E5E8EA;border-radius:10px;background:repeating-linear-gradient(135deg,#F6F7F8 0 8px,#F1F3F4 8px 16px)"></div>
+              <div style="height:96px;border:1px solid #E5E8EA;border-radius:10px;background:repeating-linear-gradient(135deg,#F6F7F8 0 8px,#F1F3F4 8px 16px)"></div>
+              <div style="height:96px;border:1px solid #E5E8EA;border-radius:10px;background:repeating-linear-gradient(135deg,#F6F7F8 0 8px,#F1F3F4 8px 16px)"></div>
+            </div>
+          </div>
+          <p style="margin:10px 0 0;font-size:12px;line-height:1.5;color:#5A646E">En escritorio la tienda no se abre a una grilla ancha: sube a tres columnas dentro de los mismos 720px y el carrito deja de ser barra fija para volverse una columna al costado.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="margin-top:44px">
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:6px">
+      <span style="font-size:16px;font-weight:640">Los estados que casi nadie diseña</span>
+      <span style="font-size:12.5px;color:#5A646E">seis pantallas que existen sí o sí, dibujadas</span>
+    </div>
+    <div style="display:flex;gap:22px;flex-wrap:wrap;padding-top:14px">
+
+      <div data-screen-label="Estado · cargando" style="width:330px">
+        <div style="font-size:12.5px;font-weight:640;margin-bottom:8px">Cargando</div>
+        <div style="width:330px;height:520px;background:#fff;border:1px solid #D5DADE;border-radius:20px;overflow:hidden">
+          <div style="height:112px;background:linear-gradient(90deg,#F1F3F4 0,#E9ECEE 40%,#F1F3F4 80%);background-size:320px 100%;animation:brillo 1.4s linear infinite"></div>
+          <div style="padding:14px">
+            <div style="width:62px;height:62px;border-radius:16px;background:#F1F3F4;margin-top:-46px;border:3px solid #fff"></div>
+            <div style="width:170px;height:18px;border-radius:6px;background:#F1F3F4;margin-top:14px"></div>
+            <div style="width:250px;height:11px;border-radius:5px;background:#F1F3F4;margin-top:9px"></div>
+            <div style="height:38px;border-radius:10px;background:#F1F3F4;margin-top:14px"></div>
+            <div style="display:flex;gap:7px;margin-top:11px">
+              <div style="width:64px;height:28px;border-radius:999px;background:#F1F3F4"></div>
+              <div style="width:80px;height:28px;border-radius:999px;background:#F1F3F4"></div>
+              <div style="width:72px;height:28px;border-radius:999px;background:#F1F3F4"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:14px">
+              <div style="height:150px;border-radius:12px;background:linear-gradient(90deg,#F4F5F6 0,#EAEDEF 40%,#F4F5F6 80%);background-size:320px 100%;animation:brillo 1.4s linear infinite"></div>
+              <div style="height:150px;border-radius:12px;background:linear-gradient(90deg,#F4F5F6 0,#EAEDEF 40%,#F4F5F6 80%);background-size:320px 100%;animation:brillo 1.4s linear infinite"></div>
+            </div>
+          </div>
+        </div>
+        <p style="margin:9px 0 0;font-size:11.5px;line-height:1.5;color:#5A646E">El servidor puede tardar hasta 50 s en despertar: la silueta es la del catálogo real, así nadie ve una pantalla en blanco ni un spinner sin final.</p>
+      </div>
+
+      <div data-screen-label="Estado · catálogo pausado" style="width:330px">
+        <div style="font-size:12.5px;font-weight:640;margin-bottom:8px">Catálogo pausado</div>
+        <div style="width:330px;height:520px;background:#fff;border:1px solid #D5DADE;border-radius:20px;overflow:hidden;display:flex;flex-direction:column">
+          <div style="height:112px;background:repeating-linear-gradient(135deg,rgba(0,0,0,.045) 0 5px,rgba(0,0,0,0) 5px 11px),linear-gradient(160deg,color-mix(in srgb,var(--marca,#00B4B6) 22%,#fff),color-mix(in srgb,var(--marca,#00B4B6) 9%,#fff));filter:grayscale(.5);opacity:.8"></div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 34px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#8B959E" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:30px;height:30px"><circle cx="12" cy="12" r="10" /><path d="M4.929 4.929 19.07 19.071" /></svg>
+            <p style="margin:12px 0 0;font-size:15px;font-weight:640">El catálogo está en pausa</p>
+            <p style="margin:7px 0 0;font-size:13px;line-height:1.5;color:#5A646E">Comprafit lo despausa cuando vuelve a tomar pedidos. Podés escribirles mientras tanto.</p>
+            <button style="margin-top:18px;height:44px;padding:0 18px;border-radius:11px;border:1px solid #E5E8EA;background:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer">Escribir por WhatsApp</button>
+          </div>
+          <div style="padding:18px;text-align:center;border-top:1px solid #E5E8EA;background:#FAFBFB;font-size:11.5px;color:#8B959E">powered by favalio</div>
+        </div>
+        <p style="margin:9px 0 0;font-size:11.5px;line-height:1.5;color:#5A646E">La portada queda, apagada: el socio tiene que reconocer que llegó al lugar correcto y que el problema es temporal, no que escaneó mal.</p>
+      </div>
+
+      <div data-screen-label="Estado · sin resultados" style="width:330px">
+        <div style="font-size:12.5px;font-weight:640;margin-bottom:8px">Búsqueda sin resultados</div>
+        <div style="width:330px;height:520px;background:#fff;border:1px solid #D5DADE;border-radius:20px;overflow:hidden;display:flex;flex-direction:column">
+          <div style="padding:16px 14px 10px">
+            <div style="display:flex;align-items:center;gap:8px;height:40px;border:1.5px solid var(--marca,#00B4B6);border-radius:10px;padding:0 11px;background:#fff">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#8B959E" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;flex:none"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg>
+              <span style="font-size:14px">creatnia</span>
+            </div>
+            <div style="display:flex;gap:7px;margin-top:11px">
+              <span style="height:30px;padding:0 13px;border-radius:999px;background:#F1F3F4;color:#5A646E;font-size:13px;font-weight:600;display:grid;place-items:center">Todos</span>
+              <span style="height:30px;padding:0 13px;border-radius:999px;background:#F1F3F4;color:#5A646E;font-size:13px;font-weight:600;display:grid;place-items:center">Proteínas</span>
+            </div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 32px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#8B959E" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:28px;height:28px"><path d="m13.5 8.5-5 5" /><path d="m8.5 8.5 5 5" /><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+            <p style="margin:11px 0 0;font-size:14.5px;font-weight:640">No encontramos «creatnia»</p>
+            <p style="margin:6px 0 0;font-size:13px;line-height:1.5;color:#5A646E">Revisá cómo se escribe o mirá la categoría Creatinas.</p>
+            <div style="display:flex;gap:8px;margin-top:16px">
+              <button style="height:40px;padding:0 14px;border-radius:10px;border:1px solid #E5E8EA;background:#fff;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer">Limpiar</button>
+              <button style="height:40px;padding:0 14px;border-radius:10px;border:1px solid transparent;background:var(--marca,#00B4B6);color:var(--marca-texto,#fff);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer">Ver Creatinas</button>
+            </div>
+          </div>
+        </div>
+        <p style="margin:9px 0 0;font-size:11.5px;line-height:1.5;color:#5A646E">El vacío no termina en un cartel: ofrece la categoría más parecida, que es lo que el socio venía a buscar.</p>
+      </div>
+
+      <div data-screen-label="Estado · carrito vacío" style="width:330px">
+        <div style="font-size:12.5px;font-weight:640;margin-bottom:8px">Carrito vacío</div>
+        <div style="width:330px;height:520px;background:#fff;border:1px solid #D5DADE;border-radius:20px;overflow:hidden;display:flex;flex-direction:column">
+          <div style="height:50px;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid #E5E8EA">
+            <span style="width:32px;height:32px;border-radius:9px;border:1px solid #E5E8EA;display:grid;place-items:center">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#101418" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="m15 18-6-6 6-6" /></svg>
+            </span>
+            <span style="font-size:15px;font-weight:640">Tu pedido</span>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 34px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#8B959E" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:30px;height:30px"><circle cx="8" cy="21" r="1" /><circle cx="19" cy="21" r="1" /><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" /></svg>
+            <p style="margin:12px 0 0;font-size:15px;font-weight:640">Tu pedido está vacío</p>
+            <p style="margin:6px 0 0;font-size:13px;line-height:1.5;color:#5A646E">Agregá productos del catálogo y los vas a ver acá antes de pagar.</p>
+            <button style="margin-top:18px;height:46px;padding:0 20px;border-radius:12px;border:1px solid transparent;background:var(--marca,#00B4B6);color:var(--marca-texto,#fff);font:inherit;font-size:14.5px;font-weight:640;cursor:pointer">Ver el catálogo</button>
+          </div>
+        </div>
+        <p style="margin:9px 0 0;font-size:11.5px;line-height:1.5;color:#5A646E">Sin barra inferior: no hay total que mostrar, y el único camino posible es el botón que vuelve al catálogo.</p>
+      </div>
+
+      <div data-screen-label="Estado · pago rechazado" style="width:330px">
+        <div style="font-size:12.5px;font-weight:640;margin-bottom:8px">Pago rechazado</div>
+        <div style="width:330px;height:520px;background:#fff;border:1px solid #D5DADE;border-radius:20px;overflow:hidden;display:flex;flex-direction:column">
+          <div style="height:50px;display:flex;align-items:center;padding:0 14px;border-bottom:1px solid #E5E8EA;font-size:15px;font-weight:640">Pago</div>
+          <div style="padding:16px 14px;display:flex;flex-direction:column;gap:12px;flex:1">
+            <div style="display:flex;gap:11px;padding:14px;border:1px solid #EFB4B4;background:#FBEAEA;border-radius:12px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#C42B2B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:19px;height:19px;flex:none;margin-top:1px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+              <div style="min-width:0">
+                <p style="margin:0;font-size:13.5px;font-weight:640;color:#C42B2B">El banco rechazó el pago</p>
+                <p style="margin:5px 0 0;font-size:12.5px;line-height:1.5;color:#5A646E">No se descontó nada de tu cuenta. Tu pedido quedó guardado con el número <span style="font-family:'JetBrains Mono',monospace">#A-1042</span>, podés intentar de nuevo o cambiar el medio de pago.</p>
+              </div>
+            </div>
+            <div style="padding:13px;border:1px solid #E5E8EA;border-radius:12px;display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:13.5px">Mercado Pago · terminada en 4417</span>
+              <span style="font-size:11.5px;font-weight:600;color:#C42B2B;background:#FBEAEA;border:1px solid #EFB4B4;padding:3px 8px;border-radius:6px">Rechazada</span>
+            </div>
+            <div style="padding:13px;border:1px solid #E5E8EA;border-radius:12px;font-size:13.5px;color:#5A646E">Transferencia bancaria</div>
+            <div style="padding:13px;border:1px solid #E5E8EA;border-radius:12px;font-size:13.5px;color:#5A646E">Efectivo al retirar</div>
+          </div>
+          <div style="padding:12px 14px 16px;border-top:1px solid #E5E8EA">
+            <button style="width:100%;height:48px;border-radius:12px;border:1px solid transparent;background:var(--marca,#00B4B6);color:var(--marca-texto,#fff);font:inherit;font-size:15px;font-weight:640;cursor:pointer">Reintentar el pago</button>
+          </div>
+        </div>
+        <p style="margin:9px 0 0;font-size:11.5px;line-height:1.5;color:#5A646E">Lo primero que se lee es que no se cobró nada y que el pedido no se perdió; recién después, las alternativas.</p>
+      </div>
+
+      <div data-screen-label="Estado · se agotó" style="width:330px">
+        <div style="font-size:12.5px;font-weight:640;margin-bottom:8px">Se agotó mientras compraba</div>
+        <div style="width:330px;height:520px;background:#fff;border:1px solid #D5DADE;border-radius:20px;overflow:hidden;display:flex;flex-direction:column">
+          <div style="height:50px;display:flex;align-items:center;padding:0 14px;border-bottom:1px solid #E5E8EA;font-size:15px;font-weight:640">Tu pedido</div>
+          <div style="padding:14px;display:flex;flex-direction:column;gap:12px;flex:1">
+            <div style="display:flex;gap:11px;padding:13px;border:1px solid #EBC48A;background:#FBF0DE;border-radius:12px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#9A5B08" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:19px;height:19px;flex:none;margin-top:1px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+              <div style="min-width:0">
+                <p style="margin:0;font-size:13.5px;font-weight:640;color:#9A5B08">Se agotó un producto de tu pedido</p>
+                <p style="margin:5px 0 0;font-size:12.5px;line-height:1.5;color:#5A646E">Lo sacamos del total. Podés seguir con el resto o avisarle a Comprafit para que lo reponga.</p>
+              </div>
+            </div>
+            <div style="display:flex;gap:11px;padding:12px 0;border-bottom:1px solid #E5E8EA;opacity:.55">
+              <div style="width:56px;height:56px;flex:none;border-radius:10px;background:repeating-linear-gradient(135deg,#F1F3F4 0 8px,#E9ECEE 8px 16px)"></div>
+              <div style="flex:1;min-width:0">
+                <p style="margin:0;font-size:13.5px;font-weight:600;text-decoration:line-through">Barra proteica chocolate 60g</p>
+                <p style="margin:2px 0 0;font-size:11.5px;color:#8B959E">Gentech</p>
+                <p style="margin:6px 0 0;font-size:11.5px;font-weight:600;color:#9A5B08">Sin stock · quitado del pedido</p>
+              </div>
+            </div>
+            <div style="display:flex;gap:11px;padding:2px 0 12px;border-bottom:1px solid #E5E8EA">
+              <div style="width:56px;height:56px;flex:none;border-radius:10px;background:repeating-linear-gradient(135deg,#F1F3F4 0 8px,#E9ECEE 8px 16px)"></div>
+              <div style="flex:1;min-width:0">
+                <p style="margin:0;font-size:13.5px;font-weight:600">Whey Protein Isolate 1kg</p>
+                <p style="margin:2px 0 0;font-size:11.5px;color:#8B959E">ENA</p>
+                <p style="margin:8px 0 0;font-size:14px;font-weight:640;font-variant-numeric:tabular-nums">$38.868</p>
+              </div>
+            </div>
+          </div>
+          <div style="padding:12px 14px 16px;border-top:1px solid #E5E8EA">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+              <span style="font-size:13px;color:#5A646E">Nuevo total</span>
+              <span style="font-size:18px;font-weight:660;font-variant-numeric:tabular-nums">$38.868</span>
+            </div>
+            <button style="width:100%;height:48px;border-radius:12px;border:1px solid transparent;background:var(--marca,#00B4B6);color:var(--marca-texto,#fff);font:inherit;font-size:15px;font-weight:640;cursor:pointer">Seguir con el resto</button>
+          </div>
+        </div>
+        <p style="margin:9px 0 0;font-size:11.5px;line-height:1.5;color:#5A646E">La línea no desaparece: queda tachada arriba del total nuevo, para que el cambio de importe tenga una causa visible.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<section id="panel" style="padding:0 56px 90px;max-width:1760px;margin:0 auto">
+  <div style="display:flex;align-items:baseline;gap:14px;border-top:1px solid #D5DADE;padding-top:22px;margin-bottom:10px">
+    <span style="font-size:22px;font-weight:660;letter-spacing:-0.02em">B · El panel de administración</span>
+    <span style="font-size:13px;color:#5A646E">adentro de Favalio · 1320px de contenido · el sistema de diseño del repositorio, tal cual</span>
+  </div>
+  <p style="margin:0 0 20px;max-width:78ch;font-size:13px;line-height:1.55;color:#5A646E">Es navegable: cambiá de sección en la barra lateral, de pestaña en el detalle del catálogo, abrí un pedido y probá «Marcar cobrado». El interruptor de la esquina superior derecha cambia entre claro y oscuro.</p>
+
+  <div data-screen-label="Panel · Favalio" data-tema="{{ tema }}" style="width:1560px;height:940px;border:1px solid #D5DADE;border-radius:14px;overflow:hidden;box-shadow:0 24px 60px rgba(16,24,40,.16);display:flex;position:relative;background:var(--bg);color:var(--fg);font-size:14px;line-height:1.45">
+
+    <aside style="width:240px;flex:none;border-right:1px solid var(--bd);background:var(--sf);display:flex;flex-direction:column;overflow:hidden">
+      <div style="height:60px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px">
+        <div style="width:28px;height:28px;border-radius:7px;background:var(--brs);border:1px solid var(--brl);display:grid;place-items:center;color:var(--brd);font-size:13px;font-weight:700">C</div>
+        <span style="flex:1;font-size:14.5px;font-weight:600;letter-spacing:-0.01em">Comprafit</span>
+        <span style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg3)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18" /></svg>
+        </span>
+      </div>
+
+      <nav style="flex:1;display:flex;flex-direction:column;gap:18px;padding:0 12px 12px;overflow-y:auto">
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3);padding:0 8px 6px">Operaciones</div>
+          <div style="{{ navInerte }}"><svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:16.5px;height:16.5px;flex:none"><circle cx="8" cy="21" r="1" /><circle cx="19" cy="21" r="1" /><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" /></svg>Punto de venta</div>
+          <div style="{{ navInerte }}"><svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:16.5px;height:16.5px;flex:none"><rect width="8" height="4" x="8" y="2" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="M12 11h4" /><path d="M12 16h4" /><path d="M8 11h.01" /><path d="M8 16h.01" /></svg>Historial de ventas</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3);padding:0 8px 6px">Venta online</div>
+          <button onClick="{{ irCatalogos }}" style="{{ navCatalogos }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:16.5px;height:16.5px;flex:none"><path d="M15 21v-5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5" /><path d="M17.774 10.31a1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.451 0 1.12 1.12 0 0 0-1.548 0 2.5 2.5 0 0 1-3.452 0 1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.77-3.248l2.889-4.184A2 2 0 0 1 7 2h10a2 2 0 0 1 1.653.873l2.895 4.192a2.5 2.5 0 0 1-3.774 3.244" /><path d="M4 10.95V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.05" /></svg>Catálogos</button>
+          <button onClick="{{ irPedidos }}" style="{{ navPedidos }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:16.5px;height:16.5px;flex:none"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" /><path d="M12 22V12" /><polyline points="3.29 7 12 12 20.71 7" /><path d="m7.5 4.27 9 5.15" /></svg>Pedidos</button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3);padding:0 8px 6px">Gestión</div>
+          <div style="{{ navInerte }}"><svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:16.5px;height:16.5px;flex:none"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" /><path d="M12 22V12" /><polyline points="3.29 7 12 12 20.71 7" /></svg>Inventario</div>
+          <div style="{{ navInerte }}"><svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:16.5px;height:16.5px;flex:none"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>Faltantes</div>
+          <div style="{{ navInerte }}"><svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:16.5px;height:16.5px;flex:none"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2" /><path d="M15 18H9" /><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14" /><circle cx="17" cy="18" r="2" /><circle cx="7" cy="18" r="2" /></svg>Proveedores</div>
+          <div style="{{ navInerte }}"><svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:16.5px;height:16.5px;flex:none"><rect width="8" height="4" x="8" y="2" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="M12 11h4" /><path d="M8 11h.01" /></svg>Órdenes de compra</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3);padding:0 8px 6px">Finanzas</div>
+          <div style="{{ navInerte }}"><svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:16.5px;height:16.5px;flex:none"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1" /><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" /></svg>Gastos</div>
+          <div style="{{ navInerte }}"><svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:16.5px;height:16.5px;flex:none"><path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" /></svg>Panel de control</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3);padding:0 8px 6px">Configuración</div>
+          <div style="{{ navInerte }}"><svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:16.5px;height:16.5px;flex:none"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /><path d="M14 2v5a1 1 0 0 0 1 1h5" /><path d="m9 15 2 2 4-4" /></svg>Facturación AFIP</div>
+          <div style="{{ navInerte }}"><svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:16.5px;height:16.5px;flex:none"><path d="M10 15H6a4 4 0 0 0-4 4v2" /><circle cx="18" cy="15" r="3" /><circle cx="9" cy="7" r="4" /></svg>Equipo</div>
+          <div style="{{ navInerte }}"><svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:16.5px;height:16.5px;flex:none"><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /></svg>Suscripción</div>
+        </div>
+      </nav>
+
+      <div style="flex:none;display:flex;align-items:center;gap:10px;border-top:1px solid var(--bd);padding:10px 12px">
+        <div style="width:28px;height:28px;border-radius:999px;border:1px solid var(--brl);background:var(--brs);color:var(--brd);display:grid;place-items:center;font-size:11.5px;font-weight:600">R</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12.5px;font-weight:600">Renata Vidal</div>
+          <div style="font-size:11px;color:var(--fg3)">renata@comprafit.com.ar</div>
+        </div>
+        <span style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg3)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /></svg>
+        </span>
+      </div>
+    </aside>
+
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
+      <header style="height:60px;flex:none;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--bd);background:var(--sf);padding:0 20px 0 16px">
+        <span style="font-size:13px;color:var(--fg3)">Venta online</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="m9 18 6-6-6-6" /></svg>
+        <span style="font-size:13px;font-weight:600">{{ migaSeccion }}</span>
+        <div style="flex:1"></div>
+        <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--bd);background:var(--sf2);border-radius:8px;padding:4px 10px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M10 12h4" /><path d="M10 8h4" /><path d="M14 21v-3a2 2 0 0 0-4 0v3" /><path d="M6 10H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2" /><path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16" /></svg>
+          <span style="font-size:12.5px;font-weight:600">Comprafit S.R.L.</span>
+        </div>
+        <button onClick="{{ alternarTema }}" title="Cambiar tema" style="width:30px;height:30px;border-radius:7px;border:1px solid var(--bd);background:var(--sf);color:var(--fg2);display:grid;place-items:center;cursor:pointer">
+          <sc-if value="{{ esOscuro }}" hint-placeholder-val="{{ false }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" /></svg>
+          </sc-if>
+          <sc-if value="{{ esClaro }}" hint-placeholder-val="{{ true }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" /></svg>
+          </sc-if>
+        </button>
+      </header>
+
+      <main style="flex:1;min-height:0;overflow:hidden">
+        <div style="height:100%;overflow-y:auto">
+          <div style="max-width:1320px;margin:0 auto;padding:32px 36px 48px">
+
+            <sc-if value="{{ esCatalogos }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:24px">
+                <div style="min-width:0">
+                  <h1 style="margin:0;display:flex;align-items:center;gap:8px;font-size:24px;font-weight:660;letter-spacing:-0.022em">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--br)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;flex:none"><path d="M15 21v-5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5" /><path d="M17.774 10.31a1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.451 0 1.12 1.12 0 0 0-1.548 0 2.5 2.5 0 0 1-3.452 0 1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.77-3.248l2.889-4.184A2 2 0 0 1 7 2h10a2 2 0 0 1 1.653.873l2.895 4.192a2.5 2.5 0 0 1-3.774 3.244" /><path d="M4 10.95V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.05" /></svg>
+                    Catálogos
+                  </h1>
+                  <p style="margin:6px 0 0;max-width:60ch;font-size:13.5px;color:var(--fg2)">Tiendas públicas de la empresa. Cada una tiene su propio color, sus reglas de precio y su QR; el stock y las ventas son los mismos de Favalio.</p>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button style="height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--bd);background:var(--sf);color:var(--fg);font:inherit;font-size:13px;font-weight:500;cursor:pointer">Ver la tienda</button>
+                  <button style="height:34px;padding:0 13px;border-radius:8px;border:1px solid transparent;background:var(--br);color:var(--pf);font:inherit;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
+                    Nuevo catálogo
+                  </button>
+                </div>
+              </div>
+
+              <div style="margin-top:22px;border:1px solid var(--bd);border-radius:12px;background:var(--sf);overflow:hidden">
+                <div style="display:grid;grid-template-columns:minmax(0,1fr) 128px 96px 104px 136px 40px;column-gap:16px;align-items:center;padding:11px 20px;border-bottom:1px solid var(--bd);background:var(--sf2);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">
+                  <span>Catálogo</span><span>Estado</span><span style="text-align:right">Productos</span><span style="text-align:right">Pedidos</span><span>Último pedido</span><span></span>
+                </div>
+                <sc-for list="{{ catalogos }}" as="c" hint-placeholder-count="3">
+                  <div style="{{ c.estiloFila }}">
+                    <div style="min-width:0">
+                      <div style="font-size:13.5px;font-weight:600">{{ c.nombre }}</div>
+                      <div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--fg3);margin-top:2px">comprafit.favalio.com{{ c.url }}</div>
+                    </div>
+                    <span style="{{ c.estiloBadge }}">{{ c.estado }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;text-align:right">{{ c.prods }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;text-align:right">{{ c.pedidos }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;color:var(--fg2)">{{ c.ultima }}</span>
+                    <span style="display:grid;place-items:center;color:var(--fg3)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="m9 18 6-6-6-6" /></svg>
+                    </span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="margin-top:34px;display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap">
+                <div>
+                  <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">Detalle del catálogo</div>
+                  <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+                    <span style="font-size:19px;font-weight:640;letter-spacing:-0.015em">Comprafit / Fitnet</span>
+                    <span style="display:inline-flex;align-items:center;height:21px;padding:0 8px;border-radius:6px;font-size:11.5px;font-weight:600;color:var(--ok);background:var(--oks);border:1px solid var(--okl)">Publicado</span>
+                  </div>
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button style="height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--bd);background:var(--sf);color:var(--fg);font:inherit;font-size:13px;cursor:pointer">Pausar</button>
+                  <button style="height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--bd);background:var(--sf);color:var(--fg);font:inherit;font-size:13px;cursor:pointer">Duplicar</button>
+                </div>
+              </div>
+
+              <div style="margin-top:14px;border-bottom:1px solid var(--bd);display:flex">
+                <sc-for list="{{ pestanas }}" as="t" hint-placeholder-count="5">
+                  <button onClick="{{ t.elegir }}" style="{{ t.estilo }}">{{ t.nombre }}</button>
+                </sc-for>
+              </div>
+
+              <sc-if value="{{ tabIdentidad }}" hint-placeholder-val="{{ true }}">
+                <div style="margin-top:20px;display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px;align-items:start">
+                  <div style="border:1px solid var(--bd);border-radius:12px;background:var(--sf);padding:20px;display:flex;flex-direction:column;gap:16px">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                      <div style="display:flex;flex-direction:column;gap:6px">
+                        <label style="font-size:12.5px;font-weight:600">Nombre visible</label>
+                        <input value="Comprafit / Fitnet" style="height:36px;border:1px solid var(--bd);border-radius:9px;background:var(--sf);color:var(--fg);padding:0 10px;font:inherit;font-size:13.5px">
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:6px">
+                        <label style="font-size:12.5px;font-weight:600">Dirección web</label>
+                        <input value="comprafit-fitnet" style="height:36px;border:1px solid var(--bd);border-radius:9px;background:var(--sf);color:var(--fg);padding:0 10px;font-family:'JetBrains Mono',monospace;font-size:13px">
+                      </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:6px">
+                      <label style="font-size:12.5px;font-weight:600">Descripción</label>
+                      <textarea style="height:70px;border:1px solid var(--bd);border-radius:9px;background:var(--sf);color:var(--fg);padding:9px 10px;font:inherit;font-size:13.5px;resize:none">Suplementos con precio de socio para los que entrenan en Fitnet. Retirás en el gimnasio o te lo llevamos.</textarea>
+                      <span style="font-size:11.5px;color:var(--fg3)">Se muestra debajo del nombre, en la portada. Una línea alcanza.</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                      <div style="display:flex;flex-direction:column;gap:6px">
+                        <label style="font-size:12.5px;font-weight:600">Logo</label>
+                        <div style="height:96px;border:1px dashed var(--bd2);border-radius:10px;display:flex;align-items:center;gap:12px;padding:12px;background:var(--sf2)">
+                          <div style="width:64px;height:64px;border-radius:12px;background:#fff;border:1px solid var(--bd);display:grid;place-items:center;padding:8px"><img src="assets/comprafit.webp" alt="" style="width:100%;height:auto"></div>
+                          <div style="min-width:0">
+                            <div style="font-size:12.5px;font-weight:600">comprafit-logo.webp</div>
+                            <div style="font-size:11.5px;color:var(--fg3)">640×417 · PNG o WEBP, fondo transparente</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div style="display:flex;flex-direction:column;gap:6px">
+                        <label style="font-size:12.5px;font-weight:600">Portada</label>
+                        <div style="height:96px;border:1px dashed var(--bd2);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:var(--sf2)">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
+                          <span style="font-size:12.5px;color:var(--fg2)">Arrastrá una imagen de 1200×480</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <label style="font-size:12.5px;font-weight:600">Color de marca</label>
+                      <div style="display:flex;align-items:center;gap:10px">
+                        <span style="width:36px;height:36px;border-radius:9px;border:1px solid var(--bd);background:{{ colorCatalogo }}"></span>
+                        <input value="{{ colorCatalogo }}" style="width:130px;height:36px;border:1px solid var(--bd);border-radius:9px;background:var(--sf);color:var(--fg);padding:0 10px;font-family:'JetBrains Mono',monospace;font-size:13px;text-transform:uppercase">
+                        <span style="font-size:11.5px;color:var(--fg2);max-width:38ch">Es el único color que define el comercio. Todo lo demás de la tienda es neutro.</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="border:1px solid var(--bd);border-radius:12px;background:var(--sf);padding:16px">
+                    <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3);margin-bottom:12px">Cómo se ve</div>
+                    <div style="border:1px solid var(--bd);border-radius:14px;overflow:hidden;background:#fff">
+                      <div style="height:92px;background:repeating-linear-gradient(135deg,rgba(0,0,0,.045) 0 5px,rgba(0,0,0,0) 5px 11px),linear-gradient(160deg,color-mix(in srgb,{{ colorCatalogo }} 30%,#fff),color-mix(in srgb,{{ colorCatalogo }} 12%,#fff))"></div>
+                      <div style="padding:12px 14px 16px">
+                        <div style="width:52px;height:52px;border-radius:13px;background:#fff;border:1px solid #E5E8EA;margin-top:-38px;display:grid;place-items:center;padding:7px"><img src="assets/comprafit.webp" alt="" style="width:100%;height:auto"></div>
+                        <div style="margin-top:10px;font-size:15px;font-weight:640;color:#101418">Comprafit / Fitnet</div>
+                        <div style="margin-top:3px;font-size:11.5px;line-height:1.45;color:#5A646E">Suplementos con precio de socio para los que entrenan en Fitnet.</div>
+                        <div style="margin-top:12px;height:36px;border-radius:10px;background:{{ colorCatalogo }};display:grid;place-items:center;color:#fff;font-size:12.5px;font-weight:600">Ver el catálogo</div>
+                      </div>
+                    </div>
+                    <p style="margin:12px 0 0;font-size:11.5px;line-height:1.5;color:var(--fg2)">La previsualización usa el color en el mismo lugar que la tienda real: portada y botón. Nunca de fondo de una zona grande.</p>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ tabEntrega }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+                  <div style="border:1px solid var(--bd);border-radius:12px;background:var(--sf);overflow:hidden">
+                    <div style="padding:14px 18px;border-bottom:1px solid var(--bd);font-size:14px;font-weight:640">Entrega</div>
+                    <div style="padding:6px 18px 18px">
+                      <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--bd)">
+                        <div><div style="font-size:13.5px;font-weight:600">Retiro en el gimnasio</div><div style="font-size:12px;color:var(--fg2);margin-top:2px">Recepción de Fitnet · lunes a viernes de 8 a 22</div></div>
+                        <span style="width:34px;height:20px;border-radius:999px;background:var(--br);position:relative;flex:none"><span style="position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:999px;background:#fff"></span></span>
+                      </div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--bd)">
+                        <div><div style="font-size:13.5px;font-weight:600">Retiro en el local</div><div style="font-size:12px;color:var(--fg2);margin-top:2px">Av. Rivadavia 5210 · sábados hasta las 14</div></div>
+                        <span style="width:34px;height:20px;border-radius:999px;background:var(--br);position:relative;flex:none"><span style="position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:999px;background:#fff"></span></span>
+                      </div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--bd)">
+                        <div><div style="font-size:13.5px;font-weight:600">Envío a domicilio</div><div style="font-size:12px;color:var(--fg2);margin-top:2px">CABA y GBA · 48 a 72 h hábiles</div></div>
+                        <span style="width:34px;height:20px;border-radius:999px;background:var(--br);position:relative;flex:none"><span style="position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:999px;background:#fff"></span></span>
+                      </div>
+                      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 0;border-bottom:1px solid var(--bd)">
+                        <div style="display:flex;flex-direction:column;gap:6px">
+                          <label style="font-size:12.5px;font-weight:600">Costo del envío</label>
+                          <input value="$2.500" style="height:36px;border:1px solid var(--bd);border-radius:9px;background:var(--sf);color:var(--fg);padding:0 10px;font-family:'JetBrains Mono',monospace;font-size:13px">
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:6px">
+                          <label style="font-size:12.5px;font-weight:600">Gratis a partir de</label>
+                          <input value="$50.000" style="height:36px;border:1px solid var(--bd);border-radius:9px;background:var(--sf);color:var(--fg);padding:0 10px;font-family:'JetBrains Mono',monospace;font-size:13px">
+                        </div>
+                      </div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 0">
+                        <div><div style="font-size:13.5px;font-weight:600">Coordinar por WhatsApp</div><div style="font-size:12px;color:var(--fg2);margin-top:2px">11 4402 9915</div></div>
+                        <span style="width:34px;height:20px;border-radius:999px;background:var(--br);position:relative;flex:none"><span style="position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:999px;background:#fff"></span></span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="border:1px solid var(--bd);border-radius:12px;background:var(--sf);overflow:hidden">
+                    <div style="padding:14px 18px;border-bottom:1px solid var(--bd);font-size:14px;font-weight:640">Pago</div>
+                    <div style="padding:6px 18px 18px">
+                      <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--bd)">
+                        <div><div style="font-size:13.5px;font-weight:600">Mercado Pago</div><div style="font-size:12px;color:var(--fg2);margin-top:2px">Cuenta vinculada · comprafit.mp</div></div>
+                        <span style="width:34px;height:20px;border-radius:999px;background:var(--br);position:relative;flex:none"><span style="position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:999px;background:#fff"></span></span>
+                      </div>
+                      <div style="padding:13px 0;border-bottom:1px solid var(--bd)">
+                        <div style="display:flex;align-items:center;justify-content:space-between">
+                          <div><div style="font-size:13.5px;font-weight:600">Transferencia bancaria</div><div style="font-size:12px;color:var(--fg2);margin-top:2px">Los datos se muestran en el checkout</div></div>
+                          <span style="width:34px;height:20px;border-radius:999px;background:var(--br);position:relative;flex:none"><span style="position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:999px;background:#fff"></span></span>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px">
+                          <div style="display:flex;flex-direction:column;gap:6px">
+                            <label style="font-size:12.5px;font-weight:600">Titular</label>
+                            <input value="Comprafit S.R.L." style="height:36px;border:1px solid var(--bd);border-radius:9px;background:var(--sf);color:var(--fg);padding:0 10px;font:inherit;font-size:13.5px">
+                          </div>
+                          <div style="display:flex;flex-direction:column;gap:6px">
+                            <label style="font-size:12.5px;font-weight:600">Alias</label>
+                            <input value="COMPRAFIT.SUPLE" style="height:36px;border:1px solid var(--bd);border-radius:9px;background:var(--sf);color:var(--fg);padding:0 10px;font-family:'JetBrains Mono',monospace;font-size:13px">
+                          </div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:6px;margin-top:14px">
+                          <label style="font-size:12.5px;font-weight:600">CBU</label>
+                          <input value="0720123488000012345678" style="height:36px;border:1px solid var(--bd);border-radius:9px;background:var(--sf);color:var(--fg);padding:0 10px;font-family:'JetBrains Mono',monospace;font-size:13px;font-variant-numeric:tabular-nums">
+                        </div>
+                      </div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 0">
+                        <div><div style="font-size:13.5px;font-weight:600">Efectivo al retirar</div><div style="font-size:12px;color:var(--fg2);margin-top:2px">Solo con retiro en el gimnasio o en el local</div></div>
+                        <span style="width:34px;height:20px;border-radius:999px;background:var(--br);position:relative;flex:none"><span style="position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:999px;background:#fff"></span></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ tabReglas }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:20px;display:flex;flex-direction:column;gap:20px">
+                  <div style="display:flex;gap:12px;align-items:flex-start;border:1px solid var(--inl);background:var(--ins);border-radius:12px;padding:14px 16px">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--in)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;flex:none;margin-top:1px"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
+                    <div>
+                      <div style="font-size:13px;font-weight:640;color:var(--in)">Gana la regla más específica. No se acumulan.</div>
+                      <div style="margin-top:4px;font-size:12.5px;line-height:1.5;color:var(--fg2)">Un producto con regla propia ignora la de su marca; una marca ignora la de su categoría; y todas ignoran la del catálogo entero. La columna «Gana en» dice sobre cuántos productos manda cada una hoy.</div>
+                    </div>
+                  </div>
+
+                  <div style="border:1px solid var(--bd);border-radius:12px;background:var(--sf);overflow:hidden">
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--bd)">
+                      <div style="font-size:14px;font-weight:640">Reglas del catálogo</div>
+                      <button style="height:34px;padding:0 13px;border-radius:8px;border:1px solid transparent;background:var(--br);color:var(--pf);font:inherit;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
+                        Nueva regla
+                      </button>
+                    </div>
+                    <div style="display:grid;grid-template-columns:34px 250px minmax(0,1fr) 152px 92px 96px 34px;column-gap:16px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--bd);background:var(--sf2);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">
+                      <span></span><span>Ámbito</span><span>A qué se aplica</span><span>Tipo</span><span style="text-align:right">Valor</span><span style="text-align:right">Gana en</span><span></span>
+                    </div>
+                    <sc-for list="{{ reglas }}" as="r" hint-placeholder-count="4">
+                      <div style="display:grid;grid-template-columns:34px 250px minmax(0,1fr) 152px 92px 96px 34px;column-gap:16px;align-items:center;padding:13px 18px;border-bottom:1px solid var(--bd)">
+                        <span style="color:var(--fg3);display:grid;place-items:center">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><circle cx="9" cy="12" r="1" /><circle cx="9" cy="5" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="15" cy="19" r="1" /></svg>
+                        </span>
+                        <span style="{{ r.sangria }}"><span style="{{ r.estiloAmbito }}">{{ r.ambito }}</span></span>
+                        <span style="font-size:13.5px;min-width:0">{{ r.objetivo }}</span>
+                        <span style="font-size:13px;color:var(--fg2)">{{ r.tipo }}</span>
+                        <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13.5px;font-weight:600;text-align:right">{{ r.valor }}</span>
+                        <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--fg2);text-align:right">{{ r.textoGana }}</span>
+                        <span style="display:grid;place-items:center;color:var(--fg3)">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /><path d="m15 5 4 4" /></svg>
+                        </span>
+                      </div>
+                    </sc-for>
+                    <div style="padding:11px 18px;font-size:12.5px;color:var(--fg2);display:flex;gap:8px;align-items:center">
+                      <span style="width:8px;height:8px;border-radius:2px;background:var(--brl);display:inline-block"></span>
+                      La sangría indica la especificidad: cuanto más a la derecha, más manda.
+                    </div>
+                  </div>
+
+                  <div style="border:1px solid var(--bd);border-radius:12px;background:var(--sf);overflow:hidden">
+                    <div style="padding:14px 18px;border-bottom:1px solid var(--bd)">
+                      <div style="font-size:14px;font-weight:640">Previsualización sobre productos reales</div>
+                      <div style="margin-top:3px;font-size:12.5px;color:var(--fg2)">Precio de lista de Favalio, la regla que termina ganando, y el precio con el que sale a la tienda.</div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:minmax(0,1fr) 132px 112px 230px 118px;column-gap:16px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--bd);background:var(--sf2);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">
+                      <span>Producto</span><span>Marca</span><span style="text-align:right">Precio de lista</span><span>Regla que gana</span><span style="text-align:right">Precio del catálogo</span>
+                    </div>
+                    <sc-for list="{{ preview }}" as="p" hint-placeholder-count="6">
+                      <div style="display:grid;grid-template-columns:minmax(0,1fr) 132px 112px 230px 118px;column-gap:16px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--bd)">
+                        <span style="font-size:13.5px;min-width:0">{{ p.prod }}</span>
+                        <span style="font-size:13px;color:var(--fg2)">{{ p.marca }}</span>
+                        <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;color:var(--fg2);text-align:right;text-decoration:line-through">{{ p.lista }}</span>
+                        <span style="min-width:0">
+                          <span style="display:inline-flex;align-items:center;height:21px;padding:0 8px;border-radius:6px;font-size:11.5px;font-weight:600;color:var(--brd);background:var(--brs);border:1px solid var(--brl)">{{ p.regla }}</span>
+                          <span style="display:block;margin-top:4px;font-size:11px;color:var(--fg3);text-decoration:line-through">{{ p.pisadas }}</span>
+                        </span>
+                        <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;text-align:right">{{ p.final }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ tabProductos }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:20px;border:1px solid var(--bd);border-radius:12px;background:var(--sf);overflow:hidden">
+                  <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--bd);flex-wrap:wrap">
+                    <div style="display:flex;align-items:center;gap:8px;height:36px;border:1px solid var(--bd);border-radius:9px;padding:0 10px;background:var(--sf);width:280px">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="var(--fg3)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;flex:none"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg>
+                      <input placeholder="Buscar producto, marca o código" style="border:0;outline:none;background:transparent;font:inherit;font-size:13.5px;width:100%;color:var(--fg)">
+                    </div>
+                    <span style="font-size:12.5px;color:var(--fg2)"><strong style="font-weight:640;color:var(--fg)">8</strong> publicados de 62 del inventario</span>
+                    <div style="flex:1"></div>
+                    <div style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:8px;background:var(--brs);border:1px solid var(--brl)">
+                      <span style="font-size:12.5px;font-weight:600;color:var(--brd)">3 seleccionados</span>
+                      <span style="width:1px;height:14px;background:var(--brl)"></span>
+                      <button style="height:26px;padding:0 9px;border-radius:7px;border:1px solid transparent;background:transparent;color:var(--brd);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer">Publicar</button>
+                      <button style="height:26px;padding:0 9px;border-radius:7px;border:1px solid transparent;background:transparent;color:var(--fg2);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer">Quitar</button>
+                    </div>
+                  </div>
+                  <div style="display:grid;grid-template-columns:30px minmax(0,1fr) 132px 118px 70px 104px 168px 112px;column-gap:16px;align-items:center;padding:11px 20px;border-bottom:1px solid var(--bd);background:var(--sf2);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">
+                    <span></span><span>Producto</span><span>Marca</span><span>Categoría</span><span style="text-align:right">Stock</span><span style="text-align:right">Lista</span><span>Regla que gana</span><span style="text-align:right">Precio catálogo</span>
+                  </div>
+                  <sc-for list="{{ productosPanel }}" as="p" hint-placeholder-count="8">
+                    <div style="{{ p.estiloFila }}">
+                      <span style="{{ p.estiloCasilla }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width:11px;height:11px"><path d="M20 6 9 17l-5-5" /></svg>
+                      </span>
+                      <span style="font-size:13.5px;min-width:0">{{ p.nombre }}</span>
+                      <span style="font-size:13px;color:var(--fg2)">{{ p.marca }}</span>
+                      <span style="font-size:13px;color:var(--fg2)">{{ p.cat }}</span>
+                      <span style="{{ p.estiloStock }}">{{ p.stock }}</span>
+                      <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;color:var(--fg2);text-align:right">{{ p.lista }}</span>
+                      <span style="font-size:12px;color:var(--fg2)">{{ p.regla }}</span>
+                      <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13.5px;font-weight:600;text-align:right">{{ p.final }}</span>
+                    </div>
+                  </sc-for>
+                  <div style="padding:10px 20px;font-size:12.5px;color:var(--fg2)">Mostrando <span style="font-family:'JetBrains Mono',monospace">10</span> de <span style="font-family:'JetBrains Mono',monospace">62</span> productos</div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ tabQr }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:20px;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start">
+                  <div style="border:1px solid var(--bd);border-radius:12px;background:var(--sf);padding:22px;display:flex;gap:26px;align-items:flex-start">
+                    <div style="width:236px;flex:none">
+                      <div style="width:236px;height:236px;border:1px solid var(--bd);border-radius:12px;padding:14px;background:#fff">{{ qr }}</div>
+                      <div style="margin-top:10px;text-align:center;font-size:11.5px;color:var(--fg3)">Vista previa · el QR real se genera al descargar</div>
+                    </div>
+                    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:16px">
+                      <div>
+                        <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">Enlace del catálogo</div>
+                        <div style="margin-top:8px;display:flex;gap:8px">
+                          <div style="flex:1;height:36px;border:1px solid var(--bd);border-radius:9px;display:flex;align-items:center;padding:0 10px;background:var(--sf2);font-family:'JetBrains Mono',monospace;font-size:12.5px;overflow:hidden;white-space:nowrap">comprafit.favalio.com/c/comprafit-fitnet</div>
+                          <button style="height:36px;padding:0 12px;border-radius:9px;border:1px solid var(--bd);background:var(--sf);color:var(--fg);font:inherit;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
+                            Copiar
+                          </button>
+                        </div>
+                      </div>
+                      <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button style="height:34px;padding:0 13px;border-radius:8px;border:1px solid transparent;background:var(--br);color:var(--pf);font:inherit;font-size:13px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:6px">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /></svg>
+                          Descargar PNG
+                        </button>
+                        <button style="height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--bd);background:var(--sf);color:var(--fg);font:inherit;font-size:13px;cursor:pointer">Descargar SVG</button>
+                        <button style="height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--bd);background:var(--sf);color:var(--fg);font:inherit;font-size:13px;cursor:pointer">Cartel A4 para imprimir</button>
+                      </div>
+                      <div style="border-top:1px solid var(--bd);padding-top:14px;font-size:12.5px;line-height:1.55;color:var(--fg2)">
+                        El cartel A4 ya trae el logo, el nombre del catálogo y la leyenda «escaneá con la cámara». Es lo que se pega en la recepción del gimnasio: imprimir el QR solo, sin contexto, baja el escaneo.
+                      </div>
+                      <div style="display:flex;gap:22px">
+                        <div><div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">Escaneos (30 d)</div><div style="margin-top:4px;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:20px;font-weight:600">312</div></div>
+                        <div><div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">Pedidos</div><div style="margin-top:4px;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:20px;font-weight:600">37</div></div>
+                        <div><div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">Conversión</div><div style="margin-top:4px;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:20px;font-weight:600">11,9%</div></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="border:1px solid var(--bd);border-radius:12px;background:var(--sf);padding:16px">
+                    <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3);margin-bottom:12px">Cómo se ve en el teléfono</div>
+                    <div style="width:236px;height:400px;margin:0 auto;border:1px solid var(--bd);border-radius:20px;overflow:hidden;background:#fff">
+                      <div style="height:64px;background:repeating-linear-gradient(135deg,rgba(0,0,0,.045) 0 5px,rgba(0,0,0,0) 5px 11px),linear-gradient(160deg,color-mix(in srgb,{{ colorCatalogo }} 30%,#fff),color-mix(in srgb,{{ colorCatalogo }} 12%,#fff))"></div>
+                      <div style="padding:8px 10px">
+                        <div style="width:40px;height:40px;border-radius:10px;background:#fff;border:1px solid #E5E8EA;margin-top:-28px;display:grid;place-items:center;padding:5px"><img src="assets/comprafit.webp" alt="" style="width:100%;height:auto"></div>
+                        <div style="margin-top:8px;font-size:12px;font-weight:640;color:#101418">Comprafit / Fitnet</div>
+                        <div style="margin-top:8px;height:26px;border:1px solid #E5E8EA;border-radius:7px;background:#FAFBFB"></div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px">
+                          <div style="height:96px;border:1px solid #E5E8EA;border-radius:9px;background:repeating-linear-gradient(135deg,#F6F7F8 0 7px,#F1F3F4 7px 14px)"></div>
+                          <div style="height:96px;border:1px solid #E5E8EA;border-radius:9px;background:repeating-linear-gradient(135deg,#F6F7F8 0 7px,#F1F3F4 7px 14px)"></div>
+                          <div style="height:96px;border:1px solid #E5E8EA;border-radius:9px;background:repeating-linear-gradient(135deg,#F6F7F8 0 7px,#F1F3F4 7px 14px)"></div>
+                          <div style="height:96px;border:1px solid #E5E8EA;border-radius:9px;background:repeating-linear-gradient(135deg,#F6F7F8 0 7px,#F1F3F4 7px 14px)"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+            </sc-if>
+
+            <sc-if value="{{ esPedidos }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:24px">
+                <div style="min-width:0">
+                  <h1 style="margin:0;display:flex;align-items:center;gap:8px;font-size:24px;font-weight:660;letter-spacing:-0.022em">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--br)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px;flex:none"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" /><path d="M12 22V12" /><polyline points="3.29 7 12 12 20.71 7" /><path d="m7.5 4.27 9 5.15" /></svg>
+                    Bandeja de pedidos
+                  </h1>
+                  <p style="margin:6px 0 0;max-width:64ch;font-size:13.5px;color:var(--fg2)">Todo lo que entró por los catálogos públicos. Marcar un pedido como cobrado descuenta stock y registra la venta en Favalio.</p>
+                </div>
+                <button style="height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--bd);background:var(--sf);color:var(--fg);font:inherit;font-size:13px;cursor:pointer">Exportar</button>
+              </div>
+
+              <div style="margin-top:20px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <sc-for list="{{ filtros }}" as="f" hint-placeholder-count="7">
+                  <button onClick="{{ f.elegir }}" style="{{ f.estilo }}">{{ f.nombre }}</button>
+                </sc-for>
+                <span style="width:1px;height:20px;background:var(--bd);margin:0 4px"></span>
+                <button style="height:30px;padding:0 11px;border-radius:8px;border:1px solid var(--bd);background:var(--sf);color:var(--fg2);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer">Catálogo: todos</button>
+              </div>
+
+              <div style="margin-top:14px;border:1px solid var(--bd);border-radius:12px;background:var(--sf);overflow:hidden">
+                <div style="display:grid;grid-template-columns:92px 116px minmax(0,1fr) 168px 104px 128px 148px;column-gap:16px;align-items:center;padding:11px 20px;border-bottom:1px solid var(--bd);background:var(--sf2);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">
+                  <span>N°</span><span>Fecha</span><span>Comprador</span><span>Catálogo</span><span style="text-align:right">Total</span><span>Medio de pago</span><span>Estado</span>
+                </div>
+                <sc-for list="{{ pedidos }}" as="p" hint-placeholder-count="8">
+                  <div onClick="{{ p.abrir }}" style="{{ p.estiloFila }}">
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600">{{ p.n }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--fg2)">{{ p.fecha }}</span>
+                    <span style="min-width:0"><span style="font-size:13.5px">{{ p.comprador }}</span><span style="display:block;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--fg3);margin-top:2px">socio {{ p.socio }}</span></span>
+                    <span style="font-size:13px;color:var(--fg2)">{{ p.cat }}</span>
+                    <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13.5px;font-weight:600;text-align:right">{{ p.total }}</span>
+                    <span style="font-size:13px;color:var(--fg2)">{{ p.pago }}</span>
+                    <span><span style="{{ p.estiloBadge }}">{{ p.estado }}</span></span>
+                  </div>
+                </sc-for>
+                <div style="padding:10px 20px;font-size:12.5px;color:var(--fg2)">Mostrando <span style="font-family:'JetBrains Mono',monospace">{{ cantidadPedidos }}</span> pedidos</div>
+              </div>
+            </sc-if>
+
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <sc-if value="{{ hayPedido }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ cerrarPedido }}" style="position:absolute;inset:0;background:rgba(16,24,40,.32);z-index:5"></div>
+      <div style="position:absolute;top:0;right:0;bottom:0;width:520px;background:var(--sf);border-left:1px solid var(--bd);box-shadow:var(--n3);z-index:6;display:flex;flex-direction:column;animation:panelIn .22s cubic-bezier(.22,.8,.3,1) both">
+        <div style="padding:20px 24px;border-bottom:1px solid var(--bd);position:relative">
+          <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">Pedido</div>
+          <div style="margin-top:4px;font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:600">{{ pedidoAbierto.n }}</div>
+          <div style="margin-top:4px;font-size:13px;color:var(--fg2)">{{ pedidoAbierto.fecha }} · {{ pedidoAbierto.cat }}</div>
+          <div style="margin-top:12px"><span style="{{ pedidoAbierto.estiloBadge }}">{{ pedidoAbierto.estado }}</span></div>
+          <button onClick="{{ cerrarPedido }}" style="position:absolute;top:18px;right:18px;width:30px;height:30px;border-radius:8px;border:1px solid var(--bd);background:var(--sf);color:var(--fg2);display:grid;place-items:center;cursor:pointer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+          </button>
+        </div>
+
+        <div style="flex:1;overflow-y:auto;padding:22px 24px;display:flex;flex-direction:column;gap:26px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 16px">
+            <div><div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">Comprador</div><div style="margin-top:4px;font-size:13.5px">{{ pedidoAbierto.comprador }}</div></div>
+            <div><div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">Teléfono</div><div style="margin-top:4px;font-family:'JetBrains Mono',monospace;font-size:13.5px">{{ pedidoAbierto.tel }}</div></div>
+            <div><div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">N° de socio</div><div style="margin-top:4px;font-family:'JetBrains Mono',monospace;font-size:13.5px">{{ pedidoAbierto.socio }}</div></div>
+            <div><div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">Medio de pago</div><div style="margin-top:4px;font-size:13.5px">{{ pedidoAbierto.pago }}</div></div>
+            <div style="grid-column:1 / -1"><div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">Entrega</div><div style="margin-top:4px;font-size:13.5px">{{ pedidoAbierto.entrega }}</div></div>
+          </div>
+
+          <div>
+            <div style="font-size:14px;font-weight:640;margin-bottom:10px">Detalle</div>
+            <div style="border:1px solid var(--bd);border-radius:12px;overflow:hidden">
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) 52px 92px 100px;column-gap:12px;padding:9px 14px;border-bottom:1px solid var(--bd);background:var(--sf2);font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--fg3)">
+                <span>Producto</span><span style="text-align:right">Cant.</span><span style="text-align:right">Unitario</span><span style="text-align:right">Subtotal</span>
+              </div>
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) 52px 92px 100px;column-gap:12px;padding:10px 14px;border-bottom:1px solid var(--bd);align-items:center">
+                <span style="font-size:13px">Whey Protein Isolate 1kg</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;text-align:right">1</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;color:var(--fg2);text-align:right">$38.868</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;text-align:right">$38.868</span>
+              </div>
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) 52px 92px 100px;column-gap:12px;padding:10px 14px;border-bottom:1px solid var(--bd);align-items:center">
+                <span style="font-size:13px">Creatina Monohidrato 300g</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;text-align:right">2</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;color:var(--fg2);text-align:right">$21.900</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;text-align:right">$43.800</span>
+              </div>
+              <div style="display:flex;align-items:baseline;justify-content:space-between;padding:12px 14px">
+                <span style="font-size:13px;font-weight:640">Total</span>
+                <span style="font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:18px;font-weight:600">{{ pedidoAbierto.total }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--bd);background:var(--sf2);padding:14px 24px;display:flex;align-items:center;gap:8px">
+          <button style="height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--bd);background:var(--sf);color:var(--fg);font:inherit;font-size:13px;cursor:pointer">Cambiar estado</button>
+          <button style="height:34px;padding:0 13px;border-radius:8px;border:1px solid transparent;background:color-mix(in srgb,var(--da) 12%,transparent);color:var(--da);font:inherit;font-size:13px;cursor:pointer">Cancelar pedido</button>
+          <div style="flex:1"></div>
+          <button onClick="{{ pedirConfirmacion }}" style="height:34px;padding:0 14px;border-radius:8px;border:1px solid transparent;background:var(--br);color:var(--pf);font:inherit;font-size:13px;font-weight:500;cursor:pointer">Marcar cobrado</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ hayConfirmacion }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;inset:0;background:rgba(16,24,40,.44);z-index:8;display:grid;place-items:center">
+        <div style="width:440px;background:var(--sf);border:1px solid var(--bd);border-radius:12px;box-shadow:var(--n3);padding:22px">
+          <div style="font-size:15px;font-weight:640">Confirmar</div>
+          <p style="margin:10px 0 0;font-size:13.5px;line-height:1.55;color:var(--fg2)">Marcar cobrado el pedido <span style="font-family:'JetBrains Mono',monospace;color:var(--fg)">A-1042</span> descuenta el stock de sus 2 productos y registra la venta en Favalio. La venta queda en el historial y el stock no se repone solo.</p>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px">
+            <button onClick="{{ cancelarConfirmacion }}" style="height:34px;padding:0 13px;border-radius:8px;border:1px solid var(--bd);background:var(--sf);color:var(--fg);font:inherit;font-size:13px;cursor:pointer">Cancelar</button>
+            <button onClick="{{ confirmarCobro }}" style="height:34px;padding:0 14px;border-radius:8px;border:1px solid transparent;background:var(--br);color:var(--pf);font:inherit;font-size:13px;font-weight:500;cursor:pointer">Marcar cobrado</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="display:flex;gap:32px;flex-wrap:wrap;margin-top:18px;max-width:1560px">
+    <p style="flex:1;min-width:300px;margin:0;font-size:12px;line-height:1.55;color:#5A646E"><strong style="font-weight:640;color:#101418">Reglas de precio:</strong> la sangría y la columna «Gana en» son la explicación. Se ve de un vistazo que hay cuatro reglas y que solo cuatro de los ocho productos terminan con el descuento general; el resto lo pisa una regla más específica.</p>
+    <p style="flex:1;min-width:300px;margin:0;font-size:12px;line-height:1.55;color:#5A646E"><strong style="font-weight:640;color:#101418">Bandeja:</strong> el turquesa aparece una sola vez por pantalla, en la acción que importa. «Marcar cobrado» pide confirmación y el texto dice exactamente qué se toca: stock y venta registrada.</p>
+    <p style="flex:1;min-width:300px;margin:0;font-size:12px;line-height:1.55;color:#5A646E"><strong style="font-weight:640;color:#101418">Densidad:</strong> filas de 13px, importes en monoespaciada con cifras tabulares y bordes que se oscurecen al pasar; el contraste queda reservado para el número y el estado.</p>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;colorMarca&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#00B4B6&quot;,&quot;options&quot;:[&quot;#00B4B6&quot;,&quot;#F0641E&quot;,&quot;#101418&quot;,&quot;#1A1AFF&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Tienda&quot;},&quot;mostrarPrecioLista&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Tienda&quot;},&quot;temaPanel&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;claro&quot;,&quot;oscuro&quot;],&quot;default&quot;:&quot;claro&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Panel&quot;}}">
+const PRODUCTOS = [
+  { id:'whey', nombre:'Whey Protein Isolate 1kg', marca:'ENA', cat:'Proteínas', lista:47400, precio:38868, agotado:false, desc:'Proteína de suero aislada, 27 g por porción y 0,9 g de azúcar. Sabor vainilla. Rinde 33 porciones.' },
+  { id:'crea', nombre:'Creatina Monohidrato 300g', marca:'Star Nutrition', cat:'Creatinas', lista:29900, precio:21900, agotado:false, desc:'Creatina micronizada sin sabor. 60 porciones de 5 g. Se disuelve en agua o en el batido.' },
+  { id:'barra', nombre:'Barra proteica chocolate 60g', marca:'Gentech', cat:'Proteínas', lista:2800, precio:2464, agotado:true, desc:'20 g de proteína por barra. Para después de entrenar o entre comidas.' },
+  { id:'pump', nombre:'Pre-entreno Pump 300g', marca:'Ultratech', cat:'Pre-entreno', lista:34500, precio:31050, agotado:false, desc:'Cafeína, beta-alanina y citrulina. Tomar 20 minutos antes de entrenar.' },
+  { id:'bcaa', nombre:'BCAA 8:1:1 250g', marca:'ENA', cat:'Aminoácidos', lista:24200, precio:19844, agotado:false, desc:'Aminoácidos ramificados en polvo, sabor pomelo. 50 porciones.' },
+  { id:'multi', nombre:'Multivitamínico 60 caps', marca:'Gentech', cat:'Vitaminas', lista:15900, precio:14310, agotado:false, desc:'Una cápsula por día con el desayuno. Cubre el mes completo.' },
+  { id:'gluta', nombre:'Glutamina 300g', marca:'Star Nutrition', cat:'Aminoácidos', lista:26400, precio:23760, agotado:false, desc:'Glutamina pura sin sabor. Ayuda a la recuperación entre sesiones.' },
+  { id:'shaker', nombre:'Shaker 700ml', marca:'Comprafit', cat:'Accesorios', lista:7900, precio:7110, agotado:false, desc:'Vaso mezclador con resorte y medidas impresas. Libre de BPA.' },
+]
+
+const CATEGORIAS = ['Todos','Proteínas','Creatinas','Pre-entreno','Aminoácidos','Vitaminas','Accesorios']
+
+function pesos(n){ return '$' + Math.round(n).toLocaleString('es-AR') }
+
+function textoSobre(hex){
+  const h = (hex || '#00B4B6').replace('#','')
+  const v = h.length === 3 ? h.split('').map(c => c + c).join('') : h
+  const r = parseInt(v.slice(0,2),16)/255, g = parseInt(v.slice(2,4),16)/255, b = parseInt(v.slice(4,6),16)/255
+  const f = (c) => c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4)
+  const L = 0.2126*f(r) + 0.7152*f(g) + 0.0722*f(b)
+  return L > 0.45 ? '#101418' : '#FFFFFF'
+}
+
+class Component extends DCLogic {
+  state = {
+    pantalla: 'catalogo',
+    marca: null,
+    busqueda: '',
+    categoria: 'Todos',
+    carrito: { whey: 1, crea: 2 },
+    detalleId: 'whey',
+    cantidad: 1,
+    consentimiento: false,
+    entrega: 'gimnasio',
+    pago: 'mercadopago',
+    copiado: '',
+    // panel
+    seccion: 'catalogos',
+    tab: 'identidad',
+    tema: null,
+    pedido: null,
+    confirmar: false,
+    filtroEstado: 'Todos',
+  }
+
+  renderVals(){
+    const s = this.state
+    const marca = s.marca || this.props.colorMarca || '#00B4B6'
+    const marcaTexto = textoSobre(marca)
+    const mostrarLista = this.props.mostrarPrecioLista !== false
+
+    const q = s.busqueda.trim().toLowerCase()
+    const visibles = PRODUCTOS.filter(p =>
+      (s.categoria === 'Todos' || p.cat === s.categoria) &&
+      (!q || p.nombre.toLowerCase().includes(q) || p.marca.toLowerCase().includes(q))
+    ).map(p => ({
+      ...p,
+      precio: pesos(p.precio),
+      lista: pesos(p.lista),
+      etiquetaFoto: 'foto ' + p.id,
+      estiloFoto: {
+        height: '112px', display: 'grid', placeItems: 'center', position: 'relative', cursor: 'pointer',
+        background: 'repeating-linear-gradient(135deg,#F1F3F4 0 8px,#E9ECEE 8px 16px)',
+        opacity: p.agotado ? 0.5 : 1,
+      },
+      estiloBoton: {
+        marginTop: '9px', height: '36px', width: '100%', borderRadius: '9px', font: 'inherit',
+        fontSize: '13px', fontWeight: 600, cursor: p.agotado ? 'default' : 'pointer',
+        border: p.agotado ? '1px solid #E5E8EA' : '1px solid transparent',
+        background: p.agotado ? '#F1F3F4' : marca,
+        color: p.agotado ? '#8B959E' : marcaTexto,
+      },
+      textoBoton: p.agotado ? 'Sin stock' : (s.carrito[p.id] ? 'Agregado · ' + s.carrito[p.id] : 'Agregar'),
+      agregar: p.agotado ? (() => {}) : (() => this.setState(st => ({ carrito: { ...st.carrito, [p.id]: (st.carrito[p.id] || 0) + 1 } }))),
+      abrir: () => this.setState({ pantalla: 'producto', detalleId: p.id, cantidad: 1 }),
+    }))
+
+    const lineas = Object.keys(s.carrito).filter(id => s.carrito[id] > 0).map(id => {
+      const p = PRODUCTOS.find(x => x.id === id)
+      return {
+        ...p,
+        cantidad: s.carrito[id],
+        subtotal: pesos(p.precio * s.carrito[id]),
+        mas: () => this.setState(st => ({ carrito: { ...st.carrito, [id]: st.carrito[id] + 1 } })),
+        menos: () => this.setState(st => ({ carrito: { ...st.carrito, [id]: Math.max(0, st.carrito[id] - 1) } })),
+        eliminar: () => this.setState(st => { const c = { ...st.carrito }; delete c[id]; return { carrito: c } }),
+      }
+    })
+
+    const items = lineas.reduce((a, l) => a + l.cantidad, 0)
+    const total = lineas.reduce((a, l) => a + l.precio * l.cantidad, 0)
+    const envio = s.entrega === 'domicilio' ? (total >= 50000 ? 0 : 2500) : 0
+
+    const d = PRODUCTOS.find(p => p.id === s.detalleId) || PRODUCTOS[0]
+    const detalle = {
+      ...d,
+      precio: pesos(d.precio),
+      lista: pesos(d.lista),
+      ahorro: '-' + Math.round((1 - d.precio / d.lista) * 100) + '%',
+      etiquetaFoto: 'foto ' + d.id + ' · 1080×1080',
+      textoAgregar: d.agotado ? 'Sin stock' : 'Agregar ' + s.cantidad + ' al pedido · ' + pesos(d.precio * s.cantidad),
+    }
+
+    const btn = (extra) => ({
+      width: '100%', height: '50px', borderRadius: '12px', border: '1px solid transparent',
+      background: marca, color: marcaTexto, font: 'inherit', fontSize: '15px', fontWeight: 640,
+      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', ...extra,
+    })
+
+    const opcion = (activa) => ({
+      display: 'flex', gap: '11px', alignItems: 'flex-start', padding: '14px', borderRadius: '12px',
+      cursor: 'pointer', background: activa ? 'color-mix(in srgb,' + marca + ' 7%, #fff)' : '#fff',
+      border: activa ? '1.5px solid ' + marca : '1px solid #E5E8EA',
+    })
+    const radio = (activa) => ({
+      width: '18px', height: '18px', borderRadius: '999px', flex: 'none', marginTop: '2px',
+      border: activa ? '5.5px solid ' + marca : '1.5px solid #D5DADE', background: '#fff',
+    })
+
+    const entregas = [
+      { id:'gimnasio', titulo:'Retiro en Fitnet', detalle:'Recepción del gimnasio, lunes a viernes de 8 a 22.', costo:'Sin costo' },
+      { id:'local', titulo:'Retiro en el local', detalle:'Av. Rivadavia 5210, CABA. Sábados hasta las 14.', costo:'Sin costo' },
+      { id:'domicilio', titulo:'Envío a domicilio', detalle:'Llega en 48 a 72 h hábiles dentro de CABA y GBA.', costo: total >= 50000 ? 'Gratis' : '$2.500' },
+      { id:'whatsapp', titulo:'Coordinar por WhatsApp', detalle:'Nos escribís y arreglamos día y lugar.', costo:'A convenir' },
+    ].map(o => ({ ...o, estilo: opcion(s.entrega === o.id), estiloRadio: radio(s.entrega === o.id), elegir: () => this.setState({ entrega: o.id }) }))
+
+    const pagos = [
+      { id:'mercadopago', titulo:'Mercado Pago', detalle:'Tarjeta, dinero en cuenta o QR. Se acredita al instante.' },
+      { id:'transferencia', titulo:'Transferencia bancaria', detalle:'Te damos CBU y alias. El pedido queda reservado 24 h.' },
+      { id:'efectivo', titulo:'Efectivo al retirar', detalle:'Pagás cuando retirás el pedido.' },
+    ].map(o => ({ ...o, estilo: opcion(s.pago === o.id), estiloRadio: radio(s.pago === o.id), elegir: () => this.setState({ pago: o.id }) }))
+
+    const pasos = { datos: 1, entrega: 2, pago: 3 }
+    const pasoN = pasos[s.pantalla] || 1
+    const barra = (n) => ({ flex: 1, height: '3px', borderRadius: '2px', background: n <= pasoN ? marca : '#E5E8EA' })
+
+    const avanzar = () => {
+      if (s.pantalla === 'datos') this.setState({ pantalla: 'entrega' })
+      else if (s.pantalla === 'entrega') this.setState({ pantalla: 'pago' })
+      else this.setState({ pantalla: 'confirmado' })
+    }
+    const atras = () => {
+      if (s.pantalla === 'datos') this.setState({ pantalla: 'carrito' })
+      else if (s.pantalla === 'entrega') this.setState({ pantalla: 'datos' })
+      else this.setState({ pantalla: 'datos' })
+    }
+
+    const copiarBtn = {
+      height: '32px', padding: '0 11px', borderRadius: '9px', border: '1px solid #E5E8EA',
+      background: '#fff', font: 'inherit', fontSize: '12.5px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+    }
+    const copiar = (k) => () => { this.setState({ copiado: k }); setTimeout(() => this.setState({ copiado: '' }), 1600) }
+
+    return {
+      estiloTienda: {
+        padding: '0 56px 72px', maxWidth: '1760px', margin: '0 auto',
+        '--marca': marca, '--marca-texto': marcaTexto,
+      },
+      marcaTurquesa: () => this.setState({ marca: '#00B4B6' }),
+      marcaNaranja: () => this.setState({ marca: '#F0641E' }),
+      marcaNegro: () => this.setState({ marca: '#101418' }),
+      marcaAzul: () => this.setState({ marca: '#1A1AFF' }),
+
+      esCatalogo: s.pantalla === 'catalogo',
+      esProducto: s.pantalla === 'producto',
+      esCarrito: s.pantalla === 'carrito',
+      esCheckout: ['datos','entrega','pago'].includes(s.pantalla),
+      esDatos: s.pantalla === 'datos',
+      esEntrega: s.pantalla === 'entrega',
+      esPago: s.pantalla === 'pago',
+      esConfirmado: s.pantalla === 'confirmado',
+
+      busqueda: s.busqueda,
+      alBuscar: (e) => this.setState({ busqueda: e.target.value }),
+      limpiarBusqueda: () => this.setState({ busqueda: '', categoria: 'Todos' }),
+      sinResultados: visibles.length === 0,
+      mostrarLista,
+      visibles,
+      categorias: CATEGORIAS.map(c => ({
+        nombre: c,
+        elegir: () => this.setState({ categoria: c }),
+        estilo: {
+          flex: 'none', height: '32px', padding: '0 13px', borderRadius: '999px', font: 'inherit',
+          fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+          background: s.categoria === c ? marca : '#F1F3F4',
+          color: s.categoria === c ? marcaTexto : '#5A646E',
+          border: '1px solid ' + (s.categoria === c ? marca : 'transparent'),
+        },
+      })),
+
+      lineas,
+      carritoVacio: lineas.length === 0,
+      textoItems: items === 1 ? '1 producto' : items + ' productos',
+      totalTexto: pesos(total),
+      totalConEnvio: pesos(total + envio),
+      resumenPie: envio > 0 ? items + ' productos + envío $2.500' : items + ' productos',
+      hayEnvio: envio > 0,
+      costoEnvio: pesos(envio),
+      textoEnvio: total >= 50000
+        ? 'El envío te sale gratis: tu pedido supera los $50.000.'
+        : 'El envío cuesta $2.500. Es gratis a partir de $50.000: te faltan ' + pesos(50000 - total) + '.',
+      textoQuePasa: {
+        gimnasio: 'Comprafit confirma el pedido y lo prepara. Cuando esté listo te avisamos por WhatsApp y lo retirás en la recepción de Fitnet, de lunes a viernes de 8 a 22.',
+        local: 'Comprafit confirma el pedido y lo prepara. Cuando esté listo te avisamos por WhatsApp y lo retirás en el local de Av. Rivadavia 5210, de lunes a viernes de 9 a 20 y sábados hasta las 14.',
+        domicilio: 'Comprafit confirma el pedido y lo despacha. Llega a la dirección que cargaste en 48 a 72 h hábiles; te avisamos por WhatsApp cuando salga.',
+        whatsapp: 'Comprafit te escribe por WhatsApp al número que dejaste para acordar día y lugar de entrega.',
+      }[s.entrega],
+      estiloBarraCarrito: {
+        width: '100%', height: '52px', borderRadius: '13px', border: '1px solid transparent',
+        background: marca, color: marcaTexto, cursor: 'pointer', font: 'inherit',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px',
+        opacity: items === 0 ? 0.45 : 1,
+      },
+      estiloBotonPrincipal: btn({}),
+      estiloBotonPrincipalChico: btn({ height: '44px', marginTop: '18px', fontSize: '14px' }),
+
+      detalle,
+      cantidad: s.cantidad,
+      masCantidad: () => this.setState(st => ({ cantidad: st.cantidad + 1 })),
+      menosCantidad: () => this.setState(st => ({ cantidad: Math.max(1, st.cantidad - 1) })),
+      agregarDesdeDetalle: () => this.setState(st => ({
+        carrito: { ...st.carrito, [d.id]: (st.carrito[d.id] || 0) + st.cantidad }, pantalla: 'carrito',
+      })),
+
+      irCarrito: () => this.setState({ pantalla: 'carrito' }),
+      irDatos: () => this.setState({ pantalla: 'datos' }),
+      volverCatalogo: () => this.setState({ pantalla: 'catalogo' }),
+      volverAlInicio: () => this.setState({ pantalla: 'catalogo', carrito: {}, busqueda: '', categoria: 'Todos' }),
+      atras, avanzar,
+      textoAvanzar: s.pantalla === 'pago' ? 'Pagar ' + pesos(total + envio) : 'Continuar',
+      tituloPaso: s.pantalla === 'datos' ? 'Tus datos' : s.pantalla === 'entrega' ? 'Entrega' : 'Pago',
+      pasoTexto: 'Paso ' + pasoN + ' de 3',
+      estiloPaso1: barra(1), estiloPaso2: barra(2), estiloPaso3: barra(3),
+
+      consentimiento: s.consentimiento,
+      alternarConsentimiento: () => this.setState(st => ({ consentimiento: !st.consentimiento })),
+      estiloCasilla: {
+        width: '20px', height: '20px', borderRadius: '6px', flex: 'none', display: 'grid', placeItems: 'center',
+        border: s.consentimiento ? '1px solid ' + marca : '1.5px solid #D5DADE',
+        background: s.consentimiento ? marca : '#fff',
+      },
+
+      opcionesEntrega: entregas,
+      esDomicilio: s.entrega === 'domicilio',
+      faltaEnvioGratis: pesos(Math.max(0, 50000 - total)),
+      opcionesPago: pagos,
+      esTransferencia: s.pago === 'transferencia',
+      estiloBotonCopiar: copiarBtn,
+      copiarCbu: copiar('cbu'),
+      copiarAlias: copiar('alias'),
+      textoCopiarCbu: s.copiado === 'cbu' ? 'Copiado' : 'Copiar',
+      textoCopiarAlias: s.copiado === 'alias' ? 'Copiado' : 'Copiar',
+
+      estiloTilde: {
+        width: '54px', height: '54px', borderRadius: '999px', display: 'inline-grid', placeItems: 'center',
+        background: marca, color: marcaTexto,
+      },
+
+      ...this.panel(),
+    }
+  }
+
+  panel(){
+    const s = this.state
+    const tema = s.tema || this.props.temaPanel || 'claro'
+    const marca = s.marca || this.props.colorMarca || '#00B4B6'
+
+    const nav = (activo) => ({
+      display: 'flex', height: '34px', alignItems: 'center', gap: '10px', borderRadius: '8px',
+      padding: '0 8px', fontSize: '13.5px', cursor: 'pointer', width: '100%',
+      fontWeight: activo ? 600 : 500,
+      background: activo ? 'var(--brs)' : 'transparent',
+      color: activo ? 'var(--brd)' : 'var(--fg2)',
+      border: 0, font: 'inherit', textAlign: 'left',
+    })
+
+    const TABS = [
+      ['identidad','Identidad'], ['entrega','Entrega y pago'], ['reglas','Reglas de precio'],
+      ['productos','Productos'], ['qr','QR y enlace'],
+    ]
+
+    const TONOS = {
+      'Pendiente de pago': { c:'var(--wa)', b:'var(--was)', l:'var(--wal)' },
+      'Pagado':            { c:'var(--in)', b:'var(--ins)', l:'var(--inl)' },
+      'En preparación':    { c:'var(--in)', b:'var(--ins)', l:'var(--inl)' },
+      'Listo':             { c:'var(--ok)', b:'var(--oks)', l:'var(--okl)' },
+      'Entregado':         { c:'var(--fg2)', b:'var(--sf3)', l:'var(--bd)' },
+      'Cancelado':         { c:'var(--da)', b:'var(--das)', l:'var(--dal)' },
+      'Publicado':         { c:'var(--ok)', b:'var(--oks)', l:'var(--okl)' },
+      'Borrador':          { c:'var(--fg2)', b:'var(--sf3)', l:'var(--bd)' },
+      'Pausado':           { c:'var(--wa)', b:'var(--was)', l:'var(--wal)' },
+    }
+    const badge = (e) => {
+      const t = TONOS[e] || TONOS['Borrador']
+      return {
+        display: 'inline-flex', alignItems: 'center', gap: '5px', height: '21px', padding: '0 8px',
+        borderRadius: '6px', fontSize: '11.5px', fontWeight: 600, whiteSpace: 'nowrap',
+        color: t.c, background: t.b, border: '1px solid ' + t.l,
+      }
+    }
+
+    const PEDIDOS = [
+      { n:'A-1042', fecha:'09/08 · 14:22', comprador:'Martina Olivera', socio:'F-4412', tel:'11 5478 2210', cat:'Comprafit / Fitnet', total:'$82.668', pago:'Mercado Pago', estado:'Pagado', entrega:'Retiro en Fitnet' },
+      { n:'A-1041', fecha:'09/08 · 11:07', comprador:'Nicolás Ferrero', socio:'F-2201', tel:'11 6633 0912', cat:'Comprafit / Fitnet', total:'$31.050', pago:'Transferencia', estado:'Pendiente de pago', entrega:'Retiro en el local' },
+      { n:'A-1040', fecha:'08/08 · 19:48', comprador:'Carla Benítez', socio:'F-3987', tel:'11 5012 7744', cat:'Comprafit / Fitnet', total:'$61.658', pago:'Mercado Pago', estado:'En preparación', entrega:'Envío a domicilio' },
+      { n:'A-1039', fecha:'08/08 · 17:12', comprador:'Julián Sosa', socio:'—', tel:'11 3399 1180', cat:'Verano 2026', total:'$14.310', pago:'Efectivo', estado:'Listo', entrega:'Retiro en Fitnet' },
+      { n:'A-1038', fecha:'08/08 · 09:35', comprador:'Rocío Palma', socio:'F-1145', tel:'11 2277 5560', cat:'Comprafit / Fitnet', total:'$44.870', pago:'Mercado Pago', estado:'Entregado', entrega:'Retiro en Fitnet' },
+      { n:'A-1037', fecha:'07/08 · 20:03', comprador:'Diego Arrieta', socio:'F-0876', tel:'11 4488 2031', cat:'Comprafit / Fitnet', total:'$23.760', pago:'Transferencia', estado:'Cancelado', entrega:'Coordinar por WhatsApp' },
+      { n:'A-1036', fecha:'07/08 · 16:41', comprador:'Ana Lucía Vera', socio:'F-5530', tel:'11 6120 8899', cat:'Comprafit / Fitnet', total:'$97.412', pago:'Mercado Pago', estado:'Entregado', entrega:'Envío a domicilio' },
+      { n:'A-1035', fecha:'07/08 · 10:19', comprador:'Federico Luna', socio:'F-3312', tel:'11 5844 6677', cat:'Verano 2026', total:'$7.110', pago:'Efectivo', estado:'Entregado', entrega:'Retiro en el local' },
+    ]
+
+    const filtro = s.filtroEstado
+    const pedidos = PEDIDOS.filter(p => filtro === 'Todos' || p.estado === filtro).map(p => ({
+      ...p,
+      estiloBadge: badge(p.estado),
+      abrir: () => this.setState({ pedido: p.n }),
+      estiloFila: {
+        display: 'grid', gridTemplateColumns: '92px 116px minmax(0,1fr) 168px 104px 128px 148px',
+        alignItems: 'center', columnGap: '16px', padding: '13px 20px', cursor: 'pointer',
+        borderBottom: '1px solid var(--bd)', opacity: p.estado === 'Cancelado' ? 0.55 : 1,
+      },
+    }))
+
+    const abierto = PEDIDOS.find(p => p.n === s.pedido) || null
+    const pedidoAbierto = abierto ? { ...abierto, estiloBadge: badge(abierto.estado) } : null
+
+    const REGLAS = [
+      { n:'1', ambito:'Producto', objetivo:'Creatina Monohidrato 300g', tipo:'Precio fijo', valor:'$21.900', alcanza:'1', gana:'1' },
+      { n:'2', ambito:'Marca', objetivo:'ENA', tipo:'% de descuento', valor:'18%', alcanza:'2', gana:'2' },
+      { n:'3', ambito:'Categoría', objetivo:'Proteínas', tipo:'% de descuento', valor:'12%', alcanza:'2', gana:'1' },
+      { n:'4', ambito:'Todo el catálogo', objetivo:'Los 8 productos publicados', tipo:'% de descuento', valor:'10%', alcanza:'8', gana:'4' },
+    ].map((r, i) => ({
+      ...r,
+      sangria: { marginLeft: (i * 18) + 'px' },
+      estiloAmbito: {
+        display: 'inline-flex', alignItems: 'center', height: '21px', padding: '0 8px', borderRadius: '6px',
+        fontSize: '11.5px', fontWeight: 600, whiteSpace: 'nowrap',
+        color: i === 3 ? 'var(--fg2)' : 'var(--brd)',
+        background: i === 3 ? 'var(--sf3)' : 'var(--brs)',
+        border: '1px solid ' + (i === 3 ? 'var(--bd)' : 'var(--brl)'),
+      },
+      textoGana: r.gana + ' de ' + r.alcanza,
+      atenuada: { opacity: r.gana === '0' ? 0.5 : 1 },
+    }))
+
+    const PREVIEW = [
+      { prod:'Creatina Monohidrato 300g', marca:'Star Nutrition', lista:'$29.900', regla:'1 · Producto', final:'$21.900', pisadas:'Todo el catálogo −10%' },
+      { prod:'Whey Protein Isolate 1kg', marca:'ENA', lista:'$47.400', regla:'2 · Marca ENA', final:'$38.868', pisadas:'Proteínas −12% · Todo −10%' },
+      { prod:'BCAA 8:1:1 250g', marca:'ENA', lista:'$24.200', regla:'2 · Marca ENA', final:'$19.844', pisadas:'Todo el catálogo −10%' },
+      { prod:'Barra proteica chocolate 60g', marca:'Gentech', lista:'$2.800', regla:'3 · Categoría Proteínas', final:'$2.464', pisadas:'Todo el catálogo −10%' },
+      { prod:'Pre-entreno Pump 300g', marca:'Ultratech', lista:'$34.500', regla:'4 · Todo el catálogo', final:'$31.050', pisadas:'—' },
+      { prod:'Shaker 700ml', marca:'Comprafit', lista:'$7.900', regla:'4 · Todo el catálogo', final:'$7.110', pisadas:'—' },
+    ]
+
+    const PRODUCTOS_PANEL = [
+      { nombre:'Whey Protein Isolate 1kg', marca:'ENA', cat:'Proteínas', stock:'34', lista:'$47.400', regla:'Marca ENA −18%', final:'$38.868', pub:true },
+      { nombre:'Creatina Monohidrato 300g', marca:'Star Nutrition', cat:'Creatinas', stock:'12', lista:'$29.900', regla:'Producto · fijo', final:'$21.900', pub:true },
+      { nombre:'Barra proteica chocolate 60g', marca:'Gentech', cat:'Proteínas', stock:'0', lista:'$2.800', regla:'Proteínas −12%', final:'$2.464', pub:true },
+      { nombre:'Pre-entreno Pump 300g', marca:'Ultratech', cat:'Pre-entreno', stock:'19', lista:'$34.500', regla:'Todo −10%', final:'$31.050', pub:true },
+      { nombre:'BCAA 8:1:1 250g', marca:'ENA', cat:'Aminoácidos', stock:'7', lista:'$24.200', regla:'Marca ENA −18%', final:'$19.844', pub:true },
+      { nombre:'Multivitamínico 60 caps', marca:'Gentech', cat:'Vitaminas', stock:'41', lista:'$15.900', regla:'Todo −10%', final:'$14.310', pub:true },
+      { nombre:'Glutamina 300g', marca:'Star Nutrition', cat:'Aminoácidos', stock:'23', lista:'$26.400', regla:'Todo −10%', final:'$23.760', pub:true },
+      { nombre:'Shaker 700ml', marca:'Comprafit', cat:'Accesorios', stock:'56', lista:'$7.900', regla:'Todo −10%', final:'$7.110', pub:true },
+      { nombre:'Colágeno hidrolizado 300g', marca:'ENA', cat:'Vitaminas', stock:'8', lista:'$28.900', regla:'Marca ENA −18%', final:'$23.698', pub:false },
+      { nombre:'Termogénico Cut 60 caps', marca:'Ultratech', cat:'Pre-entreno', stock:'3', lista:'$22.400', regla:'Todo −10%', final:'$20.160', pub:false },
+    ].map(p => ({
+      ...p,
+      estiloStock: { fontFamily: "'JetBrains Mono',monospace", fontVariantNumeric: 'tabular-nums', fontSize: '13px', textAlign: 'right', color: p.stock === '0' ? 'var(--da)' : 'var(--fg)' },
+      estiloCasilla: {
+        width: '17px', height: '17px', borderRadius: '5px', display: 'grid', placeItems: 'center', flex: 'none',
+        border: p.pub ? '1px solid var(--br)' : '1.5px solid var(--bd2)',
+        background: p.pub ? 'var(--br)' : 'transparent',
+      },
+      estiloFila: {
+        display: 'grid', gridTemplateColumns: '30px minmax(0,1fr) 132px 118px 70px 104px 168px 112px',
+        alignItems: 'center', columnGap: '16px', padding: '12px 20px',
+        borderBottom: '1px solid var(--bd)', opacity: p.pub ? 1 : 0.55,
+      },
+    }))
+
+    const CATALOGOS = [
+      { nombre:'Comprafit / Fitnet', url:'/c/comprafit-fitnet', estado:'Publicado', prods:'8', pedidos:'37', ultima:'hoy · 14:22', activo:true },
+      { nombre:'Mayorista revendedores', url:'/c/comprafit-mayorista', estado:'Borrador', prods:'0', pedidos:'—', ultima:'—', activo:false },
+      { nombre:'Verano 2026', url:'/c/comprafit-verano', estado:'Pausado', prods:'12', pedidos:'104', ultima:'12/03 · 18:40', activo:false },
+    ].map(c => ({
+      ...c,
+      estiloBadge: badge(c.estado),
+      estiloFila: {
+        display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 128px 96px 104px 136px 40px',
+        alignItems: 'center', columnGap: '16px', padding: '14px 20px', cursor: 'pointer',
+        borderBottom: '1px solid var(--bd)',
+        background: c.activo ? 'var(--sf2)' : 'transparent',
+      },
+    }))
+
+    const filtros = ['Todos','Pendiente de pago','Pagado','En preparación','Listo','Entregado','Cancelado'].map(f => ({
+      nombre: f,
+      elegir: () => this.setState({ filtroEstado: f }),
+      estilo: {
+        height: '30px', padding: '0 11px', borderRadius: '8px', font: 'inherit', fontSize: '12.5px',
+        fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+        background: filtro === f ? 'var(--brs)' : 'var(--sf)',
+        color: filtro === f ? 'var(--brd)' : 'var(--fg2)',
+        border: '1px solid ' + (filtro === f ? 'var(--brl)' : 'var(--bd)'),
+      },
+    }))
+
+    return {
+      tema,
+      esOscuro: tema === 'oscuro',
+      esClaro: tema !== 'oscuro',
+      alternarTema: () => this.setState({ tema: tema === 'oscuro' ? 'claro' : 'oscuro' }),
+      esCatalogos: s.seccion === 'catalogos',
+      esPedidos: s.seccion === 'pedidos',
+      irCatalogos: () => this.setState({ seccion: 'catalogos' }),
+      irPedidos: () => this.setState({ seccion: 'pedidos' }),
+      navCatalogos: nav(s.seccion === 'catalogos'),
+      navPedidos: nav(s.seccion === 'pedidos'),
+      navInerte: nav(false),
+      migaSeccion: s.seccion === 'catalogos' ? 'Catálogos' : 'Pedidos',
+      pestanas: TABS.map(([id, nombre]) => ({
+        nombre,
+        elegir: () => this.setState({ tab: id }),
+        estilo: {
+          height: '36px', padding: '0 2px', marginRight: '20px', background: 'transparent', border: 0,
+          borderBottom: '2px solid ' + (s.tab === id ? 'var(--fg)' : 'transparent'),
+          font: 'inherit', fontSize: '13.5px', cursor: 'pointer',
+          fontWeight: s.tab === id ? 600 : 500,
+          color: s.tab === id ? 'var(--fg)' : 'var(--fg2)',
+        },
+      })),
+      tabIdentidad: s.tab === 'identidad',
+      tabEntrega: s.tab === 'entrega',
+      tabReglas: s.tab === 'reglas',
+      tabProductos: s.tab === 'productos',
+      tabQr: s.tab === 'qr',
+      catalogos: CATALOGOS,
+      reglas: REGLAS,
+      preview: PREVIEW,
+      productosPanel: PRODUCTOS_PANEL,
+      pedidos,
+      filtros,
+      cantidadPedidos: pedidos.length + ' de 8',
+      pedidoAbierto,
+      hayPedido: !!pedidoAbierto,
+      cerrarPedido: () => this.setState({ pedido: null }),
+      pedirConfirmacion: () => this.setState({ confirmar: true }),
+      cancelarConfirmacion: () => this.setState({ confirmar: false }),
+      confirmarCobro: () => this.setState({ confirmar: false, pedido: null }),
+      hayConfirmacion: s.confirmar,
+      colorCatalogo: marca,
+      qr: this.qr(),
+    }
+  }
+
+  qr(){
+    // Marcador visual del QR: patrón determinístico + los tres localizadores.
+    const N = 25
+    const celdas = []
+    let semilla = 20260809
+    const rnd = () => { semilla = (semilla * 1103515245 + 12345) % 2147483648; return semilla / 2147483648 }
+    const enLocalizador = (x, y) =>
+      (x < 7 && y < 7) || (x > N - 8 && y < 7) || (x < 7 && y > N - 8)
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        if (enLocalizador(x, y)) continue
+        if (rnd() > 0.52) celdas.push(React.createElement('rect', { key: x + '-' + y, x, y, width: 1, height: 1 }))
+      }
+    }
+    const loc = (x, y) => [
+      React.createElement('rect', { key: 'a' + x + y, x, y, width: 7, height: 7, fill: 'none', stroke: 'currentColor', strokeWidth: 1 }),
+      React.createElement('rect', { key: 'b' + x + y, x: x + 2, y: y + 2, width: 3, height: 3 }),
+    ]
+    return React.createElement('svg', {
+      viewBox: '0 0 ' + N + ' ' + N,
+      style: { width: '100%', height: '100%', display: 'block', color: 'var(--fg)' },
+      fill: 'currentColor', shapeRendering: 'crispEdges',
+    }, celdas, loc(0, 0), loc(N - 7, 0), loc(0, N - 7))
+  }
+}
+</script>
+</body>
+</html>
