@@ -55,8 +55,8 @@ app traduce a `screen_hint=signup` de Auth0.
 Requiere **Node 22+** y una base PostgreSQL (local o Neon).
 
 ```bash
-# 1. Dependencias de las tres apps
-npm run install:all
+# 1. Dependencias de todo el monorepo, de una sola vez
+npm ci
 
 # 2. Configurar entorno
 cp .env.example apps/api/.env       # completar bloque API
@@ -67,9 +67,14 @@ cp .env.example apps/landing/.env   # completar bloque LANDING
 npm run migrate
 
 # 4. Levantar todo (api :5000, web :5173, landing :5174)
-npm install          # instala concurrently en la raíz
 npm run dev
 ```
+
+> El monorepo usa **workspaces de npm**: hay un solo `package-lock.json`, en la
+> raíz, y un solo `node_modules` (con lo que entre en conflicto anidado adentro
+> de la app que lo pida). **No corras `npm install` adentro de `apps/`**: crea
+> un árbol paralelo que después el `npm ci` de la raíz borra, y el síntoma es un
+> build que deja de andar sin que nada haya cambiado.
 
 Cada app se puede levantar sola con `npm run dev:api`, `dev:web` o `dev:landing`.
 

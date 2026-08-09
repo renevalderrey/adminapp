@@ -185,7 +185,7 @@ contexto, los cinco jobs del CI cambian de raíz de instalación—, y la única
 forma de que sea revertible es que no arrastre nada más (riesgo 1 del plan). Si
 algo sale mal acá, no tiene que haber nada más en el mismo corte.
 
-- [ ] **T1410** La conversión a workspaces, sin `packages/` todavía. **(a)**
+- [x] **T1410** La conversión a workspaces, sin `packages/` todavía. **(a)**
       `package.json` de la raíz: `"workspaces": ["apps/*", "packages/*"]`, los
       scripts pasan a `-w` (`dev:api`, `build`, `test`, `lint`, `migrate`) e
       **`install:all` desaparece** —lo reemplaza `npm ci` a secas—. **(b)** Los

@@ -71,7 +71,8 @@ services:
   # levanta: es preferible a arrancar con el esquema a medias.
   api:
     build:
-      context: ./apps/api
+      context: .
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -118,7 +119,8 @@ services:
   # ── Aplicación ─────────────────────────────────────────────
   web:
     build:
-      context: ./apps/web
+      context: .
+      dockerfile: apps/web/Dockerfile
       args:
         VITE_API_URL: https://api.${DOMINIO}/api
         VITE_API_TIMEOUT: ${VITE_API_TIMEOUT:-20000}
@@ -131,7 +133,8 @@ services:
   # ── Landing ────────────────────────────────────────────────
   landing:
     build:
-      context: ./apps/landing
+      context: .
+      dockerfile: apps/landing/Dockerfile
       args:
         VITE_APP_URL: https://app.${DOMINIO}
         VITE_CONTACT_EMAIL: ${VITE_CONTACT_EMAIL}

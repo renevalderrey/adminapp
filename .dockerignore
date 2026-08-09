@@ -1,0 +1,45 @@
+# ══════════════════════════════════════════════════════════════
+#  Favalio · qué NO se le manda al demonio de Docker
+#
+#  Este archivo reemplaza a los tres que vivían en apps/api, apps/web y
+#  apps/landing. Cuando el monorepo pasó a workspaces, el contexto de build
+#  de las tres imágenes se mudó a la raíz (docker-compose.produccion.yml),
+#  y **los .dockerignore de las apps dejaron de aplicar en ese mismo momento,
+#  sin ningún aviso**: Docker solo lee el del directorio de contexto.
+#
+#  Sin este archivo cada `docker build` sube el repositorio entero —los cuatro
+#  node_modules incluidos— al demonio antes de ejecutar la primera instrucción.
+#  En el VPS de 4 GB eso es la diferencia entre segundos y quedarse sin memoria.
+#
+#  Si el job `contenedor` del CI empieza a tardar de más, mirá acá primero.
+# ══════════════════════════════════════════════════════════════
+
+# Lo más pesado, y lo que se reinstala adentro de la imagen igual.
+**/node_modules
+
+# Productos de build: la imagen los genera con la versión que le corresponde.
+**/dist
+**/build
+**/coverage
+**/playwright-report
+**/test-results
+
+# Secretos. `.env.example` cae acá también, a propósito: no hace falta adentro.
+**/.env*
+
+# Historia y andamiaje del repositorio.
+.git
+.github
+.claude
+.gemini
+.specify
+
+# Documentación y sistema viejo: no se ejecutan.
+docs
+legacy
+**/*.md
+
+# Ruido local.
+**/npm-debug.log*
+**/*.log
+**/.DS_Store

@@ -6,20 +6,23 @@
   "engines": {
     "node": ">=22"
   },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "install:all": "npm --prefix apps/api ci && npm --prefix apps/web ci && npm --prefix apps/landing ci",
     "dev": "concurrently -n api,web,landing -c blue,green,magenta \"npm run dev:api\" \"npm run dev:web\" \"npm run dev:landing\"",
-    "dev:api": "npm --prefix apps/api run dev",
-    "dev:web": "npm --prefix apps/web run dev",
-    "dev:landing": "npm --prefix apps/landing run dev",
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "dev:landing": "npm run dev -w apps/landing",
     "build": "npm run build:web && npm run build:landing",
-    "build:web": "npm --prefix apps/web run build",
-    "build:landing": "npm --prefix apps/landing run build",
-    "test": "npm --prefix apps/api test && npm --prefix apps/web test",
-    "lint": "npm --prefix apps/web run lint && npm --prefix apps/landing run lint",
-    "migrate": "npm --prefix apps/api run db:migrate",
-    "test:api": "npm --prefix apps/api test",
-    "test:web": "npm --prefix apps/web test"
+    "build:web": "npm run build -w apps/web",
+    "build:landing": "npm run build -w apps/landing",
+    "test": "npm run test:api && npm run test:web",
+    "lint": "npm run lint -w apps/web && npm run lint -w apps/landing",
+    "migrate": "npm run db:migrate -w apps/api",
+    "test:api": "npm test -w apps/api",
+    "test:web": "npm test -w apps/web"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

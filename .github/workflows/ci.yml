@@ -65,10 +65,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/api/package-lock.json
+          cache-dependency-path: package-lock.json
 
+      # Workspaces: se instala el monorepo entero desde la raiz, una sola vez.
       - run: npm ci
-        working-directory: apps/api
 
       # Los rápidos primero: son un minuto y medio y cubren casi todo. Si algo
       # se rompió acá, no tiene sentido esperar a que migre una base.
@@ -100,10 +100,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - run: npm ci
-        working-directory: apps/web
 
       - name: Tests
         run: npm test
@@ -175,11 +174,8 @@ jobs:
         with:
           node-version: 22
 
+      # Un solo npm ci: los workspaces instalan api y web juntos.
       - run: npm ci
-        working-directory: apps/api
-
-      - run: npm ci
-        working-directory: apps/web
 
       # El Chromium se cachea por versión de Playwright: sin esto son 115 MB de
       # descarga en cada corrida. La clave sale del package-lock, así que se
@@ -187,7 +183,7 @@ jobs:
       # navegador cacheado deja de servir.
       - name: Versión de Playwright
         id: pw
-        run: echo "version=$(node -p "require('./node_modules/@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
         working-directory: apps/web
 
       - uses: actions/cache@v4
@@ -298,10 +294,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/landing/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - run: npm ci
-        working-directory: apps/landing
 
       - name: Build
         run: npm run build
@@ -332,9 +327,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # El contexto es la raiz: el package-lock.json del monorepo vive arriba.
+      # El .dockerignore que aplica es el de la raiz — si este paso empieza a
+      # tardar de mas, es ese archivo lo primero que hay que mirar.
       - name: Construir la imagen
-        run: docker build -t favalio-api:ci .
-        working-directory: apps/api
+        run: docker build -f apps/api/Dockerfile -t favalio-api:ci .
 
       - name: Aplicar las migraciones dentro del contenedor
         run: |
