@@ -556,7 +556,7 @@ nombran, el gate de módulo empieza a significar algo en la API —hoy
 `enabled_modules` tiene **cero apariciones en `apps/api/src`**, verificado— y las
 seis pantallas nuevas entran a la guardia de diseño **antes de escribirse**.
 
-- [ ] **T1421** En `apps/api/src/seedPermissions.js`, los cuatro permisos nuevos
+- [x] **T1421** En `apps/api/src/seedPermissions.js`, los cuatro permisos nuevos
       con el formato de los 50 que ya están: `catalogo.ver` («Ver catálogos»,
       módulo `catalogo`), `catalogo.editar`, `pedidos.ver` («Ver pedidos
       online», módulo `pedidos`) y `pedidos.gestionar`. En `ROLE_PERMISOS`
@@ -578,7 +578,7 @@ seis pantallas nuevas entran a la guardia de diseño **antes de escribirse**.
       ⚠ **Va antes que cualquier endpoint que los nombre**, o la guardia de
       `checkPermission` se pone en rojo entre dos cortes.
 
-- [ ] **T1422** Crear `apps/api/src/middleware/requireModulo.js`, **que hoy no
+- [x] **T1422** Crear `apps/api/src/middleware/requireModulo.js`, **que hoy no
       existe**, y su test `apps/api/src/tests/requireModulo.test.js`. Tres
       detalles, cada uno con su motivo escrito en el archivo: **(a) sin lista
       declarada, pasa** —`enabled_modules` ausente o no-arreglo significa «esta
@@ -609,7 +609,7 @@ seis pantallas nuevas entran a la guardia de diseño **antes de escribirse**.
       test falla y la pantalla quedaría accesible en el navegador y muerta en la
       API.
 
-- [ ] **T1423** En `apps/web/src/tests/guardiasDeDiseno.test.js`, `NOMBRES`
+- [x] **T1423** En `apps/web/src/tests/guardiasDeDiseno.test.js`, `NOMBRES`
       (`:171-215`) gana los **seis** archivos que todavía no existen
       —`pages/Catalogos.jsx`, `pages/Pedidos.jsx`,
       `components/ReglasDePrecio.jsx`, `components/ProductosDelCatalogo.jsx`,

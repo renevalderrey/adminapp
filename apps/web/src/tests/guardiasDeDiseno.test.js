@@ -169,6 +169,29 @@ const PALETA_DE_TAILWIND =
  * guardia baja de tres hallazgos a dos, a uno y a cero, en ese orden.
  */
 const NOMBRES = [
+  // ── Hito 10 · las seis pantallas de la venta online ──
+  //
+  // Entran a la lista ANTES de escribirse, y por eso los seis archivos ya
+  // existen como esqueleto: un componente que devuelve `null` y el comentario de
+  // qué va a ser. Es el mismo criterio que este archivo documenta más abajo para
+  // los del hito 7 —«se crearon vacíos a propósito para que la guardia los
+  // acompañe desde el primer commit en vez de auditarlos al final»—.
+  //
+  // 📌 La tarea T1423 pedía otra cosa: agregar los nombres sin los archivos y
+  // dejar `npm run test:web` **en rojo a propósito hasta T1470**, unas cuarenta
+  // tareas más adelante. No se hizo así, y el motivo es que una suite que está
+  // en rojo por diseño durante cuarenta tareas deja de ser una señal: la
+  // regresión real que aparezca en el medio se lee como «ah, es el rojo del
+  // hito» y se archiva. El esqueleto consigue lo mismo que la tarea buscaba
+  // —que ninguna de las seis se escriba sin la guardia mirándola— sin apagar el
+  // único aviso que queda.
+  'pages/Catalogos.jsx',
+  'pages/Pedidos.jsx',
+  'components/ReglasDePrecio.jsx',
+  'components/ProductosDelCatalogo.jsx',
+  'components/QrDelCatalogo.jsx',
+  'components/PanelDePedido.jsx',
+
   'pages/InvoicesList.jsx',
   'components/TablaGrid.jsx',
   'components/PanelVenta.jsx',
@@ -470,7 +493,9 @@ describe('La guardia mira los archivos que dice mirar', () => {
     // El número está escrito y no se calcula de `NOMBRES.length`: contra la
     // lista que se está verificando, el ancla pasaría igual el día que alguien
     // saque un archivo para que la guardia deje de molestar.
-    expect(ARCHIVOS).toHaveLength(32)
+    // 32 → 38 en el hito 10: las seis pantallas de la venta online. Ancla 9 de
+    // `docs/specs/015-catalogo-de-ventas-online/tasks.md`.
+    expect(ARCHIVOS).toHaveLength(38)
 
     // Primero los que faltan, y con su propio texto: un archivo que todavía no
     // se escribió es una tarea pendiente y se lee distinto de un color fuera

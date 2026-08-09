@@ -1,0 +1,17 @@
+// ════════════════════════════════════════════
+//  Pedidos · todavía no está escrito
+//
+//  La bandeja de pedidos: todo lo que entró por los catálogos públicos, con sus estados y el filtro por canal. La escribe T1461.
+//
+//  Nace vacío a propósito, y no cuando se escriba: así entra desde el primer
+//  commit a la lista NOMBRES de `guardiasDeDiseno.test.js`, que es la que
+//  verifica que ninguna pantalla use un color fuera de los tokens. Agregarlo
+//  después significaría auditarlo al final, que es cuando ya nadie lo cambia.
+//
+//  Es el mismo criterio que el archivo de la guardia documenta para los que
+//  se crearon así en el hito 7.
+// ════════════════════════════════════════════
+
+export default function Pedidos() {
+  return null
+}
