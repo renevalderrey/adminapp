@@ -118,6 +118,26 @@ describe('el compose y el Caddyfile sostienen lo mismo', () => {
     expect(CADDY).toMatch(/root \* \/var\/favalio\/imagenes/);
   });
 
+  it('las sirve en los DOS sitios: la tienda y el panel', () => {
+    // Nació con el bloque sólo en `tienda.`, y el panel —que vive en `app.`—
+    // mostraba un 404 en cada miniatura mientras el cliente veía la foto
+    // perfecta. El dato estaba bien, así que la causa no aparecía por ningún
+    // lado. Es el modo de falla que esta regla impide que vuelva.
+    const sitios = ['app.{$DOMINIO}', 'tienda.{$DOMINIO}'];
+
+    for (const sitio of sitios) {
+      const desde = CADDY.indexOf(sitio);
+      expect(desde).toBeGreaterThanOrEqual(0);
+
+      // Hasta el próximo bloque de sitio de primer nivel, o el final.
+      const resto = CADDY.slice(desde + sitio.length);
+      const proximo = resto.search(/\n\w[\w.{$}]*\s*\{/);
+      const bloque = proximo === -1 ? resto : resto.slice(0, proximo);
+
+      expect(bloque).toMatch(/handle \/img\/\*/);
+    }
+  });
+
   it('la tienda no se indexa, y la regla es de sitio', () => {
     const bloque = CADDY.slice(CADDY.indexOf('tienda.{$DOMINIO}'));
 

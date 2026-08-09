@@ -36,8 +36,28 @@ www.{$DOMINIO} {
 # ── Aplicación ──
 app.{$DOMINIO} {
 	encode gzip
-	reverse_proxy web:80
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	# Las fotos, también acá.
+	#
+	# El panel guarda en `products.image_url` la ruta RELATIVA `/img/aa/bb/…`, y
+	# la ficha del producto la dibuja tal cual. Si `/img/` sólo existiera en
+	# `tienda.`, el administrador vería un 404 en cada miniatura mientras el
+	# cliente ve la foto perfecta — y el dato estaría bien, así que nadie
+	# encontraría la causa.
+	#
+	# Es el mismo volumen y el mismo bloque que en `tienda.`: de sólo lectura,
+	# servido por Caddy y no por la API.
+	handle /img/* {
+		uri strip_prefix /img
+		root * /var/favalio/imagenes
+		file_server
+		header Cache-Control "public, max-age=31536000, immutable"
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
 }
 
 # ── API ──
