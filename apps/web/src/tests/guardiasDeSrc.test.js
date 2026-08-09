@@ -823,3 +823,155 @@ describe('El estado vacío sale de un solo componente', () => {
     expect(aMano).toEqual([])
   })
 })
+
+// ════════════════════════════════════════════
+//  ── 11 · Lo que pagina dice cuánto hay ──
+//
+//  La franja «Mostrando 25 de 312 productos» estaba en dos de las cinco que
+//  paginan. En las otras tres —Órdenes de compra, TiendaNube y el historial de
+//  movimientos de un proveedor— había botones «1 · 2 · 3» y nada más.
+//
+//  Los botones dicen que hay más páginas; el «de 312» dice cuánto más. Sin la
+//  franja, quien está en la última página no tiene forma de saber si llegó al
+//  final o si la lista se cortó.
+//
+//  ⚠ Es **lo único de la lista que agrega información**: los dos números ya
+//  estaban en la pantalla —el total en el badge, las filas se pueden contar—
+//  pero puestos uno al lado del otro contestan de un vistazo la pregunta que se
+//  hace cualquiera frente a una tabla larga: «¿esto es todo?».
+// ════════════════════════════════════════════
+
+describe('La paginación viene con su franja', () => {
+  it('nadie usa `Pagination` suelto: va adentro de `PieDeTabla`', () => {
+    const sueltos = ARCHIVOS
+      .filter(({ nombre }) => nombre !== 'components/PieDeTabla.jsx')
+      .flatMap(({ nombre, contenido }) =>
+        sinComentarios(contenido)
+          .split('\n')
+          .map((linea, i) => ({ archivo: nombre, n: i + 1, texto: linea.trim() }))
+          .filter(({ texto }) => /<Pagination\b/.test(texto))
+      )
+
+    expect(sueltos.map(({ archivo, n }) => `${archivo}:${n}`)).toEqual([])
+  })
+
+  it('la guardia miró de verdad: cinco listas usan el pie', () => {
+    // Ancla. Cero `<Pagination>` sueltos se lee igual que «no hay paginación en
+    // ningún lado», y así es como esta guardia se queda verde para siempre.
+    const conPie = ARCHIVOS.filter(({ contenido }) =>
+      /from '@\/components\/PieDeTabla'/.test(contenido)
+    )
+
+    expect(conPie.length).toBeGreaterThanOrEqual(5)
+  })
+
+  it('y el pie dibuja los DOS números, no solo el total', () => {
+    // Un pie que dijera solo «312 productos» no contesta «¿esto es todo?»: es
+    // el mismo número que ya está en el badge del encabezado.
+    const fuente = ARCHIVOS.find(({ nombre }) => nombre === 'components/PieDeTabla.jsx')
+
+    expect(fuente).toBeDefined()
+    expect(fuente.contenido).toMatch(/\{mostrados\}/)
+    expect(fuente.contenido).toMatch(/\{total\}/)
+  })
+})
+
+// ════════════════════════════════════════════
+//  ── 12 · Una falla de carga se anuncia ──
+//
+//  Faltaba `role="alert"` en tres avisos de error de carga: `Dashboard`,
+//  `Inventory` y `EstadoDeTiendanube`. Con un lector de pantalla nadie se
+//  enteraba de que la carga había fallado: la persona seguía esperando datos
+//  que no iban a llegar, y el único indicio era visual.
+//
+//  ⚠ Es peor que no ver el error. Un error visible se lee y se reintenta; un
+//  error que no se anuncia deja a alguien esperando indefinidamente algo que ya
+//  falló.
+// ════════════════════════════════════════════
+
+describe('Los avisos de error de carga se anuncian', () => {
+  it('todo bloque `bg-danger-soft` con un `{error}` adentro lleva role="alert"', () => {
+    const sinAnuncio = ARCHIVOS.flatMap(({ nombre, contenido }) => {
+      const limpio = sinComentarios(contenido)
+      const hallazgos = []
+
+      // El bloque entero del aviso: desde el `<div` que lo abre hasta 400
+      // caracteres después, que es donde vive el `{error}`.
+      for (const m of limpio.matchAll(/<div\b[^>]{0,400}bg-danger-soft[\s\S]{0,400}?\{error\}/g)) {
+        if (!/role="alert"/.test(m[0])) {
+          hallazgos.push(nombre)
+        }
+      }
+
+      return hallazgos
+    })
+
+    expect([...new Set(sinAnuncio)]).toEqual([])
+  })
+
+  it('la guardia miró de verdad: hay avisos de error con `role="alert"`', () => {
+    const conAnuncio = ARCHIVOS.filter(({ contenido }) =>
+      /role="alert"/.test(contenido) && /bg-danger-soft/.test(contenido)
+    )
+
+    expect(conAnuncio.length).toBeGreaterThanOrEqual(3)
+  })
+})
+
+// ════════════════════════════════════════════
+//  ── 13 · Un buscador se ve como un buscador ──
+//
+//  El de TiendaNube era el único de la aplicación sin lupa, y su `placeholder`
+//  decía «Nombre o SKU»: nombra lo que se escribe pero no dice que sirva para
+//  buscar. Sin ícono, un campo no se lee como buscador — se lee como un campo
+//  más que hay que completar.
+// ════════════════════════════════════════════
+
+describe('Todo campo de búsqueda lleva su lupa', () => {
+  /** Los `<input>` cuyo `aria-label` o `placeholder` dice que se busca. */
+  const buscadores = ARCHIVOS.flatMap(({ nombre, contenido }) => {
+    const limpio = sinComentarios(contenido)
+    const encontrados = []
+
+    for (const m of limpio.matchAll(/<input\b[\s\S]{0,600}?\/>/g)) {
+      if (!/aria-label="Buscar|placeholder="Buscar/.test(m[0])) continue
+
+      encontrados.push({ archivo: nombre, bloque: m[0] })
+    }
+
+    return encontrados
+  })
+
+  it('la guardia miró de verdad: hay buscadores en varias pantallas', () => {
+    // Ancla, y la que atrapa un regex que dejó de matchear.
+    const pantallas = new Set(buscadores.map(({ archivo }) => archivo))
+
+    expect(pantallas.size).toBeGreaterThanOrEqual(4)
+  })
+
+  it('cada uno tiene una lupa al lado', () => {
+    // La lupa va como hermana del `<input>`, así que se busca en el archivo
+    // dentro de la ventana del contenedor. Se afirma por pantalla y no por
+    // campo: una pantalla con buscador y sin `Search` importado no tiene lupa
+    // en ninguno.
+    const sinLupa = [...new Set(buscadores.map(({ archivo }) => archivo))].filter((archivo) => {
+      const fuente = ARCHIVOS.find(({ nombre }) => nombre === archivo)
+      return !/<Search\b/.test(sinComentarios(fuente.contenido))
+    })
+
+    expect(sinLupa).toEqual([])
+  })
+
+  it('y el placeholder dice que se busca, no solo qué se escribe', () => {
+    // «Nombre o SKU» nombra el dato; «Buscar por nombre o SKU» nombra la acción.
+    // Es la diferencia entre un campo que se completa y uno que se usa.
+    const vagos = buscadores
+      .filter(({ bloque }) => {
+        const placeholder = bloque.match(/placeholder="([^"]+)"/)?.[1]
+        return placeholder && !/buscar/i.test(placeholder)
+      })
+      .map(({ archivo }) => archivo)
+
+    expect([...new Set(vagos)]).toEqual([])
+  })
+})

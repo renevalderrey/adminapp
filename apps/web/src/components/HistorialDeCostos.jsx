@@ -94,7 +94,7 @@ export default function HistorialDeCostos({ productoId }) {
       <h2>Historial de costos</h2>
 
       {error ? (
-        <div className="rounded-xl border border-danger-line bg-danger-soft px-4 py-3">
+        <div role="alert" className="rounded-xl border border-danger-line bg-danger-soft px-4 py-3">
           <p className="text-[12.5px] text-danger">No se pudo cargar el historial: {error}</p>
           <button
             className="mt-2 text-[12.5px] font-medium text-fg-2 underline hover:text-foreground"

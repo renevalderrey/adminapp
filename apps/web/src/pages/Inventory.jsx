@@ -27,6 +27,7 @@ import PanelTransferencia from '@/components/PanelTransferencia'
 import PreciosMasivos from '@/components/PreciosMasivos'
 import MenuDesplegable from '@/components/MenuDesplegable'
 import { mensajeDeError } from '@/utils/erroresDeApi'
+import PieDeTabla from '@/components/PieDeTabla'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Inventario
@@ -664,7 +665,12 @@ const Inventory = () => {
         <div>
           <h1>Inventario</h1>
         </div>
-        <div className="rounded-xl border border-danger-line bg-danger-soft p-6 text-center">
+        {/* `role="alert"`: sin él la falla de carga no se anuncia y la persona
+            sigue esperando productos que no van a llegar. */}
+        <div
+          role="alert"
+          className="rounded-xl border border-danger-line bg-danger-soft p-6 text-center"
+        >
           <p className="font-semibold text-danger">Error al cargar los productos</p>
           <p className="mx-auto mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">{error}</p>
           <button className={`${BOTON_SECUNDARIO} mt-3`} onClick={() => initialize()}>
@@ -1198,13 +1204,14 @@ const Inventory = () => {
               })}
             </TablaGrid>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2 text-[12.5px] text-fg-2">
-              <span>
-                Mostrando <span className="num">{paginatedProducts.length}</span> de{' '}
-                <span className="num">{filteredProducts.length}</span> productos
-              </span>
-              <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
-            </div>
+            <PieDeTabla
+              mostrados={paginatedProducts.length}
+              total={filteredProducts.length}
+              sustantivo="productos"
+              pagina={page}
+              totalPaginas={totalPages}
+              alCambiarPagina={setPage}
+            />
           </>
         )}
       </section>

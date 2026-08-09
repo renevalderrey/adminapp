@@ -20,6 +20,7 @@ import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { usePermission } from '@/hooks/usePermission'
 import Pagination from '@/components/Pagination'
 import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
+import PieDeTabla from '@/components/PieDeTabla'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Historial de ventas
@@ -1231,17 +1232,14 @@ const InvoicesList = () => {
                 })}
               </TablaGrid>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2 text-[12.5px] text-fg-2">
-                <span>
-                  Mostrando <span className="num">{sales.length}</span> de{' '}
-                  <span className="num">{total}</span> ventas
-                </span>
-                <Pagination
-                  page={consulta.page}
-                  totalPages={totalPages}
-                  onPageChange={(n) => setConsulta(c => ({ ...c, page: n }))}
-                />
-              </div>
+              <PieDeTabla
+                mostrados={sales.length}
+                total={total}
+                sustantivo="ventas"
+                pagina={consulta.page}
+                totalPaginas={totalPages}
+                alCambiarPagina={(n) => setConsulta(c => ({ ...c, page: n }))}
+              />
             </>
           )}
         </section>

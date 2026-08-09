@@ -475,7 +475,12 @@ export function UltimaCorrida({ refresco = 0 }) {
 
       {error ? (
         <div className="px-5 py-4">
-          <div className="flex items-start gap-2.5 rounded-xl border border-danger-line bg-danger-soft px-4 py-3">
+          {/* `role="alert"`: ver `pages/Dashboard.jsx`, mismo aviso y mismo
+              motivo. */}
+          <div
+            role="alert"
+            className="flex items-start gap-2.5 rounded-xl border border-danger-line bg-danger-soft px-4 py-3"
+          >
             <AlertTriangle className="mt-0.5 h-[18px] w-[18px] shrink-0 text-danger" />
             <div className="min-w-0">
               <p className="text-[13px] text-danger">{error}</p>

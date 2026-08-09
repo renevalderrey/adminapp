@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
+import { Search } from 'lucide-react'
 import useStore from '@/store/useStore'
 import Fuse from 'fuse.js'
 import api, { getCustomers, nuevoIdDeVenta } from '@/services/api'
@@ -1048,13 +1049,17 @@ const Billing = () => {
    */
   const buscadorDeClientes = hayModuloClientes ? (
     <div className="relative">
+      {/* La lupa, como los otros seis buscadores. Sin ella el campo se lee como
+          uno más para completar, y en el pie del cobro —con un cliente
+          enfrente— es justo donde no hay tiempo de averiguarlo. */}
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-[15px] w-[15px] -translate-y-1/2 text-fg-3" />
       <input
         {...{ [ATRIBUTO_CAMPO]: 'fichaDeCliente' }}
         placeholder="Buscar ficha de cliente…"
         value={customerSearch}
         onChange={e => handleCustomerSearch(e.target.value)}
         onFocus={() => customerResults.length > 0 && setShowCustomerSearch(true)}
-        className="h-[34px] w-full rounded-lg border border-border bg-surface px-2.5 pr-8 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+        className="h-[34px] w-full rounded-lg border border-border bg-surface pl-8 pr-8 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
       />
       {customerId && (
         <button

@@ -63,6 +63,7 @@ import { mensajeDeError } from '@/utils/erroresDeApi'
 import { armarHoja, nombreDelArchivo } from '@/utils/exportarProveedores'
 import { faltaElPermiso } from '@/utils/permisos'
 import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
+import PieDeTabla from '@/components/PieDeTabla'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Proveedores y su cuenta corriente
@@ -1454,10 +1455,13 @@ const Orders = () => {
               {/* Va DENTRO de la tarjeta y debajo de la tabla. El componente se
                   esconde solo cuando hay una página sola. Es 1-indexado, igual
                   que el `page` que pide el endpoint. */}
-              <Pagination
-                page={paginaDeMovimientos}
-                totalPages={paginasDeMovimientos}
-                onPageChange={setPaginaDeMovimientos}
+              <PieDeTabla
+                mostrados={movimientos.length}
+                total={totalDeMovimientos}
+                sustantivo="movimientos"
+                pagina={paginaDeMovimientos}
+                totalPaginas={paginasDeMovimientos}
+                alCambiarPagina={setPaginaDeMovimientos}
               />
             </section>
           </div>

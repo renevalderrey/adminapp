@@ -760,8 +760,14 @@ function FormularioDeRecepcion({
         </p>
       </div>
 
+      {/* `role="alert"`: este aviso es el que dice que la RECEPCIÓN falló, o
+          sea que la mercadería no quedó registrada. Que no se anuncie deja a
+          alguien creyendo que descargó el remito. */}
       {error && (
-        <div className="flex gap-2.5 rounded-[10px] border border-danger-line bg-danger-soft px-3.5 py-3">
+        <div
+          role="alert"
+          className="flex gap-2.5 rounded-[10px] border border-danger-line bg-danger-soft px-3.5 py-3"
+        >
           <AlertTriangle className="mt-0.5 h-[15px] w-[15px] shrink-0 text-danger" />
           <p className="text-[12.5px] leading-relaxed text-danger">{error}</p>
         </div>

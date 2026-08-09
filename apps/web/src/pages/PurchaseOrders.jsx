@@ -53,6 +53,7 @@ import { mensajeDeError } from '@/utils/erroresDeApi';
 import PageHeader from '@/components/PageHeader'
 import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
 import EstadoVacio from '@/components/EstadoVacio'
+import PieDeTabla from '@/components/PieDeTabla'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Órdenes de compra
@@ -1122,7 +1123,14 @@ const PurchaseOrders = () => {
             lado del servidor, no puede volver a ofrecer una página 3 de una
             lista que ya no tiene tres. El componente se esconde solo cuando hay
             una página sola. Es 1-indexado, igual que `pagina`. */}
-        <Pagination page={pagina} totalPages={totalPaginas} onPageChange={setPagina} />
+        <PieDeTabla
+          mostrados={orders.length}
+          total={total}
+          sustantivo="órdenes"
+          pagina={pagina}
+          totalPaginas={totalPaginas}
+          alCambiarPagina={setPagina}
+        />
       </section>
 
       {/* ── El panel de la orden ──

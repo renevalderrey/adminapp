@@ -1463,6 +1463,10 @@ describe('El lápiz mira el permiso, igual que el tacho de al lado', () => {
 // ════════════════════════════════════════════
 
 describe('El contador de órdenes dice cuántas hay, no cuántas entraron', () => {
+  /** La sección de órdenes, para no chocar con el pie del historial. */
+  const seccionDeOrdenes = () =>
+    screen.getByRole('heading', { name: 'Órdenes de compra' }).closest('section')
+
   /** El badge del encabezado de la sección de órdenes. */
   const contadorDeOrdenes = () => {
     const titulo = screen.getByRole('heading', { name: 'Órdenes de compra' })
@@ -1484,7 +1488,10 @@ describe('El contador de órdenes dice cuántas hay, no cuántas entraron', () =
     await montar({ ordenes: [PRIMERA_PENDIENTE, SEGUNDA_PENDIENTE], totalDeOrdenes: 60 })
     await elegir('Distribuidora Norte')
 
-    const pie = screen.getByText(/Mostrando/)
+    // ⚠ Acotado a la sección de órdenes. El historial de movimientos, más
+    // abajo, tiene su propio pie «Mostrando N de M movimientos»: son dos listas
+    // distintas y `getByText(/Mostrando/)` a secas encuentra los dos.
+    const pie = within(seccionDeOrdenes()).getByText(/Mostrando/)
 
     expect(pie.textContent).toContain('2')
     expect(pie.textContent).toContain('60')
@@ -1498,7 +1505,7 @@ describe('El contador de órdenes dice cuántas hay, no cuántas entraron', () =
     await elegir('Distribuidora Norte')
 
     expect(contadorDeOrdenes().textContent).toBe('2')
-    expect(screen.queryByText(/Mostrando/)).toBeNull()
+    expect(within(seccionDeOrdenes()).queryByText(/Mostrando/)).toBeNull()
   })
 })
 

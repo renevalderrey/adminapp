@@ -52,6 +52,7 @@ import { Textarea } from '@/components/ui/textarea';
 import Pagination from '@/components/Pagination';
 import { format } from 'date-fns';
 import PageHeader from '@/components/PageHeader'
+import PieDeTabla from '@/components/PieDeTabla'
 
 const Customers = () => {
   const [customers, setCustomers] = useState([]);
@@ -306,10 +307,13 @@ const Customers = () => {
                   ))}
                 </TableBody>
               </Table>
-              <Pagination
-                page={page}
-                totalPages={Math.ceil(total / limit)}
-                onPageChange={setPage}
+              <PieDeTabla
+                mostrados={customers.length}
+                total={total}
+                sustantivo="clientes"
+                pagina={page}
+                totalPaginas={Math.ceil(total / limit)}
+                alCambiarPagina={setPage}
               />
             </>
           )}

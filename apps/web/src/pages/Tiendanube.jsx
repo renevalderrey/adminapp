@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
-  AlertTriangle, ArrowRight, Link2, Loader2, PackageSearch, RefreshCw, Store, Unlink, X,
+  AlertTriangle, ArrowRight, Link2, Loader2, PackageSearch, RefreshCw, Search, Store, Unlink, X,
 } from 'lucide-react'
 import PageHeader from '@/components/PageHeader'
 import Pagination from '@/components/Pagination'
@@ -35,6 +35,7 @@ import {
 import { faltaElPermiso } from '@/utils/permisos'
 import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
 import EstadoVacio from '@/components/EstadoVacio'
+import PieDeTabla from '@/components/PieDeTabla'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · /tiendanube
@@ -744,16 +745,25 @@ export default function Tiendanube() {
 
           {cargandoVariantes && <Loader2 className="h-4 w-4 animate-spin text-fg-3" />}
 
-          <input
-            aria-label="Buscar variantes"
-            value={texto}
-            onChange={(evento) => setTexto(evento.target.value)}
-            placeholder="Nombre o SKU"
-            disabled={!hayTienda}
-            className="h-[34px] w-[200px] rounded-lg border border-border bg-surface px-3 text-[13px]
-                       transition-colors focus-visible:border-brand focus-visible:outline-none
-                       disabled:cursor-not-allowed disabled:opacity-55"
-          />
+          {/* ⚠ La lupa, y el `placeholder` con el verbo.
+              Era el único buscador de la aplicación sin ícono: sin lupa, un
+              campo no se lee como buscador —se lee como un campo más que hay
+              que completar— y el placeholder decía «Nombre o SKU», que nombra
+              lo que se escribe pero no dice que sirva para buscar. Los otros
+              seis buscadores tienen las dos cosas. */}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-[15px] w-[15px] -translate-y-1/2 text-fg-3" />
+            <input
+              aria-label="Buscar variantes"
+              value={texto}
+              onChange={(evento) => setTexto(evento.target.value)}
+              placeholder="Buscar por nombre o SKU…"
+              disabled={!hayTienda}
+              className="h-[34px] w-[220px] rounded-lg border border-border bg-surface pl-9 pr-3 text-[13px]
+                         transition-colors focus-visible:border-brand focus-visible:outline-none
+                         disabled:cursor-not-allowed disabled:opacity-55"
+            />
+          </div>
 
           <label className="inline-flex h-[34px] items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[13px] font-medium">
             <input
@@ -880,7 +890,14 @@ export default function Tiendanube() {
               })}
             </TablaGrid>
 
-            <Pagination page={pagina} totalPages={paginas} onPageChange={setPagina} />
+            <PieDeTabla
+              mostrados={variantes.length}
+              total={totalDeVariantes}
+              sustantivo="variantes"
+              pagina={pagina}
+              totalPaginas={paginas}
+              alCambiarPagina={setPagina}
+            />
           </>
         )}
       </section>

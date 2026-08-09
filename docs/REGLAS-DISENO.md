@@ -326,22 +326,34 @@ Los otros seis son `pages/Orders.jsx`, `pages/PurchaseOrders.jsx`,
 **El pie de la tabla.** Cuando la tabla pagina, abajo va una franja con cuántas
 filas se están viendo de cuántas, y el paginador a la derecha:
 
+**No se escribe a mano**: sale de `components/PieDeTabla.jsx`, que trae la
+franja y la paginación juntas.
+
 ```jsx
-<div className="flex items-center justify-between border-t border-border px-5 py-[13px]">
-  <span className="text-[12.5px] text-fg-2">
-    Mostrando <span className="num">{filas.length}</span> de <span className="num">{total}</span>
-  </span>
-  <Pagination page={pagina} totalPages={paginas} onPageChange={setPagina} />
-</div>
+<PieDeTabla
+  mostrados={filas.length}
+  total={total}
+  sustantivo="órdenes"
+  pagina={pagina}
+  totalPaginas={paginas}
+  alCambiarPagina={setPagina}
+/>
 ```
+
+Van juntas porque **son la misma pregunta**. Los botones «1 · 2 · 3» dicen que
+hay más páginas; el «de 312» dice cuánto más. Separados, cinco pantallas
+terminaron con los botones y solo dos con la franja: quien estaba en la última
+página no tenía forma de saber si había llegado al final o si la lista se había
+cortado.
 
 El número de la derecha es **el total del servidor**, no la cantidad de filas
 cargadas: si son distintos y solo se muestra el segundo, el contador miente hacia
-abajo y nada avisa. `Pagination` ya se esconde solo cuando hay una sola página,
-así que la franja se puede dibujar siempre.
+abajo y nada avisa. `Pagination` ya se esconde solo cuando hay una sola página.
 
-Existía en dos de las cinco pantallas que paginan hasta el hito 9. Las otras tres
-la saltearon porque acá no estaba escrita, aunque la maqueta la dibuja dos veces.
+> Existía en dos de las cinco pantallas que paginan hasta el hito 9. Las otras
+> tres la saltearon porque acá no estaba escrita, aunque la maqueta la dibuja dos
+> veces. Ahora que es un componente, saltearla exige escribir más código, no
+> menos.
 
 ```jsx
 import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid'
@@ -543,23 +555,31 @@ detalle **sin perder la lista** —que es casi siempre en un listado.
 
 ### Estado vacío
 
-Nunca una tabla vacía a secas. Ícono apagado, una línea de qué pasa y otra de
-qué hacer:
+Nunca una tabla vacía a secas, y **nunca escrito a mano**: sale de
+`components/EstadoVacio.jsx`.
 
 ```jsx
-<div className="py-12 text-center">
-  <PackageOpen className="mx-auto h-7 w-7 text-fg-3" />
-  <p className="mt-3 font-semibold">No falta nada.</p>
-  <p className="mt-1 max-w-[46ch] mx-auto text-sm text-fg-2">
-    Ningún producto está por debajo de su mínimo.
-  </p>
-</div>
+<EstadoVacio
+  icono={PackageCheck}
+  codigo="sin_faltantes"
+  titulo="No falta nada."
+  detalle="Ningún producto está por debajo de su mínimo."
+/>
 ```
 
-> **El ícono faltaba en este ejemplo hasta el hito 9**, aunque el párrafo de
-> arriba lo pedía. Tres pantallas quedaron sin él —copiaron el bloque, no la
-> prosa— y el documento se estaba contradiciendo a sí mismo. Es la misma familia
-> que el encabezado sin `PageHeader`: **lo que se copia es el snippet.**
+> **Hasta el hito 9 había SEIS formas de dibujar esto**: tres funciones llamadas
+> `EstadoVacio` —dos idénticas salvo el ícono— y tres pantallas que lo hacían a
+> mano, **las tres sin ícono**. Y el snippet de acá arriba tampoco lo tenía,
+> aunque su propio párrafo lo pedía: lo que se copia es el snippet, no la prosa.
+>
+> El ícono **no es decoración**: sin él, un bloque con dos renglones de texto
+> gris se lee como un error y no como «esto está vacío». Por eso el componente
+> tiene un valor por omisión y no un `icono &&` — con el opcional, la mitad de
+> las pantallas se lo iba a olvidar, que es exactamente lo que pasó.
+>
+> ⚠ **El día 1 las doce pantallas están vacías.** Los estados vacíos no son un
+> caso de borde: son la primera pasada completa que ve el dueño del comercio
+> cuando abre el sistema por primera vez.
 
 **Y son dos estados distintos, no uno.** «Todavía no hay nada cargado» y «el
 filtro no devolvió nada» se ven parecido y significan cosas opuestas: el primero
@@ -568,14 +588,26 @@ al usuario buscando datos que sí existen.
 
 ```jsx
 {hayFiltro ? (
-  <Vacio titulo="Ninguna orden coincide con el filtro"
-         detalle="Probá con otro período o sacá la búsqueda."
-         accion={<button onClick={limpiar}>Limpiar filtros</button>} />
+  <EstadoVacio
+    icono={FilterX}
+    codigo="filtro_sin_resultados"
+    titulo="Ninguna orden coincide con el filtro."
+    detalle="Probá con otro período o sacá la búsqueda."
+  >
+    <button onClick={limpiar}>Limpiar filtros</button>
+  </EstadoVacio>
 ) : (
-  <Vacio titulo="Todavía no hay órdenes de compra"
-         detalle="Creá la primera con «Nueva orden»." />
+  <EstadoVacio
+    icono={ClipboardList}
+    codigo="sin_ordenes"
+    titulo="Todavía no hay órdenes de compra."
+    detalle="Creá la primera con «Nueva orden»."
+  />
 )}
 ```
+
+`codigo` sale como `data-estado-vacio` para que un test pueda distinguir los dos
+sin depender del texto.
 
 ⚠ **Y ninguno de los dos se dibuja mientras los datos viajan.** Un vacío que
 aparece durante la carga afirma algo que la pantalla todavía no sabe — y lo
@@ -700,6 +732,66 @@ concreto.
 Los tokens ya lo resuelven. **Una pantalla nueva no debería necesitar ni una
 regla `dark:`.** Si la necesita, es que usó un color fuera del sistema — eso es
 lo que hay que corregir, no agregar la variante.
+
+---
+
+## Buscador
+
+Un campo de búsqueda lleva **lupa a la izquierda** y un `placeholder` que dice
+el verbo:
+
+```jsx
+<div className="relative">
+  <Search className="pointer-events-none absolute left-3 top-1/2 h-[15px] w-[15px] -translate-y-1/2 text-fg-3" />
+  <input
+    aria-label="Buscar variantes"
+    placeholder="Buscar por nombre o SKU…"
+    className="h-9 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-[13.5px]
+               transition-colors focus-visible:border-brand focus-visible:outline-none"
+  />
+</div>
+```
+
+**Sin lupa, un campo no se lee como buscador**: se lee como un campo más que hay
+que completar. Y el `placeholder` nombra la ACCIÓN, no el dato: «Nombre o SKU»
+dice qué se escribe pero no dice que sirva para buscar.
+
+`pointer-events-none` en la lupa: sin eso, hacer clic sobre el ícono no enfoca el
+campo, que es donde la mayoría hace clic.
+
+**El rebote sale de `utils/busqueda.js`.** Había cuatro números distintos —250,
+250, 300 y 350— en cuatro pantallas. La diferencia no se nota mirando una: se
+nota al pasar de una a otra, y un buscador que responde a distinta velocidad
+según la pantalla se lee como que unas están más pesadas que otras.
+
+> Hasta el hito 9, el buscador de TiendaNube era el único sin lupa y su
+> `placeholder` decía «Nombre o SKU»; el de fichas de cliente del punto de venta
+> tampoco tenía ícono.
+
+---
+
+## Avisos que hay que anunciar
+
+Todo bloque que dice que **algo falló** lleva `role="alert"`:
+
+```jsx
+{error && (
+  <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-danger-line bg-danger-soft px-4 py-3">
+    <AlertTriangle className="mt-0.5 h-[18px] w-[18px] shrink-0 text-danger" />
+    <p className="text-[13px] text-danger">{error}</p>
+  </div>
+)}
+```
+
+Sin el `role`, con un lector de pantalla **nadie se entera de que la carga
+falló**: la persona sigue esperando datos que no van a llegar, y el único
+indicio es visual. Es peor que ver el error — un error visible se lee y se
+reintenta; uno que no se anuncia deja a alguien esperando indefinidamente algo
+que ya falló.
+
+> Faltaba en cinco lugares hasta el hito 9. Dos de ellos —el panel de recepción
+> de una orden y el historial de costos— avisan que **una operación que escribe
+> datos** no se completó.
 
 ---
 

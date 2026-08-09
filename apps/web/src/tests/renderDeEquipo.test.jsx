@@ -731,7 +731,16 @@ describe('sacar a alguien del equipo, y devolverlo', () => {
 
     await interaccion.selectOptions(screen.getByLabelText('Rol'), 'vendedor')
 
-    expect(screen.getByRole('alert')).toHaveTextContent(
+    // ⚠ `findByRole` y no `getByRole`.
+    //
+    // El aviso aparece después de que el PUT se rechace y React vuelva a
+    // dibujar, y eso son dos vueltas del bucle de eventos. Con `getByRole` el
+    // caso pasaba solo y se ponía rojo de a ratos con la suite entera corriendo
+    // en paralelo — tres veces en este hito, siempre este mismo caso.
+    //
+    // Un test que cambia de color según cuán ocupada esté la máquina es un test
+    // que se termina ignorando.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
       'Es el único administrador activo de la empresa.'
     )
     expect(screen.queryByText(/Request failed with status code/)).not.toBeInTheDocument()

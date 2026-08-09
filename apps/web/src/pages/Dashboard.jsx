@@ -281,8 +281,15 @@ export default function Dashboard() {
         icono={LayoutDashboard}
       />
 
+      {/* ⚠ `role="alert"`. Sin él, con un lector de pantalla nadie se entera de
+          que la carga falló: la persona sigue esperando datos que no van a
+          llegar, y el único indicio es visual. Es el mismo aviso que ya lo
+          llevan otras pantallas. */}
       {error && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-danger-line bg-danger-soft px-4 py-3">
+        <div
+          role="alert"
+          className="flex items-start gap-2.5 rounded-xl border border-danger-line bg-danger-soft px-4 py-3"
+        >
           <AlertTriangle className="mt-0.5 h-[18px] w-[18px] shrink-0 text-danger" />
           <div className="min-w-0">
             <p className="text-[13px] text-danger">{error}</p>
