@@ -370,7 +370,7 @@ no hay ningún catálogo que lo lea.
       **Qué se revierte para verlo en rojo**: poner `defaultValue: true` en el
       `addColumn`; la verificación de la propia migración corta.
 
-- [ ] **T1414** En `apps/api/src/routes/products.js`: **(a)**
+- [x] **T1414** En `apps/api/src/routes/products.js`: **(a)**
       `PATCH /api/products/publicables` (`products.editar`), acción masiva
       `{ ids: [...], publicable: boolean }` (FR-043) — **con `ids` scopeados por
       `empresa_id` en el `where`, nunca un `Model.update` por `id` pelado**;

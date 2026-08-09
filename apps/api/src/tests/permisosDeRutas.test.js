@@ -1185,3 +1185,82 @@ describe('por qué esto se verifica leyendo y no ejecutando', () => {
     expect(iPermisos).toBeGreaterThan(iBypass);
   });
 });
+
+// ════════════════════════════════════════════
+//  Ningún router sin sesión escribe `products.publicable`
+//
+//  ── Qué defecto cierra ──
+//
+//  `publicable` es lo que decide si un producto **puede** salir a una página
+//  pública. Escribirlo desde un router que se monta sin cadena de autenticación
+//  significa que alguien de afuera —sin usuario, sin empresa y sin permiso—
+//  puede poner productos ajenos en condiciones de publicarse.
+//
+//  Hoy `ROUTERS_SIN_SESION` tiene dos entradas y ninguna lo escribe, así que
+//  esta guardia nace en verde. Existe para el día que tenga cuatro: el hito 10
+//  agrega el router público del catálogo, y la tentación de resolver «que el
+//  producto aparezca» desde ahí va a estar.
+//
+//  ── Por qué se lee y no se ejecuta ──
+//
+//  Es el mismo motivo que el resto de este archivo: con `BYPASS_AUTH` la sesión
+//  es siempre la empresa 1 y `checkPermission` corta antes de mirar nada. Un
+//  endpoint público que escriba `publicable` pasa en verde en la suite rápida.
+// ════════════════════════════════════════════
+
+/**
+ * Lo que cuenta como **escribir** la columna, y no como leerla.
+ *
+ * Las tres formas en las que este repositorio escribe un campo: el objeto
+ * literal de un `create`/`update`, la asignación directa, y el nombre entre
+ * comillas de una lista blanca de campos editables.
+ *
+ * Leerla —`if (p.publicable)`, `filas.filter((f) => f.publicable)`— no cuenta:
+ * un router público **tiene** que poder leerla para saber qué mostrar.
+ */
+const ESCRITURAS_DE_PUBLICABLE = [
+  /publicable\s*:/,
+  /publicable\s*=[^=]/,
+  /['"]publicable['"]/,
+];
+
+const escribePublicable = (fuente) =>
+  ESCRITURAS_DE_PUBLICABLE.filter((patron) => patron.test(fuente));
+
+describe('publicable no se escribe desde afuera', () => {
+  it('el detector distingue escribir de leer', () => {
+    // Muestra mala: las tres formas.
+    expect(escribePublicable('await Product.update({ publicable: true }, { where })')).toHaveLength(1);
+    expect(escribePublicable('producto.publicable = true')).toHaveLength(1);
+    expect(escribePublicable("const CAMPOS = ['name', 'publicable']")).toHaveLength(1);
+
+    // Muestra buena: leerla es legítimo y no se marca.
+    expect(escribePublicable('if (producto.publicable) { mostrar(producto) }')).toEqual([]);
+    expect(escribePublicable('const visibles = filas.filter((f) => f.publicable)')).toEqual([]);
+    expect(escribePublicable('where: { publicable: true }')).toHaveLength(1);
+  });
+
+  it('ninguno de los routers montados sin sesión la escribe', () => {
+    const hallazgos = [];
+
+    for (const clave of Object.keys(ROUTERS_SIN_SESION)) {
+      const [archivo] = clave.split(' ');
+      const fuente = fs.readFileSync(path.join(SRC, archivo), 'utf8');
+
+      if (escribePublicable(fuente).length > 0) hallazgos.push(clave);
+    }
+
+    expect(hallazgos).toEqual([]);
+  });
+
+  it('la guardia está mirando archivos que existen', () => {
+    // El ancla. Sin esto, un renombre de `routes/auth.js` dejaría el bucle sin
+    // iteraciones y la guardia pasaría en verde sin haber leído nada.
+    expect(Object.keys(ROUTERS_SIN_SESION).length).toBeGreaterThan(0);
+
+    for (const clave of Object.keys(ROUTERS_SIN_SESION)) {
+      const [archivo] = clave.split(' ');
+      expect(fs.existsSync(path.join(SRC, archivo))).toBe(true);
+    }
+  });
+});

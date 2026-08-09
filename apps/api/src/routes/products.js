@@ -63,6 +63,11 @@ const CAMPOS_EDITABLES = [
   'brand_id', 'supplier_id',
   'margin_override', 'price_override', 'wholesale_margin', 'wholesale_price',
   'category', 'unit_type', 'unit_size', 'taxed', 'image_url', 'is_active',
+  // ¿Este producto puede salir a una página pública? Va en la lista blanca —y
+  // no por spread del cuerpo— porque es la única forma de que una columna nueva
+  // no quede editable por omisión. Marcarlo NO publica nada: un producto sale a
+  // una tienda recién cuando se lo agrega a un catálogo.
+  'publicable',
 ];
 
 function camposEditables(body = {}) {
@@ -170,7 +175,7 @@ router.get('/:id', checkPermission('products.ver'), async (req, res) => {
 router.post('/', checkPermission('products.crear'), async (req, res) => {
   try {
     const sanitize = (v) => (v === '' || v === undefined || v === null ? null : v);
-    const { name, description, sku, barcode, cost, brand_id, supplier_id, margin_override, price_override, wholesale_margin, wholesale_price, category, unit_type, unit_size, taxed, image_url } = req.body;
+    const { name, description, sku, barcode, cost, brand_id, supplier_id, margin_override, price_override, wholesale_margin, wholesale_price, category, unit_type, unit_size, taxed, image_url, publicable } = req.body;
     const product = await Product.create({
       name, description,
       sku: sanitize(sku), barcode: sanitize(barcode),
@@ -179,11 +184,82 @@ router.post('/', checkPermission('products.crear'), async (req, res) => {
       wholesale_margin: sanitize(wholesale_margin), wholesale_price: sanitize(wholesale_price),
       category, unit_type, unit_size: sanitize(unit_size), taxed,
       image_url: sanitize(image_url),
+      // Campo explícito, como todos los de arriba: nunca `...req.body`. Si
+      // llega `undefined` gana el `defaultValue: false` del modelo, que es lo
+      // que corresponde — un producto nuevo no nace publicable.
+      publicable: publicable === true,
       empresa_id: req.empresaId,
     });
     res.status(201).json({ ok: true, data: product });
   } catch (err) {
     fallo(req, res, err, 'Error al crear el producto');
+  }
+});
+
+// ════════════════════════════════════════════
+//  PATCH /api/products/publicables — marcar o desmarcar en lote
+//
+//  La pantalla de Inventario deja seleccionar productos y marcarlos de una: sin
+//  esto, publicar sesenta productos son sesenta `PUT` y sesenta entradas de
+//  historial de costos que nadie pidió.
+//
+//  ── El `empresa_id` va en el WHERE del update, y no alcanza con validar antes ──
+//
+//  Los `ids` los manda el cliente. Un `Product.update({...}, { where: { id: ids } })`
+//  sin `empresa_id` marca como publicables los productos de **cualquier**
+//  empresa cuyos ids se adivinen, que son enteros correlativos. El scoping tiene
+//  que estar en la misma consulta que escribe: validar primero y escribir
+//  después deja una ventana, y sobre todo deja una consulta que, copiada a otro
+//  handler, ya no valida nada.
+//
+//  ⚠ Esto NO se puede afirmar con `npm run test:api`: con `BYPASS_AUTH` la
+//  sesión es siempre la empresa 1, así que el caso del id ajeno pasa en verde
+//  con `empresa_id` y sin él. Vive en `src/tests/integracion/`.
+//
+//  ── Por qué la ruta literal no choca con `/:id` ──
+//
+//  No hay ningún `PATCH /:id` declarado en este router. Y aunque lo hubiera,
+//  esta línea va **arriba**: Express resuelve por orden de declaración.
+// ════════════════════════════════════════════
+router.patch('/publicables', checkPermission('products.editar'), async (req, res) => {
+  try {
+    const { ids, publicable } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Hay que indicar al menos un producto.',
+      });
+    }
+
+    if (typeof publicable !== 'boolean') {
+      return res.status(400).json({
+        ok: false,
+        error: 'Hay que indicar si los productos quedan publicables o no.',
+      });
+    }
+
+    // Enteros y nada más: un id que no lo sea llegaría al `WHERE` como texto y
+    // Postgres cortaría con un error de tipo que no dice nada útil.
+    const idsLimpios = ids
+      .map((id) => Number.parseInt(id, 10))
+      .filter((id) => Number.isInteger(id) && id > 0);
+
+    if (idsLimpios.length === 0) {
+      return res.status(400).json({ ok: false, error: 'Ninguno de los productos indicados es válido.' });
+    }
+
+    const [actualizados] = await Product.update(
+      { publicable },
+      { where: { id: idsLimpios, empresa_id: req.empresaId } }
+    );
+
+    // Se devuelve cuántos se marcaron de verdad, y no cuántos se pidieron: si
+    // la pantalla mandó sesenta y se marcaron cincuenta y ocho, dos eran de
+    // otra empresa o ya no existen, y eso tiene que poder verse.
+    res.json({ ok: true, data: { actualizados, pedidos: idsLimpios.length, publicable } });
+  } catch (err) {
+    fallo(req, res, err, 'Error al cambiar qué productos son publicables');
   }
 });
 
