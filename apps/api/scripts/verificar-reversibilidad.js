@@ -556,12 +556,41 @@ async function sembrar(cliente) {
     INSERT INTO recipes (id, empresa_id, product_id, created_at, updated_at)
       VALUES (1, 1, 1, NOW(), NOW());
 
-    INSERT INTO recipe_items (id, recipe_id, ingredient_product_id, quantity, created_at, updated_at) VALUES
-      (1, 1, 2, 0.2000, NOW(), NOW()),
-      (2, 1, 2, 0.0500, NOW(), NOW()),
-      (3, 1, 3, 1.0000, NOW(), NOW()),
-      (4, 1, 3, 1.0000, NOW(), NOW());
-    SELECT setval(pg_get_serial_sequence('recipe_items', 'id'), 4);
+    -- ⚠ Las cuatro filas de abajo son DOS PARES DUPLICADOS a propósito, porque
+    -- son lo que \`20260809-unico-de-insumo-por-receta\` tiene que fusionar. Pero
+    -- esa misma migración crea el índice único que los prohíbe.
+    --
+    -- Y esta siembra corre DESPUÉS de aplicar todas las migraciones anteriores a
+    -- la que se está verificando. O sea: verificar cualquier migración posterior
+    -- a la 20260809 sembraba contra un esquema que ya tenía el índice, y el
+    -- script moría con «duplicate key value violates unique constraint
+    -- idx_recipe_items_recipe_ingredient» **antes de verificar nada**.
+    --
+    -- Es un defecto que nació dormido: mientras la 20260809 fue la última, el
+    -- índice todavía no existía al sembrar. Desde la 20260810 el script no pudo
+    -- verificar una sola migración más, y no se notó porque lo que reporta es un
+    -- error de siembra y no un rojo de reversibilidad.
+    --
+    -- La siembra pasa a mirar el esquema que le tocó: con el índice puesto
+    -- siembra las filas sin duplicar —los pares fusionados, que es exactamente
+    -- lo que ese índice garantiza que hay—, y sin el índice siembra los cuatro,
+    -- que es lo que la 20260809 necesita para ejercitar \`planificarFusiones\`.
+    DO $\$
+    BEGIN
+      IF to_regclass('public.idx_recipe_items_recipe_ingredient') IS NULL THEN
+        INSERT INTO recipe_items (id, recipe_id, ingredient_product_id, quantity, created_at, updated_at) VALUES
+          (1, 1, 2, 0.2000, NOW(), NOW()),
+          (2, 1, 2, 0.0500, NOW(), NOW()),
+          (3, 1, 3, 1.0000, NOW(), NOW()),
+          (4, 1, 3, 1.0000, NOW(), NOW());
+      ELSE
+        INSERT INTO recipe_items (id, recipe_id, ingredient_product_id, quantity, created_at, updated_at) VALUES
+          (1, 1, 2, 0.2500, NOW(), NOW()),
+          (3, 1, 3, 2.0000, NOW(), NOW());
+      END IF;
+    END
+    $\$;
+    SELECT setval(pg_get_serial_sequence('recipe_items', 'id'), (SELECT MAX(id) FROM recipe_items));
 
     INSERT INTO cashflow_entries (empresa_id, type, category, amount, entry_date, created_at, updated_at) VALUES
       (1, 'inflow',  'ventas', 1500.55, CURRENT_DATE, NOW(), NOW()),
