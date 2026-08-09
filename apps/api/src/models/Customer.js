@@ -48,6 +48,14 @@ const Customer = sequelize.define('Customer', {
 }, {
   tableName: 'customers',
   indexes: [
+    // Con `name` explícito, e idéntico al de la migración 20260814: si los dos
+    // no coinciden, `verificar-esquema.js` reporta este índice como faltante.
+    //
+    // Es la columna por la que filtra cada consulta del sistema y no tenía
+    // índice. Se creó en la etapa 0 del hito 10 —antes de que el checkout
+    // empiece a crear un `Customer` por comprador— porque sobre una tabla chica
+    // es gratis y sobre una tabla que ya creció, no.
+    { name: 'idx_customer_empresa', fields: ['empresa_id'] },
     { fields: ['name'] },
     { fields: ['tax_id'] },
   ],

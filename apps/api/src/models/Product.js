@@ -83,6 +83,20 @@ const Product = sequelize.define('Product', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
+  // ¿Este producto **podría** salir a una página pública?
+  //
+  // No es `is_active`, que dice si se puede vender en el mostrador. Publicar un
+  // catálogo mirando `is_active` publicaría todo lo que está activo en el punto
+  // de venta, fotos y precios incluidos, sin que nadie lo haya elegido.
+  //
+  // Arranca en `false` para todos, y así lo verifica la migración 20260814.
+  // Marcarlo tampoco publica nada por sí solo: un producto sale a una tienda
+  // recién cuando se lo agrega a un catálogo.
+  publicable: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
   tiendanube_variant_id: {
     type: DataTypes.INTEGER,
     allowNull: true,

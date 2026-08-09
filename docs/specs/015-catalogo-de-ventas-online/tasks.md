@@ -316,7 +316,7 @@ algo sale mal acá, no tiene que haber nada más en el mismo corte.
       ⚠ **Si el total de casos baja de 21, la mudanza perdió casos y nada más lo
       va a avisar** (FR-003, criterio 2).
 
-- [ ] **T1412** [P] `docs/OPERACION.md` gana la sección **«El monorepo es
+- [x] **T1412** [P] `docs/OPERACION.md` gana la sección **«El monorepo es
       workspaces»**, en «Deploy»: que la instalación es `npm ci` en la raíz y
       **`install:all` ya no existe**; que los `docker build` se corren desde la
       raíz con `-f apps/X/Dockerfile`; que un `MODULE_NOT_FOUND` de
@@ -343,7 +343,7 @@ pública, y **los 431 que ya existen quedan todos en `false`**. Crear un catálo
 no publica nada que nadie eligió. Se despliega solo y se revierte solo: todavía
 no hay ningún catálogo que lo lea.
 
-- [ ] **T1413** Crear `apps/api/src/migrations/20260814-productos-publicables.js`:
+- [x] **T1413** Crear `apps/api/src/migrations/20260814-productos-publicables.js`:
       `products.publicable` BOOLEAN NOT NULL DEFAULT `false` (FR-040) e
       `idx_customer_empresa` sobre `customers (empresa_id)` (FR-151, H11) — el
       índice que `models/Customer.js:51-52` nunca tuvo, y que **entra en la etapa
