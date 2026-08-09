@@ -122,5 +122,25 @@ export default defineConfig(({ command }) => ({
     // de terminar bien.
     testTimeout: 20000,
     hookTimeout: 20000,
+
+    // ── La zona horaria de la suite ──
+    //
+    // Este sistema es para un comercio argentino: **todo lo que dice una fecha
+    // la dice en hora de Argentina**, y hay funciones que usan los métodos
+    // LOCALES del `Date` justamente por eso —`fechaDeHoy`, `fechaCortaDeMomento`,
+    // `diasHastaVencer`—.
+    //
+    // ⚠ Sin fijarla, la suite mide una cosa en la máquina de acá y otra en CI,
+    // que corre en UTC. Pasó: un caso de `diasHastaVencer` quedó verde en ocho
+    // corridas locales y **rojo en CI durante ocho commits seguidos**, y el
+    // motivo era ése y nada más. Un test que cambia de color según dónde corre
+    // no está midiendo el sistema: está midiendo la máquina.
+    //
+    // Que el defecto se vea igual acá y allá es más importante que cuál de las
+    // dos zonas sea «la correcta» — pero además ésta es la correcta: es la del
+    // negocio.
+    env: {
+      TZ: 'America/Argentina/Buenos_Aires',
+    },
   },
 }))
