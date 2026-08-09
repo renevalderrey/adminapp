@@ -11,6 +11,8 @@ const logger = require('../utils/logger');
 const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo } = require('../utils/errores');
+const multer = require('multer');
+const { redimensionarYGuardar, borrarImagen } = require('../utils/imagenes');
 const requireSuperadmin = require('../middleware/requireSuperadmin');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
 const { registrarCambioDeCosto, MOTIVOS } = require('../utils/historialDeCostos');
@@ -325,7 +327,141 @@ router.put('/:id', checkPermission('products.editar'), async (req, res) => {
   }
 });
 
+// ════════════════════════════════════════════
+//  La foto del producto
+//
+//  ── Qué valida, y qué NO ──
+//
+//  **`sharp` es la validación.** Si `metadata()` tira, el buffer no es una
+//  imagen. La extensión y el `Content-Type` los declara el cliente: un `.exe`
+//  renombrado a `.jpg` y anunciado como `image/jpeg` pasa cualquier filtro que
+//  mire esos dos campos, y muere acá.
+//
+//  Por eso este `multer` **no lleva `fileFilter`**, a diferencia del logo de
+//  `routes/empresas.js:37-45`: filtrar por extensión daría una falsa sensación
+//  de control y rechazaría un JPEG con el nombre en mayúsculas.
+//
+//  ── El límite se dice, no se esconde ──
+//
+//  Sin el manejador, `LIMIT_FILE_SIZE` sale como un 500 de multer que nombra el
+//  campo del formulario. El que sube una foto de 8 MB desde el teléfono tiene
+//  que leer cuál es el límite.
+// ════════════════════════════════════════════
+
+const MAX_FOTO_BYTES = 5 * 1024 * 1024;
+
+const subirFoto = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FOTO_BYTES },
+}).single('imagen');
+
+/**
+ * Envuelve a multer para que sus errores salgan en castellano y con su status.
+ *
+ * ⚠ Responde acá mismo y **no** hace `next(err)`. Se probó al revés y el
+ * `ErrorDeNegocio` terminaba en el manejador global, que contesta «Error interno
+ * del servidor»: el 500 genérico que este envoltorio existe para evitar, con el
+ * agravante de que el status decía 400. El límite se dice en el único lugar
+ * donde alguien lo va a leer.
+ */
+const conFoto = (req, res, next) => subirFoto(req, res, (err) => {
+  if (!err) return next();
+
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({
+      ok: false,
+      error: `La foto no puede pesar más de ${MAX_FOTO_BYTES / 1024 / 1024} MB.`,
+    });
+  }
+
+  return res.status(400).json({
+    ok: false,
+    error: 'No se pudo subir la foto. Probá de nuevo con otra imagen.',
+  });
+});
+
+// POST /api/products/:id/imagen — subir o reemplazar la foto
+router.post('/:id/imagen', checkPermission('products.editar'), conFoto, async (req, res) => {
+  try {
+    const product = await findScoped(Product, req.params.id, req.empresaId);
+    // 404 y no 403: un id ajeno no puede distinguirse de uno que no existe.
+    if (!product) return res.status(404).json({ ok: false, error: 'Producto no encontrado' });
+
+    if (!req.file) {
+      return res.status(400).json({ ok: false, error: 'No llegó ninguna imagen.' });
+    }
+
+    let guardada;
+    try {
+      guardada = await redimensionarYGuardar(req.file.buffer, 'producto');
+    } catch (err) {
+      if (err.code === 'ENOSPC') {
+        logger.error({ msg: 'imagenes: el volumen está lleno', empresa_id: req.empresaId });
+        return res.status(507).json({
+          ok: false,
+          codigo: 'SIN_ESPACIO',
+          error: 'No queda espacio para guardar más fotos. Avisale al administrador del sistema.',
+        });
+      }
+      // Cualquier otra cosa es «esto no era una imagen»: es lo que tira sharp.
+      return res.status(400).json({
+        ok: false,
+        error: 'El archivo no es una imagen que podamos leer. Probá con un JPG o un PNG.',
+      });
+    }
+
+    const anterior = product.image_url;
+
+    // Se guarda la ruta RELATIVA, nunca la URL absoluta: mudarse de dominio no
+    // puede exigir migrar datos.
+    await product.update({ image_url: guardada.url });
+
+    // La anterior se borra DESPUÉS de que la nueva quedó escrita y referenciada.
+    // Al revés, un fallo en el medio deja al producto sin ninguna foto.
+    if (anterior && anterior !== guardada.url) {
+      await borrarImagen(anterior).catch((err) => {
+        logger.warn({ msg: 'imagenes: no se pudo borrar la foto anterior', url: anterior, err: err.message });
+      });
+    }
+
+    res.json({ ok: true, data: { image_url: guardada.url } });
+  } catch (err) {
+    fallo(req, res, err, 'Error al subir la foto del producto');
+  }
+});
+
+// DELETE /api/products/:id/imagen — sacar la foto del disco y de la columna
+router.delete('/:id/imagen', checkPermission('products.editar'), async (req, res) => {
+  try {
+    const product = await findScoped(Product, req.params.id, req.empresaId);
+    if (!product) return res.status(404).json({ ok: false, error: 'Producto no encontrado' });
+
+    const url = product.image_url;
+
+    // Primero la columna: si el `unlink` falla, el producto ya quedó sin foto y
+    // lo que sobra es un archivo huérfano, que es un problema de disco. Al
+    // revés quedaría una columna apuntando a un archivo borrado, que la
+    // pantalla dibuja como una imagen rota.
+    await product.update({ image_url: null });
+
+    await borrarImagen(url).catch((err) => {
+      logger.warn({ msg: 'imagenes: no se pudo borrar el archivo', url, err: err.message });
+    });
+
+    res.json({ ok: true, message: 'Foto eliminada' });
+  } catch (err) {
+    fallo(req, res, err, 'Error al eliminar la foto del producto');
+  }
+});
+
 // DELETE /api/products/:id — Eliminar (soft: desactivar)
+//
+// 📌 **La foto NO se borra acá, y es a propósito.** El plan pedía que este
+// endpoint borrara también el archivo, dando por hecho que era un borrado real.
+// No lo es: pone `is_active: false`, o sea que es reversible y el producto se
+// puede reactivar desde Inventario. Borrar su foto sería hacer irreversible una
+// acción que no lo es — el producto volvería sin imagen y nadie sabría por qué.
+// La foto se borra desde `DELETE /:id/imagen`, que es explícito.
 router.delete('/:id', checkPermission('products.eliminar'), async (req, res) => {
   try {
     const product = await findScoped(Product, req.params.id, req.empresaId);

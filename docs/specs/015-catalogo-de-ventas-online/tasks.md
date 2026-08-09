@@ -395,7 +395,7 @@ no hay ningún catálogo que lo lea.
       empresas sembradas. En `npm run test:api` pasa en verde con y sin el
       `empresa_id`.
 
-- [ ] **T1415** La interfaz de `publicable`: el interruptor en
+- [x] **T1415** La interfaz de `publicable`: el interruptor en
       `apps/web/src/components/PanelProducto.jsx` y la **acción masiva** sobre la
       selección de `apps/web/src/pages/Inventory.jsx`, con el helper en
       `services/api.js`. Los dos archivos ya están en `NOMBRES` de
@@ -490,7 +490,7 @@ foto que se suba es la primera foto que se puede perder.
       **Qué se revierte para verlo en rojo**: cambiar el `tar -tzf` por
       `[ -s "$ARCHIVO_IMG" ]`; la guardia lo nombra.
 
-- [ ] **T1418** Los dos endpoints de la foto de producto, en
+- [x] **T1418** Los dos endpoints de la foto de producto, en
       `apps/api/src/routes/products.js`: `POST /api/products/:id/imagen`
       (`products.editar`, `multipart`, campo `imagen`) y
       `DELETE /api/products/:id/imagen`, que borra **del volumen y de la
