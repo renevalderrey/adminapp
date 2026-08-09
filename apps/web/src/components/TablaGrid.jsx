@@ -82,16 +82,64 @@ export function Encabezado({ columnas, className, children, ...props }) {
  * mete lo suyo —la opacidad de una fila anulada, por ejemplo— sin que el marco
  * tenga que conocer los estados de ninguna. Un prop `atenuada` acá sería el
  * primero de los dieciocho.
+ *
+ * ── El teclado ──
+ *
+ * Era un `<div>` con `onClick`: **sin `role`, sin `tabIndex` y sin
+ * `onKeyDown`**. Abrir el detalle de una venta, un producto, un gasto, una
+ * orden, un miembro o una variante de TiendaNube era **exclusivamente con
+ * mouse, en seis pantallas**. En `pages/` y `components/` enteros no había un
+ * solo `tabIndex`.
+ *
+ * ⚠ Y el repositorio lo sabía. `pages/Orders.jsx` justifica que su lista de
+ * proveedores sean `<button>` reales diciendo textual «encima le da teclado
+ * gratis, **que las filas de grid no tienen**». Estaba escrito como ventaja de
+ * una excepción, nunca como defecto del patrón — que es cómo un defecto que
+ * está en las doce pantallas por igual sobrevive a cinco lentes de coherencia:
+ * **una lente que compara pantalla contra pantalla es ciega a lo que está mal
+ * en todas.**
+ *
+ * Lo que se agrega va **solo si la fila es apretable**. Una fila sin `onClick`
+ * es una fila de datos: ponerle `role="button"` y `tabIndex` la metería en el
+ * recorrido del tabulador prometiendo una acción que no existe, y en una tabla
+ * de veinticinco filas eso son veinticinco paradas inútiles.
  */
-export function Fila({ columnas, className, children, ...props }) {
+export function Fila({ columnas, className, children, onClick, ...props }) {
+  const apretable = typeof onClick === 'function'
+
   return (
     <div
       className={cn(
-        'grid cursor-pointer items-center gap-x-4 border-b border-border px-5 py-[15px]',
+        'grid items-center gap-x-4 border-b border-border px-5 py-[15px]',
         'transition-colors hover:bg-surface-2',
+        // El foco se declara acá y no en cada pantalla: sin marca visible, quien
+        // navega con teclado no sabe en qué fila está parado.
+        apretable && 'cursor-pointer focus-visible:bg-surface-2 focus-visible:outline-none '
+          + 'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand/40',
         className
       )}
       style={{ gridTemplateColumns: columnas }}
+      onClick={onClick}
+      {...(apretable
+        ? {
+          role: 'button',
+          tabIndex: 0,
+          onKeyDown: (evento) => {
+            // Enter y Espacio, que es lo que hace un `<button>` de verdad.
+            if (evento.key !== 'Enter' && evento.key !== ' ') return
+
+            // ⚠ Solo si el foco está en la FILA. Sin esto, apretar Espacio
+            // sobre el botón de imprimir de esa fila dispararía las dos cosas,
+            // y Enter en un campo de adentro también.
+            if (evento.target !== evento.currentTarget) return
+
+            // El Espacio hace scroll de la página si no se lo frena, así que la
+            // fila se abriría y la lista saltaría media pantalla.
+            evento.preventDefault()
+            onClick(evento)
+          },
+        }
+        : {})}
       {...props}
     >
       {children}

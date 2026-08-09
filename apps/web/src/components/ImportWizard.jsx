@@ -496,12 +496,24 @@ export default function ImportWizard({ open, onOpenChange, onSuccess }) {
         </div>
       ) : (
 
+      // ⚠ Es un `<div>` apretable, asi que declara teclado. Sin esto, subir un
+      // archivo era exclusivamente con mouse: arrastrar no se puede con teclado,
+      // y el clic era la unica alternativa.
       <div
         ref={dropRef}
+        role="button"
+        tabIndex={0}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onClick={() => fileInputRef.current?.click()}
+        onKeyDown={(evento) => {
+          if (evento.key !== 'Enter' && evento.key !== ' ') return
+          if (evento.target !== evento.currentTarget) return
+
+          evento.preventDefault()
+          fileInputRef.current?.click()
+        }}
         className={`
           relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 cursor-pointer
           transition-all duration-200

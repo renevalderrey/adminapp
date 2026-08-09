@@ -41,6 +41,10 @@ import url from 'node:url'
 //  ancla que exige un piso de archivos y de llamadas encontradas.
 // ════════════════════════════════════════════
 
+/** El salto de linea, como constante: escribirlo dentro de una plantilla de
+ *  generacion lo convierte en un salto real y rompe el archivo. */
+const SALTO = String.fromCharCode(10)
+
 const AQUI = path.dirname(url.fileURLToPath(import.meta.url))
 const RAIZ = path.join(AQUI, '..')
 
@@ -973,5 +977,110 @@ describe('Todo campo de búsqueda lleva su lupa', () => {
       .map(({ archivo }) => archivo)
 
     expect([...new Set(vagos)]).toEqual([])
+  })
+})
+
+// ════════════════════════════════════════════
+//  ── 14 · Nada apretable se queda sin teclado ──
+//
+//  `TablaGrid.Fila` era un `<div>` con `onClick`, sin `role`, sin `tabIndex` y
+//  sin `onKeyDown`. Abrir el detalle de una venta, un producto, un gasto, una
+//  orden, un miembro o una variante de TiendaNube era **exclusivamente con
+//  mouse, en seis pantallas**. En `pages/` y `components/` enteros no había un
+//  solo `tabIndex`.
+//
+//  ⚠ **Cinco lentes de coherencia no lo vieron**, y el motivo es el hallazgo de
+//  método más grande del hito: las cinco comparan pantalla contra pantalla.
+//  Encontraron `role="alert"` y `disabled:pointer-events-none` —que también son
+//  accesibilidad— pero llegaron por «esta pantalla difiere de aquélla», no por
+//  «esto no se puede usar sin mouse».
+//
+//  **Una lente de coherencia es ciega a lo que está mal en las doce por igual.**
+//
+//  Esta guardia mira lo otro: cualquier `<div>` con `onClick` que no sea la
+//  `Fila` del marco. Son los que se escriben a mano y nacen sin teclado.
+// ════════════════════════════════════════════
+
+describe('Un div con onClick no se queda sin teclado', () => {
+  /**
+   * Los `<div>` con `onClick` que no declaran teclado.
+   *
+   * ── Dos formas que NO funcionan, y por qué ──
+   *
+   * `/<div[^>]*>/` corta la etiqueta en el `>` de la flecha de un
+   * `onClick={() => …}`, así que lee mal todo lo que viene después. Y contar
+   * llaves para encontrar el cierre real se desincroniza con las llaves que
+   * viven adentro de una cadena o de una plantilla.
+   *
+   * Las dos versiones dieron hallazgos FALSOS —la primera tres, incluida la
+   * `Fila` del marco, que sí tiene teclado— y un hallazgo falso cuesta más que
+   * ninguno: enseña a no leerlos.
+   *
+   * Esto va por líneas, que es lo que se puede verificar mirando el archivo:
+   * de cada `onClick` se sube hasta la línea que abre la etiqueta, y se lee esa
+   * etiqueta hasta donde cierra.
+   */
+  function divsSordos(nombre, texto) {
+    const lineas = texto.split(SALTO)
+    const hallazgos = []
+
+    lineas.forEach((linea, i) => {
+      if (!/onClick=/.test(linea)) return
+
+      // Hacia arriba hasta la linea que abre una etiqueta.
+      let inicio = i
+      while (inicio >= 0 && !/<[A-Za-z]/.test(lineas[inicio])) inicio--
+      if (inicio < 0) return
+
+      const etiqueta = lineas[inicio].match(/<([A-Za-z][\w.]*)/)?.[1]
+      if (etiqueta !== 'div') return
+
+      // Hacia abajo hasta donde cierra. El tope es generoso: la `Fila` del
+      // marco declara su teclado en un objeto esparcido y su etiqueta pasa las
+      // treinta lineas, asi que con un tope corto se marcaba a si misma.
+      let fin = inicio
+      while (fin < lineas.length && fin - inicio < 45 && !/>\s*$/.test(lineas[fin])) fin++
+
+      const bloque = lineas.slice(inicio, fin + 1).join(SALTO)
+
+      // `role=` o `role:`: el marco los pasa por un objeto esparcido.
+      if (/role[=:]/.test(bloque) && /onKeyDown[=:]/.test(bloque)) return
+
+      hallazgos.push(`${nombre}:${inicio + 1}`)
+    })
+
+    return hallazgos
+  }
+
+  const sinTeclado = ARCHIVOS.flatMap(({ nombre, contenido }) =>
+    divsSordos(nombre, sinComentarios(contenido))
+  )
+
+  it('ningún `<div onClick>` escrito a mano queda sin `role` ni `onKeyDown`', () => {
+    expect(sinTeclado).toEqual([])
+  })
+
+  it('la guardia miró de verdad: la `Fila` del marco SÍ tiene teclado', () => {
+    // Ancla. Cero hallazgos se lee igual que «no hay ningún div apretable», que
+    // es como esta guardia se queda verde el día que alguien cambie la forma.
+    const marco = ARCHIVOS.find(({ nombre }) => nombre === 'components/TablaGrid.jsx')
+
+    expect(marco).toBeDefined()
+    expect(marco.contenido).toMatch(/role: 'button'/)
+    expect(marco.contenido).toMatch(/tabIndex: 0/)
+    expect(marco.contenido).toMatch(/onKeyDown:/)
+  })
+
+  it('y la muestra sintética de un div sordo SÍ da hallazgo', () => {
+    // Sin esto, un regex que dejó de matchear pasa las dos de arriba: la
+    // primera porque no encuentra nada, la segunda porque mira otro archivo.
+    const malo = '<div onClick={() => abrir(v)} className="fila">'
+    const bueno = '<div onClick={abrir} role="button" tabIndex={0} onKeyDown={alTeclado}>'
+
+    const sordo = (etiqueta) =>
+      /\bonClick=/.test(etiqueta) && !(/role=/.test(etiqueta) && /onKeyDown=/.test(etiqueta))
+
+    expect(sordo(malo)).toBe(true)
+    expect(sordo(bueno)).toBe(false)
   })
 })

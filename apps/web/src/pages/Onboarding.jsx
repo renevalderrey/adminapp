@@ -107,9 +107,21 @@ const Onboarding = () => {
 
             {/* Logo */}
             <div className="flex flex-col items-center gap-3">
+              {/* Apretable, asi que con teclado: cargar el logo era solo con
+                  mouse, y esta pantalla es la primera que ve un cliente nuevo. */}
               <div
-                className="h-24 w-24 rounded-xl border-2 border-dashed border-muted-foreground/30 flex items-center justify-center overflow-hidden cursor-pointer hover:border-brand/50 transition-colors bg-muted/30"
+                role="button"
+                tabIndex={0}
+                aria-label="Elegir el logo de la empresa"
+                className="h-24 w-24 rounded-xl border-2 border-dashed border-muted-foreground/30 flex items-center justify-center overflow-hidden cursor-pointer hover:border-brand/50 transition-colors bg-muted/30 focus-visible:border-brand focus-visible:outline-none"
                 onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(evento) => {
+                  if (evento.key !== 'Enter' && evento.key !== ' ') return
+                  if (evento.target !== evento.currentTarget) return
+
+                  evento.preventDefault()
+                  fileInputRef.current?.click()
+                }}
               >
                 {logoPreview ? (
                   <img src={logoPreview} alt="Logo preview" className="h-full w-full object-contain" />

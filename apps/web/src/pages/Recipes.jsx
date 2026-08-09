@@ -423,10 +423,21 @@ const Recipes = () => {
                       </div>
                       <div className="max-h-[150px] overflow-y-auto text-xs divide-y divide-border border border-border rounded bg-card">
                         {filteredIngredientsList.map(prod => (
+                          // Cada resultado es apretable, asi que declara teclado:
+                          // sin esto, elegir un ingrediente era solo con mouse.
                           <div
                             key={prod.id}
+                            role="button"
+                            tabIndex={0}
                             onClick={() => handleAddIngredient(prod)}
-                            className="p-2 hover:bg-muted cursor-pointer flex justify-between items-center"
+                            onKeyDown={(evento) => {
+                              if (evento.key !== 'Enter' && evento.key !== ' ') return
+                              if (evento.target !== evento.currentTarget) return
+
+                              evento.preventDefault()
+                              handleAddIngredient(prod)
+                            }}
+                            className="p-2 hover:bg-muted cursor-pointer flex justify-between items-center focus-visible:bg-muted focus-visible:outline-none"
                           >
                             <div>
                               <p className="font-semibold">{prod.name}</p>

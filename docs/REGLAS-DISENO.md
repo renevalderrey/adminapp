@@ -735,6 +735,60 @@ lo que hay que corregir, no agregar la variante.
 
 ---
 
+## Teclado
+
+**Todo lo que se puede apretar se puede apretar sin mouse.** Un `<div>` con
+`onClick` no alcanza: no entra en el recorrido del tabulador, no se anuncia como
+botón y no responde a Enter ni a Espacio.
+
+La regla operativa es corta: **si es apretable, es un `<button>`**. Cuando no
+puede serlo —una fila de tabla es un grid y meterla en un `<button>` rompe las
+columnas— lleva las cuatro cosas:
+
+```jsx
+<div
+  role="button"
+  tabIndex={0}
+  onClick={abrir}
+  onKeyDown={(evento) => {
+    if (evento.key !== 'Enter' && evento.key !== ' ') return
+    // Solo si el foco está acá: el `keydown` de un botón de adentro burbujea.
+    if (evento.target !== evento.currentTarget) return
+
+    evento.preventDefault()   // el Espacio hace scroll de la página
+    abrir(evento)
+  }}
+  className="… focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand/40"
+>
+```
+
+Las cuatro, y no tres: sin `tabIndex` nunca recibe el foco, sin `role` se anuncia
+como un `<div>`, sin `onKeyDown` no hace nada, y **sin marca de foco visible no
+se sabe dónde se está parado** — que es lo que convierte «se puede tabular» en
+«se puede usar».
+
+⚠ Y **solo si es apretable**. Una fila de datos con `role="button"` y `tabIndex`
+son veinticinco paradas por página prometiendo una acción que no existe.
+
+> Hasta el hito 9, `TablaGrid.Fila` era un `<div>` con `onClick` y nada más:
+> abrir el detalle de una venta, un producto, un gasto, una orden, un miembro o
+> una variante de TiendaNube era **exclusivamente con mouse, en seis
+> pantallas**. En `pages/` y `components/` enteros no había un solo `tabIndex`.
+>
+> Y el repositorio lo sabía: `pages/Orders.jsx` justificaba que su lista de
+> proveedores fueran `<button>` reales diciendo textual «encima le da teclado
+> gratis, **que las filas de grid no tienen**». Estaba escrito como ventaja de
+> una excepción, nunca como defecto del patrón.
+>
+> **Cinco lentes de coherencia no lo vieron**, y el motivo vale más que el
+> defecto: las cinco comparan pantalla contra pantalla. Encontraron `role="alert"`
+> y `disabled:pointer-events-none` —que también son accesibilidad— pero llegaron
+> por «esta pantalla difiere de aquélla», no por «esto no se puede usar sin
+> mouse». **Una lente de coherencia es ciega a lo que está mal en las doce por
+> igual.**
+
+---
+
 ## Buscador
 
 Un campo de búsqueda lleva **lupa a la izquierda** y un `placeholder` que dice
