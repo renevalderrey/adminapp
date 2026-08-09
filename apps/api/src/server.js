@@ -20,6 +20,7 @@ const { checkJwt, extractUser, loadEmpresaContext, requireEmpresa } = require('.
 const checkSubscription = require('./middleware/checkSubscription');
 const requestId = require('./middleware/requestId');
 const requireSuperadmin = require('./middleware/requireSuperadmin');
+const requireModulo = require('./middleware/requireModulo');
 const subscriptionCron = require('./services/subscriptionCron');
 const tiendanubeSincronizacion = require('./services/tiendanubeSincronizacion');
 const logger = require('./utils/logger');
@@ -457,6 +458,10 @@ app.use('/api/auth', require('./routes/auth').publico);
 app.use('/api/auth', ...authSinEmpresa, require('./routes/auth').privado);
 app.use('/api/empresas', ...authSinEmpresa, require('./routes/empresas'));
 
+// El catálogo lleva el gate del módulo además de la cadena de sesión: es una
+// funcionalidad que se libera por empresa, y `requireModulo` es la mitad del
+// gate que hasta el hito 10 vivía sólo en el navegador.
+app.use('/api/catalogos', ...authEmpresa, requireModulo('catalogo'), require('./routes/catalogos'));
 app.use('/api/products', ...authEmpresa, require('./routes/products'));
 app.use('/api/sales', ...authEmpresa, require('./routes/sales'));
 app.use('/api/suppliers', ...authEmpresa, require('./routes/suppliers'));

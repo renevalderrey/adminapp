@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
-const { Empresa, PuntoDeVenta, Usuario, UsuarioEmpresa, Suscripcion, Invitacion, Rol, RolPermiso, UsuarioPermiso, Permiso, Sesion, sequelize } = require('../models');
+const { Empresa, PuntoDeVenta, Usuario, UsuarioEmpresa, Suscripcion, Invitacion, Rol, RolPermiso, UsuarioPermiso, Permiso, Sesion, sequelize, Catalogo } = require('../models');
 const { sendEmail, welcomeEmail, invitationEmail, enlaceDeInvitacion } = require('../services/email');
 const checkPermission = require('../middleware/checkPermission');
 const { requireEmpresa } = require('../middleware/auth');
@@ -779,10 +779,43 @@ router.put('/puntos-de-venta/:id', requireEmpresa, checkPermission('sucursales.e
   }
 });
 
+// DELETE /puntos-de-venta/:id — desactivar (borrado blando)
+//
+// 📌 El plan pedía este rechazo en el `PUT`. Va acá porque **acá es donde se
+// desactiva**: el `PUT` edita nombre, código y dirección, y no toca `is_active`.
+//
+// ── Por qué esto vive en el handler y no en la base ──
+//
+// `catalogos.punto_de_venta_id` tiene `ON DELETE RESTRICT`, así que la base
+// impide **borrar** la sucursal. Pero esto no borra: pone `is_active` en false,
+// que para Postgres es un UPDATE cualquiera.
+//
+// Y el efecto es peor que el de un borrado, porque es invisible: el catálogo
+// sigue publicado, sigue recibiendo visitas y lee stock de una sucursal dada de
+// baja. Nadie se entera hasta que alguien pregunta por qué todo figura agotado.
 router.delete('/puntos-de-venta/:id', requireEmpresa, checkPermission('sucursales.eliminar'), async (req, res) => {
   try {
     const pv = await findScoped(PuntoDeVenta, req.params.id, req.empresaId);
     if (!pv) return res.status(404).json({ ok: false, error: 'Punto de venta no encontrado' });
+
+    // El catálogo se nombra. «No se puede desactivar» sin decir por qué obliga a
+    // adivinar cuál de los catálogos la está usando.
+    const publicados = await Catalogo.findAll({
+      where: { empresa_id: req.empresaId, punto_de_venta_id: pv.id, estado: 'publicado' },
+      attributes: ['id', 'nombre_visible', 'slug'],
+    });
+
+    if (publicados.length > 0) {
+      return res.status(409).json({
+        ok: false,
+        error: 'SUCURSAL_EN_USO',
+        mensaje: publicados.length === 1
+          ? `No se puede desactivar: el catálogo «${publicados[0].nombre_visible}» está publicado y lee su stock de esta sucursal.`
+          : `No se puede desactivar: ${publicados.length} catálogos publicados leen su stock de esta sucursal.`,
+        catalogos: publicados.map((c) => ({ id: c.id, nombre_visible: c.nombre_visible, slug: c.slug })),
+      });
+    }
+
     await pv.update({ is_active: false });
     res.json({ ok: true, message: 'Punto de venta desactivado' });
   } catch (err) {

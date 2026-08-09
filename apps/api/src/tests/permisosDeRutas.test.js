@@ -546,7 +546,7 @@ describe('la clasificación de montajes distingue con sesión de sin sesión', (
 });
 
 describe('la guardia leyó lo que dice leer, y no una lista vacía', () => {
-  it('lee los 19 archivos de routes/, y server.js los monta a todos', () => {
+  it('lee los 20 archivos de routes/, y server.js los monta a todos', () => {
     // **El ancla de archivos.** Un archivo de rutas que nadie monta es código
     // muerto —o peor, un router que alguien cree publicado— y además saldría de
     // esta guardia sin que nada avise.
@@ -554,7 +554,10 @@ describe('la guardia leyó lo que dice leer, y no una lista vacía', () => {
     const montados = [...new Set(MONTAJES.map((m) => m.archivo))].sort();
 
     expect(nombres).toEqual([
-      'routes/afip.js', 'routes/auth.js', 'routes/cashflow.js', 'routes/comparador.js',
+      'routes/afip.js', 'routes/auth.js', 'routes/cashflow.js',
+      // Ancla 2 · 19 → 20 en el hito 10: el ABM de catálogos.
+      'routes/catalogos.js',
+      'routes/comparador.js',
       'routes/customers.js', 'routes/dashboard.js', 'routes/empresas.js',
       'routes/gastosVariables.js', 'routes/general.js', 'routes/import.js',
       'routes/precios.js', 'routes/production.js', 'routes/products.js',

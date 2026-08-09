@@ -775,7 +775,7 @@ van en paralelo: tocan archivos distintos y ninguna depende de otra.
 no falla, no avisa, y alguien lee el nombre del archivo y da por cubierto lo que
 jamás se ejecutó.
 
-- [ ] **T1428** [P] Crear `apps/api/src/utils/slugDeCatalogo.js` con
+- [x] **T1428** [P] Crear `apps/api/src/utils/slugDeCatalogo.js` con
       `normalizarSlug(texto)` —minúsculas, sin acentos, `[a-z0-9-]`, sin guiones
       repetidos ni en los bordes—, `validarSlug(slug)` → `{ ok, motivo }` con
       largo 3..60 y la lista de reservados, `RESERVADOS = ['c', 'api', 'assets',
@@ -804,7 +804,7 @@ jamás se ejecutó.
       **Qué se revierte para verlo en rojo**: sacar el colapso de guiones
       repetidos.
 
-- [ ] **T1429** [P] Crear `apps/api/src/utils/textoDeBusqueda.js` con
+- [x] **T1429** [P] Crear `apps/api/src/utils/textoDeBusqueda.js` con
       `normalizarTexto(s)` —minúsculas, sin acentos, sin espacios de los bordes—
       y su test. Es **la única** comparación de categoría y de búsqueda del
       sistema (FR-079), y la usan **tres** consumidores: el índice de reglas de
@@ -817,7 +817,7 @@ jamás se ejecutó.
       categoría»*.
       **Qué se revierte para verlo en rojo**: sacar el borrado de acentos.
 
-- [ ] **T1430** [P] Crear `apps/api/src/utils/reglasDePrecio.js`, **función pura
+- [x] **T1430** [P] Crear `apps/api/src/utils/reglasDePrecio.js`, **función pura
       y sin base**, con `reglaQueGana`, `aplicarRegla`, `validarRegla` y
       `resolverPrecios(productos, reglas)` → `{ porProducto, cobertura }`. Cómo,
       y por qué así (decisión 6):
@@ -856,7 +856,7 @@ jamás se ejecutó.
       especificidad; el primer test nombra la regla de catálogo ganando sobre la
       de producto.
 
-- [ ] **T1431** [P] Extraer el `switch` de los cinco estados de
+- [x] **T1431** [P] Extraer el `switch` de los cinco estados de
       `apps/api/src/middleware/checkSubscription.js:85-115` a
       `apps/api/src/utils/estadoDeSuscripcion.js`,
       `evaluarSuscripcion(sub, ahora)` → `{ bloqueado, motivo }`.
