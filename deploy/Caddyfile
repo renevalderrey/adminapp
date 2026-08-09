@@ -48,3 +48,35 @@ api.{$DOMINIO} {
 	reverse_proxy api:5000
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 }
+
+# ── Tienda ──
+#
+# El sitio nace con UN solo `handle`: el de las imágenes. Los otros tres —el
+# HTML de /c/:slug con sus metadatos, el bundle de apps/tienda y el resto—
+# entran con el servicio, más adelante en el hito.
+#
+# ⚠ El `X-Robots-Tag` es de SITIO y no de una ruta, a propósito. El precio que
+# una empresa negoció con un socio se publica en una URL sin login: que no
+# termine en un buscador es una decisión de producto, y ponerlo por ruta deja la
+# puerta abierta a que la próxima ruta nazca sin él.
+tienda.{$DOMINIO} {
+	encode gzip
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header X-Robots-Tag "noindex, nofollow"
+
+	# Las fotos salen del volumen, no de la API.
+	#
+	# El prefijo público es `/img/` y el volumen está montado en
+	# `/var/favalio/imagenes`: `strip_prefix` es lo que une las dos cosas. Sin
+	# él, Caddy buscaría `/var/favalio/imagenes/img/aa/bb/…` y devolvería 404
+	# para todas las fotos.
+	handle /img/* {
+		uri strip_prefix /img
+		root * /var/favalio/imagenes
+		file_server
+
+		# El nombre del archivo es aleatorio y nunca se reusa: una foto que
+		# cambia es una URL nueva. Así que se puede cachear para siempre.
+		header Cache-Control "public, max-age=31536000, immutable"
+	}
+}

@@ -1,9 +1,16 @@
 #!/bin/sh
 # ══════════════════════════════════════════════════════════════
-#  Favalio · Respaldo de la base, para el cron del VPS
+#  Favalio · Respaldo de la base Y de las imágenes, para el cron del VPS
 #
-#  Vuelca la base entera con pg_dump desde adentro del contenedor, la comprime
-#  y borra las copias de más de 14 días.
+#  Vuelca la base entera con pg_dump desde adentro del contenedor, empaqueta el
+#  volumen de imágenes, comprime las dos cosas y borra las copias de más de 14
+#  días.
+#
+#  ⚠ **Las imágenes están acá desde el hito 10.** Antes este script sólo hacía
+#    `pg_dump`, así que el día que se subiera la primera foto de producto esa
+#    foto quedaba fuera de todo respaldo: la base sabría que existe
+#    —`products.image_url`— y el archivo no estaría en ninguna copia. Por eso el
+#    volumen y su respaldo entraron en el MISMO commit.
 #
 #  Instalación (una vez, como root en el VPS):
 #
@@ -50,4 +57,40 @@ fi
 
 find "$DESTINO" -name 'favalio-*.sql.gz' -mtime "+$DIAS_A_CONSERVAR" -delete
 
+# ══════════════════════════════════════════════════════════════
+#  Las imágenes
+#
+#  El volumen se empaqueta con un contenedor descartable que lo monta de sólo
+#  lectura. No se usa `docker cp` ni se lee del host: la ruta del volumen en el
+#  disco del host es un detalle de Docker que cambia entre versiones, y montarlo
+#  es la forma que Docker documenta.
+#
+#  El nombre del volumen lleva el prefijo del proyecto del compose (`name:
+#  favalio` en docker-compose.produccion.yml), de ahí `favalio_imagenes_favalio`.
+# ══════════════════════════════════════════════════════════════
+VOLUMEN_IMAGENES="${VOLUMEN_IMAGENES:-favalio_imagenes_favalio}"
+ARCHIVO_IMG="$DESTINO/favalio-imagenes-$(date +%Y-%m-%d-%H%M).tar.gz"
+
+docker run --rm \
+  -v "$VOLUMEN_IMAGENES":/origen:ro \
+  -v "$DESTINO":/destino \
+  alpine tar -czf "/destino/$(basename "$ARCHIVO_IMG")" -C /origen .
+
+# ⚠ Acá NO se verifica por tamaño, y el motivo importa.
+#
+# Un tar.gz de un volumen **vacío** pesa unos 45 bytes, así que `[ -s ... ]` da
+# verdadero igual y no distingue «vacío» de «cortado». Y un volumen vacío es
+# legítimo: el primer día no hay ninguna foto.
+#
+# Lo que sí los distingue es que el archivo se pueda **leer entero**. `tar -tzf`
+# recorre el índice completo y falla si el gzip está truncado, que es
+# exactamente el caso que interesa atrapar.
+if ! tar -tzf "$ARCHIVO_IMG" > /dev/null 2>&1; then
+  echo "$(date -Is) RESPALDO DE IMAGENES ILEGIBLE: $ARCHIVO_IMG" >&2
+  exit 1
+fi
+
+find "$DESTINO" -name 'favalio-imagenes-*.tar.gz' -mtime "+$DIAS_A_CONSERVAR" -delete
+
 echo "$(date -Is) ok $ARCHIVO ($(du -h "$ARCHIVO" | cut -f1))"
+echo "$(date -Is) ok $ARCHIVO_IMG ($(du -h "$ARCHIVO_IMG" | cut -f1))"

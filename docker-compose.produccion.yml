@@ -38,6 +38,13 @@ services:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_datos:/data      # ← los certificados. Si se borra, se re-emiten
       - caddy_config:/config
+      # Las fotos de producto, de SOLO LECTURA.
+      #
+      # Las sirve Caddy y no la API: un proceso de Node sirviendo archivos
+      # estáticos compite por el mismo event loop que las cajas del comercio.
+      # Y de sólo lectura porque el que escribe es la API: si Caddy pudiera
+      # escribir acá, una falla suya podría tocar el contenido.
+      - imagenes_favalio:/var/favalio/imagenes:ro
     depends_on:
       - api
       - web
@@ -105,6 +112,15 @@ services:
       # sí dispara. CRON_SECRET queda igual disponible por si se quiere seguir
       # empujando desde GitHub Actions.
       CRON_SECRET: ${CRON_SECRET:-}
+
+      # Dónde escribe las fotos. **Absoluta y de esta variable**, nunca relativa
+      # al WORKDIR: con los workspaces el WORKDIR pasó de /app a /app/apps/api, y
+      # una ruta relativa habría movido el directorio de las fotos sin que nadie
+      # lo pidiera.
+      RUTA_DE_IMAGENES: /var/favalio/imagenes
+    volumes:
+      # Lectura y escritura: la API es la única que escribe acá.
+      - imagenes_favalio:/var/favalio/imagenes
     depends_on:
       postgres:
         condition: service_healthy
@@ -144,3 +160,9 @@ volumes:
   datos_postgres:
   caddy_datos:
   caddy_config:
+  # Las fotos de producto, de catálogo y los logos.
+  #
+  # ⚠ Este volumen NO lo cubre `pg_dump`. Está en `deploy/respaldo.sh`, en el
+  # mismo commit que lo creó: la base sabe que la foto existe
+  # (`products.image_url`) y el archivo vive únicamente acá.
+  imagenes_favalio:

@@ -425,7 +425,7 @@ volumen persistente, la sirve **Caddy** y **está adentro del respaldo**. Hoy
 `deploy/respaldo.sh:42` solo vuelca Postgres, así que sin esta fase la primera
 foto que se suba es la primera foto que se puede perder.
 
-- [ ] **T1416** [P] Crear `apps/api/src/utils/imagenes.js`, funciones puras salvo
+- [x] **T1416** [P] Crear `apps/api/src/utils/imagenes.js`, funciones puras salvo
       la que escribe: `nombreAleatorio()` con
       `crypto.randomBytes(16).toString('hex')` —el molde de
       `models/Invitacion.js:24-29`—, `rutaDeImagen(nombre)` →
@@ -460,7 +460,7 @@ foto que se suba es la primera foto que se puede perder.
       **Qué se revierte para verlo en rojo**: hacer que `rutaDeImagen` use el
       `empresa_id` como primer nivel.
 
-- [ ] **T1417** El volumen **y su respaldo, en el mismo commit** (FR-027).
+- [x] **T1417** El volumen **y su respaldo, en el mismo commit** (FR-027).
       **(a)** `docker-compose.produccion.yml`: volumen `imagenes_favalio`,
       montado en `api` en `/var/favalio/imagenes` (lectura y escritura) y en
       `caddy` en `/var/favalio/imagenes:ro`, con la variable `RUTA_DE_IMAGENES`
