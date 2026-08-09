@@ -1,5 +1,6 @@
 const { Suscripcion } = require('../models');
 const logger = require('../utils/logger');
+const { evaluarSuscripcion, ESTADOS_CONOCIDOS } = require('../utils/estadoDeSuscripcion');
 
 // ── Lo que no pasa por el paywall ──
 //
@@ -70,48 +71,20 @@ async function checkSubscription(req, res, next) {
       });
     }
 
-    const now = new Date();
-    const graciaVencida = !sub.grace_period_ends || sub.grace_period_ends < now;
+    // La lista de los cinco estados NO esta aca: vive en
+    // `utils/estadoDeSuscripcion.js` y es la misma que mira el catalogo
+    // publico (FR-110). Este middleware sigue decidiendo lo mismo que antes
+    // —los mismos 402 con los mismos mensajes—, pero ya no es el dueño de la
+    // regla.
+    const { bloqueado, motivo } = evaluarSuscripcion(sub, new Date());
 
-    // Antes solo se contemplaban 'expired' y 'trialing'. Los otros dos estados
-    // del enum pasaban de largo:
-    //   - 'cancelled' no bloqueaba nada, asi que cancelar dejaba el acceso
-    //     abierto para siempre.
-    //   - 'past_due' tampoco, con lo cual una suscripcion impaga seguia
-    //     funcionando hasta que el cron la pasara a 'expired'.
-    let bloqueado = false;
-    let motivo = null;
-
-    switch (sub.status) {
-      case 'expired':
-        bloqueado = true;
-        motivo = 'Tu suscripción venció.';
-        break;
-
-      case 'trialing':
-        // Durante el trial y su periodo de gracia el acceso sigue abierto.
-        bloqueado = sub.trial_ends_at && sub.trial_ends_at < now && graciaVencida;
-        motivo = 'Terminó tu período de prueba.';
-        break;
-
-      case 'past_due':
-      case 'cancelled':
-        // Se respeta el periodo ya pagado y despues se corta.
-        bloqueado = graciaVencida;
-        motivo = sub.status === 'cancelled'
-          ? 'Tu suscripción fue cancelada.'
-          : 'Tu suscripción tiene un pago pendiente.';
-        break;
-
-      case 'active':
-        bloqueado = false;
-        break;
-
-      default:
-        // Un estado desconocido es un error de datos: se bloquea y se registra.
-        logger.error({ empresaId: req.empresaId, status: sub.status }, 'Estado de suscripcion desconocido');
-        bloqueado = true;
-        motivo = 'No pudimos verificar el estado de tu suscripción.';
+    // El log del estado fuera del enum se queda de este lado y no adentro de
+    // la funcion pura: el contexto que sirve para investigarlo es distinto en
+    // cada camino —aca la empresa de la sesion, en el publico el slug y la
+    // empresa (FR-112a)—. La condicion se compara contra `ESTADOS_CONOCIDOS`,
+    // que sale del mismo archivo que el `switch`: no es una segunda lista.
+    if (!ESTADOS_CONOCIDOS.includes(sub.status)) {
+      logger.error({ empresaId: req.empresaId, status: sub.status }, 'Estado de suscripcion desconocido');
     }
 
     if (bloqueado) {
@@ -125,6 +98,25 @@ async function checkSubscription(req, res, next) {
 
     next();
   } catch (err) {
+    // ── ⚠ Este catch DEJA PASAR, y el camino publico hace lo contrario ──
+    //
+    // No es un descuido ni una inconsistencia pendiente de unificar: es la
+    // asimetria deliberada de FR-112a, y las dos mitades estan escritas, cada
+    // una nombrando a la otra (la gemela esta en el encabezado de
+    // `utils/estadoDeSuscripcion.js`).
+    //
+    //  · Aca, cadena privada: se loguea y se llama a `next()`. Del otro lado
+    //    del middleware hay un comercio que ya pago, con la sesion iniciada y
+    //    un cliente esperando en el mostrador. Un hipo de la base no puede
+    //    tumbarle la caja.
+    //
+    //  · `routes/catalogoPublico.js`, camino publico: **cierra con 503**. Es
+    //    una superficie sin login, y dejar pasar ahi significa vender en
+    //    nombre de una empresa que quiza esta vencida. Responde **503 y no
+    //    402** porque el 402 afirmaria que la suscripcion vencio, y lo que
+    //    paso es que no se pudo saber.
+    //
+    // Lo que si comparten los dos caminos es la lista de estados, arriba.
     logger.error({ err, empresaId: req.empresaId }, 'Error checking subscription');
     next();
   }
