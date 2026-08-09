@@ -42,10 +42,19 @@
 //      está usando** pasaría en silencio y las pruebas fallarían diciendo que la
 //      pantalla está vacía, que es el síntoma que no deja adivinar la causa.
 //
-//  ⚠ **`pg` sale de `apps/api/node_modules`.** `apps/web` no lo tiene y no
-//  corresponde que lo tenga: es una dependencia del servidor y este archivo es
-//  lo único de la web que toca la base. El monorepo no hoistea —cada app instala
-//  lo suyo—, así que la ruta va escrita.
+//  ⚠ **`pg` es una dependencia de la API**, no de la web: `apps/web` no lo tiene
+//  y no corresponde que lo tenga —este archivo es lo único de la web que toca la
+//  base—. Pero **dónde está instalado no se puede escribir a mano**.
+//
+//  Antes acá decía `../../api/node_modules/pg`, con el motivo «el monorepo no
+//  hoistea, cada app instala lo suyo». Eso valía hasta el hito 10: desde que el
+//  repositorio usa workspaces de npm hay un solo `node_modules` en la raíz, ese
+//  directorio no existe, y la siembra moría con «No se pudo cargar pg» — en el
+//  único job del CI que no se puede reproducir con `npm test`.
+//
+//  Se resuelve pidiéndoselo a Node **empezando por la API**, que es de quien es
+//  la dependencia. Así anda hoisteado o anidado, y no vuelve a importar cómo
+//  esté armado el árbol de instalación.
 // ════════════════════════════════════════════
 
 import { createRequire } from 'node:module'
@@ -53,7 +62,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url))
-const RUTA_DE_PG = path.resolve(AQUI, '../../api/node_modules/pg')
+const RAIZ_DE_LA_API = path.resolve(AQUI, '../../api')
 
 /**
  * La base descartable. **Tiene que ser la misma contra la que corre la API**, y
@@ -208,12 +217,16 @@ export async function sembrarLaTienda(empresaId, puntoDeVentaId, empresaSegunLaA
 
   let Client
   try {
-    ({ Client } = require(RUTA_DE_PG))
+    // Por resolución de módulos y no por ruta fija: `pg` puede estar hoisteado
+    // en la raíz del workspace o anidado adentro de la API, y las dos son
+    // correctas.
+    ({ Client } = require(require.resolve('pg', { paths: [RAIZ_DE_LA_API] })))
   } catch (err) {
     throw new Error(
-      `No se pudo cargar «pg» desde ${RUTA_DE_PG}.\n\n`
+      'No se pudo cargar «pg» partiendo de '
+      + `${RAIZ_DE_LA_API}.\n\n`
       + 'Es una dependencia de la API y sale de ahí; apps/web no la tiene. Si falta:\n\n'
-      + '  npm --prefix apps/api ci\n\n'
+      + '  npm ci\n\n'
       + `Motivo: ${err.message}`
     )
   }
