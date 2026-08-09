@@ -519,7 +519,7 @@ foto que se suba es la primera foto que se puede perder.
       **Qué se revierte para verlo en rojo**: validar por `file.mimetype` en vez
       de por `sharp`; el primer test entra con el `.exe`.
 
-- [ ] **T1419** La interfaz de la foto: subir, previsualizar y borrar desde
+- [x] **T1419** La interfaz de la foto: subir, previsualizar y borrar desde
       `apps/web/src/components/PanelProducto.jsx`, con el `accept` declarado en
       el input, los object URL liberados, y el aviso **«foto externa, no se
       publica»** cuando `esImagenPropia` da `false` (FR-030, H6). El archivo ya
@@ -532,7 +532,7 @@ foto que se suba es la primera foto que se puede perder.
       **Qué se revierte para verlo en rojo**: dibujar la miniatura para cualquier
       `image_url` no vacía.
 
-- [ ] **T1420** [P] `docs/OPERACION.md` gana dos cosas: **(a)** el procedimiento
+- [x] **T1420** [P] `docs/OPERACION.md` gana dos cosas: **(a)** el procedimiento
       de **restauración de las imágenes** (FR-028) —descomprimir el `.tar.gz`
       dentro del volumen `favalio_imagenes_favalio` con el mismo `docker run
       --rm -v … alpine` que lo creó—, en la sección «Probar una restauración»,

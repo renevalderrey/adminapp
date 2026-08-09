@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner'
 import api from '@/services/api'
 import { calcularPrecios } from '@favalio/precios'
 import { cuerposDeStockAlCrear, unidadesComprometidas } from '@/utils/inventario'
 import { pesos } from '@/utils/formato'
+import { mensajeDeError } from '@/utils/erroresDeApi'
 import { usePermission } from '@/hooks/usePermission'
 import HistorialDeCostos from '@/components/HistorialDeCostos'
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet'
-import { AlertTriangle, Loader2, RotateCcw, Trash2 } from 'lucide-react'
+import { AlertTriangle, Image as Imagen, Loader2, RotateCcw, Trash2, Upload } from 'lucide-react'
 import { Can } from '@/components/Can'
 import { faltaElPermiso } from '@/utils/permisos'
 
@@ -88,6 +89,32 @@ const BOTON_SECUNDARIO =
 const CAMPO =
   'h-9 w-full rounded-lg border border-border bg-surface px-3 text-[13px] transition-colors ' +
   'focus-visible:border-brand focus-visible:outline-none disabled:bg-surface-2 disabled:text-fg-2'
+
+/**
+ * El prefijo con el que la API guarda las fotos que viven en el volumen propio
+ * (`/img/aa/bb/xxxxx.jpg`). Nunca una URL absoluta: mudarse de dominio no puede
+ * exigir migrar datos.
+ */
+const PREFIJO_DE_FOTO_PROPIA = '/img/'
+
+/**
+ * Si la foto es NUESTRA, o sea si vive en el volumen que respalda `respaldo.sh`.
+ *
+ * El importador de CSV acepta una columna `imagen` con la URL de cualquier
+ * hosting, y hay productos con eso cargado. Esas fotos **no se publican**: viven
+ * en un servidor de terceros que puede caerse, cambiar la imagen o pedir
+ * referer, y el respaldo del volumen propio no las cubre (FR-030, H6). El panel
+ * las señala en vez de dibujarlas como si fueran una foto del sistema.
+ *
+ * ⚠ Está escrita acá y no importada de `apps/api/src/utils/imagenes.js`: son dos
+ * workspaces distintos y el navegador no puede importar del servidor. La regla
+ * es una sola línea y tiene su test de los dos lados —`imagenes.test.js` en la
+ * API, `renderDePanelProducto.test.jsx` acá—, así que el día que el prefijo
+ * cambie, las dos suites lo dicen y no una sola.
+ */
+function esImagenPropia(url) {
+  return typeof url === 'string' && url.startsWith(PREFIJO_DE_FOTO_PROPIA)
+}
 
 /** Un campo con su etiqueta. */
 function Campo({ etiqueta, children, ancho = '' }) {
@@ -197,11 +224,68 @@ export default function PanelProducto({
   /** La foto de cómo estaba todo al abrir, para saber si hay cambios. */
   const [original, setOriginal] = useState({ form: FORMULARIO_VACIO, stock: [] })
 
+  // ── La foto ──
+  const entradaDeFoto = useRef(null)
+  /** El `blob:` del archivo recién elegido, o `null`. Ver `liberarPrevisualizacion`. */
+  const [previsualizacion, setPrevisualizacion] = useState(null)
+  const [subiendoFoto, setSubiendoFoto] = useState(false)
+  /** Si el `<img>` no pudo cargar la ruta guardada. Ver el recuadro de la foto. */
+  const [fotoRota, setFotoRota] = useState(false)
+
+  /**
+   * El mismo `blob:` que `previsualizacion`, pero en una ref.
+   *
+   * Hace falta porque liberarlo es un **efecto** —`URL.revokeObjectURL`— y un
+   * actualizador de `useState` tiene que ser puro: React lo invoca dos veces en
+   * modo estricto, así que revocar ahí adentro revocaría una URL que la segunda
+   * pasada todavía va a usar. La ref se lee sin renderizar y se puede limpiar
+   * desde el desmontaje, que es donde el estado ya no está disponible.
+   */
+  const urlDeLaPrevisualizacion = useRef(null)
+
+  /**
+   * Suelta el object URL.
+   *
+   * ⚠ Sin esto, **cada archivo elegido deja un blob retenido mientras la pestaña
+   * viva**: el navegador no libera la memoria de un `createObjectURL` cuando
+   * nadie lo referencia más, solo cuando se lo revoca o cuando se cierra el
+   * documento. Elegir seis fotos de 4 MB para mirar cuál queda mejor son 24 MB
+   * que no vuelven, y no hay nada que lo avise.
+   */
+  const liberarPrevisualizacion = () => {
+    if (urlDeLaPrevisualizacion.current) {
+      URL.revokeObjectURL(urlDeLaPrevisualizacion.current)
+      urlDeLaPrevisualizacion.current = null
+    }
+
+    setPrevisualizacion(null)
+  }
+
+  /** El archivo elegido, a la vista antes de que el servidor conteste. */
+  const previsualizar = (archivo) => {
+    // Primero se libera el anterior: reemplazar la foto dos veces sin esto deja
+    // el primer blob colgado, que es exactamente la fuga que se quiere evitar.
+    liberarPrevisualizacion()
+
+    const url = URL.createObjectURL(archivo)
+    urlDeLaPrevisualizacion.current = url
+    setPrevisualizacion(url)
+  }
+
+  // El blob no sobrevive al panel: si el componente se desmonta con una
+  // previsualización viva, nadie más va a poder revocarla.
+  useEffect(() => () => liberarPrevisualizacion(), [])
+
   // Al abrir se arma el formulario desde el producto y UNA fila por sucursal,
   // exista o no la fila de stock. Un producto sin ninguna fila mostraba antes
   // una sección vacía y no había forma de cargarle la primera cantidad.
   useEffect(() => {
     if (!abierto) return
+
+    // La previsualización es de la foto que se eligió en ESTA apertura: dejarla
+    // viva mostraría el archivo del producto anterior sobre el nuevo.
+    liberarPrevisualizacion()
+    setFotoRota(false)
 
     const datos = producto ? {
       ...FORMULARIO_VACIO,
@@ -279,6 +363,9 @@ export default function PanelProducto({
   const intentarCerrar = (siguiente) => {
     if (siguiente) return
     if (guardando) return
+    // Cerrar en medio de la subida desmontaría el panel con el pedido en vuelo:
+    // la foto se guardaría igual y la pantalla no se enteraría nunca.
+    if (subiendoFoto) return
 
     if (hayCambios) {
       setAvisandoDescarte(true)
@@ -450,6 +537,87 @@ export default function PanelProducto({
     }
   }
 
+  /**
+   * Deja la foto guardada como si viniera del servidor.
+   *
+   * Los dos endpoints de la foto **escriben la columna en el momento**, no al
+   * apretar «Guardar cambios». Así que `original` tiene que moverse junto con
+   * `form`: si solo se moviera `form`, `hayCambios` quedaría en `true` para
+   * siempre y el panel preguntaría «hay cambios sin guardar» por algo que ya
+   * está guardado, que es como se enseña a apretar «Descartar» sin leer.
+   */
+  const asentarFoto = (url) => {
+    setForm((actual) => ({ ...actual, image_url: url }))
+    setOriginal((actual) => ({ ...actual, form: { ...actual.form, image_url: url } }))
+    setFotoRota(false)
+  }
+
+  /**
+   * Sube la foto del producto.
+   *
+   * `multipart/form-data` con el campo `imagen`, que es lo que espera
+   * `POST /api/products/:id/imagen`. El `Content-Type` con el `boundary` lo pone
+   * el navegador solo a partir del `FormData`: escribirlo a mano manda un
+   * boundary que no es el del cuerpo y multer no encuentra ningún campo.
+   *
+   * ⚠ **Va contra el id del producto, así que solo tiene sentido sobre uno que
+   * ya existe.** En el alta la sección no ofrece la subida y dice por qué.
+   */
+  const subirFoto = async (archivo) => {
+    if (!archivo || !producto || subiendoFoto) return
+
+    // La previsualización sale del archivo elegido y se ve ANTES de que el
+    // servidor conteste: subir 4 MB desde una conexión de comercio son varios
+    // segundos, y sin nada a la vista el usuario vuelve a apretar el botón.
+    previsualizar(archivo)
+    setSubiendoFoto(true)
+
+    try {
+      const cuerpo = new FormData()
+      cuerpo.append('imagen', archivo)
+
+      const respuesta = await api.post(`/products/${producto.id}/imagen`, cuerpo)
+
+      asentarFoto(respuesta.data?.data?.image_url || '')
+      toast.success('Foto actualizada')
+    } catch (err) {
+      // El archivo que no entró no se sigue mostrando: dejarlo a la vista
+      // afirma que la foto quedó cargada, que es justo lo que no pasó.
+      liberarPrevisualizacion()
+
+      // El servidor manda el motivo en castellano y sabe cuál es —los 5 MB, el
+      // archivo que sharp no puede leer, el volumen lleno—. Un mensaje escrito
+      // acá tendría que adivinar cuál de los tres fue.
+      toast.error(mensajeDeError(err, 'No se pudo subir la foto.'))
+    } finally {
+      setSubiendoFoto(false)
+    }
+  }
+
+  /**
+   * Saca la foto del producto: del volumen y de la columna (FR-029).
+   *
+   * Sirve también para una `image_url` externa —la API la borra de la columna y
+   * no toca ningún archivo ajeno—, que es la única forma que tiene el usuario de
+   * limpiar lo que dejó cargado el importador de CSV.
+   */
+  const quitarFoto = async () => {
+    if (!producto || subiendoFoto) return
+
+    setSubiendoFoto(true)
+    try {
+      await api.delete(`/products/${producto.id}/imagen`)
+
+      liberarPrevisualizacion()
+      asentarFoto('')
+      toast.success('Foto eliminada')
+    } catch (err) {
+      toast.error(mensajeDeError(err, 'No se pudo eliminar la foto.'))
+    } finally {
+      setSubiendoFoto(false)
+    }
+  }
+
   /** Vuelve a poner en circulación un producto dado de baja (FR-039). */
   const reactivar = async () => {
     if (!producto || guardando) return
@@ -489,6 +657,51 @@ export default function PanelProducto({
       setGuardando(false)
     }
   }
+
+  // ── El estado de la foto, en un solo lugar ──
+  //
+  // Son cuatro estados y no dos —sin foto, propia, externa y subiendo—, y cada
+  // uno se dibuja distinto. Calculados acá arriba porque los miran el recuadro,
+  // el texto y los dos botones: repartidos, el recuadro y el texto terminan
+  // contestando cosas distintas sobre la misma foto.
+  const urlDeLaFoto = String(form.image_url || '').trim()
+  const fotoPropia = esImagenPropia(urlDeLaFoto)
+  const fotoExterna = !!urlDeLaFoto && !fotoPropia
+  /**
+   * Qué dibuja el `<img>`, o `null` para el marcador neutro.
+   *
+   * ⚠ Una foto externa **no** entra acá, y ése es el punto de FR-030: dibujarla
+   * la haría ver igual que una del sistema, y la tienda no la va a publicar. La
+   * previsualización local gana porque es el archivo que la persona acaba de
+   * elegir, o sea lo único que se puede garantizar que es la foto correcta.
+   */
+  const fuenteDeLaFoto = previsualizacion || (fotoPropia ? urlDeLaFoto : null)
+  const hayFoto = !!urlDeLaFoto || !!previsualizacion
+
+  /** Lo que dice el renglón al lado del recuadro. `null` cuando ya lo dice el aviso. */
+  const textoDeLaFoto = () => {
+    if (subiendoFoto) return 'Subiendo la foto…'
+    if (fotoExterna) return null
+
+    // El caso raro y honesto: la ruta es del sistema pero el navegador no la
+    // pudo cargar.
+    //
+    // En producción no debería pasar: `deploy/Caddyfile` sirve `/img/*` en los
+    // dos sitios, `app.` y `tienda.`, desde el mismo volumen de sólo lectura.
+    // Sí pasa **en desarrollo**, donde el servidor de Vite no tiene esa ruta.
+    //
+    // Se dice, en vez de dejar el ícono de imagen rota del navegador, que se lee
+    // como «la foto se perdió» cuando el archivo está perfecto.
+    if (fotoPropia && fotoRota && !previsualizacion) {
+      return 'Foto cargada. No pudimos mostrar la miniatura acá, pero está guardada y es la que sale publicada.'
+    }
+
+    if (fotoPropia || previsualizacion) return 'Foto propia: la guarda el sistema y es la que sale publicada.'
+
+    return 'Sin foto: la tienda dibuja un marcador neutro del mismo tamaño, para que la grilla no se descuadre.'
+  }
+
+  const leyendaDeLaFoto = textoDeLaFoto()
 
   const desactivado = producto?.is_active === false
   const subtitulo = producto
@@ -723,15 +936,6 @@ export default function PanelProducto({
                 </Campo>
               </div>
 
-              <Campo etiqueta="URL de imagen">
-                <input
-                  className={CAMPO}
-                  value={form.image_url || ''}
-                  disabled={!puedeEditar}
-                  onChange={(e) => cambiar('image_url')(e.target.value)}
-                />
-              </Campo>
-
               <label className="flex items-center gap-2.5 text-[13px]">
                 <input
                   type="checkbox"
@@ -742,6 +946,138 @@ export default function PanelProducto({
                 />
                 Producto gravado (IVA)
               </label>
+            </div>
+
+            {/* ── Foto ──
+                Sección propia y no un campo de «Clasificación»: la foto dejó de
+                ser una URL que alguien pega —eso es lo que hoy deja fotos que no
+                se pueden publicar— y pasó a ser un archivo que sube el sistema.
+                El campo de la URL sigue acá abajo, junto al aviso que explica
+                qué pasa cuando apunta afuera, y no a tres secciones de
+                distancia: quien la edita tiene que leer la consecuencia. */}
+            <div className="flex flex-col gap-3">
+              <h2>Foto</h2>
+
+              <div className="flex items-start gap-4">
+                {/* El recuadro mide lo mismo con foto y sin foto. Si el marcador
+                    fuera más chico, la sección saltaría en cada subida y en cada
+                    borrado. */}
+                <div className="grid h-24 w-24 shrink-0 place-items-center overflow-hidden rounded-xl border border-border bg-surface-2">
+                  {fuenteDeLaFoto && !fotoRota ? (
+                    <img
+                      src={fuenteDeLaFoto}
+                      alt={`Foto de ${form.name || 'el producto'}`}
+                      className="h-full w-full object-cover"
+                      onError={() => setFotoRota(true)}
+                    />
+                  ) : (
+                    <Imagen className="h-6 w-6 text-fg-3" aria-hidden="true" />
+                  )}
+                </div>
+
+                <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+                  {leyendaDeLaFoto && (
+                    <p className="text-[12.5px] text-fg-2">{leyendaDeLaFoto}</p>
+                  )}
+
+                  {esAlta ? (
+                    // ⚠ La subida va contra el id del producto y en el alta
+                    // todavía no hay ninguno. Se dice, en vez de ofrecer un
+                    // botón que no puede funcionar o de esconder la sección
+                    // entera —que dejaría al usuario buscando dónde está la
+                    // foto—.
+                    <p className="text-[12.5px] text-fg-2">
+                      La foto se sube después de crear el producto: se guarda
+                      contra su número, y el producto todavía no lo tiene. Creá
+                      el producto, volvé a abrirlo y cargala.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* El `accept` declarado: es lo que hace que el selector
+                          del sistema muestre las fotos y no la carpeta entera.
+                          NO es la validación —eso lo decide `sharp` mirando el
+                          contenido, así que un `.exe` renombrado a `.jpg` llega
+                          hasta el servidor y vuelve con su mensaje—. */}
+                      <input
+                        ref={entradaDeFoto}
+                        type="file"
+                        className="hidden"
+                        accept="image/jpeg,image/png,image/webp"
+                        aria-label="Foto del producto"
+                        onChange={(e) => {
+                          const archivo = e.target.files?.[0]
+                          // Se limpia el valor para que elegir DOS VECES el
+                          // mismo archivo vuelva a disparar `change`: sin esto,
+                          // reintentar después de un error no hace nada.
+                          e.target.value = ''
+                          subirFoto(archivo)
+                        }}
+                      />
+
+                      <button
+                        type="button"
+                        className={BOTON_SECUNDARIO}
+                        disabled={!puedeEditar || subiendoFoto || guardando}
+                        title={puedeEditar ? undefined : faltaElPermiso(permisoDeEdicion)}
+                        onClick={() => entradaDeFoto.current?.click()}
+                      >
+                        {subiendoFoto
+                          ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Subiendo…</>
+                          : <><Upload className="h-3.5 w-3.5 text-fg-3" />{hayFoto ? 'Cambiar foto' : 'Subir foto'}</>}
+                      </button>
+
+                      {hayFoto && (
+                        <button
+                          type="button"
+                          className={`${BOTON_SECUNDARIO} text-danger hover:bg-danger-soft`}
+                          disabled={!puedeEditar || subiendoFoto || guardando}
+                          title={puedeEditar ? undefined : faltaElPermiso(permisoDeEdicion)}
+                          onClick={quitarFoto}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Quitar foto
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* El aviso de FR-030. Va a la vista y no en un `title`: quien
+                  arma su primer catálogo no sabe que hay algo que leer ahí, y
+                  esto es la diferencia entre un producto con foto y uno que en
+                  la tienda sale con el marcador neutro. */}
+              {fotoExterna && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-warn-line bg-warn-soft px-4 py-3">
+                  <AlertTriangle className="mt-0.5 h-[18px] w-[18px] shrink-0 text-warn" />
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-warn">
+                      Foto externa: no se publica
+                    </p>
+                    <p className="mt-1 text-[12.5px] text-fg-2">
+                      La dirección apunta a un servidor de otro. Así las carga el
+                      importador de CSV, y esas fotos la tienda no las muestra:
+                      el día que el tercero borre el archivo quedaría una foto
+                      rota, y el respaldo del sistema no las cubre. Subila con
+                      «Cambiar foto» para que salga publicada.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <Campo etiqueta="URL de imagen">
+                <input
+                  className={CAMPO}
+                  value={form.image_url || ''}
+                  disabled={!puedeEditar}
+                  onChange={(e) => cambiar('image_url')(e.target.value)}
+                />
+              </Campo>
+
+              <p className="text-[11.5px] text-fg-3">
+                Se completa sola al subir una foto. Una dirección escrita a mano
+                apunta afuera del sistema y no se publica.
+              </p>
             </div>
 
             {/* ── Página pública ──

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { act, cleanup, render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import useStore from '@/store/useStore'
 import api from '@/services/api'
 import PanelProducto from '@/components/PanelProducto'
@@ -87,6 +88,7 @@ function cuerposDeStockEnviados() {
 beforeEach(() => {
   vi.spyOn(api, 'post').mockResolvedValue({ data: { data: { id: 77 } } })
   vi.spyOn(api, 'put').mockResolvedValue({ data: { data: { id: 77 } } })
+  vi.spyOn(api, 'delete').mockResolvedValue({ data: { ok: true } })
   // `HistorialDeCostos` pide el historial al abrir el panel de un producto
   // existente. Sin este doble, el test dispararía un pedido de verdad.
   vi.spyOn(api, 'get').mockResolvedValue({ data: { data: [], meta: {} } })
@@ -426,5 +428,386 @@ describe('El interruptor de página pública dice lo que hace, y lo que no', () 
     await montar({ producto: null, permisos: ['products.crear'] })
 
     expect(interruptor()).toBeEnabled()
+  })
+})
+
+// ════════════════════════════════════════════
+//  La foto del producto (T1419)
+//
+//  Tres cosas que solo se ven renderizando, y una que no se ve nunca:
+//
+//   · **De dónde viene la foto cambia lo que se dibuja.** `products.image_url`
+//     es una columna vieja y el importador de CSV la llena desde una columna
+//     `imagen` del archivo, así que en la base hay productos con la URL de un
+//     hosting de terceros. Esas fotos NO se publican (FR-030, H6): la tienda
+//     dibuja el marcador neutro. Un panel que las muestra como cualquier otra
+//     deja al usuario creyendo que su catálogo tiene fotos que no va a tener, y
+//     el rojo aparece recién cuando abre la tienda.
+//
+//   · **La subida va contra el id del producto**, así que en el alta no existe.
+//
+//   · **Los errores los escribe el servidor.** El límite de 5 MB, el archivo que
+//     `sharp` no puede leer y el volumen lleno son tres mensajes distintos, y el
+//     que sabe cuál fue es la API.
+//
+//   · Y la que no se ve: **el object URL de la previsualización se revoca**. Un
+//     blob que nadie revoca se queda en memoria mientras la pestaña viva —el
+//     navegador no lo suelta cuando deja de estar referenciado—, así que probar
+//     seis fotos de 4 MB son 24 MB que no vuelven y nada lo avisa. Por eso se
+//     afirma sobre las llamadas a `revokeObjectURL` y no sobre lo dibujado: no
+//     hay nada dibujado que mirar.
+// ════════════════════════════════════════════
+
+const CON_FOTO_EXTERNA = {
+  id: 5,
+  name: 'Whey Protein 1kg',
+  cost: '1000',
+  // Tal cual la deja el importador de CSV: la URL del hosting del proveedor.
+  image_url: 'https://cdn.hostingajeno.com/fotos/whey.jpg',
+  stock: [],
+}
+
+const CON_FOTO_PROPIA = {
+  ...CON_FOTO_EXTERNA,
+  // La que devuelve `POST /api/products/:id/imagen`: ruta relativa al volumen.
+  image_url: '/img/a1/b2/a1b2c3d4e5f6.jpg',
+}
+
+const SIN_FOTO = { id: 5, name: 'Whey Protein 1kg', cost: '1000', stock: [] }
+
+/**
+ * `URL.createObjectURL` y `URL.revokeObjectURL`, que jsdom no implementa.
+ *
+ * No es un doble de comodidad: sin él, elegir un archivo tira
+ * «createObjectURL is not a function» y el test falla por el entorno y no por el
+ * sistema. Y es además lo que hace verificable la liberación, que es justo lo
+ * que no deja rastro en el DOM.
+ */
+function espiarObjectURL() {
+  const original = { crear: URL.createObjectURL, revocar: URL.revokeObjectURL }
+  let n = 0
+
+  const crear = vi.fn(() => `blob:favalio/${++n}`)
+  const revocar = vi.fn()
+
+  URL.createObjectURL = crear
+  URL.revokeObjectURL = revocar
+
+  return {
+    crear,
+    revocar,
+    restaurar: () => {
+      // ⚠ Se desmonta ACÁ y no se deja para el `cleanup()` de `preparacion.js`.
+      // Los `afterEach` de adentro corren antes que los de afuera, así que el
+      // desmontaje global ocurriría con el doble ya sacado: el efecto de
+      // limpieza del panel llamaría a un `URL.revokeObjectURL` que en jsdom no
+      // existe, y tres pruebas fallarían por el entorno y no por el sistema.
+      cleanup()
+
+      URL.createObjectURL = original.crear
+      URL.revokeObjectURL = original.revocar
+    },
+  }
+}
+
+/** Un JPEG cualquiera. El contenido no importa: quien lo mira es `sharp`, en la API. */
+const jpeg = (nombre = 'whey.jpg') => new File(['bytes'], nombre, { type: 'image/jpeg' })
+
+/** El bloque «Foto» entero, para no afirmar sobre el `<img>` de otra sección. */
+const seccionDeLaFoto = () => screen.getByRole('heading', { name: 'Foto' }).parentElement
+
+/** La entrada de archivo, que es donde vive el `accept`. */
+const entradaDeFoto = () => screen.getByLabelText('Foto del producto')
+
+describe('La foto: de dónde viene cambia lo que se dibuja', () => {
+  it('un producto con `image_url` del importador de CSV se dibuja con el aviso de foto externa y no como si tuviera foto', async () => {
+    await montar({ producto: CON_FOTO_EXTERNA })
+
+    // El aviso, y con el motivo escrito: «no se publica» a secas deja al
+    // usuario sin saber qué hacer al respecto.
+    expect(screen.getByText('Foto externa: no se publica')).toBeInTheDocument()
+    expect(screen.getByText(/apunta a un servidor de otro/)).toBeInTheDocument()
+
+    // Y NO la miniatura. Es la mitad que importa: dibujarla haría ver esta foto
+    // igual que una del volumen propio, y la tienda no la va a mostrar.
+    expect(seccionDeLaFoto().querySelector('img')).toBeNull()
+
+    // La salida existe y está a mano: subir la propia, o sacar la que hay.
+    expect(screen.getByRole('button', { name: 'Cambiar foto' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Quitar foto' })).toBeInTheDocument()
+  })
+
+  it('una foto del volumen propio sí se dibuja, y sin ningún aviso', async () => {
+    await montar({ producto: CON_FOTO_PROPIA })
+
+    const miniatura = seccionDeLaFoto().querySelector('img')
+
+    expect(miniatura).not.toBeNull()
+    expect(miniatura).toHaveAttribute('src', '/img/a1/b2/a1b2c3d4e5f6.jpg')
+    expect(screen.queryByText('Foto externa: no se publica')).not.toBeInTheDocument()
+  })
+
+  it('sin foto no hay miniatura ni aviso, y el panel dice qué se ve en la tienda', async () => {
+    await montar({ producto: SIN_FOTO })
+
+    expect(seccionDeLaFoto().querySelector('img')).toBeNull()
+    expect(screen.queryByText('Foto externa: no se publica')).not.toBeInTheDocument()
+    expect(screen.getByText(/marcador neutro del mismo tamaño/)).toBeInTheDocument()
+
+    // Sin foto no hay nada que quitar: el botón destructivo no está.
+    expect(screen.getByRole('button', { name: 'Subir foto' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Quitar foto' })).not.toBeInTheDocument()
+  })
+})
+
+describe('Subir la foto', () => {
+  let objectURL
+
+  beforeEach(() => { objectURL = espiarObjectURL() })
+  afterEach(() => { objectURL.restaurar() })
+
+  it('el input declara los formatos que el servidor sabe guardar', async () => {
+    await montar({ producto: SIN_FOTO })
+
+    // El `accept` no valida nada —eso lo hace `sharp` mirando el contenido— pero
+    // es lo que hace que el selector del sistema muestre las fotos y no la
+    // carpeta entera, en el teléfono con el que se saca la foto del producto.
+    expect(entradaDeFoto()).toHaveAttribute('accept', 'image/jpeg,image/png,image/webp')
+  })
+
+  it('la foto viaja como `multipart/form-data` en el campo `imagen`, contra el id del producto', async () => {
+    const usuario = userEvent.setup()
+    api.post.mockResolvedValue({ data: { ok: true, data: { image_url: '/img/aa/bb/nueva.jpg' } } })
+
+    await montar({ producto: SIN_FOTO })
+
+    const archivo = jpeg()
+    await usuario.upload(entradaDeFoto(), archivo)
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/products/5/imagen', expect.anything()))
+
+    const [, cuerpo] = api.post.mock.calls.find(([ruta]) => ruta === '/products/5/imagen')
+
+    // `FormData` y no un JSON con el base64 adentro: el nombre del campo es
+    // parte del contrato —multer escucha `imagen`— y el `boundary` lo pone el
+    // navegador solo.
+    expect(cuerpo).toBeInstanceOf(FormData)
+    expect(cuerpo.get('imagen')).toBe(archivo)
+  })
+
+  it('la foto subida NO deja el panel pidiendo guardar de nuevo', async () => {
+    // El endpoint escribe la columna en el momento. Si el panel moviera solo su
+    // formulario, «Guardar cambios» quedaría habilitado y cerrar preguntaría
+    // «hay cambios sin guardar» por algo que ya está guardado — que es como se
+    // enseña a apretar «Descartar» sin leer.
+    const usuario = userEvent.setup()
+    api.post.mockResolvedValue({ data: { ok: true, data: { image_url: '/img/aa/bb/nueva.jpg' } } })
+
+    await montar({ producto: SIN_FOTO })
+
+    await usuario.upload(entradaDeFoto(), jpeg())
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/products/5/imagen', expect.anything()))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled())
+  })
+
+  it('en el alta no se ofrece subir, y el panel dice por qué', async () => {
+    // La URL de la subida lleva el id del producto y en el alta no hay ninguno.
+    // La sección aparece igual: esconderla dejaría a alguien buscando dónde se
+    // carga la foto.
+    await montar({ producto: null })
+
+    expect(screen.getByRole('heading', { name: 'Foto' })).toBeInTheDocument()
+    expect(screen.getByText(/La foto se sube después de crear el producto/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Foto del producto')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Subir foto' })).not.toBeInTheDocument()
+  })
+
+  it('sin `products.editar` los botones de la foto están apagados y dicen qué permiso falta', async () => {
+    // Apagados y no ausentes, con el permiso NOMBRADO: quien lee «no tenés
+    // permiso» no puede pedir nada concreto.
+    await montar({ producto: CON_FOTO_PROPIA, permisos: ['stock.editar'] })
+
+    const subir = screen.getByRole('button', { name: 'Cambiar foto' })
+    const quitar = screen.getByRole('button', { name: 'Quitar foto' })
+
+    expect(subir).toBeDisabled()
+    expect(subir).toHaveAttribute('title', 'Necesitás el permiso «products.editar»')
+    expect(quitar).toBeDisabled()
+    expect(quitar).toHaveAttribute('title', 'Necesitás el permiso «products.editar»')
+  })
+})
+
+describe('Los object URL de la previsualización se liberan', () => {
+  let objectURL
+
+  beforeEach(() => { objectURL = espiarObjectURL() })
+  afterEach(() => { objectURL.restaurar() })
+
+  it('elegir una segunda foto libera el blob de la primera', async () => {
+    const usuario = userEvent.setup()
+    api.post.mockResolvedValue({ data: { ok: true, data: { image_url: '/img/aa/bb/nueva.jpg' } } })
+
+    await montar({ producto: SIN_FOTO })
+
+    await usuario.upload(entradaDeFoto(), jpeg('primera.jpg'))
+    await waitFor(() => expect(objectURL.crear).toHaveBeenCalledTimes(1))
+
+    const primera = objectURL.crear.mock.results[0].value
+
+    await usuario.upload(entradaDeFoto(), jpeg('segunda.jpg'))
+    await waitFor(() => expect(objectURL.crear).toHaveBeenCalledTimes(2))
+
+    // La primera se revoca; la segunda es la que se está mirando y sigue viva.
+    expect(objectURL.revocar).toHaveBeenCalledWith(primera)
+    expect(objectURL.revocar).not.toHaveBeenCalledWith(objectURL.crear.mock.results[1].value)
+  })
+
+  it('desmontar el panel libera el blob que quedaba vivo', async () => {
+    const usuario = userEvent.setup()
+    api.post.mockResolvedValue({ data: { ok: true, data: { image_url: '/img/aa/bb/nueva.jpg' } } })
+
+    const { unmount } = await montar({ producto: SIN_FOTO })
+
+    await usuario.upload(entradaDeFoto(), jpeg())
+    await waitFor(() => expect(objectURL.crear).toHaveBeenCalledTimes(1))
+
+    const url = objectURL.crear.mock.results[0].value
+    expect(objectURL.revocar).not.toHaveBeenCalledWith(url)
+
+    unmount()
+
+    // Después del desmontaje ya no hay ningún estado desde donde revocarla: si
+    // no se hace acá, no se hace nunca.
+    expect(objectURL.revocar).toHaveBeenCalledWith(url)
+  })
+
+  it('una subida que falla no deja el blob colgado ni la foto a la vista', async () => {
+    const usuario = userEvent.setup()
+    vi.spyOn(toast, 'error').mockImplementation(() => {})
+    api.post.mockRejectedValue({
+      response: { status: 400, data: { ok: false, error: 'La foto no puede pesar más de 5 MB.' } },
+    })
+
+    await montar({ producto: SIN_FOTO })
+
+    await usuario.upload(entradaDeFoto(), jpeg())
+
+    await waitFor(() => expect(objectURL.revocar).toHaveBeenCalledWith(objectURL.crear.mock.results[0].value))
+
+    // Y la previsualización se va: dejarla afirma que la foto quedó cargada,
+    // que es justo lo que no pasó.
+    await waitFor(() => expect(seccionDeLaFoto().querySelector('img')).toBeNull())
+  })
+})
+
+describe('Los errores de la foto los escribe el servidor', () => {
+  let objectURL
+
+  beforeEach(() => { objectURL = espiarObjectURL() })
+  afterEach(() => { objectURL.restaurar() })
+
+  /** Sube una foto contra una API que contesta `respuesta`. */
+  async function subirContra(respuesta) {
+    const usuario = userEvent.setup()
+    const aviso = vi.spyOn(toast, 'error').mockImplementation(() => {})
+
+    api.post.mockRejectedValue({ response: respuesta })
+
+    await montar({ producto: SIN_FOTO })
+    await usuario.upload(entradaDeFoto(), jpeg())
+
+    await waitFor(() => expect(aviso).toHaveBeenCalled())
+
+    return aviso
+  }
+
+  it('el archivo de más de 5 MB muestra el mensaje que dice cuál es el límite', async () => {
+    // El que sube una foto de 8 MB desde el teléfono tiene que leer cuánto pesa
+    // de más, no «Request failed with status code 400».
+    const aviso = await subirContra({
+      status: 400,
+      data: { ok: false, error: 'La foto no puede pesar más de 5 MB.' },
+    })
+
+    expect(aviso).toHaveBeenCalledWith('La foto no puede pesar más de 5 MB.')
+  })
+
+  it('un `.exe` renombrado a `.jpg` vuelve con el motivo, y el `accept` no lo tapa', async () => {
+    // El `accept` del input filtra el diálogo del sistema y nada más: el tipo lo
+    // declara el cliente. Lo que mira el contenido es `sharp`, en la API, y su
+    // mensaje es el que tiene que llegar hasta acá.
+    const aviso = await subirContra({
+      status: 400,
+      data: { ok: false, error: 'El archivo no es una imagen que podamos leer. Probá con un JPG o un PNG.' },
+    })
+
+    expect(aviso).toHaveBeenCalledWith(
+      'El archivo no es una imagen que podamos leer. Probá con un JPG o un PNG.'
+    )
+  })
+
+  it('el volumen lleno se muestra tal cual: es del sistema, no del usuario', async () => {
+    // 507 `SIN_ESPACIO`. El mensaje ya viene escrito y dice a quién avisarle;
+    // reescribirlo acá le echaría la culpa a quien subió la foto.
+    const aviso = await subirContra({
+      status: 507,
+      data: {
+        ok: false,
+        codigo: 'SIN_ESPACIO',
+        error: 'No queda espacio para guardar más fotos. Avisale al administrador del sistema.',
+      },
+    })
+
+    expect(aviso).toHaveBeenCalledWith(
+      'No queda espacio para guardar más fotos. Avisale al administrador del sistema.'
+    )
+  })
+})
+
+describe('Quitar la foto', () => {
+  it('llama al DELETE de la foto y no al del producto', async () => {
+    // Son dos endpoints parecidos y uno de los dos desactiva el producto entero:
+    // `DELETE /products/5` en vez de `DELETE /products/5/imagen` sacaría el
+    // producto del punto de venta por haber querido cambiarle la foto.
+    const usuario = userEvent.setup()
+    vi.spyOn(toast, 'success').mockImplementation(() => {})
+
+    await montar({ producto: CON_FOTO_PROPIA })
+
+    await usuario.click(screen.getByRole('button', { name: 'Quitar foto' }))
+
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/products/5/imagen'))
+    expect(api.delete.mock.calls.map(([ruta]) => ruta)).toEqual(['/products/5/imagen'])
+  })
+
+  it('deja el panel sin miniatura y sin pedir guardar de nuevo', async () => {
+    const usuario = userEvent.setup()
+    vi.spyOn(toast, 'success').mockImplementation(() => {})
+
+    await montar({ producto: CON_FOTO_PROPIA })
+
+    expect(seccionDeLaFoto().querySelector('img')).not.toBeNull()
+
+    await usuario.click(screen.getByRole('button', { name: 'Quitar foto' }))
+
+    await waitFor(() => expect(seccionDeLaFoto().querySelector('img')).toBeNull())
+    expect(screen.getByRole('button', { name: 'Subir foto' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled()
+  })
+
+  it('también sirve para sacar la foto externa que dejó el importador', async () => {
+    // Es la única forma que tiene el usuario de limpiar una `image_url` que
+    // apunta afuera sin editar la dirección a mano. La API borra la columna y no
+    // toca ningún archivo ajeno.
+    const usuario = userEvent.setup()
+    vi.spyOn(toast, 'success').mockImplementation(() => {})
+
+    await montar({ producto: CON_FOTO_EXTERNA })
+
+    await usuario.click(screen.getByRole('button', { name: 'Quitar foto' }))
+
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/products/5/imagen'))
+    await waitFor(() => expect(screen.queryByText('Foto externa: no se publica')).not.toBeInTheDocument())
   })
 })
