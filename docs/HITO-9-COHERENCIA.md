@@ -1,7 +1,40 @@
 # Hito 9 · El recorrido de coherencia
 
 **Fecha del recorrido:** 7 de agosto de 2026.
-**Estado:** recorrido **hecho y filtrado**, correcciones **sin empezar**.
+**Estado:** recorrido hecho y filtrado. **Tandas 1 a 4 cerradas**, más el bloque
+del teclado de la sección 4. Queda una decisión abierta —el selector de sucursal
+(sección 4, bloque D)— y una pregunta sin contestar —el ancho mínimo soportado
+(bloque C)—.
+
+> ## Lo que quedó hecho, y lo que enseñó
+>
+> Los cuarenta y nueve hallazgos se corrigieron con test y mutación cada uno. Lo
+> que importa para el próximo recorrido no es la lista: es **el patrón de lo que
+> apareció al corregir**, porque en todos los casos era más grande que el
+> hallazgo.
+>
+> | Se buscaba | Apareció |
+> |---|---|
+> | El doble pago | `useConfirmDialog` perdía el `resolve` anterior: el handler quedaba colgado **para siempre**, con sus cerrojos tomados |
+> | Los días del certificado en dos pantallas | **Los dos** estaban mal, cada uno a su manera |
+> | El ícono del estado vacío en tres | **Seis** formas de dibujarlo, y el snippet del documento tampoco lo tenía |
+> | `role="alert"` en tres | Faltaba en **cinco**; los dos nuevos avisan que una escritura falló |
+> | La lupa de TiendaNube | Un segundo buscador sin ella, **en el pie del cobro** |
+> | El contador de órdenes | El doble de prueba devolvía `total = data.length`: **no podía ver el defecto** |
+> | La frase del permiso | Escrita a mano en dieciocho lugares, y **ya divergida** |
+>
+> **Tres cosas para la próxima vez:**
+>
+> 1. **Una lente de coherencia es ciega a lo que está mal en las doce por
+>    igual.** El teclado —seis pantallas operables solo con mouse— no lo
+>    encontró ninguna de las cinco, y estaba escrito en el código como ventaja
+>    de una excepción.
+> 2. **Un hallazgo falso cuesta más que ninguno**: enseña a no leerlos. Tres
+>    guardias de este hito dieron falsos y hubo que rehacerlas mirando la salida
+>    en vez de confiar en el regex.
+> 3. **La mutación es lo único que dice si un test vale.** Uno del cerrojo de
+>    pagos pasaba con y sin el cerrojo, y el motivo era otro defecto que lo
+>    tapaba.
 
 Las doce pantallas se rediseñaron en **cuatro hitos distintos**, con semanas de
 diferencia. Este documento es el resultado de recorrerlas juntas buscando **lo
