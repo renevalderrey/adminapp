@@ -32,12 +32,17 @@ un lockfile ubicado en la raíz.
 
 ## Arquitectura de deploy
 
-| App | Plataforma | Dominio previsto |
+| App | Dónde corre | Dominio |
 |---|---|---|
-| `apps/landing` | Vercel | `favalio.com` |
-| `apps/web` | Vercel | `app.favalio.com` |
-| `apps/api` | Render | `api.favalio.com` |
-| PostgreSQL | Neon | — |
+| `apps/landing` | contenedor nginx en el VPS | `favalio.com` |
+| `apps/web` | contenedor nginx en el VPS | `app.favalio.com` |
+| `apps/api` | contenedor Node en el VPS | `api.favalio.com` |
+| PostgreSQL | contenedor en el VPS, disco propio | — |
+| TLS y ruteo | Caddy, en el VPS | — |
+
+Todo vive en un VPS de Hostinger, descripto en `docker-compose.produccion.yml`
+y `deploy/Caddyfile`. El paso a paso está en
+[docs/DESPLIEGUE-HOSTINGER.md](docs/DESPLIEGUE-HOSTINGER.md).
 
 La landing y la app se despliegan por separado. La landing enlaza a la app vía
 `VITE_APP_URL`; el CTA de prueba gratis apunta a `<app>/?signup=true`, que la
@@ -80,55 +85,44 @@ npm run lint      # eslint en web + landing
 
 ## Deploy
 
-### PostgreSQL — Neon
+### Hostinger — la pila completa en un VPS
 
-1. Crear un proyecto en [neon.tech](https://neon.tech).
-2. Copiar el connection string **pooled** (el host termina en `-pooler`).
-   Neon free autosuspende la base a los 5 min de inactividad y el pooler
-   maneja mejor la reconexión.
-3. Ese string va en `DATABASE_URL` de la API.
+Las cinco piezas (landing, web, API, PostgreSQL y Caddy) corren en un VPS,
+descriptas en `docker-compose.produccion.yml`. En el servidor:
 
-### API — Render
+```bash
+git clone <este repo> /opt/favalio && cd /opt/favalio
+cp .env.produccion.example .env && nano .env    # dominio, Auth0, Resend, clave de la base
+docker compose -f docker-compose.produccion.yml up -d --build
+```
 
-Vía Blueprint (recomendado): *New → Blueprint* apuntando a este repo. Render
-lee `render.yaml` y crea el servicio con `rootDir: apps/api` ya configurado.
+Caddy emite y renueva los certificados TLS solo; la API corre las migraciones
+al arrancar; PostgreSQL queda publicado únicamente en `127.0.0.1`.
 
-Manualmente: *New → Web Service*, runtime **Docker**, y **Root Directory** en
-`apps/api`.
+El paso a paso completo —qué plan contratar, registros DNS, endurecimiento del
+servidor, Auth0, correo, respaldos y actualizaciones— está en
+[docs/DESPLIEGUE-HOSTINGER.md](docs/DESPLIEGUE-HOSTINGER.md).
 
-Después cargar en el dashboard las variables marcadas `sync: false` en
-`render.yaml`. Sin `AUTH0_DOMAIN` y `AUTH0_AUDIENCE` el servidor no arranca.
+> **El hosting compartido de Hostinger no sirve para esto**: no corre Node.js
+> ni PostgreSQL. Hace falta un VPS.
 
-Las migraciones corren solas en el arranque del contenedor.
+> Las `VITE_*` se hornean en el bundle **durante el build**: cambiar una en el
+> `.env` no tiene efecto hasta un `up -d --build`.
 
-### Web y Landing — Vercel
+### Alternativa PaaS — Render + Vercel + Neon
 
-Un proyecto de Vercel por app:
+`render.yaml` y los `vercel.json` de cada app siguen versionados y funcionan:
+API en Render (Blueprint, `rootDir: apps/api`), web y landing en Vercel (un
+proyecto por app), base en Neon con el connection string *pooled*.
 
-| | Root Directory | Variables |
-|---|---|---|
-| web | `apps/web` | `VITE_API_URL`, `VITE_AUTH0_*`, `VITE_API_TIMEOUT` |
-| landing | `apps/landing` | `VITE_APP_URL`, `VITE_CONTACT_EMAIL` |
+En ese esquema hay que cargar a mano `ALLOWED_ORIGINS`, `FRONTEND_URL` y
+`LANDING_URL` en el dashboard de Render; con el compose del VPS se arman solas
+a partir de `DOMINIO`.
 
-Vercel autodetecta Vite y lee el `vercel.json` de cada app.
-
-> Las `VITE_*` se hornean en el bundle **durante el build**. Cambiar una en el
-> dashboard no tiene efecto hasta redesplegar.
-
-### Después de desplegar
-
-Actualizar en la API `ALLOWED_ORIGINS` con los dominios reales de web y landing
-(lista separada por comas), y `FRONTEND_URL` con el de la app.
+### En cualquiera de los dos
 
 En Auth0, agregar el dominio de la app a *Allowed Callback URLs*, *Allowed Logout
 URLs* y *Allowed Web Origins*.
-
-### Dominio propio
-
-`favalio.com` está registrado en Hostinger, que actúa solo como DNS: la landing
-y la app siguen en Vercel y la API en Render. El paso a paso —registros DNS,
-variables a actualizar y verificación— está en
-[docs/DOMINIO-HOSTINGER.md](docs/DOMINIO-HOSTINGER.md).
 
 ---
 

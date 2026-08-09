@@ -3,6 +3,22 @@
 Qué hacer cuando algo pasa. Está escrito para el que atiende el problema, no
 para el que escribió el código.
 
+> **Dónde corre esto.** El runbook se escribió cuando la API vivía en Render, la
+> base en Neon y el frontend en Vercel. Desde el pase a un VPS de Hostinger
+> (ver [DESPLIEGUE-HOSTINGER.md](DESPLIEGUE-HOSTINGER.md)) el diagnóstico es el
+> mismo, cambia dónde se ejecuta cada cosa:
+>
+> | Donde dice | En el VPS |
+> |---|---|
+> | «Render → el servicio → Environment» | editar `/opt/favalio/.env` y `docker compose … up -d` |
+> | «panel de Render → Logs» | `docker compose … logs -f api` |
+> | «el servicio duerme a los 15 min» | no pasa: el proceso no se suspende |
+> | «Neon suspende la base a los 5 min» | no pasa: Postgres corre en el mismo servidor |
+> | «Neon guarda un historial / restauración por punto en el tiempo» | **no existe**: el respaldo es el cron de `deploy/respaldo.sh` |
+>
+> La última fila es la que importa: en el VPS, si el respaldo no está
+> configurado y probado, **no hay red**.
+
 ---
 
 ## Antes del primer cliente real
@@ -14,11 +30,12 @@ hechos.
 |---|---|---|
 | ⬜ | **Rotar las credenciales del hosting legacy** | Panel de Hostinger · [ver abajo](#rotar-las-credenciales-del-hosting-legacy) |
 | ⬜ | **Correr las migraciones pendientes** | Ver abajo |
-| ⬜ | **Configurar `CRON_SECRET`** y los dos secretos del workflow | Render + GitHub · [ver abajo](#tareas-programadas) |
-| ⬜ | **Configurar `SENTRY_DSN`** | sentry.io + Render · [ver abajo](#alertas-de-error) |
+| ⬜ | **Configurar `CRON_SECRET`** y los dos secretos del workflow | `.env` del VPS + GitHub · [ver abajo](#tareas-programadas) |
+| ⬜ | **Configurar `SENTRY_DSN`** | sentry.io + `.env` del VPS · [ver abajo](#alertas-de-error) |
+| ⬜ | **Configurar el cron de respaldo** del VPS | [DESPLIEGUE-HOSTINGER.md](DESPLIEGUE-HOSTINGER.md#respaldos) |
 | ⬜ | **Probar el circuito AFIP en homologación** de punta a punta | — |
 | ⬜ | **Probar una restauración de respaldo** | [Ver abajo](#probar-una-restauración) |
-| ⬜ | **Verificar que los logs se ven** en el panel de Render | — |
+| ⬜ | **Verificar que los logs se ven** (`docker compose … logs api`) | — |
 
 Un respaldo que nunca se restauró no es un respaldo. Es un archivo.
 

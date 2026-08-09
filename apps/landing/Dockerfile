@@ -1,5 +1,6 @@
 # ── Favalio Landing: React + TS + Vite (estatica) ──
-# Solo se usa para Railway/self-host. En Vercel el build es nativo (ver vercel.json).
+# Es la imagen que levanta el VPS (docker-compose.produccion.yml). En Vercel,
+# que queda como alternativa, el build es nativo (ver vercel.json).
 FROM node:22-alpine AS build
 
 WORKDIR /app

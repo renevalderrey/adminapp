@@ -1,5 +1,6 @@
 # ── Favalio Web: React + Vite SPA ──
-# Solo se usa para Railway/self-host. En Vercel el build es nativo (ver vercel.json).
+# Es la imagen que levanta el VPS (docker-compose.produccion.yml). En Vercel,
+# que queda como alternativa, el build es nativo (ver vercel.json).
 FROM node:22-alpine AS build
 
 WORKDIR /app
@@ -12,6 +13,7 @@ COPY . .
 # Las VITE_* se hornean en el bundle en tiempo de build, no se leen en runtime.
 # Cambiar cualquiera de estas exige rebuildear la imagen.
 ARG VITE_API_URL
+ARG VITE_API_TIMEOUT
 ARG VITE_AUTH0_DOMAIN
 ARG VITE_AUTH0_CLIENT_ID
 ARG VITE_AUTH0_AUDIENCE

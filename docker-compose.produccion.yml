@@ -1,0 +1,143 @@
+# ══════════════════════════════════════════════════════════════
+#  Favalio · Pila completa para un VPS (Hostinger KVM)
+#
+#  Levanta las cuatro piezas en una sola red privada:
+#
+#    caddy     → único puerto expuesto a internet (80/443). Resuelve TLS solo.
+#    landing   → nginx estático, favalio.com
+#    web       → nginx estático, app.favalio.com
+#    api       → Node + Express, api.favalio.com
+#    postgres  → SIN puertos publicados: solo lo alcanza la API por la red interna
+#
+#  Uso:
+#    cp .env.produccion.example .env    # y completar
+#    docker compose -f docker-compose.produccion.yml up -d --build
+#
+#  Paso a paso completo en docs/DESPLIEGUE-HOSTINGER.md.
+#
+#  ⚠ Las VITE_* son argumentos de BUILD: viven dentro del bundle. Cambiar una
+#    en .env no tiene efecto hasta reconstruir (`up -d --build`).
+# ══════════════════════════════════════════════════════════════
+
+name: favalio
+
+services:
+  # ── Puerta de entrada ──────────────────────────────────────
+  # Caddy pide y renueva los certificados de Let's Encrypt solo, con los
+  # dominios que lee del Caddyfile. Redirige http → https sin configuración.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMINIO: ${DOMINIO}
+      EMAIL_TLS: ${EMAIL_TLS}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_datos:/data      # ← los certificados. Si se borra, se re-emiten
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+      - landing
+
+  # ── Base de datos ──────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    # Publicado SOLO en la interfaz local del servidor: desde internet no se
+    # llega. Para conectar un cliente gráfico va un túnel SSH
+    # (ver docs/DESPLIEGUE-HOSTINGER.md). Sin el prefijo 127.0.0.1 esto sería
+    # un Postgres abierto al mundo, que es como se pierde una base.
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - datos_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── API ────────────────────────────────────────────────────
+  # El CMD del Dockerfile corre las migraciones (con advisory lock) y recién
+  # después arranca el servidor. Si una migración falla, el contenedor no
+  # levanta: es preferible a arrancar con el esquema a medias.
+  api:
+    build:
+      context: ./apps/api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+
+      # Postgres vive en la misma red del compose: el host es el nombre del
+      # servicio y no hay SSL de por medio.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DB_SSL: "false"
+
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN}
+      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
+
+      ALLOWED_ORIGINS: https://${DOMINIO},https://www.${DOMINIO},https://app.${DOMINIO}
+      FRONTEND_URL: https://app.${DOMINIO}
+      LANDING_URL: https://${DOMINIO}
+
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+
+      TIENDANUBE_CLIENT_ID: ${TIENDANUBE_CLIENT_ID:-}
+      TIENDANUBE_CLIENT_SECRET: ${TIENDANUBE_CLIENT_SECRET:-}
+      TIENDANUBE_CONTACT_EMAIL: ${TIENDANUBE_CONTACT_EMAIL:-}
+
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+
+      # En el VPS el proceso no duerme, así que el cron interno de suscripciones
+      # sí dispara. CRON_SECRET queda igual disponible por si se quiere seguir
+      # empujando desde GitHub Actions.
+      CRON_SECRET: ${CRON_SECRET:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # /api/health consulta la base; /api/ping solo diría que el proceso vive.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5000/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── Aplicación ─────────────────────────────────────────────
+  web:
+    build:
+      context: ./apps/web
+      args:
+        VITE_API_URL: https://api.${DOMINIO}/api
+        VITE_API_TIMEOUT: ${VITE_API_TIMEOUT:-20000}
+        VITE_AUTH0_DOMAIN: ${VITE_AUTH0_DOMAIN}
+        VITE_AUTH0_CLIENT_ID: ${VITE_AUTH0_CLIENT_ID}
+        VITE_AUTH0_AUDIENCE: ${VITE_AUTH0_AUDIENCE}
+        VITE_LANDING_URL: https://${DOMINIO}
+    restart: unless-stopped
+
+  # ── Landing ────────────────────────────────────────────────
+  landing:
+    build:
+      context: ./apps/landing
+      args:
+        VITE_APP_URL: https://app.${DOMINIO}
+        VITE_CONTACT_EMAIL: ${VITE_CONTACT_EMAIL}
+    restart: unless-stopped
+
+volumes:
+  datos_postgres:
+  caddy_datos:
+  caddy_config:

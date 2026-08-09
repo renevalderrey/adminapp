@@ -1,0 +1,50 @@
+# ══════════════════════════════════════════════════════════════
+#  Favalio · Caddy (proxy inverso + TLS)
+#
+#  {$DOMINIO} y {$EMAIL_TLS} salen del .env, vía docker-compose.produccion.yml.
+#
+#  Caddy pide los certificados a Let's Encrypt la primera vez que alguien
+#  entra por HTTPS, y los renueva solo. Para que funcione, los dominios TIENEN
+#  que resolver ya al VPS: si el DNS todavía no propagó, el pedido falla y
+#  Caddy reintenta con espera creciente.
+#
+#  Redirección http → https: automática, no se configura.
+# ══════════════════════════════════════════════════════════════
+{
+	# Dirección a la que Let's Encrypt avisa si un certificado está por vencer
+	# y la renovación viene fallando.
+	email {$EMAIL_TLS}
+}
+
+# ── Landing ──
+{$DOMINIO} {
+	encode gzip
+	reverse_proxy landing:80
+
+	# HSTS: una vez que el navegador vio esta cabecera, no vuelve a intentar
+	# por http. Se activa recién cuando el sitio ya anda por https.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+}
+
+# ── www → raíz ──
+# Redirigir en vez de servir dos veces lo mismo: un solo contenido, una sola
+# URL canónica.
+www.{$DOMINIO} {
+	redir https://{$DOMINIO}{uri} permanent
+}
+
+# ── Aplicación ──
+app.{$DOMINIO} {
+	encode gzip
+	reverse_proxy web:80
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+}
+
+# ── API ──
+# `encode` acá sí importa: la API no tiene middleware de compresión, y algunas
+# respuestas (listados de inventario, exportaciones) son JSON grande.
+api.{$DOMINIO} {
+	encode gzip
+	reverse_proxy api:5000
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+}
