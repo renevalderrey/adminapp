@@ -2,9 +2,9 @@
 
 **Fecha del recorrido:** 7 de agosto de 2026.
 **Estado:** recorrido hecho y filtrado. **Tandas 1 a 4 cerradas**, más el bloque
-del teclado de la sección 4. Queda una decisión abierta —el selector de sucursal
-(sección 4, bloque D)— y una pregunta sin contestar —el ancho mínimo soportado
-(bloque C)—.
+del teclado de la sección 4. Los dos pendientes de la sección 4 —el selector
+de sucursal (bloque D) y el ancho mínimo (bloque C)— **también quedaron
+cerrados**.
 
 > ## Lo que quedó hecho, y lo que enseñó
 >
@@ -293,6 +293,36 @@ fija el máximo (1320px) y **nunca el mínimo**.
 No es que haya que hacerlas responsive —es un ERP de escritorio y eso es
 defendible—. Es que **el ancho mínimo soportado no está decidido ni medido**, y
 la pregunta «¿anda en la notebook de 13″ del contador?» hoy no la contesta nadie.
+
+> ### ✔ Contestada (hito 9)
+>
+> `marcoDeLasPantallas.navegador.js` ahora recorre las dieciocho pantallas a
+> **1280 y a 1920**, y `REGLAS-DISENO.md` declara 1280 como mínimo soportado.
+>
+> | | |
+> |---|---|
+> | Pantallas que desbordan a 1280px | **ninguna** |
+> | Encabezados que miden lo mismo a 1280 que a 1920 | **17 de 18** |
+> | Encabezados que crecen | **1**: Inventario, +58px (80 → 138) |
+>
+> O sea que la respuesta es **sí**, y lo único que se pierde son 58px de alto
+> útil en Inventario, cuya barra de filtros se apila en un renglón más.
+>
+> ⚠ Lo que había que medir **no era el desborde** —a 1080px ya estaba cubierto,
+> y 1080 es más angosto que 1280— sino **el apilado**: todos los encabezados son
+> `flex-wrap`, así que nada se rompe, se apila y empuja la tabla fuera de la
+> primera pantalla. Nadie lo reporta como defecto porque no falla nada.
+>
+> ⚠⚠ **La primera versión de la medición medía otra cosa.** Decía que el
+> encabezado de Inventario media 2152px, que es el alto de toda la lista de
+> productos: el selector subía un `<div>` de más. Un número que sale de medir
+> otra cosa se lee igual de bien que uno correcto, y ése es el problema.
+>
+> Y las instrucciones para correr estas pruebas **estaban incompletas**: sin
+> `ALLOWED_ORIGINS=http://localhost:5199` el navegador bloquea el contexto por
+> CORS, la aplicación se desloguea sola y las seis pruebas fallan con «no llegó a
+> haber `<main>`» — un mensaje que manda a buscar el problema a la sesión falsa,
+> que es donde no está. Costó cuatro intentos y quedó escrito.
 
 ### D · La costura shell ↔ pantalla: el selector de sucursal
 

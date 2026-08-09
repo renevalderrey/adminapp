@@ -24,7 +24,25 @@ import { defineConfig, devices } from '@playwright/test'
 //         -e POSTGRES_DB=adminapp_e2e -p 55432:5432 postgres:16-alpine
 //
 //       cd apps/api && DATABASE_URL=postgres://adminapp:adminapp@localhost:55432/adminapp_e2e \
-//         DB_SSL=false NODE_ENV=development BYPASS_AUTH=true PORT=5099 node src/server.js
+//         DB_SSL=false NODE_ENV=development BYPASS_AUTH=true PORT=5099 \
+//         ALLOWED_ORIGINS=http://localhost:5199 node src/server.js
+//
+//       ⚠ `ALLOWED_ORIGINS` **no es opcional**, y faltaba en estas
+//       instrucciones. La lista por defecto de `server.js` trae 5173, 5174 y
+//       3000; el servidor de estas pruebas corre en el **5199**, así que sin esa
+//       variable el navegador bloquea `GET /api/empresas/mi-contexto` por CORS,
+//       la aplicación se desloguea sola, y **las seis pruebas fallan con «no
+//       llegó a haber `<main>`»** — un mensaje que manda a buscar el problema a
+//       la sesión falsa, que es donde no está. Costó cuatro intentos.
+//
+//       Y hace falta el superadmin, o seis pantallas redirigen a `/pos`:
+//
+//         cd apps/api && DATABASE_URL=<la de pruebas> DB_SSL=false \
+//           node scripts/superadmin.js activar dev@adminapp.app
+//
+//       Si la base no está en el 55432, va además
+//       `ADMINAPP_DB_DE_PRUEBAS=<la misma URL>`: la siembra de TiendaNube se
+//       conecta por su cuenta y no lee `DATABASE_URL`.
 //
 //       El arranque en desarrollo crea el esquema con `sequelize.sync`, siembra
 //       los permisos, la empresa 1, sus tres sucursales y el usuario

@@ -50,6 +50,9 @@ import { test, expect } from '@playwright/test'
  * bucle con una excepción, así que lo que va antes se mide igual y el informe
  * conserva las diecisiete que ya funcionaban.
  */
+/** El salto de linea, como constante. */
+const SALTO = String.fromCharCode(10)
+
 const CON_MARCO = [
   '/ventas', '/inventario', '/recetas', '/produccion', '/clientes', '/caja',
   '/impuestos', '/proveedores', '/ordenes-compra', '/faltantes', '/comparador',
@@ -143,6 +146,122 @@ function medirElMarco(page) {
     }
   })
 }
+
+// ════════════════════════════════════════════
+//  ¿Anda en la notebook de 13 pulgadas del contador?
+//
+//  El informe de coherencia del hito 9 la dejó como pregunta sin contestar: seis
+//  pantallas tienen CERO prefijos responsive, `REGLAS-DISENO.md` fija el máximo
+//  —1320px— y **nunca el mínimo**, y estas pruebas medían 1080 y 1920.
+//
+//  Esto la contesta. **No para hacerlas responsive** —es un ERP de escritorio y
+//  eso es defendible—, sino para que el ancho mínimo soportado esté MEDIDO en
+//  vez de supuesto.
+//
+//  ── Qué se mide, y por qué no alcanza con el desborde del `<body>` ──
+//
+//  El desborde horizontal ya está cubierto a 1080px, que es más angosto que
+//  1280: si pasa allá, pasa acá. Lo que NO estaba medido es lo otro, y es lo que
+//  se ve en una notebook: **que la barra de acciones del encabezado se apile en
+//  tres o cuatro renglones**. Todos los encabezados son `flex-wrap`, así que
+//  nada se desborda — se apila, y empuja la tabla fuera de la primera pantalla.
+//
+//  Nadie lo reporta como defecto porque no se rompe nada. Simplemente hay que
+//  scrollear para ver la primera fila de la lista que uno vino a mirar.
+// ════════════════════════════════════════════
+
+/** Cuánto mide de alto el encabezado de pantalla, y en cuántos renglones. */
+function medirElEncabezado(page) {
+  return page.evaluate(() => {
+    const contenedor = document.querySelector('main').firstElementChild
+    const centrado = contenedor.firstElementChild
+
+    // El `h1` de la pantalla y el bloque que lo contiene: es el encabezado, sea
+    // `PageHeader` o hecho a mano.
+    const titulo = centrado.querySelector('h1')
+    if (!titulo) return null
+
+    // ⚠ La raiz de la PANTALLA, no el contenedor centrado.
+    //
+    // Entre el `mx-auto max-w-[1320px]` y el encabezado hay un `<div>` mas —el
+    // de `anim-subida`— asi que subir hasta que el padre fuera el centrado
+    // devolvia la pagina entera: la primera medicion decia que el encabezado de
+    // Inventario media 2152px, que es el alto de toda la lista de productos.
+    //
+    // Un numero que sale de medir otra cosa se lee igual de bien que uno
+    // correcto, y ese es el problema.
+    const raiz = centrado.firstElementChild
+    if (!raiz || !raiz.contains(titulo)) return null
+
+    let encabezado = titulo.parentElement
+    while (encabezado && encabezado.parentElement !== raiz) {
+      encabezado = encabezado.parentElement
+    }
+    if (!encabezado || encabezado === raiz) return null
+
+    const alto = Math.round(encabezado.getBoundingClientRect().height)
+
+    // En cuántos renglones quedó: se agrupan los hijos por su borde superior.
+    const topes = new Set(
+      [...encabezado.querySelectorAll('*')]
+        .filter((el) => el.getBoundingClientRect().height > 0)
+        .map((el) => Math.round(el.getBoundingClientRect().top / 8))
+    )
+
+    return { alto, renglones: topes.size, ruta: location.pathname }
+  })
+}
+
+test.describe('El ancho mínimo soportado: 1280px', () => {
+  // No falla: MIDE. El informe pidió contestar la pregunta antes de decidir
+  // cuánto trabajo es arreglarlo, así que este caso imprime el mapa y solo se
+  // pone en rojo si algo se desborda de verdad —que a 1080 ya no pasa—.
+  test('a 1280px ninguna pantalla desborda, y queda medido cuánto se apila cada encabezado', async ({ page }) => {
+    const desbordes = []
+    const altos = { 1280: {}, 1920: {} }
+
+    // El ancho grande primero: es la referencia contra la que se compara.
+    for (const ancho of [1920, 1280]) {
+      await page.setViewportSize({ width: ancho, height: 800 })
+
+      for (const ruta of CON_MARCO) {
+        const llego = await abrir(page, ruta)
+        if (llego !== ruta) continue
+
+        const m = await medirElMarco(page)
+        if (m.documento.desbordeHorizontal > 0) {
+          desbordes.push(`${ruta} a ${ancho}px: sobran ${m.documento.desbordeHorizontal}px`)
+        }
+
+        const e = await medirElEncabezado(page)
+        if (e) altos[ancho][ruta] = e.alto
+      }
+    }
+
+    const filas = Object.keys(altos[1280])
+      .map((ruta) => {
+        const chico = altos[1280][ruta]
+        const grande = altos[1920][ruta] ?? chico
+
+        return { ruta, chico, grande, crece: chico - grande }
+      })
+      .sort((a, b) => b.crece - a.crece || b.chico - a.chico)
+      .map(({ ruta, chico, grande, crece }) => (
+        `${String(chico).padStart(4)}px  (a 1920: ${String(grande).padStart(4)}px, `
+        + `${crece > 0 ? '+' : ''}${crece})  ${ruta}`
+      ))
+
+    // eslint-disable-next-line no-console
+    console.log([
+      '',
+      '-- Alto del encabezado a 1280px vs 1920px, por cuanto crece --',
+      ...filas,
+      '',
+    ].join(SALTO))
+
+    expect(desbordes).toEqual([])
+  })
+})
 
 test.describe('Ninguna de las dieciocho pantallas scrollea el cuerpo de la página', () => {
   // Los dos anchos del paso 1: el mínimo de la maqueta y el monitor del

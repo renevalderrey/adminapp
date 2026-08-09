@@ -735,6 +735,37 @@ lo que hay que corregir, no agregar la variante.
 
 ---
 
+## El ancho de la ventana
+
+**Máximo 1320px** de contenido centrado. **Mínimo soportado: 1280px**, que es la
+notebook de trece pulgadas.
+
+No es responsive y no tiene por qué serlo: es un ERP de escritorio. Lo que sí
+está es **medido** —`pruebas-de-navegador/marcoDeLasPantallas.navegador.js`
+recorre las dieciocho pantallas a 1280 y a 1920— y el resultado es:
+
+| | |
+|---|---|
+| Pantallas que desbordan a 1280px | **ninguna** |
+| Encabezados que miden lo mismo a 1280 que a 1920 | **17 de 18** |
+| Encabezados que crecen | **1**: Inventario, +58px (80 → 138) |
+
+O sea que a 1280 la aplicación entra entera, y lo único que se pierde son 58px
+de alto útil en Inventario, cuya barra de filtros se apila en un renglón más.
+
+⚠ **Lo que se mide no es el desborde, es el apilado.** Todos los encabezados son
+`flex-wrap`, así que nada se rompe: se apila, y empuja la tabla fuera de la
+primera pantalla. Nadie lo reporta como defecto porque no falla nada —
+simplemente hay que scrollear para ver la primera fila de la lista que uno vino
+a mirar.
+
+> Hasta el hito 9 el mínimo **no estaba decidido ni medido**: el documento fijaba
+> el máximo y nada más, seis pantallas tienen cero prefijos responsive, y la
+> pregunta «¿anda en la notebook de trece pulgadas del contador?» no la
+> contestaba nadie. Ahora la contesta una prueba.
+
+---
+
 ## El selector de sucursal
 
 Vive en la barra superior y **solo se dibuja donde hace algo**. El alcance de
