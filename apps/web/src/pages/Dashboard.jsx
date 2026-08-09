@@ -5,6 +5,7 @@ import {
   Calculator,
   LayoutDashboard,
   Loader2,
+  ClipboardList,
   PackageSearch,
   Receipt,
   ShoppingCart,
@@ -22,6 +23,7 @@ import { importeAbreviado, importeOGuion, pesos } from '@/utils/formato'
 import { etiquetaDePago } from '@/utils/mediosDePago'
 import { nombreDeRuta } from '@/components/navegacion'
 import { faltaElPermiso } from '@/utils/permisos'
+import EstadoVacio from '@/components/EstadoVacio'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Panel de control
@@ -272,7 +274,7 @@ export default function Dashboard() {
   const estrategias = puedeSimular ? estrategiasDePrecio(fijos, meta) : []
 
   return (
-    <div className="flex flex-col gap-7">
+    <div className="anim-subida flex flex-col gap-7">
       <PageHeader
         titulo="Panel de control"
         descripcion="Cómo viene el negocio y qué necesita tu intervención. Los indicadores son de toda la empresa."
@@ -349,12 +351,12 @@ export default function Dashboard() {
                 ))}
               </ul>
             ) : (
-              <div className="px-5 py-8 text-center">
-                <p className="font-semibold">Todavía no hay ventas registradas.</p>
-                <p className="mx-auto mt-1 max-w-[52ch] text-sm text-fg-2">
-                  Acá van a aparecer las últimas, con la hora y quién las cobró.
-                </p>
-              </div>
+              <EstadoVacio
+                icono={ClipboardList}
+                codigo="sin_ventas"
+                titulo="Todavía no hay ventas registradas."
+                detalle="Acá van a aparecer las últimas, con la hora y quién las cobró."
+              />
             )}
           </Bloque>
 

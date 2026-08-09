@@ -1085,8 +1085,13 @@ const InvoicesList = () => {
           </div>
 
           {loading && sales.length === 0 ? (
-            <div className="py-12 text-center">
-              <p className="text-sm text-fg-2">Cargando ventas…</p>
+            /* ⚠ Un spinner, no la palabra «Cargando». Es la forma que usa el
+               resto del sistema; decirlo con texto acá y con un ícono girando en
+               las otras diez hace que la misma espera se lea distinto según la
+               pantalla. Y un texto estático de tres palabras no distingue «está
+               tardando» de «se colgó». */
+            <div className="grid place-items-center py-16">
+              <Loader2 className="h-5 w-5 animate-spin text-fg-3" />
             </div>
           ) : sales.length === 0 ? (
             hayFiltros ? (

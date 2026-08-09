@@ -630,7 +630,13 @@ describe('El nombre del menú y el título de la pantalla coinciden', () => {
 
     const limpio = sinComentarios(fuente.contenido)
 
-    const delPageHeader = limpio.match(/titulo="([^"]+)"/)?.[1]
+    // ⚠ Se busca el `titulo=` **de `PageHeader`**, no el primero del archivo.
+    //
+    // `EstadoVacio` también recibe un `titulo`, y en tres pantallas aparece
+    // antes: la guardia comparaba «Ninguna orden coincide con el filtro.»
+    // contra «Órdenes de compra» y daba tres falsos hallazgos. Un hallazgo
+    // falso cuesta más que ninguno, porque enseña a no leerlos.
+    const delPageHeader = limpio.match(/<PageHeader[\s\S]{0,300}?titulo="([^"]+)"/)?.[1]
     if (delPageHeader) return delPageHeader
 
     // El `<h1>` entero, con lo que tenga adentro. Cuatro pantallas le ponen un
@@ -666,5 +672,154 @@ describe('El nombre del menú y el título de la pantalla coinciden', () => {
 
   it.each(PANTALLA_DE_LA_RUTA)('%s dice lo mismo en el menú y adentro', (ruta, archivo) => {
     expect(deLaPantalla(archivo)).toBe(delMenu(ruta))
+  })
+})
+
+// ════════════════════════════════════════════
+//  ── 9 · Todas las pantallas entran igual ──
+//
+//  `anim-subida` estaba en ocho de las doce. Las otras cuatro —Proveedores,
+//  Órdenes de compra, Panel y Faltantes— aparecían de golpe.
+//
+//  ── Por qué importa más de lo que parece ──
+//
+//  No se nota mirando una pantalla: se nota **al cambiar de pantalla**, que es
+//  lo que alguien hace cincuenta veces por día. Ocho entran subiendo ocho
+//  píxeles y cuatro aparecen de golpe, así que la aplicación se siente
+//  entrecortada sin que nadie pueda decir por qué. Es la corrección más barata
+//  del hito —una clase por archivo— y la que más veces por día se ve.
+//
+//  ⚠ La animación NO se aplica con `prefers-reduced-motion`: está resuelto en
+//  `index.css`, y por eso poner la clase es seguro en todas.
+// ════════════════════════════════════════════
+
+describe('Cada pantalla entra con la misma animación', () => {
+  /** Las doce pantallas del sistema, con el archivo que las dibuja. */
+  const PANTALLAS = [
+    'pages/InvoicesList.jsx',
+    'pages/Inventory.jsx',
+    'pages/Faltantes.jsx',
+    'pages/Orders.jsx',
+    'pages/Comparador.jsx',
+    'pages/PurchaseOrders.jsx',
+    'pages/Expenses.jsx',
+    'pages/Dashboard.jsx',
+    'pages/Settings.jsx',
+    'pages/Tiendanube.jsx',
+    'pages/Team.jsx',
+  ]
+
+  it('ninguna se quedó sin `anim-subida`', () => {
+    const sinAnimacion = PANTALLAS.filter((archivo) => {
+      const fuente = ARCHIVOS.find(({ nombre }) => nombre === archivo)
+      return !fuente || !/anim-subida/.test(sinComentarios(fuente.contenido))
+    })
+
+    expect(sinAnimacion).toEqual([])
+  })
+
+  it('la guardia miró de verdad: los once archivos existen', () => {
+    // Ancla. Una lista de archivos que no existen da cero hallazgos y verde.
+    const faltan = PANTALLAS.filter(
+      (archivo) => !ARCHIVOS.some(({ nombre }) => nombre === archivo)
+    )
+
+    expect(faltan).toEqual([])
+  })
+
+  it('y la animación se apaga con `prefers-reduced-motion`', () => {
+    // La otra mitad, y la que hace que poner la clase sea seguro: sin esto,
+    // «todas las pantallas animadas» sería peor que el defecto para quien pidió
+    // que no se muevan.
+    const fs = require('node:fs')
+    const css = fs.readFileSync(path.join(RAIZ, 'index.css'), 'utf8')
+
+    expect(css).toMatch(/prefers-reduced-motion/)
+    expect(css.slice(css.indexOf('prefers-reduced-motion'))).toMatch(/anim-subida/)
+  })
+})
+
+// ════════════════════════════════════════════
+//  ── 10 · Un solo «acá todavía no hay nada» ──
+//
+//  Había SEIS formas de dibujarlo: tres funciones llamadas `EstadoVacio`
+//  —`Team.jsx` y `Tiendanube.jsx` idénticas salvo el ícono, `PurchaseOrders.jsx`
+//  con otra forma— y tres pantallas que lo hacían a mano, **las tres sin
+//  ícono**: `Comparador`, `Dashboard` y `Faltantes`.
+//
+//  ⚠ **El día 1 las doce pantallas están vacías.** Los estados vacíos no son un
+//  caso de borde: son la primera pasada completa que ve el dueño del comercio
+//  cuando abre el sistema por primera vez. Que la mitad tenga ícono y la otra
+//  mitad no es lo primero que se ve, y es lo que hace que un sistema nuevo
+//  parezca a medio terminar.
+//
+//  Y el ícono no es decoración: sin él, un bloque con dos renglones de texto
+//  gris se lee como un error, no como «esto está vacío».
+// ════════════════════════════════════════════
+
+describe('El estado vacío sale de un solo componente', () => {
+  const FUENTE = 'components/EstadoVacio.jsx'
+
+  it('ninguna pantalla declara su propio EstadoVacio', () => {
+    const propios = ARCHIVOS
+      .filter(({ nombre }) => nombre !== FUENTE)
+      .flatMap(({ nombre, contenido }) =>
+        sinComentarios(contenido)
+          .split('\n')
+          .map((linea, i) => ({ archivo: nombre, n: i + 1, texto: linea.trim() }))
+          .filter(({ texto }) => /^function EstadoVacio\b/.test(texto))
+      )
+
+    expect(propios.map(({ archivo, n }) => `${archivo}:${n}`)).toEqual([])
+  })
+
+  it('el componente compartido siempre dibuja un ícono', () => {
+    // Con `icono` opcional, la mitad de las pantallas se lo iba a olvidar — que
+    // es exactamente lo que pasó con las tres que lo hacían a mano. Por eso hay
+    // un valor por omisión y no un `icono &&`.
+    const fuente = ARCHIVOS.find(({ nombre }) => nombre === FUENTE)
+
+    expect(fuente).toBeDefined()
+    expect(fuente.contenido).toMatch(/const Icono = icono \|\|/)
+    expect(fuente.contenido).toMatch(/<Icono/)
+  })
+
+  it('lo usan al menos seis pantallas', () => {
+    // Ancla. Cero declaraciones propias se lee igual que «no encontré ningún
+    // archivo», y así es como esta guardia se queda verde para siempre.
+    const usuarios = ARCHIVOS.filter(({ contenido }) =>
+      /from '@\/components\/EstadoVacio'/.test(contenido)
+    )
+
+    expect(usuarios.length).toBeGreaterThanOrEqual(6)
+  })
+
+  it('y ninguna pantalla dibuja un vacío a mano sin ícono', () => {
+    // El otro camino, y el que tenían las tres: no declarar función y escribir
+    // el `<div className="py-12 text-center">` directo. Se busca ese patrón sin
+    // un `<svg`/ícono cerca.
+    const aMano = ARCHIVOS
+      .filter(({ nombre }) => nombre !== FUENTE)
+      .flatMap(({ nombre, contenido }) => {
+        const limpio = sinComentarios(contenido)
+        const hallazgos = []
+
+        // ⚠ El `className` tiene que ser EXACTAMENTE el del vacío. Con un
+        // `[^"]*py-12 text-center` suelto entraban los paneles de borde
+        // punteado de `PanelVenta` y `PanelOrdenDeCompra`, que son otra cosa —un
+        // hueco dentro de un panel abierto, no un estado vacío de pantalla— y
+        // daban dos hallazgos falsos. Un hallazgo falso cuesta más que ninguno,
+        // porque enseña a no leerlos.
+        for (const m of limpio.matchAll(/className="py-(?:8|12) text-center"[\s\S]{0,320}?<\/div>/g)) {
+          // Si adentro hay un componente con mayúscula —el ícono— está bien.
+          if (!/<[A-Z]\w+\s/.test(m[0])) {
+            hallazgos.push(`${nombre}: ${m[0].slice(0, 60).replace(/\s+/g, ' ')}`)
+          }
+        }
+
+        return hallazgos
+      })
+
+    expect(aMano).toEqual([])
   })
 })

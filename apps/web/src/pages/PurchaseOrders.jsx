@@ -52,6 +52,7 @@ import { pesos, fechaCorta, fechaDeHoy } from '@/utils/formato';
 import { mensajeDeError } from '@/utils/erroresDeApi';
 import PageHeader from '@/components/PageHeader'
 import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
+import EstadoVacio from '@/components/EstadoVacio'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · Órdenes de compra
@@ -258,35 +259,37 @@ function CampoDeFecha({ etiqueta, valor, onChange }) {
  * lo que dice —el servidor no encontró ninguna— y aclarar sobre cuántas se buscó
  * sería una pantalla disculpándose por algo que ya no pasa.
  */
-function EstadoVacio({ hayFiltro, onLimpiar }) {
+function SinOrdenes({ hayFiltro, onLimpiar }) {
+  // ⚠ Los DOS vacíos se dibujan con el mismo componente, y siguen diciendo
+  // cosas distintas. «No hay órdenes» sobre un filtro que no encontró nada hace
+  // concluir que las órdenes se perdieron; por eso son dos y no uno.
   if (hayFiltro) {
     return (
-      <div className="py-12 text-center">
-        <FilterX className="mx-auto h-7 w-7 text-fg-3" />
-        <p className="mt-3 font-semibold">Ninguna orden coincide con el filtro.</p>
-        <p className="mt-1 text-sm text-fg-2">
-          Probá con otro período, volvé al segmento «Todas» o borrá la búsqueda.
-        </p>
+      <EstadoVacio
+        icono={FilterX}
+        codigo="filtro_sin_resultados"
+        titulo="Ninguna orden coincide con el filtro."
+        detalle="Probá con otro período, volvé al segmento «Todas» o borrá la búsqueda."
+      >
         <button
           type="button"
           onClick={onLimpiar}
-          className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3
                      text-[13px] font-medium transition-colors hover:border-border-2 hover:bg-surface-3"
         >
           Limpiar filtros
         </button>
-      </div>
+      </EstadoVacio>
     );
   }
 
   return (
-    <div className="py-12 text-center">
-      <ClipboardList className="mx-auto h-7 w-7 text-fg-3" />
-      <p className="mt-3 font-semibold">Todavía no hay órdenes de compra.</p>
-      <p className="mt-1 text-sm text-fg-2">
-        Cuando le pidas mercadería a un proveedor, la orden aparece acá con lo que falta recibir.
-      </p>
-    </div>
+    <EstadoVacio
+      icono={ClipboardList}
+      codigo="sin_ordenes"
+      titulo="Todavía no hay órdenes de compra."
+      detalle="Cuando le pidas mercadería a un proveedor, la orden aparece acá con lo que falta recibir."
+    />
   );
 }
 
@@ -860,7 +863,7 @@ const PurchaseOrders = () => {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="anim-subida space-y-6">
       {/* ⚠ El botón principal va como `children`: `PageHeader` dibuja la zona de
           acciones **solo si los hay** (`PageHeader.jsx:27`), así que montarlo sin
           nada dejaba la pantalla sin su acción principal y sin ninguna señal de
@@ -990,11 +993,12 @@ const PurchaseOrders = () => {
         </div>
 
         {loading && orders.length === 0 ? (
-          <div className="py-12 text-center">
-            <p className="text-sm text-fg-2">Cargando órdenes…</p>
+          /* Un spinner, no la palabra «Cargando». Ver `InvoicesList.jsx`. */
+          <div className="grid place-items-center py-16">
+            <Loader2 className="h-5 w-5 animate-spin text-fg-3" />
           </div>
         ) : orders.length === 0 ? (
-          <EstadoVacio hayFiltro={hayFiltro} onLimpiar={limpiarFiltros} />
+          <SinOrdenes hayFiltro={hayFiltro} onLimpiar={limpiarFiltros} />
         ) : (
           <TablaGrid anchoMinimo={ANCHO_MINIMO}>
             <Encabezado columnas={COLUMNAS}>

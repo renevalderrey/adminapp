@@ -966,7 +966,7 @@ const Orders = () => {
   const paginasDeMovimientos = Math.max(1, Math.ceil(totalDeMovimientos / MOVIMIENTOS_POR_PAGINA))
 
   return (
-    <div className="space-y-6">
+    <div className="anim-subida space-y-6">
       <PageHeader
         titulo="Proveedores"
         descripcion="A quién le debés y cuánto, con la cuenta corriente de cada uno: lo comprado, lo pagado y lo que pediste y todavía no llegó."

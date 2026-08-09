@@ -34,6 +34,7 @@ import {
 } from '@/utils/tiendanube'
 import { faltaElPermiso } from '@/utils/permisos'
 import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
+import EstadoVacio from '@/components/EstadoVacio'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · /tiendanube
@@ -162,16 +163,6 @@ const BOTON_PRINCIPAL =
  * que sugiere cada uno es opuesta —cargar productos en TiendaNube contra borrar
  * el filtro—.
  */
-function EstadoVacio({ codigo, titulo, detalle }) {
-  return (
-    <div data-estado-vacio={codigo} className="px-5 py-12 text-center">
-      <PackageSearch className="mx-auto mb-2.5 h-7 w-7 text-fg-3" strokeWidth={1.6} />
-      <p className="font-semibold">{titulo}</p>
-      <p className="mx-auto mt-1 max-w-[52ch] text-sm text-fg-2">{detalle}</p>
-    </div>
-  )
-}
-
 // ════════════════════════════════════════════
 //  Lo que un pedido NO descontó
 //
@@ -777,18 +768,21 @@ export default function Tiendanube() {
 
         {!hayTienda ? (
           <EstadoVacio
+            icono={PackageSearch}
             codigo="sin_tienda"
             titulo="Todavía no hay ninguna tienda conectada."
             detalle="Cuando conectes tu tienda de TiendaNube vas a ver acá cada variante de tu catálogo, con su SKU y el stock que publica."
           />
         ) : totalDeVariantes === 0 ? (
           <EstadoVacio
+            icono={PackageSearch}
             codigo="tienda_sin_productos"
             titulo="Tu tienda no tiene ninguna variante cargada."
             detalle="Cargá productos en el panel de TiendaNube y después apretá «Refrescar catálogo» para traerlos acá."
           />
         ) : variantes.length === 0 && filtroPuesto ? (
           <EstadoVacio
+            icono={PackageSearch}
             codigo="filtro_sin_resultados"
             titulo="Ninguna variante coincide con el filtro."
             detalle="Probá con otro texto o sacá «Solo sin mapear». Las variantes siguen ahí: lo que no encontró nada es la búsqueda."
@@ -797,6 +791,7 @@ export default function Tiendanube() {
           <>
             {mapeadas === 0 && (
               <EstadoVacio
+            icono={PackageSearch}
                 codigo="sin_mapeos"
                 titulo="Todavía no mapeaste ningún producto."
                 detalle="Mientras ninguna variante esté mapeada, el stock que publica tu tienda no lo toca nadie. Abrí una variante de la lista y elegí contra qué producto del sistema va."

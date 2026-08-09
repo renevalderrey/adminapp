@@ -20,6 +20,7 @@ import {
 import { pesosDeLista, fechaDeHoy } from '@/utils/formato'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 import { faltaElPermiso } from '@/utils/permisos'
+import EstadoVacio from '@/components/EstadoVacio'
 
 // ════════════════════════════════════════════
 //  Comparador de proveedores
@@ -221,14 +222,12 @@ export default function Comparador() {
             <Loader2 className="h-5 w-5 animate-spin text-fg-3" />
           </div>
         ) : listas.length === 0 ? (
-          <div className="py-12 text-center">
-            <ClipboardList className="mx-auto h-7 w-7 text-fg-3" />
-            <p className="mt-3 font-semibold">Todavía no cargaste ninguna lista.</p>
-            <p className="mx-auto mt-1 max-w-[46ch] text-sm text-fg-2">
-              Pegá la lista de precios que te manda cada proveedor. Con dos o más
-              podés compararlas.
-            </p>
-          </div>
+          <EstadoVacio
+            icono={ClipboardList}
+            codigo="sin_listas"
+            titulo="Todavía no cargaste ninguna lista."
+            detalle="Pegá la lista de precios que te manda cada proveedor. Con dos o más podés compararlas."
+          />
         ) : (
           <div className="divide-y divide-border">
             {listas.map(lista => (

@@ -30,6 +30,7 @@ import {
   tonoDeMiembro,
 } from '@/utils/equipo'
 import { faltaElPermiso } from '@/utils/permisos'
+import EstadoVacio from '@/components/EstadoVacio'
 
 // ════════════════════════════════════════════
 //  ADMINAPP · /equipo
@@ -130,24 +131,6 @@ const CAMPO =
  * «no se pudo leer el equipo» se leen igual si el texto es el mismo, y la acción
  * que sugiere cada uno es opuesta.
  */
-function EstadoVacio({ codigo, titulo, detalle, icono }) {
-  // El componente se pasa a una variable con mayúscula en vez de renombrarlo en
-  // la desestructuración: con `icono: Icono`, la única referencia a `Icono`
-  // queda adentro del JSX, y esta configuración de eslint no trae
-  // `jsx-uses-vars` —no está `eslint-plugin-react`—, así que lo marca como
-  // parámetro sin usar. Acá `icono` se usa de verdad y `Icono` cae bajo el
-  // `varsIgnorePattern: '^[A-Z_]'` que ya existe.
-  const Icono = icono || Users
-
-  return (
-    <div data-estado-vacio={codigo} className="px-5 py-12 text-center">
-      <Icono className="mx-auto mb-2.5 h-7 w-7 text-fg-3" strokeWidth={1.6} />
-      <p className="font-semibold">{titulo}</p>
-      <p className="mx-auto mt-1 max-w-[52ch] text-sm text-fg-2">{detalle}</p>
-    </div>
-  )
-}
-
 export default function Team() {
   const { can } = usePermission()
   const { confirm, ConfirmDialog } = useConfirmDialog()
@@ -470,6 +453,8 @@ export default function Team() {
         {!cargando && miembros.length === 0 ? (
           errorDeCarga ? (
             <EstadoVacio
+            icono={Users}
+              icono={Users}
               codigo="no_se_pudo_leer"
               titulo="No se pudo leer el equipo."
               detalle="El aviso de arriba dice qué pasó. Esta lista está vacía porque el pedido falló, no porque no haya nadie."
@@ -477,6 +462,8 @@ export default function Team() {
             />
           ) : (
             <EstadoVacio
+            icono={Users}
+              icono={Users}
               codigo="equipo_de_una_persona"
               titulo="Por ahora estás sola o solo en esta empresa."
               detalle="Invitá a alguien con el botón de arriba: le va a llegar un enlace para registrarse y sumarse con el rol que elijas."
@@ -550,6 +537,7 @@ export default function Team() {
 
         {pendientes.length === 0 ? (
           <EstadoVacio
+            icono={Users}
             codigo="sin_invitaciones"
             titulo="No hay ninguna invitación esperando."
             detalle="Acá aparecen las que mandaste y todavía nadie aceptó, con la fecha en que vencen."

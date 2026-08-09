@@ -13,7 +13,9 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import {
   AlertTriangle, MessageCircle, FileSpreadsheet, ShoppingCart, RefreshCw, Minus, Plus,
+  PackageCheck,
 } from 'lucide-react'
+import EstadoVacio from '@/components/EstadoVacio'
 
 // ════════════════════════════════════════════
 //  Faltantes → pedido
@@ -199,7 +201,7 @@ export default function Faltantes() {
   }, [datos, itemsAPedir])
 
   return (
-    <div className="space-y-4">
+    <div className="anim-subida space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2">
@@ -269,11 +271,13 @@ export default function Faltantes() {
 
       {datos && datos.proveedores.length === 0 && (
         <Card>
-          <CardContent className="py-12 text-center">
-            <p className="font-semibold">No falta nada.</p>
-            <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
-              Ningún producto está por debajo de su mínimo (ni del umbral de {umbral}).
-            </p>
+          <CardContent className="p-0">
+            <EstadoVacio
+              icono={PackageCheck}
+              codigo="sin_faltantes"
+              titulo="No falta nada."
+              detalle={`Ningún producto está por debajo de su mínimo (ni del umbral de ${umbral}).`}
+            />
           </CardContent>
         </Card>
       )}
