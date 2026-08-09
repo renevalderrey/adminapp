@@ -1,21 +1,20 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import * as XLSX from 'xlsx'
 import api from '@/services/api'
 import useStore from '@/store/useStore'
+import { usePermission } from '@/hooks/usePermission'
 import { enviarPedidoPorWhatsapp } from '@/utils/pedidoWhatsapp'
-import { fechaDeHoy } from '@/utils/formato'
+import { fechaDeHoy, pesos } from '@/utils/formato'
 import { mensajeDeError } from '@/utils/erroresDeApi'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
+import { faltaElPermiso } from '@/utils/permisos'
+import { ESPERA_DE_BUSQUEDA } from '@/utils/busqueda'
+import PageHeader from '@/components/PageHeader'
+import EstadoVacio from '@/components/EstadoVacio'
 import {
   AlertTriangle, MessageCircle, FileSpreadsheet, ShoppingCart, RefreshCw, Minus, Plus,
-  PackageCheck,
+  PackageCheck, Loader2, Check,
 } from 'lucide-react'
-import EstadoVacio from '@/components/EstadoVacio'
 
 // ════════════════════════════════════════════
 //  Faltantes → pedido
@@ -26,11 +25,52 @@ import EstadoVacio from '@/components/EstadoVacio'
 //  cantidad sugerida, así que armar el pedido seguía siendo a mano.
 //
 //  Se agrupa por proveedor porque es la unidad en la que se pide.
+//
+//  ── Lo que se corrigió en el hito 9, y por qué estaba ──
+//
+//  Ésta es la única de las doce pantallas que **nunca entró a un hito de
+//  rediseño**: no es una que se desalineó, es una que nunca se alineó. Y hasta
+//  el hito 9 no tenía **una sola prueba**, aunque crea órdenes de compra, manda
+//  WhatsApp y exporta a Excel.
+//
+//  El orden del informe fue guardia → test de render → reescritura, y no es un
+//  detalle de proceso: reescribir presentación sin una red que diga qué hacía la
+//  pantalla es cómo se pierde una regla de negocio sin que nadie se entere. Acá
+//  las reglas son «cuánto pedirle a quién» y «qué importe tiene ese pedido».
+//
+//  Lo que apareció al escribir esa red:
+//
+//   1. **El `<label>` del umbral no estaba asociado a su campo.** Con un lector
+//      de pantalla el número no tiene nombre, y hacer clic en la palabra no
+//      enfoca el campo. Lo encontró el test, no una lectura.
+//   2. **Dos clics en «Orden de compra» creaban DOS órdenes.** Es el mismo molde
+//      que el doble pago de la cuenta corriente, y acá también es plata: dos
+//      órdenes duplican la deuda con el proveedor cuando se reciben.
+//   3. **Los importes se formateaban con `toLocaleString('es-AR')` a secas**, o
+//      sea máximo tres decimales por defecto: `$1.234,567` al lado de
+//      `$1.200`. Es el defecto exacto que `utils/formato.js` existe para evitar.
+//   4. **El botón de orden de compra no miraba ningún permiso.** Quien no puede
+//      crearlas apretaba, comía un 403 y no sabía por qué.
+//   5. **El umbral consultaba en cada tecla.** Escribir «100» son tres consultas
+//      a un endpoint que barre el inventario entero.
+//   6. **Nada decía que la orden ya se había creado**, así que la única forma de
+//      no crearla dos veces era acordarse.
 // ════════════════════════════════════════════
 
 export default function Faltantes() {
   const [datos, setDatos] = useState(null)
-  const [cargando, setCargando] = useState(false)
+
+  // ⚠ Arranca en `true`, no en `false`.
+  //
+  // El `useEffect` de abajo consulta al montar, así que el primer render SIEMPRE
+  // es una carga en curso. Con `false` había un frame en el que ni el spinner ni
+  // el vacío ni los datos se dibujaban: la pantalla quedaba en blanco.
+  const [cargando, setCargando] = useState(true)
+
+  // Lo tipeado, y lo que de verdad se le pregunta al servidor. Son DOS estados
+  // porque la consulta va con rebote: mientras se escribe «100», el campo dice
+  // 100 y el filtro todavía dice 10.
+  const [umbralTipeado, setUmbralTipeado] = useState(3)
   const [umbral, setUmbral] = useState(3)
 
   // Cantidades editadas por el usuario, por product_id. Arrancan en la
@@ -39,7 +79,28 @@ export default function Faltantes() {
   const [excluidos, setExcluidos] = useState(new Set())
   const [nota, setNota] = useState('')
 
+  // Los proveedores a los que ya se les creó la orden en esta pasada.
+  const [ordenados, setOrdenados] = useState(new Set())
+
+  // ⚠ Un `useRef` y no un estado: un estado se lee actualizado recién en el
+  // render siguiente, así que dos clics de la misma tanda entran los dos. Es el
+  // mismo molde del cobro del punto de venta y del pago a proveedores.
+  const creandoOrden = useRef(new Set())
+
   const puntoDeVentaActivo = useStore(s => s.puntoDeVentaActivo)
+  const { can } = usePermission()
+
+  const puedeCrearOrdenes = can('ordenes_compra.crear')
+
+  // El rebote del umbral. Sale de `utils/busqueda.js` porque es el mismo tiempo
+  // que espera cualquier campo de esta aplicación antes de consultar.
+  useEffect(() => {
+    if (umbralTipeado === umbral) return undefined
+
+    const reloj = setTimeout(() => setUmbral(umbralTipeado), ESPERA_DE_BUSQUEDA)
+
+    return () => clearTimeout(reloj)
+  }, [umbralTipeado, umbral])
 
   const cargar = useCallback(async () => {
     setCargando(true)
@@ -52,13 +113,15 @@ export default function Faltantes() {
       setDatos(data)
 
       // Las cantidades se reinician con cada carga: si cambió el stock, la
-      // sugerencia vieja ya no vale.
+      // sugerencia vieja ya no vale. Las órdenes ya creadas también: es una
+      // lista nueva.
       const iniciales = {}
       for (const grupo of data?.proveedores || []) {
         for (const item of grupo.items) iniciales[item.product_id] = item.sugerido
       }
       setCantidades(iniciales)
       setExcluidos(new Set())
+      setOrdenados(new Set())
     } catch (err) {
       toast.error(mensajeDeError(err, 'No se pudieron cargar los faltantes.'))
     } finally {
@@ -152,13 +215,19 @@ export default function Faltantes() {
       return
     }
 
-    const items = itemsAPedir(grupo)
-    if (items.length === 0) {
-      toast.error('No hay nada para pedir de este proveedor.')
-      return
-    }
+    // ⚠ El cerrojo, por proveedor. Dos clics en la misma tanda creaban DOS
+    // órdenes de compra al mismo proveedor, y cuando las dos se reciben la
+    // deuda queda duplicada. Es plata, y del lado que peor se detecta.
+    if (creandoOrden.current.has(grupo.supplier_id)) return
+    creandoOrden.current.add(grupo.supplier_id)
 
     try {
+      const items = itemsAPedir(grupo)
+      if (items.length === 0) {
+        toast.error('No hay nada para pedir de este proveedor.')
+        return
+      }
+
       await api.post(`/suppliers/${grupo.supplier_id}/orders`, {
         // ⚠ `fechaDeHoy()` y NO `new Date().toISOString()`. El ISO da la fecha
         // en UTC, y en Argentina —UTC-3— desde las 21:00 ya es el día
@@ -178,9 +247,16 @@ export default function Faltantes() {
         })),
       })
 
+      // La marca queda a la vista: sin ella, la única forma de no crear la misma
+      // orden dos veces era acordarse.
+      setOrdenados(prev => new Set(prev).add(grupo.supplier_id))
       toast.success(`Orden de compra creada para ${grupo.proveedor?.nombre}.`)
     } catch (err) {
       toast.error(mensajeDeError(err, 'No se pudo crear la orden de compra.'))
+    } finally {
+      // Se suelta SIEMPRE, incluidos los dos `return` de arriba. Sin esto, un
+      // solo intento fallido dejaría el botón inerte por el resto de la sesión.
+      creandoOrden.current.delete(grupo.supplier_id)
     }
   }
 
@@ -201,174 +277,270 @@ export default function Faltantes() {
   }, [datos, itemsAPedir])
 
   return (
-    <div className="anim-subida space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="anim-subida flex flex-col gap-6">
+      <PageHeader
+        titulo="Faltantes"
+        descripcion={
+          'Lo que hay que reponer, agrupado por proveedor.'
+          + (puntoDeVentaActivo?.name ? ` Sucursal: ${puntoDeVentaActivo.name}.` : '')
+        }
+        icono={AlertTriangle}
+      >
+        {/* ⚠ `htmlFor` e `id`. El `<label>` estaba suelto: con un lector de
+            pantalla el campo no tenía nombre, y hacer clic en la palabra
+            «Umbral» no lo enfocaba. Lo encontró el test de render. */}
+        <label htmlFor="umbral-de-faltantes" className="eyebrow">
+          Umbral
+        </label>
+        <input
+          id="umbral-de-faltantes"
+          type="number"
+          min="0"
+          value={umbralTipeado}
+          onChange={e => setUmbralTipeado(Math.max(0, Number(e.target.value) || 0))}
+          title="Para los productos que no tienen stock mínimo cargado"
+          className="num h-[34px] w-20 rounded-lg border border-border bg-surface px-2.5 text-[13px]
+                     transition-colors focus-visible:border-brand focus-visible:outline-none"
+        />
+        <button
+          type="button"
+          onClick={cargar}
+          disabled={cargando}
+          className="inline-flex h-[34px] items-center gap-1.5 rounded-lg border border-border bg-surface px-3
+                     text-[13px] font-medium transition-colors hover:border-border-2 hover:bg-surface-3
+                     focus-visible:border-brand focus-visible:outline-none
+                     disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 text-fg-3 ${cargando ? 'animate-spin' : ''}`} />
+          Actualizar
+        </button>
+      </PageHeader>
+
+      {/* ── Los dos números del pedido, y la nota ── */}
+      <section className="flex flex-wrap items-center gap-6 rounded-xl border border-border bg-surface px-5 py-4 shadow-nivel-1">
         <div>
-          <h1 className="flex items-center gap-2">
-            <AlertTriangle className="h-6 w-6 text-warn" />
-            Faltantes
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Lo que hay que reponer, agrupado por proveedor.
-            {puntoDeVentaActivo?.name && ` Sucursal: ${puntoDeVentaActivo.name}.`}
+          <p className="eyebrow">Productos a pedir</p>
+          <p className="num mt-1 text-[26px] font-semibold leading-none">{totalAPedir.items}</p>
+        </div>
+
+        <div className="h-10 w-px bg-border" />
+
+        <div>
+          <p className="eyebrow">Costo estimado</p>
+          {/* `pesos()` y no `toLocaleString()` a secas: sin el máximo de
+              decimales, un costo con tres decimales salía «$1.234,567» al lado
+              de otro que salía «$1.200». */}
+          <p className="num mt-1 text-[26px] font-semibold leading-none">
+            ${pesos(totalAPedir.importe)}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Umbral
+        <div className="h-10 w-px bg-border" />
+
+        <div className="min-w-[240px] flex-1">
+          <label htmlFor="nota-del-pedido" className="eyebrow">
+            Nota para el proveedor
           </label>
-          <Input
-            type="number"
-            min="0"
-            value={umbral}
-            onChange={e => setUmbral(Math.max(0, Number(e.target.value) || 0))}
-            className="h-9 w-20 text-sm"
-            title="Para los productos que no tienen stock mínimo cargado"
+          <input
+            id="nota-del-pedido"
+            value={nota}
+            onChange={e => setNota(e.target.value)}
+            placeholder="Ej: entregar por la mañana"
+            className="mt-1 h-9 w-full rounded-lg border border-border bg-surface px-3 text-[13px]
+                       transition-colors focus-visible:border-brand focus-visible:outline-none"
           />
-          <Button variant="outline" size="sm" onClick={cargar} disabled={cargando}>
-            <RefreshCw className={`h-4 w-4 mr-1 ${cargando ? 'animate-spin' : ''}`} />
-            Actualizar
-          </Button>
         </div>
-      </div>
+      </section>
 
-      <Card>
-        <CardContent className="flex flex-wrap items-center gap-6 py-4">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Productos a pedir
-            </p>
-            <p className="num text-[26px] font-semibold">{totalAPedir.items}</p>
-          </div>
-          <Separator orientation="vertical" className="h-10" />
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Costo estimado
-            </p>
-            <p className="num text-[26px] font-semibold tabular-nums">
-              ${totalAPedir.importe.toLocaleString('es-AR')}
-            </p>
-          </div>
-          <Separator orientation="vertical" className="h-10" />
-          <div className="flex-1 min-w-[240px]">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Nota para el proveedor
-            </label>
-            <Input
-              value={nota}
-              onChange={e => setNota(e.target.value)}
-              placeholder="Ej: entregar por la mañana"
-              className="h-9 text-sm mt-1"
-            />
-          </div>
-        </CardContent>
-      </Card>
+      {/* ⚠ El orden de las tres ramas no es negociable: cargando → vacío →
+          datos. Con el vacío primero, la pantalla afirma «no falta nada»
+          mientras los faltantes viajan — y le dice a alguien que su inventario
+          está bien justo cuando se está formando la primera impresión. */}
+      {cargando && !datos ? (
+        <div className="grid place-items-center py-16">
+          <Loader2 className="h-5 w-5 animate-spin text-fg-3" />
+        </div>
+      ) : datos && datos.proveedores.length === 0 ? (
+        <section className="rounded-xl border border-border bg-surface shadow-nivel-1">
+          <EstadoVacio
+            icono={PackageCheck}
+            codigo="sin_faltantes"
+            titulo="No falta nada."
+            detalle={`Ningún producto está por debajo de su mínimo (ni del umbral de ${umbral}).`}
+          />
+        </section>
+      ) : (
+        datos?.proveedores.map(grupo => {
+          const yaOrdenado = grupo.supplier_id && ordenados.has(grupo.supplier_id)
 
-      {cargando && !datos && (
-        <p className="text-sm text-muted-foreground py-8 text-center">Calculando faltantes...</p>
-      )}
+          return (
+            <section
+              key={grupo.supplier_id || 'sin-proveedor'}
+              className="overflow-hidden rounded-xl border border-border bg-surface shadow-nivel-1"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border px-5 py-4">
+                <div className="flex items-center gap-2.5">
+                  <h2>{grupo.proveedor?.nombre || 'Sin proveedor asignado'}</h2>
+                  <span className="num rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-fg-2">
+                    {grupo.items.length}
+                  </span>
+                  {yaOrdenado && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-ok-line bg-ok-soft px-2 py-0.5 text-[11px] font-semibold text-ok">
+                      <Check className="h-3 w-3" />
+                      Orden creada
+                    </span>
+                  )}
+                </div>
 
-      {datos && datos.proveedores.length === 0 && (
-        <Card>
-          <CardContent className="p-0">
-            <EstadoVacio
-              icono={PackageCheck}
-              codigo="sin_faltantes"
-              titulo="No falta nada."
-              detalle={`Ningún producto está por debajo de su mínimo (ni del umbral de ${umbral}).`}
-            />
-          </CardContent>
-        </Card>
-      )}
+                <div className="flex flex-wrap gap-1.5">
+                  <BotonDeGrupo onClick={() => enviarWhatsapp(grupo, false)}>
+                    <MessageCircle className="h-3.5 w-3.5 text-fg-3" />
+                    WhatsApp
+                  </BotonDeGrupo>
 
-      {datos?.proveedores.map(grupo => (
-        <Card key={grupo.supplier_id || 'sin-proveedor'}>
-          <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                {grupo.proveedor?.nombre || 'Sin proveedor asignado'}
-                <Badge variant="secondary">{grupo.items.length}</Badge>
-              </CardTitle>
-
-              <div className="flex flex-wrap gap-1.5">
-                <Button size="sm" variant="outline" onClick={() => enviarWhatsapp(grupo, false)}>
-                  <MessageCircle className="h-4 w-4 mr-1" />
-                  WhatsApp
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => enviarWhatsapp(grupo, true)}
-                  title="Incluye los costos de compra en el mensaje">
-                  <MessageCircle className="h-4 w-4 mr-1" />
-                  Con precios
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => exportarExcel(grupo)}>
-                  <FileSpreadsheet className="h-4 w-4 mr-1" />
-                  Excel
-                </Button>
-                {grupo.supplier_id && (
-                  <Button size="sm" onClick={() => crearOrdenDeCompra(grupo)}>
-                    <ShoppingCart className="h-4 w-4 mr-1" />
-                    Orden de compra
-                  </Button>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent className="pt-0">
-            <div className="space-y-1">
-              {grupo.items.map(item => {
-                const excluido = excluidos.has(item.product_id)
-                const cantidad = cantidadDe(item)
-
-                return (
-                  <div
-                    key={item.product_id}
-                    className={`flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2 ${excluido ? 'opacity-40' : ''}`}
+                  <BotonDeGrupo
+                    onClick={() => enviarWhatsapp(grupo, true)}
+                    title="Incluye los costos de compra en el mensaje"
                   >
-                    <input
-                      type="checkbox"
-                      checked={!excluido}
-                      onChange={() => alternarExcluido(item.product_id)}
-                      className="h-4 w-4 shrink-0"
-                    />
+                    <MessageCircle className="h-3.5 w-3.5 text-fg-3" />
+                    Con precios
+                  </BotonDeGrupo>
 
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold truncate">{item.nombre}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.marca || 'Sin marca'} · stock {item.stock}
-                        {item.min_stock > 0 ? ` / mín. ${item.min_stock}` : ' (sin mínimo cargado)'}
-                      </p>
-                    </div>
+                  <BotonDeGrupo onClick={() => exportarExcel(grupo)}>
+                    <FileSpreadsheet className="h-3.5 w-3.5 text-fg-3" />
+                    Excel
+                  </BotonDeGrupo>
 
-                    <div className="flex items-center gap-1">
-                      <Button variant="outline" size="icon" className="h-7 w-7"
-                        onClick={() => cambiarCantidad(item.product_id, cantidad - 1)}>
-                        <Minus className="h-3 w-3" />
-                      </Button>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={cantidad}
-                        onChange={e => cambiarCantidad(item.product_id, e.target.value)}
-                        className="h-7 w-16 text-center text-sm tabular-nums"
+                  {/* Sin proveedor no hay a quién pedirle: el botón no existe.
+                      Sin el permiso SÍ existe, apagado y con el motivo — que es
+                      la regla del sistema: deshabilitar diciendo por qué, no
+                      esconder. */}
+                  {grupo.supplier_id && (
+                    <button
+                      type="button"
+                      onClick={() => crearOrdenDeCompra(grupo)}
+                      disabled={!puedeCrearOrdenes}
+                      title={
+                        puedeCrearOrdenes
+                          ? 'Crea la orden de compra con lo tildado'
+                          : faltaElPermiso('ordenes_compra.crear')
+                      }
+                      className="inline-flex h-[30px] items-center gap-1.5 rounded-lg bg-brand px-3
+                                 text-[12.5px] font-semibold text-brand-fg transition-colors hover:bg-brand-2
+                                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40
+                                 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <ShoppingCart className="h-3.5 w-3.5" />
+                      Orden de compra
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1 p-3">
+                {grupo.items.map(item => {
+                  const excluido = excluidos.has(item.product_id)
+                  const cantidad = cantidadDe(item)
+
+                  return (
+                    <div
+                      key={item.product_id}
+                      className={`flex flex-wrap items-center gap-3 rounded-lg border border-border px-3 py-2
+                                  ${excluido ? 'opacity-40' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!excluido}
+                        onChange={() => alternarExcluido(item.product_id)}
+                        aria-label={`Pedir ${item.nombre}`}
+                        className="h-4 w-4 shrink-0 accent-brand"
                       />
-                      <Button variant="outline" size="icon" className="h-7 w-7"
-                        onClick={() => cambiarCantidad(item.product_id, cantidad + 1)}>
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
 
-                    <div className="w-24 text-right font-mono text-sm tabular-nums">
-                      ${((Number(item.costo) || 0) * cantidad).toLocaleString('es-AR')}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13.5px] font-semibold">{item.nombre}</p>
+                        <p className="text-[12px] text-fg-2">
+                          {item.marca || 'Sin marca'} · stock <span className="num">{item.stock}</span>
+                          {item.min_stock > 0
+                            ? <> / mín. <span className="num">{item.min_stock}</span></>
+                            : ' (sin mínimo cargado)'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <BotonDePaso
+                          onClick={() => cambiarCantidad(item.product_id, cantidad - 1)}
+                          etiqueta={`Sacar uno de ${item.nombre}`}
+                        >
+                          <Minus className="h-3 w-3" />
+                        </BotonDePaso>
+
+                        <input
+                          type="number"
+                          min="0"
+                          value={cantidad}
+                          onChange={e => cambiarCantidad(item.product_id, e.target.value)}
+                          aria-label={`Cantidad de ${item.nombre}`}
+                          className="num h-7 w-16 rounded-lg border border-border bg-surface text-center text-[13px]
+                                     transition-colors focus-visible:border-brand focus-visible:outline-none"
+                        />
+
+                        <BotonDePaso
+                          onClick={() => cambiarCantidad(item.product_id, cantidad + 1)}
+                          etiqueta={`Agregar uno de ${item.nombre}`}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </BotonDePaso>
+                      </div>
+
+                      <div className="num w-24 text-right text-[13px] font-semibold">
+                        ${pesos((Number(item.costo) || 0) * cantidad)}
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+                  )
+                })}
+              </div>
+            </section>
+          )
+        })
+      )}
     </div>
+  )
+}
+
+/** Un botón secundario del encabezado de un grupo. */
+function BotonDeGrupo({ onClick, title, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="inline-flex h-[30px] items-center gap-1.5 rounded-lg border border-border bg-surface px-3
+                 text-[12.5px] font-medium transition-colors hover:border-border-2 hover:bg-surface-3
+                 focus-visible:border-brand focus-visible:outline-none"
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
+ * El «−» y el «+» de una cantidad.
+ *
+ * `etiqueta` no es opcional: sin ella, con un lector de pantalla los dos botones
+ * de cada fila se anuncian como «botón» a secas, y en una lista de veinte
+ * productos hay cuarenta botones sin nombre.
+ */
+function BotonDePaso({ onClick, etiqueta, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={etiqueta}
+      className="inline-grid h-7 w-7 place-items-center rounded-lg border border-border bg-surface
+                 text-fg-2 transition-colors hover:border-border-2 hover:bg-surface-3
+                 focus-visible:border-brand focus-visible:outline-none"
+    >
+      {children}
+    </button>
   )
 }

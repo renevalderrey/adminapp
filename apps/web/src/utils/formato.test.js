@@ -578,7 +578,13 @@ const PENDIENTES = [
   //  con la fecha que calcula el servidor y el QR del mismo papel usaba
   //  `venta.date`. Tres fuentes para un solo comprobante. Ahora sale de
   //  `fechaDeComprobante`. La línea se borra y no se comenta.
-  ['pages/Faltantes.jsx', 'dos importes del pedido a pedir, en línea', ['el formateo en línea de un importe o una fecha']],
+  //  ✔ **`pages/Faltantes.jsx` ya salió** (hito 9, tanda 4): los dos importes
+  //  del pedido —el total del encabezado y el subtotal de cada fila— salían de
+  //  `toLocaleString('es-AR')` a secas, o sea sin mínimo y con hasta TRES
+  //  decimales por defecto. En la misma columna convivían «$1.200» y
+  //  «$1.234,567», y un costo es una división en cuanto alguien carga un bulto
+  //  de doce unidades. Ahora salen de `pesos`. La línea se borra y no se
+  //  comenta: la lista es el registro de lo que falta, no de lo que faltó.
   ['pages/Inventory.jsx', '`unidades()` —que NO es plata— y la fecha de una transferencia', ['el formateo en línea de un importe o una fecha']],
   //  ✔ **`pages/InvoicesList.jsx` ya salió** (hito 9): la reimpresión armaba la
   //  fecha con una expresión propia, escrita aparte de la del punto de venta, y
