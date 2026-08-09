@@ -382,6 +382,105 @@ GET /api/taxes/monotributo → anuladas_con_cae_sin_nc
 Ese monto **sigue contando** como facturación ante ARCA. Hay que emitir las
 notas de crédito por fuera hasta que el sistema las soporte.
 
+### "No me deja subir la foto" — el volumen de imágenes se llenó
+
+**El síntoma es un 507.** Subir la foto de un producto responde:
+
+```json
+{ "ok": false, "codigo": "SIN_ESPACIO",
+  "error": "No queda espacio para guardar más fotos. Avisale al administrador del sistema." }
+```
+
+y en el log queda `msg: 'imagenes: el volumen está lleno'` con el `empresa_id`
+de quien la estaba subiendo — que **casi nunca es quien llenó el disco**, ver
+abajo. Es el único caso en que la API contesta 507: un archivo que no es una
+imagen, o que pesa de más, sale con 400 y con otro mensaje.
+
+**Lo que se llenó, en realidad, es el disco del VPS.** El volumen
+`imagenes_favalio` se declara en `docker-compose.produccion.yml` **sin ninguna
+opción de tamaño**: no tiene tope propio, crece hasta donde da la máquina. Y en
+ese mismo disco están **Postgres y los respaldos**. Así que lo primero no son
+las fotos:
+
+```
+df -h
+```
+
+Con el disco al 100%, el 507 de las fotos es el primer síntoma que se ve, no el
+problema: Postgres tampoco puede escribir.
+
+**Cuánto ocupan las fotos.**
+
+```
+# El tamaño del volumen: la fila de favalio_imagenes_favalio en VOLUME NAME
+docker system df -v
+
+# El desglose, desde adentro de un contenedor descartable y de sólo lectura
+docker run --rm -v favalio_imagenes_favalio:/origen:ro alpine du -sh /origen
+docker run --rm -v favalio_imagenes_favalio:/origen:ro \
+  alpine sh -c 'find /origen -type f | wc -l'
+```
+
+**Los respaldos ocupan aparte, y ocupan mucho.** `deploy/respaldo.sh` guarda en
+`/var/respaldos/favalio` **catorce** copias del volumen entero
+(`DIAS_A_CONSERVAR`), además de las catorce de la base. Si las copias siguen en
+el mismo disco, las fotos ocupan quince veces lo que parece. Sacarlas del VPS es
+la medida que libera más espacio de una, y hacía falta igual por otro motivo: un
+respaldo que vive en el disco que se puede perder no cubre perder el disco.
+
+**Cuánto pesa cada foto** (`apps/api/src/utils/imagenes.js`), que es lo que
+permite estimar en vez de adivinar:
+
+| | Medida |
+|---|---|
+| Foto de producto | **800×800 como máximo**, JPEG **calidad 82** |
+| Lo que se acepta subir | **5 MB**, y el tope se aplica **antes** de redimensionar |
+| Fotos más chicas | Quedan como están: no se agrandan |
+
+O sea que lo que ocupa el disco **no es lo que sube el cliente**: los 5 MB son el
+límite de entrada, y lo que queda guardado es la versión redimensionada.
+Reemplazar una foto tampoco acumula — la anterior se borra apenas la nueva quedó
+escrita y referenciada. Lo que sí puede acumular es un `unlink` que falló: queda
+`msg: 'imagenes: no se pudo borrar la foto anterior'` en el log, y un archivo
+huérfano en el volumen que ya no referencia nadie.
+
+**No hay cuota por empresa, y esto es lo que hay que decir con todas las
+letras.** En esta etapa **una sola empresa puede llenar el volumen de todas**:
+nada limita cuántas fotos sube cada una, y cuando el disco se acaba se acaba para
+todo el mundo. Es el **riesgo 10** del plan de la funcionalidad 015, asumido a
+propósito y fuera de alcance — no es un descuido, pero tampoco está resuelto.
+
+**Y desde el disco no se puede saber quién ocupa qué.** La ruta de las fotos
+**no lleva el `empresa_id`** a propósito: si lo llevara, probando `/img/1/`,
+`/img/2/`, … cualquiera podría enumerar las empresas de la plataforma. Los dos
+niveles `aa/bb/` salen de un nombre aleatorio, así que un `du` por directorio no
+dice nada de nadie. Para atribuir el consumo hay que contarlo desde la base:
+
+```sql
+SELECT empresa_id, COUNT(*) AS fotos
+FROM products
+WHERE image_url LIKE '/img/%'
+GROUP BY empresa_id
+ORDER BY fotos DESC;
+```
+
+El `LIKE '/img/%'` es lo que separa las fotos nuestras de las URLs de terceros
+que cargó el importador de CSV: esas no ocupan un byte del volumen. Es un conteo
+de fotos y no de bytes, pero con el tope de 800×800 alcanza para saber a quién
+hay que llamar.
+
+**Qué hacer, en orden.**
+
+1. **Agrandar el disco del VPS.** Es lo único que resuelve el problema; todo lo
+   demás compra tiempo.
+2. **Sacar los respaldos del VPS.** Ver arriba: es lo que libera más de una vez.
+3. **Bajar `DIAS_A_CONSERVAR`** en el cron, si hay que ganar espacio ya. Es
+   achicar la red de seguridad para seguir andando: se vuelve a subir apenas el
+   disco alcance.
+4. **Llamar a la empresa que se pasó**, con la consulta de arriba en la mano, y
+   que borre las fotos que no usa desde la ficha del producto. Sin cuota, es lo
+   único que hay.
+
 ### Alguien borró datos por error
 
 1. **Ver si hay un respaldo reciente**: `node scripts/backup.js <empresaId>`
@@ -931,6 +1030,115 @@ producción:
 
 Esto no interrumpe nada: la rama es una copia. **Anotar la fecha en que se
 probó** — es lo único que convierte el respaldo en respaldo.
+
+### Restaurar las imágenes
+
+**La base y las fotos son dos restauraciones distintas, y hacen falta las dos.**
+`pg_dump` no ve el volumen: la base sabe que la foto existe —`products.image_url`
+guarda `/img/aa/bb/xxx.jpg`— y **el archivo vive únicamente en el volumen**.
+Restaurar sólo el `.sql.gz` deja un catálogo entero apuntando a fotos que no
+están, y eso llega como «las fotos no cargan», no como «faltó restaurar algo».
+
+**Dónde están las copias.** `deploy/respaldo.sh` deja las dos en el mismo
+directorio —`/var/respaldos/favalio` por defecto, la variable `DESTINO`— y las
+dos rotan igual: se borran a los **14 días** (`DIAS_A_CONSERVAR`).
+
+```
+favalio-2026-08-09-0315.sql.gz             ← la base
+favalio-imagenes-2026-08-09-0315.tar.gz    ← el volumen de fotos
+```
+
+**Cómo se hizo la copia**, porque la restauración es exactamente lo inverso: se
+monta el volumen en un contenedor descartable —de **sólo lectura**— y se
+empaqueta desde adentro. No se lee del disco del host: dónde guarda Docker el
+volumen es un detalle que cambia entre versiones.
+
+```
+docker run --rm \
+  -v favalio_imagenes_favalio:/origen:ro \
+  -v /var/respaldos/favalio:/destino \
+  alpine tar -czf /destino/favalio-imagenes-2026-08-09-0315.tar.gz -C /origen .
+```
+
+El volumen se llama **`favalio_imagenes_favalio`**: `imagenes_favalio` es el
+nombre que le da `docker-compose.produccion.yml` y `favalio` el prefijo del
+proyecto (`name: favalio`, arriba del mismo archivo). Con otro prefijo el
+volumen se llama distinto y el comando no encuentra nada. Confirmarlo antes de
+tocar nada cuesta una línea:
+
+```
+docker volume ls | grep imagenes
+```
+
+**La restauración**: el mismo `alpine` descartable, el volumen montado **con
+escritura**, y `tar -xzf` adentro.
+
+```
+docker run --rm \
+  -v favalio_imagenes_favalio:/destino \
+  -v /var/respaldos/favalio:/origen:ro \
+  alpine tar -xzf /origen/favalio-imagenes-2026-08-09-0315.tar.gz -C /destino
+```
+
+Tres cosas del procedimiento que no son estilo:
+
+- **Primero se levanta la pila, después se restaura.** `docker compose … up -d`
+  es lo que crea el volumen con el nombre y las etiquetas del proyecto. El
+  `docker run` de arriba también lo crearía si no existiera, pero nacería sin
+  ellas.
+- **No hace falta parar nada.** El contenedor descartable monta **el mismo**
+  volumen que ya tienen la API y Caddy —no es una copia—, así que lo que se
+  descomprime está del otro lado en el momento.
+- **`tar -xzf` superpone, no reemplaza.** Lo que ya estaba en el volumen y no
+  viene en la copia **queda**. Como los nombres de archivo son aleatorios y no se
+  reusan nunca, restaurar encima de un volumen vivo devuelve las fotos que
+  faltaban sin pisar las nuevas. Si lo que se busca es dejar el volumen
+  **exactamente** como el día de la copia, hay que vaciarlo antes, y eso es otra
+  decisión: borra las fotos subidas desde entonces.
+
+**Qué mirar después.** Que el comando no haya dado error no alcanza.
+
+**1 · Que los archivos estén.** Contar los del volumen y compararlos con los de
+la copia:
+
+```
+docker run --rm -v favalio_imagenes_favalio:/origen:ro \
+  alpine sh -c 'find /origen -type f | wc -l'
+
+tar -tzf /var/respaldos/favalio/favalio-imagenes-2026-08-09-0315.tar.gz | grep -vc '/$'
+```
+
+Sobre un volumen que estaba vacío los dos números tienen que dar igual. Si se
+restauró encima de uno vivo, el del volumen tiene que ser **mayor o igual**: si
+da menos, faltan archivos.
+
+**2 · Que la API pueda escribir ahí.** El volumen va montado en
+`/var/favalio/imagenes` **con escritura** —la API es la única que escribe— y la
+ruta sale de `RUTA_DE_IMAGENES`, que el compose fija en ese mismo valor:
+
+```
+docker compose -f /opt/favalio/docker-compose.produccion.yml exec api \
+  sh -c 'touch /var/favalio/imagenes/.prueba && rm /var/favalio/imagenes/.prueba && echo escribe'
+```
+
+Si eso falla, la próxima subida de foto falla, y **el error no va a hablar del
+respaldo**.
+
+**3 · Que Caddy las sirva.** Caddy monta el mismo volumen en la misma ruta pero
+de **sólo lectura** —el que escribe es la API; si Caddy pudiera escribir, una
+falla suya tocaría el contenido— y las publica bajo `/img/`. La prueba es pedir
+una foto que exista, con la ruta tal cual está en `products.image_url`:
+
+```
+curl -I https://tienda.<dominio>/img/aa/bb/xxx.jpg     # 200
+```
+
+Un **404** acá con el archivo presente en el volumen no es la restauración: es
+el `handle /img/*` de `deploy/Caddyfile`. Sin el `uri strip_prefix /img`, Caddy
+busca `/var/favalio/imagenes/img/aa/bb/…` y devuelve 404 para **todas** las
+fotos.
+
+**Anotar la fecha en que se probó**, igual que con la base.
 
 **Lo que cubre `scripts/backup.js`** (exportar los datos de una empresa a JSON)
 es otro caso: devolverle los datos a un cliente que se va, o recuperar algo que
