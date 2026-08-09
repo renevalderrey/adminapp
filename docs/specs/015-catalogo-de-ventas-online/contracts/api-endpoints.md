@@ -554,7 +554,7 @@ elegirlos.
 | 507 | `SIN_ESPACIO` | El volumen se llenó. Mensaje legible y `logger.error`. **No hay cuota por empresa** en esta etapa |
 
 **Las imágenes no las sirve la API** (FR-023): las sirve Caddy desde el volumen,
-con `handle_path /img/*`. Un proceso de Node sirviendo archivos estáticos compite
+con `handle /img/*  (con `uri strip_prefix /img`)`. Un proceso de Node sirviendo archivos estáticos compite
 con las cajas del comercio por el mismo *event loop*. **Son públicas por URL y se
 acepta** —son fotos de catálogo, no documentos— pero **no enumerables**: el
 nombre es aleatorio y la ruta **no lleva el `empresa_id`**, así que nadie puede

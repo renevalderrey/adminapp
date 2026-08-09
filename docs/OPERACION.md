@@ -483,15 +483,33 @@ hay que llamar.
 
 ### Alguien borró datos por error
 
-1. **Ver si hay un respaldo reciente**: `node scripts/backup.js <empresaId>`
-   genera uno *ahora*, pero para recuperar hace falta uno *anterior*.
-2. **Neon tiene restauración por punto en el tiempo**, con retención limitada
-   en el plan gratuito. Es la vía real de recuperación. Se hace desde el panel
-   de Neon.
+⚠ **Esto cambió con el pase al VPS, y es el peor lugar del runbook para
+enterarse tarde.** Acá decía que la vía real de recuperación era la restauración
+por punto en el tiempo de Neon. **Neon no está en el camino de producción**: no
+hay historial continuo, no hay «volver a las 14:32». Lo único que existe es la
+copia que dejó el cron, y la más nueva puede tener hasta 24 horas.
 
-> Por eso el respaldo periódico importa. `scripts/backup.js --todas` exporta
-> todas las empresas a JSON; conviene correrlo con alguna frecuencia y guardar
-> el resultado **fuera** de la plataforma.
+1. **No sigas escribiendo.** Cada minuto de operación normal es trabajo que la
+   restauración va a pisar. Si el borrado fue grande, avisá y frená.
+2. **Mirá qué copias hay**, que es lo que fija hasta dónde se puede volver:
+
+   ```bash
+   ls -lh /var/respaldos/favalio/
+   ```
+
+   Están las de los últimos **14 días** (`DIAS_A_CONSERVAR`): los `.sql.gz` de
+   la base y los `favalio-imagenes-*.tar.gz` del volumen de fotos.
+3. **Restaurá sobre una base descartable primero, nunca encima de la buena.** El
+   procedimiento está en «Probar una restauración». Recién con la copia montada
+   al lado se puede ver qué se perdió y sacar sólo eso.
+4. **Si el respaldo de anoche no alcanza**, `npm run backup -w apps/api -- --empresa=<id>`
+   exporta a JSON lo que hay **ahora**: no recupera lo borrado, pero congela el
+   resto antes de tocar nada.
+
+> Por eso el cron importa, y por eso hay que sacar las copias del VPS: un
+> respaldo que vive en el mismo disco que la base no cubre el caso en que se
+> pierde el disco. `npm run backup -w apps/api -- --todas` exporta todas las
+> empresas a JSON y es la red de arriba de ésa.
 
 ### Un cliente pide sus datos
 
@@ -1013,23 +1031,41 @@ que en cualquier otro lado.
 
 Un respaldo que nunca se restauró no es un respaldo.
 
-**Lo que cubre Neon (recuperación ante desastre).** Neon guarda un historial
-que permite volver la base a un momento anterior. Cómo probarlo sin tocar
-producción:
+**La base.** En el VPS no hay historial continuo ni «volver a las 14:32»: lo
+único que existe es el `.sql.gz` que dejó el cron de `deploy/respaldo.sh`, y el
+más nuevo puede tener hasta 24 horas. Se restaura **sobre una base descartable**,
+nunca encima de la buena — con la copia montada al lado se puede comparar y
+sacar sólo lo que falta.
 
-1. Panel de Neon → el proyecto → **Branches** → *Create branch*.
-2. Elegir **"From a point in time"** y una fecha de ayer.
-3. Neon crea una rama con su propio connection string.
-4. Conectarse a esa rama y verificar que los datos están:
-   ```sql
-   SELECT COUNT(*) FROM sales;
-   SELECT MAX(date) FROM sales;
-   SELECT COUNT(*) FROM empresas;
-   ```
-5. Borrar la rama.
+```bash
+# 1 · Qué copias hay. Son las de los últimos 14 días.
+ls -lh /var/respaldos/favalio/
 
-Esto no interrumpe nada: la rama es una copia. **Anotar la fecha en que se
-probó** — es lo único que convierte el respaldo en respaldo.
+# 2 · Una base vacía al lado, en el mismo Postgres.
+COMPOSE="docker compose -f /opt/favalio/docker-compose.produccion.yml"
+$COMPOSE exec -T postgres createdb -U favalio favalio_prueba
+
+# 3 · Volcar la copia adentro. -T porque no hay TTY.
+gunzip -c /var/respaldos/favalio/favalio-2026-08-09-0315.sql.gz \
+  | $COMPOSE exec -T postgres psql -U favalio -d favalio_prueba
+
+# 4 · Que los datos estén.
+$COMPOSE exec -T postgres psql -U favalio -d favalio_prueba -c \
+  "SELECT (SELECT COUNT(*) FROM empresas) AS empresas,
+          (SELECT COUNT(*) FROM sales)    AS ventas,
+          (SELECT MAX(date) FROM sales)   AS ultima_venta;"
+
+# 5 · Cuando terminaste.
+$COMPOSE exec -T postgres dropdb -U favalio favalio_prueba
+```
+
+Esto no interrumpe nada: es otra base en el mismo servidor. **Anotar la fecha en
+que se probó** — es lo único que convierte el respaldo en respaldo.
+
+⚠ Y **las copias tienen que salir del VPS**. Un respaldo que vive en el mismo
+disco que la base no cubre el caso en que se pierde el disco, que es el caso
+para el que existe. Sirve `rclone` a cualquier nube, o un `scp` programado desde
+otra máquina.
 
 ### Restaurar las imágenes
 
