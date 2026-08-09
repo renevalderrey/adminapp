@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import api from '@/services/api'
-import { calcularPrecios } from '@/utils/precios'
+import { calcularPrecios } from '@favalio/precios'
 import { cuerposDeStockAlCrear, unidadesComprometidas } from '@/utils/inventario'
 import { pesos } from '@/utils/formato'
 import { usePermission } from '@/hooks/usePermission'

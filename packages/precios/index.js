@@ -1,6 +1,30 @@
 // ════════════════════════════════════════════
 //  Cálculo de precios de venta
 //
+//  ── Por qué es un paquete y no un archivo de una app ──
+//
+//  Esta fórmula vivía en `apps/web/src/utils/precios.js` y el servidor nunca
+//  devolvió un precio de venta: los calculaba el navegador a partir del `cost`
+//  crudo. El catálogo público rompe ese arreglo por dos motivos que van juntos:
+//  una página pública **no puede recibir el costo de compra** del comercio, y
+//  `apps/tienda` es una app distinta que no puede importar de `apps/web`.
+//
+//  La salida fácil —copiar la función— es el defecto que este repositorio ya
+//  tiene documentado en `mediosDePago.test.js:46`: tres copias que empezaron
+//  iguales y terminaron distintas. Acá hay una sola, y
+//  `apps/api/src/tests/paqueteDePrecios.test.js` se pone en rojo si aparece otra.
+//
+//  ── Por qué CommonJS ──
+//
+//  **Sin `"type": "module"`, a propósito.** `apps/api` hace
+//  `require('@favalio/precios')` sin transpilación, sin
+//  `--experimental-vm-modules` y sin `exports` condicionales. Del lado del
+//  navegador, `apps/web/vite.config.js` lo declara en `optimizeDeps.include`,
+//  que es lo que convierte esto a ESM para el servidor de desarrollo.
+//
+//  Y no hay paso de build: un paquete que no se construye no se puede construir
+//  mal, y un `build` olvidado falla en silencio.
+//
 //  ── Convención de margen (decidida con el cliente) ──
 //
 //  "Margen 50%" significa RECARGO SOBRE EL COSTO: costo × (1 + 50/100).
@@ -10,10 +34,10 @@
 //  50%", y es lo que el POS ya hacía. NO es margen sobre la venta: sobre esos
 //  $150, la ganancia de $50 representa el 33% del precio, no el 50%.
 //
-//  La calculadora de punto de equilibrio (utils/bep.js) trabaja con la otra
-//  magnitud —qué fracción de lo facturado tiene que ser ganancia— y convierte
-//  explícitamente a recargo sobre costo antes de mostrar nada. Las dos viven
-//  en el sistema, pero cada una con su nombre.
+//  La calculadora de punto de equilibrio (apps/web/src/utils/bep.js) trabaja con
+//  la otra magnitud —qué fracción de lo facturado tiene que ser ganancia— y
+//  convierte explícitamente a recargo sobre costo antes de mostrar nada. Las dos
+//  viven en el sistema, pero cada una con su nombre.
 // ════════════════════════════════════════════
 
 /**
@@ -22,7 +46,7 @@
  * La diferencia no es cosmética: con un recargo del 20% sobre un precio de
  * $100, SOBRE_PRECIO da $120 y COMPENSA_COMISION da $125.
  */
-export const MODO_RECARGO = {
+const MODO_RECARGO = {
   /**
    * El recargo se le suma al cliente: precio × (1 + r/100).
    *
@@ -52,7 +76,7 @@ function aNumero(v, porDefecto = 0) {
  *
  * @returns {number|null} null si el recargo no se puede aplicar.
  */
-export function precioConRecargo(precioBase, recargoPct, modo = MODO_RECARGO.SOBRE_PRECIO) {
+function precioConRecargo(precioBase, recargoPct, modo = MODO_RECARGO.SOBRE_PRECIO) {
   const base = aNumero(precioBase);
   const r = aNumero(recargoPct);
 
@@ -71,7 +95,7 @@ export function precioConRecargo(precioBase, recargoPct, modo = MODO_RECARGO.SOB
 /**
  * Precio con descuento de alianza.
  */
-export function precioConDescuento(precioBase, descuentoPct) {
+function precioConDescuento(precioBase, descuentoPct) {
   const base = aNumero(precioBase);
   const d = aNumero(descuentoPct);
 
@@ -95,7 +119,7 @@ export function precioConDescuento(precioBase, descuentoPct) {
  *   usaPrecioManual: boolean,
  * }}
  */
-export function calcularPrecios(producto = {}, settings = {}) {
+function calcularPrecios(producto = {}, settings = {}) {
   const cost = aNumero(producto.cost);
 
   const modo = settings.recargo_modo || MODO_RECARGO.SOBRE_PRECIO;
@@ -129,3 +153,10 @@ export function calcularPrecios(producto = {}, settings = {}) {
     usaPrecioManual,
   };
 }
+
+module.exports = {
+  MODO_RECARGO,
+  precioConRecargo,
+  precioConDescuento,
+  calcularPrecios,
+};

@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx'
-import { calcularPrecios } from '@/utils/precios'
+import { calcularPrecios } from '@favalio/precios'
 
 // ════════════════════════════════════════════
 //  FAVALIO · El archivo de inventario

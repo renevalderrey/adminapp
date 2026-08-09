@@ -1,4 +1,4 @@
-import { calcularPrecios } from '@/utils/precios'
+import { calcularPrecios } from '@favalio/precios'
 import { esStockBajo } from '@/utils/stockBajo'
 // La hoja impresa tiene que decir los mismos importes que la pantalla. Con la
 // copia propia eran dos funciones que hoy coincidían y mañana no.

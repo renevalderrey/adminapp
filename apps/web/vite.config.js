@@ -52,6 +52,22 @@ export default defineConfig(({ command }) => ({
     },
   },
   // ════════════════════════════════════════════
+  //  Por qué @favalio/precios va acá y no anda solo
+  //
+  //  El paquete es CommonJS a propósito: `apps/api` lo hace `require` sin
+  //  transpilación. Vite pre-empaqueta las dependencias de `node_modules` para
+  //  convertirlas a ESM, pero **excluye de ese paso las enlazadas por
+  //  workspace**, porque supone que son fuente ESM.
+  //
+  //  Sin esta línea, `import { calcularPrecios } from '@favalio/precios'` falla
+  //  en el servidor de desarrollo **y anda en el build**, que es la peor
+  //  combinación posible: se rompe solo donde se trabaja todos los días, y
+  //  ninguna verificación del CI lo ve.
+  // ════════════════════════════════════════════
+  optimizeDeps: {
+    include: ['@favalio/precios'],
+  },
+  // ════════════════════════════════════════════
   //  El entorno de tests
   //
   //  `environment: 'jsdom'` para TODA la suite, y no solo para los tests de

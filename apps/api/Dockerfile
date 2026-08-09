@@ -22,6 +22,14 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json ./apps/api/
 
+# El manifiesto del paquete va ANTES del `npm ci`, y el código después.
+#
+# npm crea el enlace del workspace durante la instalación. Si el directorio no
+# existe todavía, el enlace queda colgado y el `require('@favalio/precios')`
+# falla **al arrancar en producción**, no en el build: la imagen se construye
+# entera, se sube, y el contenedor no levanta.
+COPY packages/precios/package.json ./packages/precios/
+
 # `--include-workspace-root` hace falta: sin eso npm no instala lo que declara
 # el manifiesto de arriba y el árbol queda incompleto.
 #
@@ -30,6 +38,9 @@ COPY apps/api/package.json ./apps/api/
 # los workspaces— y solo más gordo. Eso se nota en el tamaño de la imagen, no
 # en un error raro en runtime.
 RUN npm ci --omit=dev --workspace apps/api --include-workspace-root
+
+# El código del paquete, ya con el enlace creado por el `npm ci` de arriba.
+COPY packages/precios/ ./packages/precios/
 
 # Codigo fuente
 COPY apps/api/src/ ./apps/api/src/

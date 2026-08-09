@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import api, { getSucursalesDeStock } from '../services/api';
-import { calcularPrecios } from '@/utils/precios';
+import { calcularPrecios } from '@favalio/precios';
 import { precioDeLinea } from '@/utils/mediosDePago';
 
 const useStore = create((set, get) => ({
@@ -187,7 +187,8 @@ const useStore = create((set, get) => ({
 
   // Helper: Price Calculation
   //
-  // La formula vive en utils/precios.js para poder testearla. Ver ahi la
+  // La formula vive en el paquete @favalio/precios, que es la unica copia del
+  // repositorio y la que tambien usa el servidor. Ver ahi la
   // convencion de margen (recargo sobre costo) y los dos modos de recargo por
   // tarjeta. El recargo por defecto pasa a sumarse al precio del cliente:
   // antes se usaba cashPrice / (1 - r/100), que con un 20% configurado cobraba

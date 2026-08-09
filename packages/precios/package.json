@@ -1,0 +1,13 @@
+{
+  "name": "@favalio/precios",
+  "private": true,
+  "version": "0.0.0",
+  "description": "La fórmula del precio de venta. Una sola copia, para el navegador y para el servidor.",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}

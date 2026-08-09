@@ -122,6 +122,36 @@ jobs:
         working-directory: apps/web
 
   # ════════════════════════════════════════════
+  #  Paquetes compartidos
+  #
+  #  Job propio, y no un paso del job `web`, por el nombre. La fórmula del
+  #  precio la usan el punto de venta, el inventario y —desde el hito 10— el
+  #  catálogo público. Colgada de «Web — tests», una regresión que rompe el
+  #  precio que ve un cliente en la calle se reporta como si fuera un problema
+  #  de la aplicación de escritorio, y el nombre del job es la mitad del valor
+  #  de un CI: es lo único que se lee antes de decidir a quién le toca mirar.
+  #
+  #  Son milisegundos: el paquete es aritmética y corre en `environment: node`.
+  # ════════════════════════════════════════════
+  paquetes:
+    name: Paquetes — tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+
+      - name: Tests
+        run: npm test -w packages/precios
+
+  # ════════════════════════════════════════════
   #  Pruebas de navegador
   #
   #  ── Por qué es un job propio y no un paso del job `web` ──

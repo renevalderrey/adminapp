@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { toast } from 'sonner'
 import useStore from '@/store/useStore'
 import { getStockTransfers, getProducts } from '@/services/api'
-import { calcularPrecios } from '@/utils/precios'
+import { calcularPrecios } from '@favalio/precios'
 import {
   TODAS_LAS_CATEGORIAS, TODAS_LAS_SUCURSALES, filaDeStock, filtrarInventario,
   calcularIndicadores, tonoDeStock, sucursalesComparables as calcularSucursalesComparables,

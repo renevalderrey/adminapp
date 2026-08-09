@@ -4,7 +4,7 @@ import {
   precioConRecargo,
   precioConDescuento,
   calcularPrecios,
-} from './precios';
+} from './index.js';
 
 const SETTINGS = {
   margin_efectivo: 50,

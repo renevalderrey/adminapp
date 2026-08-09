@@ -11,7 +11,7 @@ uno o varios commits que se despliegan y se revierten juntos. El orden es el de
 
 ---
 
-## Antes de empezar: siete cosas que no son tareas
+## Antes de empezar: ocho cosas que no son tareas
 
 ### 1. La numeración sigue de la 014
 
@@ -20,7 +20,32 @@ números no se reciclan: `guardiasDeDiseno.test.js` y `marcoDePantalla.test.js`
 nombran tareas por su número adentro de sus encabezados, y dos T1410 distintas
 hacen que esa referencia deje de servir.
 
-### 2. ⚠ La suite rápida NO puede ver ninguno de los defectos que importan acá
+### 2. ⚠ `npm run test:api -- <patrón>` NO filtra: **esconde**
+
+Esto se descubrió corriendo T1411 y estaba mal en las **treinta** verificaciones
+que este archivo traía escritas.
+
+El script es `jest --forceExit --detectOpenHandles --testPathIgnorePatterns
+"/node_modules/" ".integracion.test.js$"`. Un argumento de más **se suma a
+ese arreglo**: lo que nombrás no se filtra, se **ignora**. Medido:
+
+| Comando | Suites que corren |
+|---|---|
+| `npm run test:api` | 71 |
+| `npm run test:api -- aislamiento` | **69** — se saltea las dos que querías mirar |
+| `npm run test:api -- --testPathPatterns X` | tampoco filtra |
+| `npm exec -w apps/api -- jest X` | **1** |
+
+Es el modo de falla que este repositorio ya tiene nombrado: **la guardia pasa
+por vacío**. Una guardia nueva verificada con el comando viejo reporta verde
+sin haberse ejecutado nunca.
+
+**En este archivo todas las verificaciones usan `npm exec -w apps/api -- jest`.**
+La suite entera sigue siendo `npm run test:api`, sin argumentos.
+
+---
+
+### 3. ⚠ La suite rápida NO puede ver ninguno de los defectos que importan acá
 
 Es el riesgo 11 del plan y hay que leerlo antes de escribir la primera línea.
 Con `BYPASS_AUTH=true`, `server.js` clava `req.empresaId = 1`,
@@ -56,7 +81,7 @@ npm --prefix apps/web run test:navegador
 npm --prefix apps/tienda run test:navegador
 ```
 
-### 3. Los seis números de hoy, verificados abriendo el archivo
+### 4. Los seis números de hoy, verificados abriendo el archivo
 
 No son del plan: se contaron ahora, y son contra los que se mide cada ancla.
 
@@ -73,7 +98,7 @@ Y tres hechos más del árbol de hoy: **no existe `packages/`**, hay **tres**
 `.dockerignore` (`apps/api`, `apps/web`, `apps/landing`) y **ninguno en la
 raíz**, y la última migración es `20260813-gastos-fijos-a-su-sucursal.js`.
 
-### 4. Las once anclas, y en qué tarea se mueve cada una
+### 5. Las once anclas, y en qué tarea se mueve cada una
 
 Ninguna se rodea. **El número se mueve con el motivo escrito al lado**, en la
 tarea que lo provoca, nunca en una tarea «arreglar los tests» al final. Un ancla
@@ -107,7 +132,7 @@ pantalla:
 - **`todosLosTestsCorren.test.js`**: los tests de la API van en `src/tests/`,
   nunca en `src/utils/*.test.js` — ahí jest no los levanta y nadie se entera.
 
-### 5. ⚠ `guardiasDeDiseno` queda en rojo a propósito desde T1423 hasta T1470
+### 6. ⚠ `guardiasDeDiseno` queda en rojo a propósito desde T1423 hasta T1470
 
 Es lo que pide el plan (F1.1, «en rojo a propósito») y el protocolo está escrito
 en el encabezado de la propia guardia: un archivo de `NOMBRES` que **todavía no
@@ -137,7 +162,7 @@ infracción real y no se tapa con esta cuenta.** Y **no vale**: sacar un nombre 
 `NOMBRES`, bajar el `toHaveLength`, ni meter clases adentro de un comentario para
 que `lineasQueMatchean` las saltee.
 
-### 6. Lo que siempre se olvida, y acá es mucho
+### 7. Lo que siempre se olvida, y acá es mucho
 
 Cada ítem tiene su tarea. La lista está para que nadie descubra en producción que
 falta uno.
@@ -158,7 +183,7 @@ falta uno.
 | La **ampliación de `deploy/respaldo.sh`**, en el mismo commit que crea el volumen | T1417 |
 | **`docs/OPERACION.md`** para quien opera esto cuando se rompa | T1412, T1420, T1450 |
 
-### 7. Cómo se lee una tarea
+### 8. Cómo se lee una tarea
 
 Cada una trae, además de qué hacer:
 
@@ -230,7 +255,7 @@ algo sale mal acá, no tiene que haber nada más en el mismo corte.
       **Qué se revierte para verlo en rojo**: borrar el `.dockerignore` de la
       raíz y mirar cuánto tarda el `docker build` en enviar el contexto.
 
-- [ ] **T1411** `packages/precios`, la copia única de la fórmula. **(a)** Crear
+- [x] **T1411** `packages/precios`, la copia única de la fórmula. **(a)** Crear
       `packages/precios/` con `package.json`
       (`{ "name": "@favalio/precios", "private": true, "version": "0.0.0",
       "main": "index.js", "scripts": { "test": "vitest run" } }`), `index.js`,
@@ -275,12 +300,12 @@ algo sale mal acá, no tiene que haber nada más en el mismo corte.
       del paquete la dejaría revisando archivos que no existen y pasando en
       verde.
       **Verificación**, en este orden y no en otro: escribí primero la guardia
-      del punto (h), corré `npm run test:api -- paqueteDePrecios` **antes** de
+      del punto (h), corré `npm exec -w apps/api -- jest paqueteDePrecios` **antes** de
       mudar nada y **anotá cuántos hallazgos dio** — tiene que ser > 0, porque
       hoy la copia está en `apps/web`. Si da cero, la guardia no está mirando lo
       que dice mirar y la mudanza no va a demostrar nada. Recién ahí mudá, y
       después: `npm test -w packages/precios` con **21 casos**, `npm run
-      test:web`, `npm run test:api -- paqueteDePrecios`, `npm run build` y los
+      test:web`, `npm exec -w apps/api -- jest paqueteDePrecios`, `npm run build` y los
       **seis** jobs del CI.
       **Los tests que evitan el defecto**: los 21 casos de `index.test.js`
       —incluidos el recargo del 100 % que devolvía `Infinity`, el descuento del
@@ -337,7 +362,7 @@ no hay ningún catálogo que lo lea.
       **Verificación**: `npm --prefix apps/api run db:migrate` y
       `npm --prefix apps/api run verificar:esquema`;
       `node apps/api/scripts/verificar-reversibilidad.js --desde 20260814`;
-      `npm run test:api -- reversibilidadDeMigraciones`. El job «API — la imagen
+      `npm exec -w apps/api -- jest reversibilidadDeMigraciones`. El job «API — la imagen
       arranca y migra» en verde (FR-214).
       **El test que evita el defecto**: *«después de migrar, ningún producto
       quedó en `publicable = true`»* — es el criterio 5, y es lo que separa
@@ -357,7 +382,7 @@ no hay ningún catálogo que lo lea.
       sintética mala y su muestra buena. Hoy la lista tiene dos entradas y
       ninguna lo escribe; la guardia existe para el día que tenga cuatro. Las
       filas nuevas van en `permisosDeRutas.test.js`.
-      **Verificación**: `npm run test:api -- permisosDeRutas products` y
+      **Verificación**: `npm exec -w apps/api -- jest permisosDeRutas products` y
       `npm --prefix apps/api run test:integracion -- publicables`.
       **Los tests que evitan el defecto**: *«la acción masiva con un id de otra
       empresa no marca ninguna fila ajena»* —contando `Product.count({ where: {
@@ -426,7 +451,7 @@ foto que se suba es la primera foto que se puede perder.
       nazca. Anotado para que `sdd-verify` no lo lea como un desvío.
       Su test en `apps/api/src/tests/imagenes.test.js` (**nunca**
       `utils/imagenes.test.js`: jest no lo levanta).
-      **Verificación**: `npm run test:api -- imagenes`.
+      **Verificación**: `npm exec -w apps/api -- jest imagenes`.
       **Los tests que evitan el defecto**: *«el nombre del archivo no se puede
       derivar del id del producto ni del de la empresa»* —dos llamadas con los
       mismos argumentos dan nombres distintos—, *«la ruta no contiene el
@@ -457,7 +482,7 @@ foto que se suba es la primera foto que se puede perder.
       como texto —molde: las guardias que leen `ci.yml`— y exige que nombre el
       volumen, que verifique el resultado y que rote con el mismo
       `DIAS_A_CONSERVAR`. Con su ancla: encontró las N líneas que dice mirar.
-      **Verificación**: `npm run test:api -- respaldoDeImagenes`; y a mano,
+      **Verificación**: `npm exec -w apps/api -- jest respaldoDeImagenes`; y a mano,
       `bash deploy/respaldo.sh` produce un `favalio-imagenes-*.tar.gz` que
       `tar -tzf` lista sin error, **con el volumen vacío y con una foto adentro**.
       **El test que evita el defecto**: *«el respaldo del volumen se verifica
@@ -484,7 +509,7 @@ foto que se suba es la primera foto que se puede perder.
       `/img/aa/bb/xxx.jpg` y nunca la URL absoluta: mudarse de dominio no exige
       migrar datos, y es lo que hace verificable FR-030 con una función pura. Las
       filas nuevas en `permisosDeRutas.test.js`.
-      **Verificación**: `npm run test:api -- permisosDeRutas products` y
+      **Verificación**: `npm exec -w apps/api -- jest permisosDeRutas products` y
       `npm --prefix apps/api run test:integracion -- imagenesDeProducto`.
       **Los tests que evitan el defecto**: *«un `.exe` renombrado a `.jpg` se
       rechaza: lo que se mira es el contenido»*, *«el archivo de 8 MB devuelve un
@@ -544,7 +569,7 @@ seis pantallas nuevas entran a la guardia de diseño **antes de escribirse**.
       es lo que abre el certificado de AFIP — el que prepara pedidos no tiene por
       qué verlo. El catálogo de `permisosDeRutas.test.js:674-693` pasa de 50 a
       54; **el ancla `> 40` es un piso y no se toca** (ancla 3).
-      **Verificación**: `npm run test:api -- permisosDeRutas seedPermissions`.
+      **Verificación**: `npm exec -w apps/api -- jest permisosDeRutas seedPermissions`.
       **Los tests que evitan el defecto**: *«un rol `vendedor` puede ver y
       gestionar pedidos y NO puede editar catálogos»* y *«ningún permiso nuevo
       hereda de `config.*`»*.
@@ -574,7 +599,7 @@ seis pantallas nuevas entran a la guardia de diseño **antes de escribirse**.
       producción, dentro de una funcionalidad que no es de ella, es cambiar el
       comportamiento de un cliente por un efecto colateral. Queda anotado como
       deuda, con el mismo tratamiento que H12.
-      **Verificación**: `npm run test:api -- requireModulo`.
+      **Verificación**: `npm exec -w apps/api -- jest requireModulo`.
       **Los tests que evitan el defecto**: *«una empresa sin `enabled_modules`
       entra: cerrar por ausencia apagaría el sistema entero»*, *«sin el módulo
       responde 404 y no 403, que confirmaría que existe»* y —el que ata las dos
@@ -650,7 +675,7 @@ ocho columnas divergentes hasta el proyecto 0, y está escrito en `ci.yml:210-22
       `empresa_id`», y el ancla de `aislamientoEmpresas.test.js:1136` existe para
       **no** moverse.
       **Verificación**: `npm --prefix apps/api run db:migrate` y
-      `verificar:esquema`; `npm run test:api -- reversibilidadDeMigraciones`.
+      `verificar:esquema`; `npm exec -w apps/api -- jest reversibilidadDeMigraciones`.
       **El test que evita el defecto**: en `catalogos.integracion.test.js`
       (T1432), *«dos empresas no pueden tener el mismo slug»*, afirmado contra el
       `SequelizeUniqueConstraintError` y no contra un `findOne`.
@@ -770,7 +795,7 @@ jamás se ejecutó.
       compartido para ocho líneas engordaría el corte de workspaces sin resolver
       nada que la guardia no resuelva. Esa guardia se escribe en **T1453**, con
       el formulario.
-      **Verificación**: `npm run test:api -- slugDeCatalogo`.
+      **Verificación**: `npm exec -w apps/api -- jest slugDeCatalogo`.
       **Los tests que evitan el defecto**: *«“Comprafit / Fitnet” con acentos y
       mayúsculas da `comprafit-fitnet` y no `comprafit--fitnet`»*, *«`c` está
       reservado: es el prefijo de la propia URL pública»* y *«`slugDeLaRuta`
@@ -787,7 +812,7 @@ jamás se ejecutó.
       funciones, `Nutremax` y `NUTREMAX` salen filtrados de una y no de la otra,
       y **el mismo producto aparece en el catálogo con un precio y en la
       previsualización con otro**.
-      **Verificación**: `npm run test:api -- textoDeBusqueda`.
+      **Verificación**: `npm exec -w apps/api -- jest textoDeBusqueda`.
       **El test que evita el defecto**: *«“Proteínas” y “proteinas” son la misma
       categoría»*.
       **Qué se revierte para verlo en rojo**: sacar el borrado de acentos.
@@ -821,7 +846,7 @@ jamás se ejecutó.
       precios de `PREVIEW`** (maqueta `:1543-1550`) y **las cuatro coberturas de
       `REGLAS`** (`:1524-1541`) como casos, más las cuatro combinaciones de
       ámbito y las tres de tipo.
-      **Verificación**: `npm run test:api -- reglasDePrecio`.
+      **Verificación**: `npm exec -w apps/api -- jest reglasDePrecio`.
       **Los tests que evitan el defecto**: *«un producto alcanzado por cuatro
       reglas termina con una sola, y las otras tres quedan pisadas»*, *«“gana en
       2 de 4” sale del mismo recorrido que los precios y los dos números
@@ -844,7 +869,7 @@ jamás se ejecutó.
       comentario suelto en uno solo es el que alguien «unifica» seis meses
       después. Su test en `apps/api/src/tests/estadoDeSuscripcion.test.js`, con
       los cinco valores del enum **más el desconocido**.
-      **Verificación**: `npm run test:api -- estadoDeSuscripcion
+      **Verificación**: `npm exec -w apps/api -- jest estadoDeSuscripcion
       checkSubscription`. Los tests que ya existen de `checkSubscription` pasan
       **sin haberlos tocado** — es lo único que demuestra que la extracción no
       cambió el comportamiento de la cadena privada.
@@ -889,7 +914,7 @@ contrato real y no imaginado.
       empresa** —si no, «el de B da 404 desde A» no se distingue de «no hay
       nada»— y **dos catálogos en la empresa A**, para que más adelante «el
       pedido cayó en el catálogo equivocado» sea detectable.
-      **Verificación**: `npm run test:api -- permisosDeRutas montajeDeRouters` y
+      **Verificación**: `npm exec -w apps/api -- jest permisosDeRutas montajeDeRouters` y
       `npm --prefix apps/api run test:integracion -- catalogos`.
       **Los tests que evitan el defecto**: *«`GET /api/catalogos/:id` con el id
       de un catálogo de otra empresa responde 404 y no filtra el nombre»*, *«dos
@@ -939,7 +964,7 @@ contrato real y no imaginado.
       **La fixture tiene que poder distinguir el defecto**: **una regla de cada
       ámbito sobre el mismo producto**. Sin eso no se puede ver cuál gana, y el
       test pasa con cualquier escala de especificidad.
-      **Verificación**: `npm run test:api -- aislamientoEmpresas` y
+      **Verificación**: `npm exec -w apps/api -- jest aislamientoEmpresas` y
       `npm --prefix apps/api run test:integracion -- catalogos`.
       **Los tests que evitan el defecto**: *«una regla sobre un producto de otra
       empresa responde 404 y `CatalogoReglaPrecio.count()` no se movió»*, *«dos
@@ -978,7 +1003,7 @@ contrato real y no imaginado.
       `utils/imagenes.js` de T1416 con las dos medidas propias: portada 1200×480
       JPEG y logo 400×400 **PNG**. Las columnas guardan la **ruta relativa**.
       Filas nuevas en `permisosDeRutas.test.js`.
-      **Verificación**: `npm run test:api -- permisosDeRutas` y
+      **Verificación**: `npm exec -w apps/api -- jest permisosDeRutas` y
       `npm --prefix apps/api run test:integracion -- catalogos`.
       **El test que evita el defecto**: *«el logo se guarda en PNG y conserva la
       transparencia»* — es lo que la pantalla pide (`:804`) y lo que un JPEG
@@ -1028,7 +1053,7 @@ las dos cosas hay que **pedirlas**.
       **El ancla**: encontró al menos N `res.json(` y M `attributes:` en el
       router. Si el número se desploma, el detector dejó de entender la forma y
       las tres reglas estarían pasando sin mirar nada.
-      **Verificación**: `npm run test:api -- proyeccionPublica` da **exactamente
+      **Verificación**: `npm exec -w apps/api -- jest proyeccionPublica` da **exactamente
       dos** hallazgos, los dos «el archivo NO existe: la guardia no miró nada» —
       el protocolo de `guardiasDeDiseno.test.js:217-238`. **Una guardia que nace
       en verde es una guardia que no se sabe si mira** (criterio 7).
@@ -1060,7 +1085,7 @@ las dos cosas hay que **pedirlas**.
       `null` es cómo se dibuja «undefined» en una tarjeta**—; `precio_lista` y
       `ahorro_pct` **solo cuando los dos se cumplen**, interruptor encendido **y**
       precio final **menor** que el de lista (FR-062).
-      **Verificación**: `npm run test:api -- tenantDeSlug vistaPublica
+      **Verificación**: `npm exec -w apps/api -- jest tenantDeSlug vistaPublica
       proyeccionPublica` — la guardia de T1437 baja de dos hallazgos a **uno**.
       **Los tests que evitan el defecto**: *«la proyección de un producto no
       lleva `cost` ni `publicable`, aunque la fila los traiga»*, *«un producto sin
@@ -1132,7 +1157,7 @@ las dos cosas hay que **pedirlas**.
       Ancla 2: la lista de `routes/` pasa de **20 a 21**. Ancla 5:
       `montajeDeRouters.test.js:331-338` **sigue en `[]`** y hay que verificarlo.
       Crear `apps/api/src/tests/integracion/catalogoPublico.integracion.test.js`.
-      **Verificación**: `npm run test:api -- permisosDeRutas montajeDeRouters
+      **Verificación**: `npm exec -w apps/api -- jest permisosDeRutas montajeDeRouters
       proyeccionPublica` —la guardia de T1437 baja a **cero** hallazgos— y
       `npm --prefix apps/api run test:integracion -- catalogoPublico`.
       **Los tests que evitan el defecto**: *«el catálogo de B da 404 desde el
@@ -1176,7 +1201,7 @@ las dos cosas hay que **pedirlas**.
       el suyo la superficie pública queda desnuda sin que se mueva una línea del
       archivo del limitador. Con el `skip`, la exención vive **al lado del
       limitador que exime**.
-      **Verificación**: `npm run test:api -- observabilidad`.
+      **Verificación**: `npm exec -w apps/api -- jest observabilidad`.
       **Los tests que evitan el defecto**: *«el prefijo público está eximido del
       limitador global»*, *«un prefijo eximido sin limitador propio es una
       superficie abierta»* y *«la guardia falla cuando no encuentra el montaje,
@@ -1421,7 +1446,7 @@ utilizable el QR.
       prohíbe.
       Ancla 1: `ROUTERS_SIN_SESION` pasa de **3 a 4** con
       `'routes/catalogoPublico.js paginas'` y su motivo.
-      **Verificación**: `npm run test:api -- permisosDeRutas observabilidad` y
+      **Verificación**: `npm exec -w apps/api -- jest permisosDeRutas observabilidad` y
       `npm --prefix apps/api run test:integracion -- catalogoPublico`.
       **Los tests que evitan el defecto**: *«un catálogo en borrador devuelve 404
       con los mismos metadatos genéricos que un slug inexistente»*, *«sin el
@@ -1456,7 +1481,7 @@ utilizable el QR.
       **Verificación**: `docker compose -f docker-compose.produccion.yml config`
       valida; `docker compose up -d --build tienda` y, desde el contenedor de la
       API, `curl http://tienda/index.html` devuelve el HTML con el marcador. Y
-      una guardia barata: `npm run test:api -- observabilidad` con una regla que
+      una guardia barata: `npm exec -w apps/api -- jest observabilidad` con una regla que
       lea `docker-compose.produccion.yml` y exija que `ALLOWED_ORIGINS` nombre
       `tienda.${DOMINIO}` — es una línea que se olvida y **falla en silencio**.
       **El test que evita el defecto**: *«`ALLOWED_ORIGINS` incluye el origen de
@@ -1684,7 +1709,7 @@ sobre cinco cosas a la vez.
       detalle con `include` sin mover el ancla.
       **Verificación**: `verificar:esquema`,
       `node apps/api/scripts/verificar-reversibilidad.js --desde 20260814`, y
-      `npm run test:api -- aislamientoEmpresas reversibilidadDeMigraciones` con
+      `npm exec -w apps/api -- jest aislamientoEmpresas reversibilidadDeMigraciones` con
       el `toBe(3)` **intacto**.
       **El test que evita el defecto**: *«borrar un producto no borra la línea
       del pedido: el nombre y el precio congelados siguen ahí»* (US16 escenario
@@ -1717,7 +1742,7 @@ sobre cinco cosas a la vez.
       `apps/web/src` ni `apps/tienda/src`, con su ancla dentro de
       `packages/pedido/index.js`.
       **Verificación**: `npm test -w packages/pedido`, `npm run test:web` y
-      `npm run test:api -- paqueteDePrecios`. Los tests de teléfono que ya
+      `npm exec -w apps/api -- jest paqueteDePrecios`. Los tests de teléfono que ya
       existían pasan **sin tocar ninguna aserción**.
       **Los tests que evitan el defecto**: los casos del formato argentino que ya
       estaban, y *«la normalización del teléfono no está escrita dos veces»*.
@@ -1730,7 +1755,7 @@ sobre cinco cosas a la vez.
       `apps/api/src/tests/totalDePedido.test.js`, y **el borde se prueba en el
       borde**: un subtotal **exactamente igual** al umbral. Umbral vacío o cero
       significa **«no hay envío gratis»**, no «todo gratis».
-      **Verificación**: `npm run test:api -- totalDePedido`.
+      **Verificación**: `npm exec -w apps/api -- jest totalDePedido`.
       **Los tests que evitan el defecto**: *«con el subtotal exactamente igual al
       umbral el envío es gratis»* y *«umbral en cero no regala el envío»*.
       **Qué se revierte para verlo en rojo**: cambiar el `>=` por `>`; el primero
@@ -1740,7 +1765,7 @@ sobre cinco cosas a la vez.
       transiciones permitidas entre los **seis** estados (FR-161) y `cancelado`
       **terminal** (FR-163), función pura (FR-162). Su test en
       `apps/api/src/tests/estadoDePedido.test.js`.
-      **Verificación**: `npm run test:api -- estadoDePedido`.
+      **Verificación**: `npm exec -w apps/api -- jest estadoDePedido`.
       **Los tests que evitan el defecto**: *«de `cancelado` no se sale a ningún
       lado»* y *«`pagado → pagado` no está permitida»* — es lo que hace que
       marcar cobrado dos veces sea **idempotente por construcción**, sin una
@@ -1790,7 +1815,7 @@ fila**.
       **solo con `entrega = 'envio'`**, y **descarta `dni` y
       `acepta_comunicaciones` aunque vengan** mientras la puerta de FR-147a esté
       cerrada. Su test en `apps/api/src/tests/pedidoPublico.test.js`.
-      **Verificación**: `npm run test:api -- pedidoPublico`.
+      **Verificación**: `npm exec -w apps/api -- jest pedidoPublico`.
       **Los tests que evitan el defecto**: *«el mismo producto dos veces es una
       línea con la suma»*, *«un `precio` en el cuerpo no sobrevive a
       `consolidarLineas`»* —afirmado sobre las claves del objeto devuelto— y
@@ -1880,7 +1905,7 @@ fila**.
       **exactamente igual** al umbral de envío gratis, y **dos catálogos en la
       empresa A**, para que «el pedido cayó en el catálogo equivocado» sea
       detectable.
-      **Verificación**: `npm run test:api -- aislamientoEmpresas
+      **Verificación**: `npm exec -w apps/api -- jest aislamientoEmpresas
       proyeccionPublica` y `npm --prefix apps/api run test:integracion --
       pedidoPublico`.
       **Los tests que evitan el defecto**: *«el mismo pedido mandado dos veces EN
@@ -2025,7 +2050,7 @@ promete.
       pasa de **21 a 22**, con sus filas en `permisosDeRutas.test.js`
       (`pedidos.ver` en los dos primeros, `pedidos.gestionar` en el `PATCH`).
       Crear `apps/api/src/tests/integracion/bandejaDePedidos.integracion.test.js`.
-      **Verificación**: `npm run test:api -- permisosDeRutas montajeDeRouters` y
+      **Verificación**: `npm exec -w apps/api -- jest permisosDeRutas montajeDeRouters` y
       `npm --prefix apps/api run test:integracion -- bandejaDePedidos`.
       **Los tests que evitan el defecto**: —el que sostiene el corte—
       ***«“Marcar cobrado” dejó `stock`, `stock_movements`, `sales`, `sale_items`
