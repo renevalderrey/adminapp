@@ -1264,3 +1264,76 @@ describe('publicable no se escribe desde afuera', () => {
     }
   });
 });
+
+// ════════════════════════════════════════════
+//  Los cuatro permisos de la venta online
+//
+//  ── Por qué códigos propios y no `config.*` ──
+//
+//  TiendaNube arrastra el pendiente 12b desde el hito 7 justamente por reusar
+//  `config.ver` / `config.editar`: un permiso cuyo nombre no dice lo que abre no
+//  se puede auditar leyendo el catálogo, que es la única forma en que alguien
+//  revisa esto.
+//
+//  Y hay un motivo concreto además del nombre: **`config.editar` es lo que da
+//  acceso al certificado y a la clave de AFIP**. Colgar de ahí «puede editar el
+//  catálogo» significa que quien publica precios también puede tocar el material
+//  fiscal de la empresa.
+//
+//  ── Por qué el vendedor no toca `catalogo.*` ──
+//
+//  Prepara y entrega los pedidos: los ve y los mueve de estado. Qué productos
+//  salen a la calle y a qué precio es una decisión de negocio, y una regla de
+//  precio mal puesta se publica sola en una página sin login.
+// ════════════════════════════════════════════
+
+const PERMISOS_DE_VENTA_ONLINE = [
+  'catalogo.ver', 'catalogo.editar', 'pedidos.ver', 'pedidos.gestionar',
+];
+
+describe('los permisos de la venta online', () => {
+  it('los cuatro están en el catálogo, con su módulo propio', () => {
+    for (const codigo of PERMISOS_DE_VENTA_ONLINE) {
+      expect(CATALOGO).toContain(codigo);
+    }
+
+    // El módulo es lo que agrupa la pantalla de Equipo. `catalogo` y `pedidos`,
+    // no `config`.
+    expect(SEED).toMatch(/codigo: 'catalogo\.ver'[^}]*modulo: 'catalogo'/);
+    expect(SEED).toMatch(/codigo: 'pedidos\.ver'[^}]*modulo: 'pedidos'/);
+  });
+
+  it('un vendedor ve y gestiona pedidos, y NO edita catálogos', () => {
+    expect(POR_ROL.vendedor).toContain('pedidos.ver');
+    expect(POR_ROL.vendedor).toContain('pedidos.gestionar');
+
+    expect(POR_ROL.vendedor).not.toContain('catalogo.ver');
+    expect(POR_ROL.vendedor).not.toContain('catalogo.editar');
+  });
+
+  it('ningún permiso nuevo hereda de config.*', () => {
+    // Que ninguno de los cuatro SEA `config.algo` es trivial; lo que esta regla
+    // sostiene es que el rol que tiene la venta online no la recibió **por**
+    // tener config: `gerente` los tiene los cuatro y tiene `config.ver`, pero
+    // no `config.editar`.
+    for (const codigo of PERMISOS_DE_VENTA_ONLINE) {
+      expect(codigo.startsWith('config.')).toBe(false);
+    }
+
+    expect(POR_ROL.gerente).toContain('catalogo.editar');
+    expect(POR_ROL.gerente).not.toContain('config.editar');
+  });
+
+  it('producción y compras no reciben ninguno', () => {
+    for (const codigo of PERMISOS_DE_VENTA_ONLINE) {
+      expect(rolesCon(codigo)).not.toContain('produccion');
+      expect(rolesCon(codigo)).not.toContain('compras');
+    }
+  });
+
+  it('admin los recibe por ser el catálogo entero, sin enumerarlos', () => {
+    for (const codigo of PERMISOS_DE_VENTA_ONLINE) {
+      expect(POR_ROL.admin).toContain(codigo);
+    }
+  });
+});

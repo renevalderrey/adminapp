@@ -75,6 +75,17 @@ const PERMISOS = [
   { codigo: 'sucursales.crear', nombre: 'Crear sucursales', modulo: 'sucursales' },
   { codigo: 'sucursales.editar', nombre: 'Editar sucursales', modulo: 'sucursales' },
   { codigo: 'sucursales.eliminar', nombre: 'Eliminar sucursales', modulo: 'sucursales' },
+  // Venta online (hito 10)
+  //
+  // Codigos propios, y NO se reusan `config.ver` / `config.editar`. Reusarlos es
+  // el pendiente 12b que TiendaNube arrastra desde el hito 7: un permiso cuyo
+  // nombre no dice lo que abre, y que quien revisa el catalogo no puede
+  // auditar. Ademas `config.editar` es lo que da acceso al certificado de AFIP:
+  // el que prepara pedidos no tiene por que verlo.
+  { codigo: 'catalogo.ver', nombre: 'Ver catálogos', modulo: 'catalogo' },
+  { codigo: 'catalogo.editar', nombre: 'Editar catálogos', modulo: 'catalogo' },
+  { codigo: 'pedidos.ver', nombre: 'Ver pedidos online', modulo: 'pedidos' },
+  { codigo: 'pedidos.gestionar', nombre: 'Gestionar pedidos online', modulo: 'pedidos' },
   // Vista empresa (ver datos consolidados de todas las sucursales)
   { codigo: 'vista_empresa', nombre: 'Ver datos consolidados de toda la empresa', modulo: 'empresa' },
 ];
@@ -92,6 +103,8 @@ const ROLE_PERMISOS = {
     'caja.ver', 'caja.crear',
     'gastos.ver', 'gastos.crear', 'gastos.editar',
     'reportes.ver', 'dashboard.ver',
+    // Venta online completa: decide que sale a la calle y a que precio.
+    'catalogo.ver', 'catalogo.editar', 'pedidos.ver', 'pedidos.gestionar',
     'config.ver',
     'equipo.ver',
     'sucursales.ver',
@@ -103,6 +116,10 @@ const ROLE_PERMISOS = {
     'clientes.ver', 'clientes.crear',
     'caja.ver',
     'dashboard.ver',
+    // Prepara y entrega los pedidos, asi que los ve y los mueve de estado.
+    // NINGUNO de `catalogo.*`: que productos salen y a que precio se publican es
+    // una decision de negocio, no de mostrador.
+    'pedidos.ver', 'pedidos.gestionar',
   ],
   produccion: [
     'products.ver', 'stock.ver',
