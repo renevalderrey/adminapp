@@ -51,6 +51,16 @@ const TiendanubeEstadoOauth = require('./TiendanubeEstadoOauth');
 const TiendanubeVariante = require('./TiendanubeVariante');
 const TiendanubePedido = require('./TiendanubePedido');
 const TiendanubeCorrida = require('./TiendanubeCorrida');
+// Los del hito 10 van SIN asociaciones declaradas, por el mismo motivo escrito
+// arriba para TiendaNube: `analizarIncludes` clasificaría cualquier `include` de
+// una tabla con `empresa_id` como «hijo con empresa_id» y movería un ancla que
+// existe para no moverse. Se importan y se exportan igual porque
+// `verificar-esquema.js` hace un `findOne` por modelo de `src/models`: una tabla
+// que no esté acá no se compara contra `information_schema`.
+const Catalogo = require('./Catalogo');
+const CatalogoProducto = require('./CatalogoProducto');
+const CatalogoReglaPrecio = require('./CatalogoReglaPrecio');
+const CatalogoVisita = require('./CatalogoVisita');
 const ActualizacionPrecio = require('./ActualizacionPrecio');
 const GastoVariable = require('./GastoVariable');
 const ListaProveedor = require('./ListaProveedor');
@@ -236,6 +246,10 @@ module.exports = {
   TiendanubeVariante,
   TiendanubePedido,
   TiendanubeCorrida,
+  Catalogo,
+  CatalogoProducto,
+  CatalogoReglaPrecio,
+  CatalogoVisita,
   ActualizacionPrecio,
   GastoVariable,
   ListaProveedor,

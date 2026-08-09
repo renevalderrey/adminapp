@@ -688,6 +688,7 @@ async function sembrar(cliente) {
       (3, 1, 'Luz del depósito',  12345.67, 'gf1', 1,    NOW(), NOW()),
       (4, 2, 'Monotributo',           0.30, 'gf1', NULL, NOW(), NOW());
     SELECT setval(pg_get_serial_sequence('fixed_expenses', 'id'), 4);
+
   `;
 
   await cliente.query(sql);
@@ -740,6 +741,89 @@ function resolverMigracion(desde) {
 }
 
 /**
+ * Filas para las tablas que la migración que se está verificando acaba de crear.
+ *
+ * Es idempotente y silenciosa: si la tabla no existe todavía —porque se está
+ * verificando una migración anterior— no hace nada. Corre entre el `up` y el
+ * `down`, que es el único momento en que estas tablas existen y siguen vacías.
+ */
+async function sembrarLoQueAcabaDeNacer(cliente) {
+  await cliente.query(`
+    -- ════════ Lo que necesita la etapa 1 del hito 10 ════════
+    --
+    -- Sin estas filas las tres migraciones del catálogo revierten bien sobre
+    -- tablas vacías, las dos fotos del esquema dan iguales, y el informe dice
+    -- «BIEN» sin haber ejecutado una sola rama. Es exactamente lo que advierte
+    -- el encabezado de este archivo: sobre una base vacía casi todo down pasa.
+    --
+    -- Va condicionado a que las tablas existan, porque este mismo sembrado
+    -- corre también para verificar migraciones ANTERIORES a las que las crean.
+    DO $BLOQUE$
+    BEGIN
+      IF to_regclass('public.catalogos') IS NULL THEN RETURN; END IF;
+
+      -- Un catálogo PUBLICADO y colgado del punto de venta 2, que es el que ya
+      -- tiene stock sembrado: así el ON DELETE RESTRICT de
+      -- catalogos.punto_de_venta_id tiene algo que restringir de verdad.
+      INSERT INTO catalogos (id, empresa_id, punto_de_venta_id, slug, nombre_visible,
+                             descripcion, color_marca, estado, publicado_en,
+                             envio, envio_costo, envio_gratis_desde,
+                             created_at, updated_at)
+        VALUES (1, 1, 2, 'comprafit-fitnet', 'Comprafit / Fitnet',
+                'Suplementos con precio de socio.', '#00B4B6', 'publicado', NOW(),
+                true, 2500.50, 50000.00, NOW(), NOW())
+        ON CONFLICT DO NOTHING;
+      PERFORM setval(pg_get_serial_sequence('catalogos', 'id'), 1);
+
+      -- La lista de inclusión con dos de los tres productos: uno adentro y otro
+      -- afuera hace que «publica lo elegido» y «publica todo» den distinto.
+      -- Cada grupo con su propio guardia: el recorrido es ascendente, así que
+      -- cuando se verifica 20260815 existe catalogos y todavía no existen estas
+      -- dos. Un solo guardia arriba dejaría el INSERT contra una tabla que no
+      -- está y el script moriría diciendo «relation does not exist», que se lee
+      -- como un problema de la migración y no de la siembra.
+      IF to_regclass('public.catalogo_productos') IS NULL THEN RETURN; END IF;
+
+      INSERT INTO catalogo_productos (catalogo_id, product_id, orden, created_at, updated_at) VALUES
+        (1, 1, 0, NOW(), NOW()),
+        (1, 2, 1, NOW(), NOW())
+      ON CONFLICT DO NOTHING;
+
+      -- UNA REGLA DE CADA ÁMBITO. Es lo que ejercita el CHECK ck_regla_ambito y
+      -- los cuatro índices únicos parciales: con reglas de un solo ámbito, tres
+      -- de los cuatro índices no se tocan nunca.
+      INSERT INTO catalogo_reglas_precio
+        (empresa_id, catalogo_id, ambito, categoria, brand_id, product_id, tipo, valor, activo, created_at, updated_at) VALUES
+        (1, 1, 'catalogo',  NULL,      NULL, NULL, 'porcentaje_descuento', 10.00, true,  NOW(), NOW()),
+        (1, 1, 'categoria', 'insumo',  NULL, NULL, 'porcentaje_descuento', 12.50, true,  NOW(), NOW()),
+        (1, 1, 'producto',  NULL,      NULL, 1,    'precio_fijo',          999.99, false, NOW(), NOW())
+      ON CONFLICT DO NOTHING;
+
+      -- La de ámbito 'marca' sólo si hay una marca sembrada, porque brand_id es
+      -- NOT NULL para ese ámbito por el CHECK.
+      IF EXISTS (SELECT 1 FROM brands LIMIT 1) THEN
+        INSERT INTO catalogo_reglas_precio
+          (empresa_id, catalogo_id, ambito, categoria, brand_id, product_id, tipo, valor, activo, created_at, updated_at)
+          SELECT 1, 1, 'marca', NULL, id, NULL, 'monto_descuento', 300.75, true, NOW(), NOW()
+          FROM brands ORDER BY id LIMIT 1
+        ON CONFLICT DO NOTHING;
+      END IF;
+
+      IF to_regclass('public.catalogo_visitas') IS NULL THEN RETURN; END IF;
+
+      -- DOS filas del mismo día y el mismo origen, con estados distintos. Es el
+      -- caso que justifica que estado_catalogo esté en la clave única: con una
+      -- sola fila, la clave de tres columnas y la de cuatro se comportan igual.
+      INSERT INTO catalogo_visitas (catalogo_id, fecha, origen, estado_catalogo, cantidad, created_at, updated_at) VALUES
+        (1, CURRENT_DATE, 'qr', 'publicado', 37, NOW(), NOW()),
+        (1, CURRENT_DATE, 'qr', 'pausado',    4, NOW(), NOW())
+      ON CONFLICT DO NOTHING;
+    END
+    $BLOQUE$;
+  `);
+}
+
+/**
  * Una migración, de ida y de vuelta.
  *
  * @returns {{archivo: string, ok: boolean, notas: string[]}}
@@ -756,6 +840,18 @@ async function verificarUna(url, cliente, archivo) {
   }
 
   const despuesDelUp = await fotoCompleta(cliente);
+
+  // ⚠ Sembrar DESPUÉS del `up` y antes del `down`.
+  //
+  // `sembrar()` corre una sola vez, antes de aplicar el rango: para una
+  // migración que **crea** una tabla, esa siembra no puede poner nada adentro
+  // —la tabla todavía no existe— y el `down` termina corriendo sobre una tabla
+  // vacía. El informe dice BIEN sin haber ejecutado ninguna rama, que es
+  // exactamente lo que el encabezado de este archivo advierte.
+  //
+  // La foto ya se tomó arriba, así que estas filas no ensucian la comparación:
+  // el `down` se las lleva junto con la tabla, y `antes` nunca las vio.
+  await sembrarLoQueAcabaDeNacer(cliente);
 
   const sinCambios = diferencias(antes, despuesDelUp);
   if (!sinCambios.length) {

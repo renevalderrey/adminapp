@@ -655,7 +655,7 @@ modelo y VARCHAR en la migración, el sync intenta convertirla, Postgres no
 castea el default de texto a enum y **el job se cae**. Es el defecto que dejó
 ocho columnas divergentes hasta el proyecto 0, y está escrito en `ci.yml:210-222`.
 
-- [ ] **T1424** Crear `apps/api/src/migrations/20260815-catalogos.js` y
+- [x] **T1424** Crear `apps/api/src/migrations/20260815-catalogos.js` y
       `apps/api/src/models/Catalogo.js`, con las columnas de `data-model.md` y
       los tres índices: `uq_catalogo_slug` (`slug` UNIQUE **global**, que es
       **la** garantía de FR-050 y no un `findOne` previo —dos empresas pidiendo
@@ -682,7 +682,7 @@ ocho columnas divergentes hasta el proyecto 0, y está escrito en `ci.yml:210-22
       **Qué se revierte para verlo en rojo**: sacarle el `unique: true` al índice
       del slug.
 
-- [ ] **T1425** Crear `apps/api/src/migrations/20260816-catalogo-productos-y-reglas.js`
+- [x] **T1425** Crear `apps/api/src/migrations/20260816-catalogo-productos-y-reglas.js`
       con las **dos** tablas juntas —van juntas porque las dos tienen FK a
       `catalogos`, ninguna sirve sin la otra y las dos se borran juntas si la
       fase se revierte— y los modelos `CatalogoProducto.js` y
@@ -721,7 +721,7 @@ ocho columnas divergentes hasta el proyecto 0, y está escrito en `ci.yml:210-22
       igual para `producto` y **falla para `catalogo`**, que es el caso que el
       `NULL != NULL` deja escapar.
 
-- [ ] **T1426** [P] Crear `apps/api/src/migrations/20260817-catalogo-visitas.js` y
+- [x] **T1426** [P] Crear `apps/api/src/migrations/20260817-catalogo-visitas.js` y
       `apps/api/src/models/CatalogoVisita.js`, exportado sin asociaciones. La
       clave única es de **cuatro** columnas —`uq_visita (catalogo_id, fecha,
       origen, estado_catalogo)`— y ese es el hallazgo 3 del plan: con la clave de
@@ -740,7 +740,7 @@ ocho columnas divergentes hasta el proyecto 0, y está escrito en `ci.yml:210-22
       **Qué se revierte para verlo en rojo**: sacar `estado_catalogo` de la clave
       única; el test cuenta una fila donde tienen que ser dos.
 
-- [ ] **T1427** [P] En `apps/api/scripts/verificar-reversibilidad.js`, la función
+- [x] **T1427** [P] En `apps/api/scripts/verificar-reversibilidad.js`, la función
       `sembrar()` gana lo de la etapa 1: **un catálogo publicado con su punto de
       venta** —para que el `ON DELETE RESTRICT` de `catalogos.punto_de_venta_id`
       tenga algo que restringir—, **una regla de cada ámbito** —para que el CHECK

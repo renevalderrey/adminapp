@@ -77,13 +77,36 @@ function columnasEnumDeLosModelos() {
     .sort((a, b) => a.clave.localeCompare(b.clave));
 }
 
+/**
+ * Los ENUM que NO convierte `20260809`, porque nacen ya como tipo en su propia
+ * migración.
+ *
+ * `20260809` existió para **arreglar** ocho columnas que las migraciones habían
+ * creado VARCHAR mientras el modelo decía ENUM. Un ENUM nuevo no necesita esa
+ * conversión: se crea con `CREATE TYPE` en la migración que crea la tabla.
+ *
+ * Lo que sigue haciendo falta verificar es lo mismo de siempre —que exista un
+ * tipo de verdad y no un VARCHAR— y eso se comprueba abajo buscando el
+ * `CREATE TYPE enum_<tabla>_<columna>` en alguna migración. Sin esa regla, un
+ * modelo que declara ENUM contra una columna VARCHAR vuelve a tumbar el job
+ * `navegador` del CI, que es de donde salió todo esto.
+ */
+const NACEN_COMO_TIPO = [
+  'catalogo_reglas_precio.ambito',
+  'catalogo_reglas_precio.tipo',
+  'catalogo_visitas.estado_catalogo',
+  'catalogos.estado',
+];
+
 describe('Los ocho ENUM que la migración crea', () => {
-  const delModelo = columnasEnumDeLosModelos();
+  const todosLosDelModelo = columnasEnumDeLosModelos();
+  const delModelo = todosLosDelModelo.filter((c) => !NACEN_COMO_TIPO.includes(c.clave));
   const deLaMigracion = migracion.COLUMNAS;
 
   it('el lector encuentra las columnas que dice leer', () => {
     // Ancla. Sin esto, un cambio en cómo se exportan los modelos dejaría la
     // lista vacía y el test pasaría comparando nada contra nada.
+    expect(todosLosDelModelo).toHaveLength(12);
     expect(delModelo).toHaveLength(8);
     expect(deLaMigracion).toHaveLength(8);
   });
@@ -96,6 +119,38 @@ describe('Los ocho ENUM que la migración crea', () => {
       .sort();
 
     expect(enLaMigracion).toEqual(delModelo.map((c) => c.clave));
+  });
+
+  it('los que nacen como tipo tienen su CREATE TYPE en alguna migración', () => {
+    // La regla que reemplaza a la anterior para estos cuatro. Lo que importa no
+    // es en QUÉ migración se creó el tipo, sino que exista uno: un modelo que
+    // declara ENUM contra una columna VARCHAR es exactamente el defecto que el
+    // proyecto 0 vino a cerrar.
+    const fs = require('fs');
+    const path = require('path');
+    const carpeta = path.join(__dirname, '..', 'migrations');
+    const fuente = fs.readdirSync(carpeta)
+      .filter((n) => n.endsWith('.js'))
+      .map((n) => fs.readFileSync(path.join(carpeta, n), 'utf8'))
+      .join('\n');
+
+    const sinTipo = NACEN_COMO_TIPO.filter((clave) => {
+      const [tabla, columna] = clave.split('.');
+      return !fuente.includes(`CREATE TYPE enum_${tabla}_${columna}`);
+    });
+
+    expect(sinTipo).toEqual([]);
+  });
+
+  it('la lista de los que nacen como tipo no tiene nombres inventados', () => {
+    // El ancla de la exención: si alguien agrega una clave que ningún modelo
+    // declara, la exención tapa una columna que no existe y la regla de arriba
+    // pasa por vacío.
+    const claves = todosLosDelModelo.map((c) => c.clave);
+
+    for (const clave of NACEN_COMO_TIPO) {
+      expect(claves).toContain(clave);
+    }
   });
 
   it('los valores de cada tipo son los del modelo, EN EL MISMO ORDEN', () => {
