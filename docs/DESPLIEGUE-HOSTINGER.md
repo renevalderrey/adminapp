@@ -1,16 +1,22 @@
-# Desplegar Favalio entero en Hostinger
+# Desplegar Favalio entero en un VPS
 
-Todo en un solo proveedor: el dominio, el servidor, la base y el correo.
+Escrito sobre Hostinger, que es donde está el dominio, pero **sirve para
+cualquier VPS con Docker**: sólo la sección 1 (contratar la máquina) es propia
+del proveedor. El resto —DNS, Caddy, migraciones, respaldos— es igual en todos.
 
-## Antes de empezar: qué plan de Hostinger sirve
+## Antes de empezar: qué tipo de plan sirve
 
-**Hace falta un VPS.** El hosting compartido de Hostinger (Premium, Business,
-Cloud) sirve para sitios PHP y para archivos estáticos, pero **no corre Node.js
-ni PostgreSQL**: la API de Favalio no puede vivir ahí. Con un plan compartido
-sólo se podría publicar la landing, y quedaría la mitad del sistema sin lugar
-donde correr.
+**Un VPS sí; el hosting compartido no.** La diferencia no es de proveedor sino
+de tipo de plan:
 
-Con un VPS, en cambio, entra todo:
+- **Hosting compartido** (Hostinger Premium/Business/Cloud, y el equivalente de
+  cualquier otro): corre PHP y archivos estáticos. **No corre Node.js ni
+  PostgreSQL.** Sólo entraría la landing, y quedaría la mitad del sistema sin
+  lugar donde correr.
+- **VPS** (Hostinger KVM, DonWeb Cloud Server, cualquiera con acceso root y
+  Docker): entra todo, y es lo que asume este documento.
+
+Con un VPS entra la pila completa:
 
 | Pieza | Dónde corre | Nombre público |
 |---|---|---|
@@ -36,22 +42,56 @@ solo servidor es un único punto de falla. La sección 10 cubre eso.
 
 ## 1. Contratar el VPS
 
-hPanel → **VPS** → *Comprar*.
+**Es la única sección atada al proveedor.** Lo que hace falta, mire donde se
+mire:
 
-- **Plan:** el KVM más chico alcanza para arrancar (1 vCPU / 4 GB). El de 2
-  vCPU / 8 GB da aire para construir las imágenes sin pelear con la memoria.
-- **Ubicación:** la más cercana a los clientes. Para Argentina, el datacenter
-  de Brasil (São Paulo) es el que menos latencia da de los disponibles.
-- **Sistema operativo:** elegir la plantilla **Ubuntu 24.04 con Docker**. Si no
-  aparece, Ubuntu 24.04 limpio y se instala Docker en el paso 3.
-- **Acceso:** cargar una clave SSH pública si ya tenés una; si no, Hostinger da
-  una contraseña de root y la clave se configura después.
+| Requisito | Mínimo | Cómodo |
+|---|---|---|
+| RAM | 4 GB (con 2 GB de swap, paso 3.5) | 8 GB |
+| vCPU | 1 | 2 |
+| Disco | 50 GB NVMe | 100 GB |
+| Acceso | root por SSH | ídem |
+| Sistema | Ubuntu 24.04, Docker instalable | plantilla con Docker |
+| IP | IPv4 dedicada | ídem |
+
+Con 4 GB, construir el bundle de la web es lento y necesita el swap; con 8 GB
+no hace falta pensarlo.
+
+### Precios al 9/8/2026, facturados en pesos
+
+Cambian seguido: verificar antes de pagar.
+
+| Proveedor | Config | Precio | Detalle |
+|---|---|---|---|
+| Hostinger KVM 1 | 1 vCPU / 4 GB / 50 GB | AR$ 12.099/mes | contrato 2 años; **renueva a AR$ 24.199** |
+| Hostinger KVM 2 | 2 vCPU / 8 GB / 100 GB | AR$ 17.299/mes | contrato 2 años; renueva ~2× |
+| DonWeb Cloud Server | configurable | desde AR$ 4.621/mes | ese piso es 1 vCPU / 1 GB: no alcanza |
+
+El precio bueno de Hostinger es con **dos años prepagos** y la renovación es al
+doble. Presupuestar con el número de renovación.
+
+DonWeb tiene datacenter en Argentina y factura argentina con IVA discriminado
+—crédito fiscal, si sos responsable inscripto—. El argumento técnico a favor es
+la latencia contra AFIP: las llamadas SOAP son sincrónicas durante una venta.
+Son decenas de milisegundos; existe, no se nota.
+
+### En el panel
+
+- **Ubicación:** la más cercana a los clientes. Con Hostinger, para Argentina,
+  el datacenter de Brasil (São Paulo) es el que menos latencia da.
+- **Sistema operativo:** la plantilla **Ubuntu 24.04 con Docker**. Si no
+  aparece, Ubuntu 24.04 limpio y se instala Docker en el paso 3.4.
+- **Acceso:** cargar una clave SSH pública si ya tenés una; si no, el proveedor
+  da una contraseña de root y la clave se configura después.
 
 Al terminar, anotar la **IP del VPS**. Todo el paso 2 depende de ella.
 
 ---
 
 ## 2. Apuntar el dominio al VPS
+
+El dominio está en Hostinger y ahí se queda, esté donde esté el servidor: lo
+único que se carga son registros que apuntan a una IP.
 
 hPanel → **Dominios** → `favalio.com` → **DNS / Nameservers** → *Administrar
 registros DNS*.

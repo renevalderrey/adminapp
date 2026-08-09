@@ -103,8 +103,9 @@ El paso a paso completo —qué plan contratar, registros DNS, endurecimiento de
 servidor, Auth0, correo, respaldos y actualizaciones— está en
 [docs/DESPLIEGUE-HOSTINGER.md](docs/DESPLIEGUE-HOSTINGER.md).
 
-> **El hosting compartido de Hostinger no sirve para esto**: no corre Node.js
-> ni PostgreSQL. Hace falta un VPS.
+> Hace falta un **VPS** —Hostinger KVM, DonWeb, o cualquiera con Docker—. El
+> hosting *compartido* no sirve: no corre Node.js ni PostgreSQL. La diferencia
+> es el tipo de plan, no el proveedor.
 
 > Las `VITE_*` se hornean en el bundle **durante el build**: cambiar una en el
 > `.env` no tiene efecto hasta un `up -d --build`.
