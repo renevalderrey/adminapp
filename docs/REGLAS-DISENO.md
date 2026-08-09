@@ -735,6 +735,40 @@ lo que hay que corregir, no agregar la variante.
 
 ---
 
+## El selector de sucursal
+
+Vive en la barra superior y **solo se dibuja donde hace algo**. El alcance de
+cada pantalla se declara en `components/navegacion.js`, al lado de su nombre y
+su permiso:
+
+```js
+{ to: '/inventario', label: 'Inventario', permission: 'stock.ver' }                 // sucursal
+{ to: '/team',       label: 'Equipo',     permission: 'equipo.ver', alcance: 'empresa' }
+```
+
+Sin `alcance`, la pantalla mira la sucursal. Con `alcance: 'empresa'`, el
+control no aparece.
+
+**Y la pantalla que sí lo usa lo dice en su descripción**: «Stock por sucursal,
+costos y márgenes. **Filtra por la sucursal elegida arriba.**» Esconderlo donde
+no aplica es la mitad; la otra es que donde aplica se sepa sobre qué está
+filtrando — el valor elegido puede haber quedado de otra pantalla hace media
+hora.
+
+La regla completa se lee sin pensar: **si está, hace algo; y la pantalla dice
+qué.**
+
+> Hasta el hito 9 estaba dibujado en las doce y significaba una cosa distinta en
+> cada una: dos lo usaban de filtro, dos lo sembraban, y **ocho lo ignoraban**.
+> Para Equipo o Facturación eso es correcto —el equipo y el certificado de AFIP
+> son de la empresa— pero nada lo decía y el control seguía arriba, activo.
+>
+> Alguien que cambia de sucursal en Equipo espera ver otro equipo y ve el mismo.
+> La conclusión razonable no es «esta pantalla no filtra por sucursal»: es que
+> el sistema no le hizo caso.
+
+---
+
 ## Teclado
 
 **Todo lo que se puede apretar se puede apretar sin mouse.** Un `<div>` con

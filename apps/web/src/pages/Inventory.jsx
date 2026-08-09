@@ -686,9 +686,14 @@ const Inventory = () => {
       <div className="flex flex-wrap items-end justify-between gap-6">
         <div>
           <h1>Inventario</h1>
+          {/* ⚠ La descripción DICE el alcance. El selector de sucursal de
+              arriba filtra esta lista, y sin decirlo el mismo producto se ve
+              con distinto stock según lo que quedó elegido —que puede haber
+              quedado de otra pantalla, hace media hora—. */}
           <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
-            Stock por sucursal, costos y márgenes. Hacé clic en un producto para
-            editarlo sin salir de la lista.
+            Stock por sucursal, costos y márgenes. Filtra por la sucursal
+            elegida arriba. Hacé clic en un producto para editarlo sin salir de
+            la lista.
           </p>
         </div>
         <div className="flex gap-2">

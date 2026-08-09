@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom'
 import useStore from '@/store/useStore'
-import { itemDeRuta } from '@/components/navegacion'
+import { itemDeRuta, alcanceDeRuta } from '@/components/navegacion'
 import { SidebarMovil } from '@/components/app-sidebar'
 import { ThemeToggle } from '@/components/theme-toggle'
 import {
@@ -30,6 +30,17 @@ export function AppTopbar({ sidebarAbierta, onAlternarSidebar }) {
 
   const item = itemDeRuta(pathname)
   const puntosDeVenta = empresaActiva?.puntosDeVenta || []
+
+  // ⚠ El selector NO se dibuja en las pantallas cuyo alcance es la empresa.
+  //
+  // Estaba en las doce y significaba una cosa distinta en cada una: dos lo usan
+  // de filtro, dos lo siembran, y ocho lo ignoraban. Alguien que cambia de
+  // sucursal en Equipo espera ver otro equipo y ve el mismo, así que concluye
+  // que el sistema no le hizo caso.
+  //
+  // La regla queda de una línea: **si está, hace algo.** El alcance de cada
+  // pantalla lo declara `navegacion.js`, al lado de su nombre y su permiso.
+  const miraLaSucursal = alcanceDeRuta(pathname) === 'sucursal'
 
   return (
     <header className="flex h-[60px] shrink-0 items-center gap-3 border-b border-border bg-surface pl-4 pr-5">
@@ -101,7 +112,7 @@ export function AppTopbar({ sidebarAbierta, onAlternarSidebar }) {
           </span>
         )}
 
-        {puntosDeVenta.length > 0 && (
+        {puntosDeVenta.length > 0 && miraLaSucursal && (
           <>
             <span className="h-3.5 w-px bg-border" />
             <MapPin className="h-3.5 w-3.5 shrink-0 text-fg-3" />

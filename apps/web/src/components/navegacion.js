@@ -48,7 +48,7 @@ export const GRUPOS = [
     items: [
       { to: '/pos', icon: ShoppingCart, label: 'Punto de venta', permission: 'ventas.crear', modulo: 'pos' },
       { to: '/ventas', icon: ClipboardList, label: 'Historial de ventas', permission: 'ventas.ver', modulo: 'ventas' },
-      { to: '/clientes', icon: Users, label: 'Clientes', permission: 'clientes.ver', modulo: 'clientes' },
+      { to: '/clientes', icon: Users, label: 'Clientes', permission: 'clientes.ver', modulo: 'clientes', alcance: 'empresa' },
       { to: '/produccion', icon: Factory, label: 'Producción', permission: 'produccion.ver', modulo: 'produccion' },
     ],
   },
@@ -56,10 +56,10 @@ export const GRUPOS = [
     label: 'Gestión',
     items: [
       { to: '/inventario', icon: Package, label: 'Inventario', permission: 'stock.ver', modulo: 'inventario' },
-      { to: '/recetas', icon: Zap, label: 'Fórmulas y recetas', permission: 'recetas.ver', modulo: 'recetas' },
+      { to: '/recetas', icon: Zap, label: 'Fórmulas y recetas', permission: 'recetas.ver', modulo: 'recetas', alcance: 'empresa' },
       { to: '/faltantes', icon: AlertTriangle, label: 'Faltantes', permission: 'stock.ver' },
-      { to: '/proveedores', icon: Truck, label: 'Proveedores', permission: 'proveedores.ver', modulo: 'proveedores' },
-      { to: '/comparador', icon: Scale, label: 'Comparador de proveedores', permission: 'proveedores.ver' },
+      { to: '/proveedores', icon: Truck, label: 'Proveedores', permission: 'proveedores.ver', modulo: 'proveedores', alcance: 'empresa' },
+      { to: '/comparador', icon: Scale, label: 'Comparador de proveedores', permission: 'proveedores.ver', alcance: 'empresa' },
       { to: '/ordenes-compra', icon: ClipboardList, label: 'Órdenes de compra', permission: 'ordenes_compra.ver', modulo: 'ordenes-compra' },
     ],
   },
@@ -69,7 +69,7 @@ export const GRUPOS = [
       // ⚠ Los dos van SIN `modulo` a propósito: son el esqueleto, no módulos
       // opcionales. El porqué completo está en «Las cuatro que NO declaran
       // `modulo`», arriba. Leerlo antes de agregárselo.
-      { to: '/gastos', icon: Wallet, label: 'Gastos', permission: 'gastos.ver' },
+      { to: '/gastos', icon: Wallet, label: 'Gastos', permission: 'gastos.ver', alcance: 'empresa' },
       { to: '/panel', icon: BarChart3, label: 'Panel de control', permission: 'dashboard.ver' },
     ],
   },
@@ -78,7 +78,7 @@ export const GRUPOS = [
     items: [
       // ⚠ Sin `modulo` a propósito: sin esta pantalla una empresa no puede
       // facturar. Ver «Las cuatro que NO declaran `modulo`», arriba.
-      { to: '/facturacion', icon: FileCheck, label: 'Facturación AFIP', permission: 'config.ver' },
+      { to: '/facturacion', icon: FileCheck, label: 'Facturación AFIP', permission: 'config.ver', alcance: 'empresa' },
       // ⚠ El módulo y el permiso son los MISMOS que declaran la `<Route>` de
       // App.jsx y las once rutas privadas de `routes/tiendanube.js`. Si difieren,
       // el gateo deja de servir: el menú esconde el ítem y la URL escrita a mano
@@ -92,8 +92,8 @@ export const GRUPOS = [
       { to: '/tiendanube', icon: Store, label: 'TiendaNube', permission: 'config.ver', modulo: 'tiendanube' },
       // ⚠ Sin `modulo` a propósito: es donde se invita y se da de baja gente.
       // Ver «Las cuatro que NO declaran `modulo`», arriba.
-      { to: '/team', icon: UserCog, label: 'Equipo', permission: 'equipo.ver' },
-      { to: '/suscripcion', icon: CreditCard, label: 'Suscripción', permission: 'config.ver', modulo: 'suscripcion' },
+      { to: '/team', icon: UserCog, label: 'Equipo', permission: 'equipo.ver', alcance: 'empresa' },
+      { to: '/suscripcion', icon: CreditCard, label: 'Suscripción', permission: 'config.ver', modulo: 'suscripcion', alcance: 'empresa' },
     ],
   },
 
@@ -141,6 +141,33 @@ export function itemDeRuta(pathname) {
     ITEMS.find((i) => i.to !== '/' && pathname.startsWith(`${i.to}/`)) ||
     null
   )
+}
+
+/**
+ * Si el selector de sucursal hace algo en esa pantalla.
+ *
+ * ── Por qué existe ──
+ *
+ * El selector estaba dibujado en las DOCE y significaba una cosa distinta en
+ * cada una: dos lo usan de filtro, dos lo siembran, y **ocho lo ignoran**. Para
+ * Equipo o Facturación eso es correcto —el equipo y el certificado de AFIP son
+ * de la empresa, no de una sucursal— pero nada en la pantalla lo decía y el
+ * control seguía arriba, activo.
+ *
+ * Un control global cuyo efecto va de «vuelve a consultar» a «solo siembra un
+ * filtro» a «no hace nada», sin ninguna señal. Alguien que cambia de sucursal
+ * en Equipo espera ver otro equipo, y ve el mismo: la conclusión razonable es
+ * que el sistema no le hizo caso.
+ *
+ * Con `alcance: 'empresa'` el control **no se dibuja**. La regla queda simple y
+ * se puede leer sin pensar: **si está, hace algo.**
+ *
+ * ⚠ Lo que NO lleva `alcance` mira la sucursal, y esas pantallas lo dicen en su
+ * descripción. Esconder el control es la mitad; la otra es que donde sí aplica
+ * se sepa sobre qué está filtrando.
+ */
+export function alcanceDeRuta(to) {
+  return ITEMS.find((i) => i.to === to)?.alcance || 'sucursal'
 }
 
 /**

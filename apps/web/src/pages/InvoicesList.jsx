@@ -943,9 +943,12 @@ const InvoicesList = () => {
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div>
             <h1>Historial de ventas</h1>
+            {/* La descripción dice el alcance: el selector de arriba siembra
+                el filtro de sucursal de esta lista. */}
             <p className="mt-1.5 max-w-[60ch] text-[13.5px] text-fg-2">
-              Consultá, verificá contra AFIP y reimprimí comprobantes. Hacé clic
-              en una fila para ver el detalle completo.
+              Consultá, verificá contra AFIP y reimprimí comprobantes de la
+              sucursal elegida arriba. Hacé clic en una fila para ver el detalle
+              completo.
             </p>
           </div>
 

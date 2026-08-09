@@ -872,7 +872,7 @@ const PurchaseOrders = () => {
           éste es el de ésta (decisión 5, maqueta `:640`). */}
       <PageHeader
         titulo="Órdenes de compra"
-        descripcion="Lo que le pediste a cada proveedor y en qué estado está. Al recibir una orden se actualiza el stock con lo que llegó de verdad, no con lo que se pidió."
+        descripcion="Lo que le pediste a cada proveedor y en qué estado está. Al recibir una orden se actualiza el stock de la sucursal elegida arriba, con lo que llegó de verdad y no con lo que se pidió."
       >
         <button
           type="button"
