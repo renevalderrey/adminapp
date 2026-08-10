@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import QRCode from 'qrcode'
 import { Copy, Download, Loader2, Printer, TriangleAlert } from 'lucide-react'
+import api from '@/services/api'
 import { imprimirCartel } from '@/utils/cartelDeQr'
 import { urlDelCatalogo, urlDelQr, llevaAlgunLado } from '@/utils/catalogos'
 
@@ -30,9 +31,22 @@ import { urlDelCatalogo, urlDelQr, llevaAlgunLado } from '@/utils/catalogos'
 //  catálogo sin publicar es un cartel que manda a un 404, y eso se descubre con
 //  el primer socio que lo escanea y no vuelve a intentar.
 //
-//  📌 La pestaña de métricas del QR —visitas, pedidos y conversión (`:1044-1048`)—
-//  no está: la conversión necesita pedidos, que son de la etapa 2. Dibujar los
-//  tres números hoy sería dibujar tres ceros inventados.
+//  ── «Visitas», no «escaneos» ──
+//
+//  El servidor **no puede distinguir** un QR escaneado de un enlace pegado en
+//  WhatsApp: el `?f=` es lo que declara el cartel, no lo que el sistema mide.
+//  Llamarle «escaneos» al número sería mentir con una métrica, y encima con una
+//  que el comercio usa para decidir si el acuerdo con el gimnasio sirve.
+//
+//  Por eso el rótulo dice «Visitas» y el desglose por origen se presenta como
+//  aproximación.
+//
+//  ── El guion, y por qué no es un cero ──
+//
+//  Con cero visitas la conversión **no existe**: `0/0` no da cero. Un «0 %» le
+//  dice al comercio que su tienda convierte mal cuando lo que pasó es que nadie
+//  la abrió, y las dos cosas se arreglan de maneras distintas —una es la tienda,
+//  la otra es el cartel—. El servidor manda `null` y acá se dibuja un guion.
 // ════════════════════════════════════════════
 
 const BOTON_SECUNDARIO =
@@ -43,9 +57,15 @@ const BOTON_SECUNDARIO =
 /** Ancho del PNG que se descarga. 1024 aguanta un cartel A4 sin pixelarse. */
 const ANCHO_DEL_PNG = 1024
 
+/** Los treinta días, con el rótulo que corresponde. */
+const DIAS = 30
+
+const porcentaje = (n) => `${Math.round(n * 1000) / 10} %`
+
 export default function QrDelCatalogo({ catalogo }) {
   const [vistaPrevia, setVistaPrevia] = useState(null)
   const [generando, setGenerando] = useState(true)
+  const [metricas, setMetricas] = useState(null)
 
   const enlace = urlDelCatalogo(catalogo.slug)
   const enlaceDelQr = urlDelQr(catalogo.slug)
@@ -61,6 +81,19 @@ export default function QrDelCatalogo({ catalogo }) {
 
     return () => { vivo = false }
   }, [enlaceDelQr])
+
+  useEffect(() => {
+    let vivo = true
+    setMetricas(null)
+
+    api.get(`/catalogos/${catalogo.id}/metricas`, { params: { dias: DIAS } })
+      .then((res) => { if (vivo) setMetricas(res.data?.data || null) })
+      // Que los números no lleguen no puede tapar el QR, que es para lo que la
+      // mayoría entra a esta pestaña.
+      .catch(() => { if (vivo) setMetricas(null) })
+
+    return () => { vivo = false }
+  }, [catalogo.id])
 
   const copiar = async () => {
     try {
@@ -134,7 +167,7 @@ export default function QrDelCatalogo({ catalogo }) {
           )}
         </div>
         <p className="mt-2.5 text-center text-[11.5px] text-fg-3">
-          El QR lleva el parámetro de origen, así se distinguen los escaneos del cartel.
+          El QR lleva el parámetro de origen, así se distinguen las visitas que llegan por el cartel.
         </p>
       </div>
 
@@ -184,9 +217,56 @@ export default function QrDelCatalogo({ catalogo }) {
           </button>
         </div>
 
+        {metricas && (
+          <div data-metricas className="border-t border-border pt-3.5">
+            <p className="eyebrow">Últimos {metricas.dias} días</p>
+
+            <div className="mt-2 flex flex-wrap gap-6">
+              <div>
+                {/* ⚠ «Visitas» y no «Escaneos». Ver el encabezado. */}
+                <p className="text-[11.5px] text-fg-3">Visitas</p>
+                <p data-visitas className="num text-[19px] font-semibold">{metricas.visitas}</p>
+              </div>
+              <div>
+                <p className="text-[11.5px] text-fg-3">Pedidos</p>
+                <p data-pedidos className="num text-[19px] font-semibold">{metricas.pedidos}</p>
+              </div>
+              <div>
+                <p className="text-[11.5px] text-fg-3">Conversión</p>
+                <p data-conversion className="num text-[19px] font-semibold">
+                  {metricas.conversion === null || metricas.conversion === undefined
+                    ? '—'
+                    : porcentaje(metricas.conversion)}
+                </p>
+              </div>
+            </div>
+
+            {/* El período con el catálogo pausado se distingue, para que una
+                conversión en cero no se lea como un problema de la tienda. */}
+            {metricas.por_estado?.pausado > 0 && (
+              <p data-pausadas className="mt-2 text-[11.5px] text-fg-3">
+                {metricas.por_estado.pausado} de esas visitas llegaron con el catálogo pausado, así que no
+                podían terminar en un pedido.
+              </p>
+            )}
+
+            {Object.keys(metricas.por_origen || {}).length > 0 && (
+              <p data-origenes className="mt-2 text-[11.5px] text-fg-3">
+                {/* Aproximación, y se dice: el origen sale del `?f=` del enlace,
+                    que es lo que declara el cartel y no lo que se puede medir. */}
+                Aproximadamente:{' '}
+                {Object.entries(metricas.por_origen)
+                  .map(([origen, cuantas]) => `${cuantas} por ${origen}`)
+                  .join(', ')}
+                .
+              </p>
+            )}
+          </div>
+        )}
+
         <p className="border-t border-border pt-3.5 text-[12.5px] leading-relaxed text-fg-2">
           El cartel A4 ya trae el logo, el nombre del catálogo y la leyenda «escaneá con la cámara».
-          Es lo que se pega en la recepción: imprimir el QR solo, sin contexto, baja el escaneo.
+          Es lo que se pega en la recepción: imprimir el QR solo, sin contexto, hace que lo escanee menos gente.
           El SVG es el que conviene mandarle a una imprenta, porque no se pixela en ningún tamaño.
         </p>
       </div>

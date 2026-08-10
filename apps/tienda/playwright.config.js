@@ -11,8 +11,9 @@ import { defineConfig, devices } from '@playwright/test'
 //  son tests de render —`src/tests/`, 134 casos— y no bajan acá aunque esta app
 //  sea nueva: en el navegador cuestan cincuenta veces más por caso.
 //
-//  Hoy hay una sola afirmación: **el `<body>` no desborda a lo ancho a 390px**,
-//  en el catálogo y en la ficha. Los cuatro casos que faltan llegan en T1467.
+//  Hay una sola afirmación: **el `<body>` no desborda a lo ancho a 390px**, en
+//  las seis pantallas del recorrido —catálogo, ficha, carrito y los tres pasos
+//  del checkout—.
 //
 //  ════════════════════════════════════════════
 //  ── Por qué un config PROPIO y no un segundo `project` en el de apps/web ──
@@ -40,11 +41,14 @@ import { defineConfig, devices } from '@playwright/test'
 //
 //  `workers: 1` y `fullyParallel: false` están allá porque sus dos archivos
 //  comparten el catálogo sembrado **y el carrito del navegador**: dos ficheros a
-//  la vez sobre el mismo estado producen fallos que no se reproducen. Acá esas
-//  líneas no van: estas pruebas **sólo leen** —ningún caso agrega al carrito ni
-//  crea un pedido—, y Playwright le da a cada caso un contexto nuevo, así que el
-//  `sessionStorage` del slug y el carrito nacen vacíos en cada uno. Copiarlas
-//  sería heredar una restricción sin heredar su motivo.
+//  la vez sobre el mismo estado producen fallos que no se reproducen.
+//
+//  Acá esas líneas siguen sin ir, y el motivo cambió cuando entraron el carrito
+//  y el checkout: ahora **sí** hay casos que agregan al carrito, pero eso vive en
+//  el `localStorage` del contexto, y Playwright le da uno nuevo a cada caso. Lo
+//  que ninguno hace es **confirmar el pedido**: el último paso se mide con el
+//  formulario lleno y sin apretar «Confirmar», así que la base sembrada no cambia
+//  entre casos y no hay estado compartido que serializar.
 //
 //  El `timeout: 90_000` tampoco: allá lo pide un recorrido de diecisiete
 //  pantallas a dos anchos. Acá son dos `goto` y los 30 s de fábrica sobran.

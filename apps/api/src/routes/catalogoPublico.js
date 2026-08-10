@@ -40,7 +40,7 @@ const {
 const logger = require('../utils/logger');
 const { fallo } = require('../utils/errores');
 const { calcularPrecios } = require('@favalio/precios');
-const { normalizarTelefono } = require('@favalio/pedido');
+const { normalizarTelefono, enlaceDeWhatsapp, numeroDePedido } = require('@favalio/pedido');
 const { findScoped, scoped } = require('../utils/tenantScope');
 const { resolverCatalogoPorSlug } = require('../utils/tenantDeSlug');
 const { normalizarTexto } = require('../utils/textoDeBusqueda');
@@ -51,6 +51,11 @@ const { totalDePedido } = require('../utils/totalDePedido');
 const { consolidarLineas, validarComprador } = require('../utils/pedidoPublico');
 const { fechaDelNegocio } = require('../utils/fechas');
 const vistaPublica = require('../utils/vistaPublica');
+// ⚠ El módulo entero y no las funciones sueltas: `sendEmail` se llama como
+// `email.sendEmail(...)` para que un test lo pueda espiar. Con la
+// desestructuración, la referencia queda congelada al requerirse y ningún espía
+// la alcanza — y «¿a qué casilla salió el aviso?» dejaría de ser verificable.
+const email = require('../services/email');
 
 /** Cuántos productos trae una página. */
 const POR_PAGINA = 24;
@@ -502,6 +507,61 @@ async function siguienteNumero(empresaId, transaction) {
   return Number(filas[0].siguiente);
 }
 
+
+/**
+ * Los dos correos del pedido, **después** del commit.
+ *
+ * ── Por qué se esperan y no se disparan y listo ──
+ *
+ * Un `fire and forget` haría imposible `email_enviado` (FR-182): la respuesta
+ * saldría antes de saber si el correo salió, y la pantalla tendría que prometer
+ * uno que quizás no llegó. Ese es exactamente el defecto que este repositorio ya
+ * tuvo con `sendEmail` devolviendo `ok: true` sin haber enviado nada.
+ *
+ * ── Y por qué van adentro de su propio `try` ──
+ *
+ * El pedido **ya existe** cuando esto corre. Que Resend esté caído, que falte la
+ * clave o que la casilla del catálogo esté vacía no puede tocarlo (FR-181): lo
+ * peor que puede pasar acá es que la respuesta diga `email_enviado: false`, que
+ * es la verdad.
+ *
+ * @returns {Promise<boolean>} Si el correo **al comprador** salió. El aviso al
+ *   comercio no cuenta: la pantalla que lee esto es la del comprador.
+ */
+async function avisarDelPedido(pedido, lineas, catalogo) {
+  // El aviso al comercio va a `email_avisos` **del catálogo** y a ninguna otra
+  // casilla (FR-183): ni a los usuarios con `pedidos.ver` —serían cinco correos
+  // sin dueño— ni al email de la empresa, que es el administrativo.
+  if (catalogo && catalogo.email_avisos) {
+    try {
+      await email.sendEmail({
+        to: catalogo.email_avisos,
+        subject: `Pedido ${numeroDePedido(pedido.numero)} — ${catalogo.nombre_visible || 'tu catálogo'}`,
+        html: email.pedidoNuevoEmail(pedido, lineas, catalogo),
+      });
+    } catch (err) {
+      logger.error({ pedido: pedido.numero, err: err.message }, 'pedido publico: no se pudo avisar al comercio');
+    }
+  }
+
+  // Sin email del comprador no hay nada que mandar, y `email_enviado` queda en
+  // false — que es lo correcto: el email es opcional (FR-149).
+  if (!pedido.comprador_email) return false;
+
+  try {
+    const resultado = await email.sendEmail({
+      to: pedido.comprador_email,
+      subject: `Tu pedido ${numeroDePedido(pedido.numero)}`,
+      html: email.pedidoConfirmadoEmail(pedido, lineas, catalogo),
+    });
+
+    return resultado.ok === true;
+  } catch (err) {
+    logger.error({ pedido: pedido.numero, err: err.message }, 'pedido publico: no se pudo confirmar al comprador');
+    return false;
+  }
+}
+
 publico.post('/c/:slug/pedidos', contextoPublico, async (req, res) => {
   // 1 · El contexto ya resolvió empresa, catálogo, sucursal, suscripción y
   // estado. Borrador ya salió por 404 en `contextoPublico`; pausado y empresa
@@ -785,7 +845,16 @@ publico.post('/c/:slug/pedidos', contextoPublico, async (req, res) => {
       'pedido publico: pedido creado'
     );
 
-    res.status(201).json({ ok: true, data: vistaPublica.pedidoPublico(pedido, guardadas) });
+    const emailEnviado = await avisarDelPedido(pedido, guardadas, catalogo);
+
+    res.status(201).json({
+      ok: true,
+      data: vistaPublica.pedidoPublico(pedido, guardadas, {
+        email_enviado: emailEnviado,
+        email: pedido.comprador_email,
+        whatsapp_url: enlaceDeWhatsapp(pedido, guardadas, catalogo),
+      }),
+    });
   } catch (err) {
     await t.rollback();
 

@@ -4,8 +4,9 @@ import { PRODUCTOS, SLUG } from './preparacion.js'
 // ════════════════════════════════════════════
 //  FAVALIO · El ancho de la tienda a 390px
 //
-//  UNA afirmación, en las dos pantallas que existen hoy: **el `<body>` no
-//  desborda a lo ancho**. Los cuatro casos que faltan llegan en T1467.
+//  UNA afirmación, en las seis pantallas del recorrido: **el `<body>` no
+//  desborda a lo ancho**. Catálogo, ficha, carrito y los tres pasos del
+//  checkout.
 //
 //  ── Por qué no puede ser un test de render ──
 //
@@ -25,7 +26,7 @@ import { PRODUCTOS, SLUG } from './preparacion.js'
 //  se relaja por ser una app nueva**: una app nueva es justamente donde es fácil
 //  llenar el nivel caro «ya que estamos».
 //
-//  ── La mutación, corrida de verdad ──
+//  ── Las mutaciones, corridas de verdad ──
 //
 //  Se le puso `min-width: 420px` a `.t-grilla` en `src/tienda.css` y el caso del
 //  catálogo se puso en rojo (`el <body> mide 420px de ancho y la ventana 390`);
@@ -33,6 +34,21 @@ import { PRODUCTOS, SLUG } from './preparacion.js'
 //  grilla—. Para comprobar que el segundo caso también muerde se repitió con
 //  `min-width: 420px` en `.t-ancho`, que es de las dos pantallas, y ahí los dos
 //  se pusieron en rojo. Las dos mutaciones se revirtieron.
+//
+//  Con el carrito y el checkout se repitió el ejercicio, y **la primera mutación
+//  no se puso en rojo**: sacarle el `minWidth: 0` a los campos del formulario
+//  —que era lo que la tarea proponía revertir— dejó las cuatro pruebas en verde.
+//  El motivo es que los campos llevan `width: 100%`, y con un ancho especificado
+//  el navegador ya acota el mínimo automático del `<input>` al de su celda: el
+//  `minWidth: 0` es una red que hoy no sostiene nada. Queda escrito en
+//  `Checkout.jsx`, donde antes decía lo contrario.
+//
+//  Las dos que sí se pusieron en rojo: `min-width: 420px` en los campos —«el
+//  <body> del paso de datos mide 436px»— y `grid-template-columns: 300px 200px`
+//  en la fila de «Localidad + CP» —«el <body> del paso de entrega mide 525px»—.
+//  La segunda importa porque es la que prueba que el paso de entrega **se está
+//  midiendo con los campos de dirección abiertos**, y no con la pantalla de tres
+//  botones que hay antes de elegir la opción.
 //
 //  Queda escrito porque **tres de las once primeras pruebas de geometría de este
 //  repositorio no se pusieron en rojo con su mutación** y nadie se enteró hasta
@@ -148,6 +164,37 @@ async function abrirElCatalogo(page) {
   await expect(page.locator('article[data-producto]')).toHaveCount(PRODUCTOS.length)
 }
 
+/**
+ * Deja el carrito armado y la pantalla del carrito montada.
+ *
+ * Se llega **tocando**, no con un `goto`: `/carrito` con el carrito vacío es la
+ * pantalla «tu pedido está vacío», que no desborda porque no tiene nada adentro.
+ * Medir ésa es el modo de fallo más probable de este archivo.
+ */
+async function abrirElCarrito(page) {
+  await abrirElCatalogo(page)
+
+  // Dos productos distintos: con uno solo, una fila que se pasa por el nombre
+  // largo del segundo no tendría dónde aparecer.
+  // Las tarjetas se agregan por SU botón: `getByRole` con el nombre «Agregar»
+  // a secas devolvería los tres de la grilla.
+  const tarjetas = page.locator('article[data-producto]')
+  await tarjetas.nth(0).getByRole('button', { name: 'Agregar' }).click()
+  await tarjetas.nth(1).getByRole('button', { name: 'Agregar' }).click()
+
+  await page.locator('[data-barra-carrito]').click()
+
+  await expect(
+    page.locator('main[data-pantalla="carrito"]'),
+    'no se dibujó el carrito: quedó la pantalla de «tu pedido está vacío»'
+  ).toBeVisible()
+}
+
+/** Llena el paso que está en pantalla y avanza al siguiente. */
+async function avanzar(page) {
+  await page.locator('[data-avanzar]').click()
+}
+
 test.describe('A 390px la tienda no desborda a lo ancho', () => {
   test('el <body> del catálogo no desborda a lo ancho', async ({ page }) => {
     await abrirElCatalogo(page)
@@ -170,5 +217,50 @@ test.describe('A 390px la tienda no desborda a lo ancho', () => {
     ).toBeVisible()
 
     elCuerpoNoDesborda(await medirElAncho(page), 'de la ficha')
+  })
+
+  test('el <body> del carrito no desborda a lo ancho', async ({ page }) => {
+    await abrirElCarrito(page)
+
+    elCuerpoNoDesborda(await medirElAncho(page), 'del carrito')
+  })
+
+  test('el <body> de los tres pasos del checkout no desborda a lo ancho', async ({ page }) => {
+    await abrirElCarrito(page)
+    await page.locator('[data-continuar]').click()
+
+    // ── Paso 1 · los datos ──
+    await expect(page.locator('main[data-pantalla="checkout"][data-paso="datos"]')).toBeVisible()
+    elCuerpoNoDesborda(await medirElAncho(page), 'del paso de datos')
+
+    await page.locator('[data-campo="nombre"]').fill('Martina Olivera')
+    await page.locator('[data-campo="telefono"]').fill('342 512 3456')
+    await avanzar(page)
+
+    // ── Paso 2 · la entrega ──
+    //
+    // ⚠ Es el paso que se mide **con los campos de dirección abiertos**: es
+    // donde una etiqueta larga rompe primero, y con la opción sin elegir esos
+    // campos no existen y el caso pasaría sobre una pantalla de tres botones.
+    await expect(page.locator('main[data-pantalla="checkout"][data-paso="entrega"]')).toBeVisible()
+    await page.locator('[data-opcion="envio"]').click()
+    await expect(page.locator('[data-domicilio]')).toBeVisible()
+
+    await page.locator('[data-campo="envio_direccion"]').fill('Avenida Presidente Roque Sáenz Peña 4821, piso 3 «B»')
+    await page.locator('[data-campo="envio_localidad"]').fill('Caballito, Ciudad Autónoma de Buenos Aires')
+    await page.locator('[data-campo="envio_cp"]').fill('1424')
+
+    elCuerpoNoDesborda(await medirElAncho(page), 'del paso de entrega')
+    await avanzar(page)
+
+    // ── Paso 3 · el pago ──
+    //
+    // Con los datos bancarios desplegados: el CBU son veintidós dígitos sin
+    // espacios, que es la cadena más larga e incortable de toda la tienda.
+    await expect(page.locator('main[data-pantalla="checkout"][data-paso="pago"]')).toBeVisible()
+    await page.locator('[data-opcion="transferencia"]').click()
+    await expect(page.locator('[data-transferencia]')).toBeVisible()
+
+    elCuerpoNoDesborda(await medirElAncho(page), 'del paso de pago')
   })
 })

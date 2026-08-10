@@ -143,6 +143,24 @@ const CATEGORIAS = [
 const MARCAS = [{ id: 2, name: 'Ena Sport' }]
 
 /**
+ * Diez visitas y un pedido: 10 %.
+ *
+ * Con una y una la conversión daría 100 % y cualquier cuenta equivocada
+ * —incluida `visitas/pedidos`— daría el mismo número. Y cuatro de las visitas
+ * llegaron con el catálogo **pausado**, que es lo que hace verificable que ese
+ * período se distinga.
+ */
+const METRICAS = {
+  dias: 30,
+  desde: '2026-07-12',
+  visitas: 14,
+  pedidos: 1,
+  conversion: 0.1,
+  por_origen: { qr: 7, directo: 3, whatsapp: 4 },
+  por_estado: { publicado: 10, pausado: 4 },
+}
+
+/**
  * Doce productos: dos ya en el catálogo y diez fuera.
  *
  * Los diez de afuera son los que se seleccionan para el caso del lote: con
@@ -186,6 +204,7 @@ function respuestasDe(lista) {
     if (/\/previsualizacion$/.test(url)) return Promise.resolve({ data: { ok: true, data: PREVIA } })
     if (/\/categorias$/.test(url)) return Promise.resolve({ data: { ok: true, data: CATEGORIAS } })
     if (/\/productos$/.test(url)) return Promise.resolve({ data: { ok: true, data: PRODUCTOS } })
+    if (/\/metricas$/.test(url)) return Promise.resolve({ data: { ok: true, data: METRICAS } })
 
     return Promise.resolve({ data: { ok: true, data: [] } })
   }
@@ -201,6 +220,27 @@ async function montar({
   })
 
   vi.spyOn(api, 'get').mockImplementation(respuestasDe(lista))
+
+  let utilidades
+  await act(async () => { utilidades = render(<Catalogos />) })
+  await act(async () => {})
+
+  return utilidades
+}
+
+/** Monta con otras métricas, para los casos del borde. */
+async function montarConMetricas(metricas) {
+  useStore.setState({
+    permisos: ['catalogo.ver', 'catalogo.editar', 'products.ver'],
+    empresaActiva: { id: 1, name: 'Comprafit', puntosDeVenta: [SUCURSAL] },
+  })
+
+  const base = respuestasDe([PUBLICADO])
+
+  vi.spyOn(api, 'get').mockImplementation((url, config) => {
+    if (/\/metricas$/.test(url)) return Promise.resolve({ data: { ok: true, data: metricas } })
+    return base(url, config)
+  })
 
   let utilidades
   await act(async () => { utilidades = render(<Catalogos />) })
@@ -647,6 +687,58 @@ describe('El QR y el enlace', () => {
     expect(screen.queryByText(/no lleva a ningún lado/i)).toBeNull()
   })
 
+  it('la pestaña dice «Visitas» y en ninguna parte dice «Escaneos»', async () => {
+    // El servidor no puede distinguir un QR escaneado de un enlace pegado en
+    // WhatsApp: el `?f=` es lo que declara el cartel, no lo que se mide.
+    // Llamarle «escaneos» al número es mentir con una métrica, y encima con una
+    // que el comercio usa para decidir si el acuerdo con el gimnasio sirve.
+    await montar()
+    await irA('QR y enlace')
+
+    const bloque = document.querySelector('[data-metricas]')
+
+    expect(bloque).not.toBeNull()
+    expect(bloque.textContent).toContain('Visitas')
+    expect(document.body.textContent.toLowerCase()).not.toContain('escaneos')
+  })
+
+  it('los tres números salen del servidor, con la conversión en porcentaje', async () => {
+    await montar()
+    await irA('QR y enlace')
+
+    expect(document.querySelector('[data-visitas]').textContent).toBe('14')
+    expect(document.querySelector('[data-pedidos]').textContent).toBe('1')
+    expect(document.querySelector('[data-conversion]').textContent).toBe('10 %')
+  })
+
+  it('con cero visitas se dibuja un guion, no «0 %»', async () => {
+    // `0/0` no da cero: no existe. Un «0 %» le dice al comercio que su tienda
+    // convierte mal cuando lo que pasó es que nadie la abrió.
+    vi.restoreAllMocks()
+    await montarConMetricas({ ...METRICAS, visitas: 0, pedidos: 0, conversion: null, por_origen: {}, por_estado: {} })
+    await irA('QR y enlace')
+
+    expect(document.querySelector('[data-conversion]').textContent).toBe('—')
+    expect(document.querySelector('[data-conversion]').textContent).not.toContain('%')
+  })
+
+  it('el período con el catálogo pausado se distingue', async () => {
+    // Para que una conversión en cero no se lea como un problema de la tienda.
+    await montar()
+    await irA('QR y enlace')
+
+    expect(document.querySelector('[data-pausadas]').textContent).toContain('4')
+    expect(document.querySelector('[data-pausadas]').textContent).toContain('pausado')
+  })
+
+  it('el desglose por origen se presenta como aproximación', async () => {
+    await montar()
+    await irA('QR y enlace')
+
+    expect(document.querySelector('[data-origenes]').textContent).toContain('Aproximadamente')
+    expect(document.querySelector('[data-origenes]').textContent).toContain('7 por qr')
+  })
+
   it('el enlace que se copia lleva el protocolo, listo para pegar en WhatsApp', async () => {
     await montar()
     await irA('QR y enlace')
@@ -698,12 +790,23 @@ describe('El QR y el enlace', () => {
     expect(hoja).toContain('&lt;script&gt;')
   })
 
-  it('el QR se genera en el navegador con `qrcode`: no hay endpoint nuevo', () => {
+  it('el QR se genera en el navegador con `qrcode`: no hay endpoint que lo dibuje', () => {
     const fuente = fs.readFileSync(path.join(SRC, 'components/QrDelCatalogo.jsx'), 'utf8')
 
     expect(fuente).toMatch(/from 'qrcode'/)
-    // Y no se pide a la API: un `GET /catalogos/:id/qr.png` sería un handler,
-    // una ruta y un caché para producir el mismo cuadrado.
-    expect(fuente).not.toMatch(/api\.get\(/)
+
+    // ⚠ La afirmación pasó de «este componente no llama a la API» a «no le pide
+    // el QR a la API», y el motivo está en el corte de las métricas: la pestaña
+    // ahora sí hace un `GET /catalogos/:id/metricas`, que son números y no un
+    // cuadrado. Lo que sigue prohibido es el endpoint que dibujaría la imagen
+    // —un handler, una ruta, un formato y un caché para producir exactamente lo
+    // que el navegador hace sin pedirle nada a nadie—.
+    const llamadas = fuente.match(/api\.get\('[^']*'|api\.get\(`[^`]*`/g) || []
+
+    expect(llamadas).toHaveLength(1)
+    expect(llamadas[0]).toContain('/metricas')
+    // El nombre del archivo que se descarga lleva «qr-…​.png» y eso está bien:
+    // lo que no puede haber es una RUTA de la API que lo produzca.
+    expect(fuente).not.toMatch(/api\.get\([^)]*qr/i)
   })
 })

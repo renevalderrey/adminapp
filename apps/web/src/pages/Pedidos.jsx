@@ -80,16 +80,29 @@ export default function Pedidos() {
   const [catalogoId, setCatalogoId] = useState('')
   const [abierto, setAbierto] = useState(null)
   const [catalogos, setCatalogos] = useState([])
+  const [pagina, setPagina] = useState(1)
 
-  const cargar = useCallback(async () => {
+  /**
+   * Trae una página. La primera reemplaza; las siguientes **agregan**.
+   *
+   * Sin esto, el pedido número 31 de una semana con movimiento no se puede
+   * abrir desde ningún lado: existe en la base, contesta la API, y la pantalla
+   * no tiene cómo llegar a él.
+   */
+  const cargar = useCallback(async (cual = 1) => {
     setCargando(true)
     try {
-      const params = {}
+      const params = { pagina: cual }
       if (estado) params.estado = estado
       if (catalogoId) params.catalogo_id = catalogoId
 
       const res = await api.get('/pedidos', { params })
-      setDatos(res.data?.data || null)
+      const nueva = res.data?.data || null
+
+      setDatos((previo) => (cual > 1 && previo && nueva
+        ? { ...nueva, pedidos: [...previo.pedidos, ...nueva.pedidos] }
+        : nueva))
+      setPagina(cual)
       setError(null)
     } catch (err) {
       setError(mensajeDeError(err, 'No se pudieron cargar los pedidos.'))
@@ -98,7 +111,9 @@ export default function Pedidos() {
     }
   }, [estado, catalogoId])
 
-  useEffect(() => { cargar() }, [cargar])
+  // Cambiar un filtro vuelve a la primera página: quedarse en la cuarta con un
+  // filtro nuevo muestra una bandeja vacía que parece un filtro sin resultados.
+  useEffect(() => { cargar(1) }, [cargar])
 
   // El filtro por catálogo necesita los nombres, y son de otra tabla. Se piden
   // una sola vez: la lista de catálogos de una empresa no cambia mientras
@@ -125,7 +140,7 @@ export default function Pedidos() {
     } : d))
     // Los números de las píldoras sí cambian, y salen del servidor: recalcularlos
     // acá sería una segunda cuenta que se desincroniza de la primera.
-    cargar()
+    cargar(1)
   }
 
   return (
@@ -251,6 +266,17 @@ export default function Pedidos() {
             </Fila>
           ))}
         </TablaGrid>
+      )}
+
+      {!cargando && datos?.hay_mas && (
+        <button
+          type="button"
+          data-ver-mas
+          onClick={() => cargar(pagina + 1)}
+          className="mx-auto inline-flex h-[34px] items-center rounded-lg border border-border bg-surface px-3 text-[13px] font-medium transition-colors hover:bg-surface-3"
+        >
+          Ver más pedidos
+        </button>
       )}
 
       <PanelDePedido

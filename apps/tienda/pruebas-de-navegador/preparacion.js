@@ -277,6 +277,25 @@ async function sembrarElCatalogo(puntoDeVentaId, productos) {
     catalogo = creado.data
   }
 
+  // ⚠ La entrega y el pago se escriben SIEMPRE, también cuando el catálogo ya
+  // existía: son lo que hace que el checkout tenga tres pasos con algo adentro.
+  // Sin `envio` no se dibujan los campos de dirección —que son los que rompen
+  // primero a 390px— y sin CBU no se dibuja el bloque de la transferencia, que
+  // lleva la cadena más larga e incortable de la tienda.
+  await enviar(`/catalogos/${catalogo.id}`, 'PUT', {
+    retiro_local: true,
+    coordinar_whatsapp: true,
+    envio: true,
+    envio_costo: 2500,
+    envio_gratis_desde: 50000,
+    datos_transferencia: {
+      titular: 'Comprafit S.R.L.',
+      cbu: '0720123488000012345678',
+      alias: 'COMPRAFIT.SUPLE',
+      banco: 'Santander',
+    },
+  })
+
   // En lote y con los tres ids: `POST /:id/productos` ignora los que ya estaban,
   // así que esto es idempotente sin preguntar antes.
   await enviar(`/catalogos/${catalogo.id}/productos`, 'POST', {

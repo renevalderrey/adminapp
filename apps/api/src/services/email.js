@@ -253,6 +253,121 @@ function suscripcionVencidaEmail(empresaNombre) {
   });
 }
 
+
+// ════════════════════════════════════════════
+//  Los pedidos del catálogo público
+//
+//  Dos correos por pedido, y ninguno de los dos puede afectar al pedido: cuando
+//  se mandan, la transacción ya commiteó y la fila existe. Lo único que viaja de
+//  vuelta al handler es **si salieron**, porque es lo que le permite a la
+//  pantalla no prometer un correo que no llegó.
+//
+//  ⚠ Los importes van **congelados**, de las líneas del pedido. Recalcularlos
+//  contra el catálogo dejaría un correo que dice un número y una base que dice
+//  otro — y el que el comprador guarda es el correo.
+// ════════════════════════════════════════════
+
+// El mismo formateador del número que usan la tienda, la bandeja y el WhatsApp:
+// `#1042` en las seis superficies (FR-137b). Escrito a mano acá, sería la
+// séptima forma de escribir lo mismo.
+const { numeroDePedido } = require('@favalio/pedido');
+
+const pesosDelPedido = (n) => `$${Math.round(Number(n) || 0).toLocaleString('es-AR')}`;
+
+const ENTREGAS_LEGIBLES = {
+  retiro_socio: 'Retiro en el gimnasio',
+  retiro_local: 'Retiro en el local',
+  envio: 'Envío a domicilio',
+  coordinar: 'A coordinar por WhatsApp',
+};
+
+const PAGOS_LEGIBLES = {
+  transferencia: 'Transferencia bancaria',
+  efectivo: 'Efectivo al retirar',
+};
+
+/** Las líneas como tabla, con el mismo formato en los dos correos. */
+function lineasDelPedidoEnHtml(lineas = [], pedido = {}) {
+  const filas = lineas.map((l) => `
+    <tr>
+      <td style="padding:6px 0;border-bottom:1px solid #eee;">${l.cantidad}× ${l.nombre}</td>
+      <td style="padding:6px 0;border-bottom:1px solid #eee;text-align:right;">${pesosDelPedido(l.subtotal)}</td>
+    </tr>
+  `).join('');
+
+  // Un renglón «Envío $0» le hace creer al que lo lee que paga algo.
+  const envio = Number(pedido.envio_costo) > 0 ? `
+    <tr>
+      <td style="padding:6px 0;">Envío</td>
+      <td style="padding:6px 0;text-align:right;">${pesosDelPedido(pedido.envio_costo)}</td>
+    </tr>
+  ` : '';
+
+  return `
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:12px;">
+      ${filas}
+      ${envio}
+      <tr>
+        <td style="padding:8px 0;font-weight:bold;">Total</td>
+        <td style="padding:8px 0;text-align:right;font-weight:bold;">${pesosDelPedido(pedido.total)}</td>
+      </tr>
+    </table>
+  `;
+}
+
+/**
+ * El aviso al comercio. Va **a la casilla del catálogo** y a ninguna otra.
+ *
+ * No a todos los usuarios con `pedidos.ver` —que serían cinco correos por pedido
+ * y ninguno con dueño— ni al email de la empresa, que es el administrativo y no
+ * el que mira quien prepara los pedidos.
+ */
+function pedidoNuevoEmail(pedido, lineas, catalogo = {}) {
+  const quien = [pedido.comprador_nombre, pedido.comprador_telefono].filter(Boolean).join(' — ');
+  const donde = pedido.entrega === 'envio'
+    ? [pedido.envio_direccion, pedido.envio_localidad, pedido.envio_cp].filter(Boolean).join(', ')
+    : '';
+
+  return plantillaBase({
+    titulo: `Pedido ${numeroDePedido(pedido.numero)}`,
+    cuerpo: `
+      <p>Entró un pedido por <strong>${catalogo.nombre_visible || 'tu catálogo'}</strong>.</p>
+      <p>${quien}${pedido.comprador_nro_socio ? ` · Socio ${pedido.comprador_nro_socio}` : ''}</p>
+      ${lineasDelPedidoEnHtml(lineas, pedido)}
+      <p style="margin-top:16px;">
+        <strong>Entrega:</strong> ${ENTREGAS_LEGIBLES[pedido.entrega] || pedido.entrega}
+        ${donde ? `<br>${donde}` : ''}<br>
+        <strong>Pago:</strong> ${PAGOS_LEGIBLES[pedido.medio_pago] || pedido.medio_pago}
+      </p>
+      ${pedido.notas ? `<p><strong>Nota:</strong> ${pedido.notas}</p>` : ''}
+    `,
+    cta: { texto: 'Ver en la bandeja', ruta: '/pedidos' },
+    // ⚠ Lo mismo que dice la pantalla, por el mismo motivo: quien lee este
+    // correo puede creer que la venta ya está registrada.
+    notaPie: 'Marcar el pedido como cobrado cambia su estado. No descuenta stock ni registra la venta.',
+  });
+}
+
+/** La confirmación al comprador. Sólo si dejó email: es opcional. */
+function pedidoConfirmadoEmail(pedido, lineas, catalogo = {}) {
+  return plantillaBase({
+    titulo: `Tu pedido ${numeroDePedido(pedido.numero)}`,
+    cuerpo: `
+      <p>Recibimos tu pedido en <strong>${catalogo.nombre_visible || 'la tienda'}</strong>.</p>
+      ${lineasDelPedidoEnHtml(lineas, pedido)}
+      <p style="margin-top:16px;">
+        <strong>Entrega:</strong> ${ENTREGAS_LEGIBLES[pedido.entrega] || pedido.entrega}<br>
+        <strong>Pago:</strong> ${PAGOS_LEGIBLES[pedido.medio_pago] || pedido.medio_pago}
+      </p>
+      <p>Te vamos a escribir por WhatsApp para coordinar.</p>
+    `,
+    // ⚠ **Sin plazo.** Ningún pedido vence solo: no hay tarea que los expire ni
+    // stock reservado, así que prometer «reservado 24 horas» dejaría al
+    // comprador creyendo que perdió el lugar.
+    notaPie: 'Si algo no coincide, respondé este correo o escribinos por WhatsApp.',
+  });
+}
+
 module.exports = {
   sendEmail,
   welcomeEmail,
@@ -262,4 +377,6 @@ module.exports = {
   trialVencidoEmail,
   suscripcionActivadaEmail,
   suscripcionVencidaEmail,
+  pedidoNuevoEmail,
+  pedidoConfirmadoEmail,
 };

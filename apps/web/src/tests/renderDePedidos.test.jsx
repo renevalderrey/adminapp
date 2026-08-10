@@ -178,7 +178,41 @@ describe('la bandeja', () => {
     await act(async () => {})
 
     const dePedidos = pedidosDeRed.filter((p) => p.url === '/pedidos')
-    expect(dePedidos.at(-1).params).toEqual({ estado: 'pagado' })
+    expect(dePedidos.at(-1).params).toEqual({ estado: 'pagado', pagina: 1 })
+  })
+})
+
+describe('el paginado', () => {
+  it('«Ver más» pide la página siguiente y agrega las filas, sin perder las de arriba', async () => {
+    // Sin esto, el pedido número 31 de una semana con movimiento existe en la
+    // base, contesta la API, y la pantalla no tiene cómo llegar a él.
+    await montar({ bandeja: { ...BANDEJA, hay_mas: true } })
+
+    await act(async () => { fireEvent.click(document.querySelector('[data-ver-mas]')) })
+    await act(async () => {})
+
+    expect(pedidosDeRed.filter((p) => p.url === '/pedidos').at(-1).params.pagina).toBe(2)
+    // Las dos páginas juntas: la respuesta simulada devuelve las mismas dos.
+    expect(document.querySelectorAll('[data-pedido]')).toHaveLength(4)
+  })
+
+  it('sin más páginas no se dibuja el botón', async () => {
+    await montar()
+
+    expect(document.querySelector('[data-ver-mas]')).toBeNull()
+  })
+
+  it('cambiar un filtro vuelve a la primera página', async () => {
+    // Quedarse en la cuarta con un filtro nuevo muestra una bandeja vacía que
+    // parece un filtro sin resultados.
+    await montar({ bandeja: { ...BANDEJA, hay_mas: true } })
+
+    await act(async () => { fireEvent.click(document.querySelector('[data-ver-mas]')) })
+    await act(async () => {})
+    await act(async () => { fireEvent.click(document.querySelector('[data-filtro-estado="pagado"]')) })
+    await act(async () => {})
+
+    expect(pedidosDeRed.filter((p) => p.url === '/pedidos').at(-1).params.pagina).toBe(1)
   })
 })
 
@@ -224,7 +258,26 @@ describe('el panel lateral', () => {
     expect(screen.getByText(/No podés cambiar el estado de un pedido/)).toBeTruthy()
   })
 
-  it('marcar cobrado manda el PATCH y refresca la fila', async () => {
+  it('la confirmación de «Marcar cobrado» dice que el stock no baja', async () => {
+    // Es la única acción cuyo nombre promete más de lo que hace: quien la
+    // aprieta cree que acaba de registrar una venta. El texto de la maqueta
+    // afirmaba lo contrario y no se copió.
+    await montar()
+
+    await act(async () => { fireEvent.click(document.querySelector('[data-pedido="1042"]')) })
+    await act(async () => {})
+    await act(async () => { fireEvent.click(document.querySelector('[data-transicion="pagado"]')) })
+    await act(async () => {})
+
+    const texto = document.body.textContent
+
+    expect(texto).toContain('solo cambia su estado')
+    expect(texto).toContain('El stock no baja y no se registra ninguna venta')
+    expect(texto).toContain('cargalo en el punto de venta')
+    expect(texto).toContain('#1042')
+  })
+
+  it('marcar cobrado manda el PATCH después de confirmar, y refresca la fila', async () => {
     await montar()
     const patch = vi.spyOn(api, 'patch').mockResolvedValue({
       data: { ok: true, data: { pedido: { ...DETALLE.pedido, estado: 'pagado' }, transiciones: ['en_preparacion', 'cancelado'] } },
@@ -235,9 +288,31 @@ describe('el panel lateral', () => {
     await act(async () => { fireEvent.click(document.querySelector('[data-transicion="pagado"]')) })
     await act(async () => {})
 
+    // Sin confirmar, no salió nada.
+    expect(patch).not.toHaveBeenCalled()
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Marcar cobrado' })) })
+    await act(async () => {})
+
     expect(patch).toHaveBeenCalledWith('/pedidos/aaaa-1/estado', { estado: 'pagado' })
     // Y el botón de «Marcar cobrado» ya no está: la segunda pasada no existe.
     expect(document.querySelector('[data-transicion="pagado"]')).toBeNull()
+  })
+
+  it('las otras transiciones no preguntan', async () => {
+    // Una confirmación en cada botón es una confirmación que se aprieta sin
+    // leer. «En preparación» no promete nada que no cumpla.
+    await montar()
+    const patch = vi.spyOn(api, 'patch').mockResolvedValue({
+      data: { ok: true, data: { pedido: { ...DETALLE.pedido, estado: 'en_preparacion' }, transiciones: ['listo', 'cancelado'] } },
+    })
+
+    await act(async () => { fireEvent.click(document.querySelector('[data-pedido="1042"]')) })
+    await act(async () => {})
+    await act(async () => { fireEvent.click(document.querySelector('[data-transicion="en_preparacion"]')) })
+    await act(async () => {})
+
+    expect(patch).toHaveBeenCalledWith('/pedidos/aaaa-1/estado', { estado: 'en_preparacion' })
   })
 })
 

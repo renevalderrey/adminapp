@@ -90,6 +90,20 @@ process.env.DATABASE_URL = URL_DE_PRUEBA;
 // que no nombra al SSL.
 process.env.DB_SSL = 'false';
 
+// ⚠ **Sin clave de Resend, y a propósito.**
+//
+// El arnés levanta la aplicación de verdad, así que los handlers que mandan
+// correo lo mandan de verdad: con la clave puesta en el `.env` local, correr la
+// suite le disparaba emails reales a las direcciones inventadas de las fixtures
+// —`martina@ejemplo.test` y compañía—. En CI no pasaba porque ahí no hay clave,
+// que es exactamente el motivo por el que nadie lo veía.
+//
+// Se borra acá, antes de requerir nada: `services/email.js` construye el cliente
+// **al cargarse**, así que sacarla después no tendría efecto. Sin clave,
+// `sendEmail` devuelve `{ ok: false }` sin tocar la red, que es el mismo camino
+// que corre en CI y el que los tests afirman.
+delete process.env.RESEND_API_KEY;
+
 const sequelize = require('../../config/database');
 const modelos = require('../../models');
 const { app } = require('../../server');

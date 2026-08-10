@@ -50,9 +50,11 @@ const campoBase = {
   font: 'inherit',
   fontSize: '15px',
   padding: '0 12px',
-  // ⚠ `minWidth: 0` sobre un campo dentro de un flex: sin esto, un `<input>`
-  // trae un ancho intrínseco propio, se niega a encogerse, y a 390 px la fila de
-  // «Localidad + CP» empuja la pantalla hacia afuera.
+  // `minWidth: 0` es defensivo y **no** es lo que hoy evita el desborde: con
+  // `width: 100%` el navegador ya acota el mínimo automático del `<input>` al
+  // ancho de su celda, y sacarlo deja la prueba de 390px en verde —medido, no
+  // supuesto—. Queda porque el día que un campo pierda el `width: 100%` —o entre
+  // en un flex sin él— el ancho intrínseco del `<input>` sí empuja la pantalla.
   minWidth: 0,
   boxSizing: 'border-box',
 }
@@ -366,8 +368,11 @@ export default function Checkout({
             {formulario.entrega === 'envio' ? (
               <div data-domicilio style={{ display: 'grid', gap: '11px' }}>
                 <Campo etiqueta="Dirección" nombre="envio_direccion" valor={formulario.envio_direccion} alEscribir={alEscribir} />
-                {/* `minmax(0, …)` y no `1fr` a secas: `1fr` es `minmax(auto, 1fr)`,
-                    y el `auto` deja que el ancho intrínseco del `<input>` gane. */}
+                {/* `minmax(0, …)` y no `1fr` a secas, por lo mismo que el
+                    `minWidth: 0` de arriba: hoy no cambia nada —los campos
+                    llevan `width: 100%`— y es la red para cuando alguno lo
+                    pierda. Lo que la prueba de 390px sí atrapa es un ancho fijo
+                    más grande que la pantalla, y eso se verificó al revés. */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: '9px' }}>
                   <Campo etiqueta="Localidad" nombre="envio_localidad" valor={formulario.envio_localidad} alEscribir={alEscribir} />
                   <Campo etiqueta="CP" nombre="envio_cp" valor={formulario.envio_cp} alEscribir={alEscribir} modo="numeric" />

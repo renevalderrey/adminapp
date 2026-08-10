@@ -360,10 +360,20 @@ export default function App() {
           lineasDespuesDelRecorte(carrito.lineas, recorte.lineas).filter((l) => !l.quitada)
         )}
         alSeguir={() => {
+          setRecorte(null)
+
+          // Sin nada que seguir —se agotó **todo**— la salida es el catálogo:
+          // reintentar un pedido vacío devolvería el mismo 409 y dejaría al
+          // comprador apretando un botón que no lo lleva a ningún lado.
+          if (!recorte.reintentar_con) {
+            carrito.vaciar()
+            alCatalogo()
+            return
+          }
+
           // ⚠ Se manda **`reintentar_con` tal cual vino**. Reconstruirlo acá
           // sería el cliente restando por su cuenta, y se equivocaría justo en
           // el caso que importa.
-          setRecorte(null)
           enviar(recorte.reintentar_con)
         }}
       />

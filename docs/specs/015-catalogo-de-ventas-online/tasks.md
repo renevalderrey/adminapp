@@ -1355,7 +1355,7 @@ formateados por el servidor.
       **Qué se revierte para verlo en rojo**: hacer que `no_disponible` reuse el
       texto del 402 de `apps/web`.
 
-- [ ] **T1447** El **séptimo job de CI** y la prueba de 390px. **(a)**
+- [x] **T1447** El **séptimo job de CI** y la prueba de 390px. **(a)**
       `apps/tienda/playwright.config.js` **propio**, con
       `viewport: { width: 390, height: 844 }`, su `webServer`
       (`vite --port 5175 --strictPort`) y su `globalSetup`. **Alternativa
@@ -1523,7 +1523,7 @@ etapa 1.
 menú sin pantalla pone la guardia en rojo por un motivo que no es el de este
 hito. El grupo «Venta online» nace con un solo ítem y gana el segundo en T1469.
 
-- [ ] **T1451** [P] Crear `apps/web/src/utils/catalogos.js` con el **tono del
+- [x] **T1451** [P] Crear `apps/web/src/utils/catalogos.js` con el **tono del
       badge de estado** —los tres estados y nada más (FR-054)— y lo que la
       pantalla necesite decidir sin dibujar. **Función pura primero**: un test de
       render que verifica una regla es diez veces más lento y se rompe cuando
@@ -1534,7 +1534,7 @@ hito. El grupo «Venta online» nace con un solo ítem y gana el segundo en T146
       **Qué se revierte para verlo en rojo**: devolver el mismo tono para los
       tres estados.
 
-- [ ] **T1452** Crear `apps/web/src/pages/Catalogos.jsx` con la lista
+- [x] **T1452** Crear `apps/web/src/pages/Catalogos.jsx` con la lista
       (`esCatalogos`, `:720-757`) y el armazón de las cinco pestañas, y
       **cablearla**: **(a)** el ítem en `apps/web/src/components/navegacion.js`,
       grupo nuevo **«Venta online»**:
@@ -1562,7 +1562,7 @@ hito. El grupo «Venta online» nace con un solo ítem y gana el segundo en T146
       **Qué se revierte para verlo en rojo**: poner «Mis catálogos» en el
       `PageHeader`; `guardiasDeSrc` lo nombra.
 
-- [ ] **T1453** Las dos pestañas de formulario dentro de `pages/Catalogos.jsx`:
+- [x] **T1453** Las dos pestañas de formulario dentro de `pages/Catalogos.jsx`:
       **Identidad** (`tabIdentidad`, `:779-840`) con la **previsualización en
       vivo del color** —usando la misma `textoSobre` que la tienda, no un color
       elegido a mano (FR-060)—, `mostrar_precio_lista` **que arranca apagado**
@@ -1587,7 +1587,7 @@ hito. El grupo «Venta online» nace con un solo ítem y gana el segundo en T146
       **Qué se revierte para verlo en rojo**: sacarle un reservado a la lista de
       `apps/web`; la guardia de texto lo nombra.
 
-- [ ] **T1454** Crear `apps/web/src/components/ReglasDePrecio.jsx`
+- [x] **T1454** Crear `apps/web/src/components/ReglasDePrecio.jsx`
       (`tabReglas`, `:912-976`): la tabla **con sangría por ámbito**, «Gana en N
       de M» por regla, la columna de **pisadas** y la previsualización sobre
       productos reales —los precios y las coberturas salen del servidor, **la
@@ -1603,7 +1603,7 @@ hito. El grupo «Venta online» nace con un solo ítem y gana el segundo en T146
       **Qué se revierte para verlo en rojo**: cambiarle una columna al encabezado
       y no a las filas.
 
-- [ ] **T1455** Crear `apps/web/src/components/ProductosDelCatalogo.jsx`
+- [x] **T1455** Crear `apps/web/src/components/ProductosDelCatalogo.jsx`
       (`tabProductos`, `:978-1013`): **selección múltiple con «Publicar» y
       «Quitar»** (FR-066), el contador **«N publicados de M del inventario»**
       (`:985`) que sale de los dos campos de la respuesta, y los avisos
@@ -1618,7 +1618,7 @@ hito. El grupo «Venta online» nace con un solo ítem y gana el segundo en T146
       **Qué se revierte para verlo en rojo**: mandar una llamada por producto; el
       primer test cuenta las llamadas.
 
-- [ ] **T1456** Crear `apps/web/src/components/QrDelCatalogo.jsx` (`tabQr`,
+- [x] **T1456** Crear `apps/web/src/components/QrDelCatalogo.jsx` (`tabQr`,
       `:1015-1070`): la dirección completa, el botón de copiar, la vista previa
       del QR y **tres descargas: PNG, SVG y cartel A4**. El QR se genera **en el
       navegador** con `qrcode`, que **ya está instalado** (`package.json:31`,
@@ -1655,7 +1655,7 @@ teléfono. `guardiasDeSrc` en verde, el marco mide `/catalogos`, y
 escriba**. Es lo que permite que T1463 sea una tarea sobre la transacción y no
 sobre cinco cosas a la vez.
 
-- [ ] **T1457** Crear `apps/api/src/migrations/20260818-pedidos.js` con
+- [x] **T1457** Crear `apps/api/src/migrations/20260818-pedidos.js` con
       `pedidos` y `pedido_items`, y los modelos `Pedido.js` y `PedidoItem.js`
       exportados desde `models/index.js` (FR-212). Lo que no se puede escribir de
       otra manera:
@@ -1717,7 +1717,7 @@ sobre cinco cosas a la vez.
       **Qué se revierte para verlo en rojo**: poner `CASCADE` en
       `pedido_items.product_id`.
 
-- [ ] **T1458** [P] Crear **`packages/pedido`** —el segundo paquete compartido—
+- [x] **T1458** [P] Crear **`packages/pedido`** —el segundo paquete compartido—
       con `normalizarTelefono` y `armarTextoPedido`, **las dos puras**, mudadas
       de `apps/web/src/utils/pedidoWhatsapp.js:32-76` y `:88-138`, con sus tests.
       `apps/api` y `apps/tienda` lo declaran en `dependencies`; `apps/web` cambia
@@ -1749,7 +1749,7 @@ sobre cinco cosas a la vez.
       **Qué se revierte para verlo en rojo**: pegar una copia de
       `normalizarTelefono` en `apps/api/src/utils/`.
 
-- [ ] **T1459** [P] Crear `apps/api/src/utils/totalDePedido.js`: subtotal de las
+- [x] **T1459** [P] Crear `apps/api/src/utils/totalDePedido.js`: subtotal de las
       líneas, envío según la configuración del catálogo, y **gratis con
       `subtotal >= umbral`** (FR-143). Su test en
       `apps/api/src/tests/totalDePedido.test.js`, y **el borde se prueba en el
@@ -1761,7 +1761,7 @@ sobre cinco cosas a la vez.
       **Qué se revierte para verlo en rojo**: cambiar el `>=` por `>`; el primero
       falla y es el único caso que lo distingue.
 
-- [ ] **T1460** [P] Crear `apps/api/src/utils/estadoDePedido.js` con las
+- [x] **T1460** [P] Crear `apps/api/src/utils/estadoDePedido.js` con las
       transiciones permitidas entre los **seis** estados (FR-161) y `cancelado`
       **terminal** (FR-163), función pura (FR-162). Su test en
       `apps/api/src/tests/estadoDePedido.test.js`.
@@ -1773,7 +1773,7 @@ sobre cinco cosas a la vez.
       **Qué se revierte para verlo en rojo**: permitir `pagado → pagado`; el
       segundo test y, más tarde, el de concurrencia de T1468.
 
-- [ ] **T1461** Cerrar lo que T1432 dejó anotado: `DELETE /api/catalogos/:id`
+- [x] **T1461** Cerrar lo que T1432 dejó anotado: `DELETE /api/catalogos/:id`
       responde **409 `TIENE_PEDIDOS`** cuando los tiene, **ofreciendo pausarlo**
       (FR-069). La garantía la da el motor —`pedidos.catalogo_id` es `ON DELETE
       RESTRICT`— y **el mensaje legible lo da el handler**: el error de Sequelize
@@ -1801,7 +1801,7 @@ sesión crea un pedido con **el precio que pone el servidor**, dos requests en
 paralelo crean **uno solo**, y un `product_id` de otra empresa **no deja ninguna
 fila**.
 
-- [ ] **T1462** [P] Crear `apps/api/src/utils/pedidoPublico.js` con
+- [x] **T1462** [P] Crear `apps/api/src/utils/pedidoPublico.js` con
       `consolidarLineas(items)` y `validarComprador(comprador, catalogo)`, las
       dos puras, e importando `esImagenPropia` de `utils/imagenes.js`.
       `consolidarLineas` **suma el mismo `product_id` repetido** (FR-135),
@@ -1823,7 +1823,7 @@ fila**.
       **Qué se revierte para verlo en rojo**: devolver el item entero en vez del
       literal de dos claves; el segundo test encuentra la clave `precio`.
 
-- [ ] **T1463** El handler `POST /api/publico/c/:slug/pedidos` en
+- [x] **T1463** El handler `POST /api/publico/c/:slug/pedidos` en
       `routes/catalogoPublico.js`, con el molde de `routes/sales.js:311-630` y
       **los doce pasos en el orden que no es negociable** (decisión 7):
       1. `contextoPublico` ya resolvió `{empresaId, catalogoId, puntoDeVentaId}`,
@@ -1933,7 +1933,7 @@ devuelven el mismo número y hay **un** pedido en la base; uno con un
 **Purpose**: el socio arma el pedido y lo manda desde el teléfono. Cierra el
 recorrido completo de la tienda.
 
-- [ ] **T1464** La pantalla **Carrito** (`esCarrito`, `:199-255`): líneas con
+- [x] **T1464** La pantalla **Carrito** (`esCarrito`, `:199-255`): líneas con
       cantidad editable, subtotal, el envío según lo que devolvió el catálogo y
       el total. **La tienda no calcula precios** (H2): los formatea. El estado
       `CarritoVacio` ya existe de T1446. Su test de render.
@@ -1943,7 +1943,7 @@ recorrido completo de la tienda.
       suma ingenua daría otro número (una regla de precio fijo).
       **Qué se revierte para verlo en rojo**: sumar las líneas en el navegador.
 
-- [ ] **T1465** El **checkout de tres pasos** con su barra de progreso
+- [x] **T1465** El **checkout de tres pasos** con su barra de progreso
       (`esCheckout`/`esDatos`/`esEntrega`/`esPago`, `:257-389`). Lo que no es
       dibujo:
       **(a)** Las opciones de entrega y de pago son **solo las que el catálogo
@@ -1976,7 +1976,7 @@ recorrido completo de la tienda.
       `formulario.pide_dni` viene en `true`; el primer test lo encuentra —y **el
       servidor lo ignora igual**, que es la otra mitad de la puerta—.
 
-- [ ] **T1466** La **confirmación** (`esConfirmado`, `:391-429`) y los **dos
+- [x] **T1466** La **confirmación** (`esConfirmado`, `:391-429`) y los **dos
       estados que faltan**. La confirmación muestra `#1042` —el numeral es de
       presentación y **no se guarda**, y el formato es **el mismo en las seis
       superficies** (FR-137b)—, el resumen con los precios congelados, el enlace
@@ -1996,7 +1996,7 @@ recorrido completo de la tienda.
       **Qué se revierte para verlo en rojo**: dibujar la frase del email siempre;
       el primer test la encuentra.
 
-- [ ] **T1467** [P] `apps/tienda/pruebas-de-navegador/anchoDeLaTienda.navegador.js`
+- [x] **T1467** [P] `apps/tienda/pruebas-de-navegador/anchoDeLaTienda.navegador.js`
       gana los **cuatro casos que faltan**: que el `<body>` **no desborde a lo
       ancho** a 390px en **carrito** y en **los tres pasos del checkout**
       (FR-121, criterio 17). **Y nada más**: es lo único que necesita motor de
@@ -2024,7 +2024,7 @@ checkout de tres pasos, entra el pedido, y la pantalla de confirmación muestra
 dice exactamente lo que hace, que en esta etapa es menos** de lo que la maqueta
 promete.
 
-- [ ] **T1468** Crear `apps/api/src/routes/pedidos.js` con los tres endpoints:
+- [x] **T1468** Crear `apps/api/src/routes/pedidos.js` con los tres endpoints:
       `GET /` (la bandeja, `?estado=`, `?catalogo_id=`, `?origen=`, `?pagina=`),
       `GET /:id` (el detalle con sus líneas y **los precios congelados**, no los
       actuales del catálogo, FR-171) y `PATCH /:id/estado`, **el único que
@@ -2063,7 +2063,7 @@ promete.
       **Qué se revierte para verlo en rojo**: hacer que el `PATCH` a `pagado`
       descuente stock —una línea—; el primer test lo ve en `stock_movements`.
 
-- [ ] **T1469** Crear `apps/web/src/pages/Pedidos.jsx` y cablearla: el segundo
+- [x] **T1469** Crear `apps/web/src/pages/Pedidos.jsx` y cablearla: el segundo
       ítem del grupo «Venta online» en `navegacion.js`
       (`{ to: '/pedidos', label: 'Pedidos', permission: 'pedidos.ver', modulo:
       'catalogo', alcance: 'empresa' }` — **`modulo: 'catalogo'`**, que es el que
@@ -2101,7 +2101,7 @@ promete.
       exige primero el pendiente 12c de `PROXIMOS-PROYECTOS.md`. **Dos pantallas
       honestas antes que una que promete una bandeja y entrega una lista.**
 
-- [ ] **T1470** Crear `apps/web/src/components/PanelDePedido.jsx`: el panel
+- [x] **T1470** Crear `apps/web/src/components/PanelDePedido.jsx`: el panel
       lateral de **520px con `max-w-[92vw]`** sobre `ui/sheet` (`hayPedido`,
       `:1117-1172`), con el detalle, los precios **congelados**, los datos del
       comprador y las acciones de estado. Sin `pedidos.gestionar`, los botones
@@ -2136,7 +2136,7 @@ integración afirma que **las cinco tablas quedaron como estaban**.
 comprador recibe su detalle — **y cuando el correo no sale, nadie promete que
 salió**.
 
-- [ ] **T1471** Las **dos plantillas de Resend** y el envío, con
+- [x] **T1471** Las **dos plantillas de Resend** y el envío, con
       `services/email.js` y `plantillaBase` (`:160`, FR-180): **(a)** el aviso de
       pedido nuevo **al comercio**, a la casilla **`email_avisos` del catálogo** y
       a ninguna otra (FR-183) — **no** a todos los usuarios con `pedidos.ver`, y
@@ -2164,7 +2164,7 @@ salió**.
       (`observabilidad.test.js:125-144`): esa propiedad es la que hace verificable
       todo esto, y no se toca.
 
-- [ ] **T1472** El **enlace de WhatsApp**, armado **por el servidor** (FR-184):
+- [x] **T1472** El **enlace de WhatsApp**, armado **por el servidor** (FR-184):
       `armarTextoPedido` de `packages/pedido` con los nombres y los precios
       **congelados** —que el servidor tiene y la tienda no— y el número de
       destino que sale de **`whatsapp_destino` del catálogo**, no de uno global.
@@ -2200,7 +2200,7 @@ cada apertura— y la lectura es de acá. Sin partirlo, o la etapa 1 termina con
 pestaña que muestra tres ceros inventados, o la etapa 2 arranca sin ningún dato
 histórico y **el primer número real llega un mes tarde**.
 
-- [ ] **T1473** `GET /api/catalogos/:id/metricas?dias=30` (`catalogo.ver`) en
+- [x] **T1473** `GET /api/catalogos/:id/metricas?dias=30` (`catalogo.ver`) en
       `routes/catalogos.js`: **visitas, pedidos y conversión** del mismo período,
       con el desglose por origen y **por `estado_catalogo`**. La conversión es
       pedidos sobre visitas, y **con cero visitas devuelve un guion y no `NaN`
@@ -2219,7 +2219,7 @@ histórico y **el primer número real llega un mes tarde**.
       **Qué se revierte para verlo en rojo**: agrupar sin `estado_catalogo`; el
       tercer test deja de poder separar los dos períodos.
 
-- [ ] **T1474** La **pestaña QR muestra los números** en
+- [x] **T1474** La **pestaña QR muestra los números** en
       `components/QrDelCatalogo.jsx` (`:1044-1048`): **«Visitas» y no
       «Escaneos»** (FR-202) —el servidor **no puede distinguir** un escaneo de un
       enlace compartido por WhatsApp, y decirle «escaneos» a eso es mentir con

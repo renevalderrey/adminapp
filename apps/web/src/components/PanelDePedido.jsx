@@ -5,6 +5,7 @@ import api from '@/services/api'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 import { pesos } from '@/utils/formato'
 import { usePermission } from '@/hooks/usePermission'
+import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { faltaElPermiso } from '@/utils/permisos'
 import {
   numeroDePedido, etiquetaDeEstadoDePedido, tonoDeEstadoDePedido,
@@ -70,6 +71,7 @@ function Dato({ etiqueta, children }) {
 export default function PanelDePedido({ pedidoId, alCerrar, alCambiarEstado, alFallar }) {
   const { can } = usePermission()
   const puedeGestionar = can('pedidos.gestionar')
+  const { confirm, ConfirmDialog } = useConfirmDialog()
 
   const [datos, setDatos] = useState(null)
   const [cargando, setCargando] = useState(false)
@@ -99,7 +101,34 @@ export default function PanelDePedido({ pedidoId, alCerrar, alCambiarEstado, alF
     return () => { vivo = false }
   }, [pedidoId, alFallar])
 
+  /**
+   * ⚠ El texto de la confirmación de «Marcar cobrado» dice lo que el sistema
+   * **no** hace, y es lo contrario de lo que decía la maqueta.
+   *
+   * Es la única acción de la pantalla cuyo nombre promete más de lo que hace:
+   * quien la aprieta cree que acaba de registrar una venta. Si el aviso llegara
+   * después —o no llegara—, el comercio marcaría veinte pedidos cobrados y
+   * descubriría el desfasaje cuando el inventario no cierre, sin saber de dónde
+   * salió.
+   *
+   * Las otras transiciones no preguntan: cambiar a «en preparación» no promete
+   * nada que no cumpla, y una confirmación en cada botón es una confirmación que
+   * se aprieta sin leer.
+   */
+  const confirmarSiHaceFalta = async (estado) => {
+    if (estado !== 'pagado') return true
+
+    return confirm(
+      `Marcar cobrado el pedido ${numeroDePedido(pedido.numero)} solo cambia su estado. `
+      + 'El stock no baja y no se registra ninguna venta: si ya lo entregaste, cargalo en el '
+      + 'punto de venta.',
+      { verbo: 'Marcar cobrado' }
+    )
+  }
+
   const mover = async (estado) => {
+    if (!(await confirmarSiHaceFalta(estado))) return
+
     setMoviendo(estado)
     try {
       const res = await api.patch(`/pedidos/${pedidoId}/estado`, { estado })
@@ -255,6 +284,8 @@ export default function PanelDePedido({ pedidoId, alCerrar, alCambiarEstado, alF
           </div>
         )}
       </SheetContent>
+
+      <ConfirmDialog />
     </Sheet>
   )
 }

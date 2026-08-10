@@ -33,6 +33,8 @@ const {
   Product, Brand, Empresa, PuntoDeVenta, sequelize,
 } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
+const { ajustesDeLaEmpresa } = require('../utils/ajustesDeLaEmpresa');
+const { fechaDelNegocio } = require('../utils/fechas');
 const logger = require('../utils/logger');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo, ErrorDeNegocio } = require('../utils/errores');
@@ -430,13 +432,16 @@ router.post('/:id/despublicar', checkPermission('catalogo.editar'), async (req, 
 /**
  * La configuración de precios de la empresa de la sesión.
  *
- * `findByPk` con `req.empresaId`, que NO viene del cliente: lo resuelve la
- * cadena de autenticación. Es la misma forma de `routes/afip.js:497`.
+ * ⚠ Acá sólo se leía `empresas.settings` —el JSON de valores por defecto del
+ * onboarding— y **no** la tabla `settings`, que es donde queda lo que el
+ * comercio configuró después. Con eso, la previsualización del panel tomaba
+ * margen 0 y mostraba precios de costo mientras la tienda pública, que sí mezcla
+ * las dos fuentes, mostraba los de venta: el mismo producto con dos precios
+ * distintos según qué pantalla se mirara.
+ *
+ * `utils/ajustesDeLaEmpresa.js` es la mezcla, una sola vez, para las dos.
  */
-async function ajustesDePrecio(empresaId) {
-  const empresa = await Empresa.findByPk(empresaId, { attributes: ['id', 'settings'] });
-  return (empresa && empresa.settings) || {};
-}
+const ajustesDePrecio = (empresaId) => ajustesDeLaEmpresa(empresaId);
 
 /**
  * El producto con la forma que pide `resolverPrecios`, y el producto adentro.
@@ -791,6 +796,103 @@ router.delete('/:id/reglas/:reglaId', checkPermission('catalogo.editar'), async 
     res.json({ ok: true, message: 'Regla eliminada' });
   } catch (err) {
     fallo(req, res, err, 'Error al eliminar la regla de precio');
+  }
+});
+
+// ════════════════════════════════════════════
+//  GET /api/catalogos/:id/metricas?dias=30
+//
+//  ── La conversión NO se formatea acá ──
+//
+//  El endpoint devuelve `visitas`, `pedidos` y `conversion`, y `conversion` es
+//  **`null` cuando no hubo visitas** —no `0`, no `NaN`, no `'0 %'`—. La cuenta
+//  `0/0` no da cero: no existe, y un cero formateado en el servidor le dice al
+//  comercio que su tienda convierte mal cuando lo que pasó es que nadie la
+//  abrió.
+//
+//  La pantalla decide qué dibuja con ese `null` —un guion—, que es la decisión
+//  correcta del lado que sabe cómo se ve.
+//
+//  ── Y por qué el desglose lleva `estado_catalogo` ──
+//
+//  Es la cuarta columna de la clave única de `catalogo_visitas`, y existe para
+//  esto: una semana con el catálogo pausado tiene visitas y cero pedidos, y sin
+//  separarla esa semana hunde la conversión del mes y se lee como «la tienda no
+//  funciona». Con el desglose, se lee como lo que fue.
+//
+//  ⚠ **«Visitas», no «escaneos».** El servidor no puede distinguir un QR
+//  escaneado de un enlace pegado en WhatsApp; el `?f=` es lo que **declara** el
+//  cartel, no lo que el sistema mide. Llamarle escaneos a esto sería mentir con
+//  una métrica.
+// ════════════════════════════════════════════
+router.get('/:id/metricas', checkPermission('catalogo.ver'), async (req, res) => {
+  try {
+    const catalogo = await findScoped(Catalogo, req.params.id, req.empresaId);
+    if (!catalogo) return res.status(404).json({ ok: false, error: 'Catálogo no encontrado' });
+
+    // Acotado: pedir cinco años de visitas por la query no puede ser una forma
+    // de hacerle escanear la tabla entera a la base.
+    const pedidos = Number.parseInt(req.query.dias, 10);
+    const dias = Number.isInteger(pedidos) && pedidos > 0 && pedidos <= 365 ? pedidos : 30;
+
+    // La fecha del negocio, no la del servidor: `catalogo_visitas.fecha` se
+    // escribe con `fechaDelNegocio()`, así que el corte tiene que hablar el
+    // mismo idioma o el primer día del período entra o sale por unas horas.
+    const hoy = fechaDelNegocio();
+    const desde = new Date(`${hoy}T00:00:00Z`);
+    desde.setUTCDate(desde.getUTCDate() - (dias - 1));
+    const desdeFecha = desde.toISOString().slice(0, 10);
+
+    const visitas = await CatalogoVisita.findAll({
+      attributes: [
+        'origen',
+        'estado_catalogo',
+        [sequelize.fn('SUM', sequelize.col('cantidad')), 'cantidad'],
+      ],
+      // `catalogo_visitas` **no tiene `empresa_id`**: es una tabla hija y su
+      // empresa es la del catálogo, que ya salió de `findScoped` acá arriba.
+      where: {
+        catalogo_id: catalogo.id,
+        fecha: { [Op.gte]: desdeFecha },
+      },
+      group: ['origen', 'estado_catalogo'],
+      order: [['origen', 'ASC'], ['estado_catalogo', 'ASC']],
+      raw: true,
+    });
+
+    const cuantosPedidos = await Pedido.count({
+      where: {
+        catalogo_id: catalogo.id,
+        empresa_id: req.empresaId,
+        created_at: { [Op.gte]: desde },
+      },
+    });
+
+    const total = visitas.reduce((suma, v) => suma + Number(v.cantidad), 0);
+
+    const porOrigen = {};
+    const porEstado = {};
+    for (const v of visitas) {
+      const cantidad = Number(v.cantidad);
+      porOrigen[v.origen] = (porOrigen[v.origen] || 0) + cantidad;
+      porEstado[v.estado_catalogo] = (porEstado[v.estado_catalogo] || 0) + cantidad;
+    }
+
+    res.json({
+      ok: true,
+      data: {
+        dias,
+        desde: desdeFecha,
+        visitas: total,
+        pedidos: cuantosPedidos,
+        // `null` y no cero. Ver el encabezado.
+        conversion: total > 0 ? cuantosPedidos / total : null,
+        por_origen: porOrigen,
+        por_estado: porEstado,
+      },
+    });
+  } catch (err) {
+    fallo(req, res, err, 'Error al leer las métricas del catálogo');
   }
 });
 

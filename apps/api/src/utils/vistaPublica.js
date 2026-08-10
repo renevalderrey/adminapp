@@ -123,8 +123,8 @@ function productoPublico(p, extra = {}) {
  * un identificador opaco en una respuesta pública es una superficie para
  * adivinar.
  */
-function pedidoPublico(pedido, lineas = []) {
-  return {
+function pedidoPublico(pedido, lineas = [], extra = {}) {
+  const salida = {
     numero: pedido.numero,
     estado: pedido.estado,
     total: Number(pedido.total) || 0,
@@ -138,6 +138,23 @@ function pedidoPublico(pedido, lineas = []) {
       subtotal: Number(l.subtotal) || 0,
     })),
   };
+
+  // Los tres que dependen de lo que pasó **después** del commit, y por eso
+  // llegan como `extra` y no salen de la fila.
+  //
+  // `email_enviado` es lo que le permite a la pantalla **no prometer** un correo
+  // que no salió: es `false` cuando el envío falló y también cuando el comprador
+  // no dejó email. Un `fire and forget` haría imposible este campo, porque la
+  // respuesta saldría antes de saber.
+  if (extra.email_enviado !== undefined) salida.email_enviado = extra.email_enviado === true;
+  if (extra.email) salida.email = extra.email;
+
+  // El enlace de WhatsApp lo arma **el servidor**, con los nombres y los precios
+  // congelados. Ausente cuando el catálogo no tiene número de destino: un botón
+  // que abre WhatsApp sin destinatario es peor que ninguno.
+  if (extra.whatsapp_url) salida.whatsapp = extra.whatsapp_url;
+
+  return salida;
 }
 
 module.exports = { catalogoPublico, productoPublico, pedidoPublico };

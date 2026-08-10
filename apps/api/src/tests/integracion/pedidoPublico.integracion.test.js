@@ -92,6 +92,8 @@ async function sembrarParaPedidos(datos) {
     nombre_visible: 'Tienda de A',
     estado: 'publicado',
     publicado_en: new Date(),
+    email_avisos: 'pedidos@tienda-de-a.test',
+    whatsapp_destino: '3425123456',
     retiro_local: true,
     retiro_socio: true,
     pide_nro_socio: true,
@@ -447,5 +449,116 @@ describe('el alta pública de pedidos', () => {
 
     const { Pedido } = modelos;
     expect(await Pedido.count()).toBe(0);
+  });
+});
+
+// ════════════════════════════════════════════
+//  T1471 y T1472 · Los avisos, y lo que pasa cuando no salen
+//
+//  ⚠ El arnés corre **sin `RESEND_API_KEY`** (`baseDePruebas.js`), así que
+//  `sendEmail` devuelve `{ ok: false }` sin tocar la red. Es el mismo camino que
+//  corre en CI, y es el que estos casos afirman.
+// ════════════════════════════════════════════
+
+describe('los avisos del pedido', () => {
+  let datos;
+  const email = require('../../services/email');
+
+  beforeEach(async () => {
+    await limpiarLaBase();
+    datos = await sembrarDosEmpresas();
+    await sembrarParaPedidos(datos);
+    jest.restoreAllMocks();
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  const mandar = (extra = {}, clave = 'avisos-1') => request(app)
+    .post('/api/publico/c/pedidos-de-a/pedidos')
+    .send(cuerpo([{ product_id: datos.harina.id, cantidad: 1 }], clave, extra));
+
+  it('sin `RESEND_API_KEY` el pedido se crea igual y `email_enviado` viene en false', async () => {
+    const { Pedido } = modelos;
+    const res = await mandar({ email: 'martina@ejemplo.test' });
+
+    expect(res.status).toBe(201);
+    expect(await Pedido.count()).toBe(1);
+    // Prometer un correo que no salió es peor que no prometerlo: el que espera
+    // no vuelve a preguntar.
+    expect(res.body.data.email_enviado).toBe(false);
+  });
+
+  it('el aviso va a `email_avisos` del catálogo y no al email de la empresa', async () => {
+    const espia = jest.spyOn(email, 'sendEmail').mockResolvedValue({ ok: true, enviado: true });
+
+    await mandar({ email: 'martina@ejemplo.test' });
+
+    const destinos = espia.mock.calls.map((c) => c[0].to);
+
+    // A la casilla del catálogo, y no a los usuarios con `pedidos.ver` —serían
+    // cinco correos sin dueño— ni al email de la empresa, que es el
+    // administrativo.
+    expect(destinos).toContain('pedidos@tienda-de-a.test');
+    expect(destinos).toContain('martina@ejemplo.test');
+    expect(destinos).not.toContain(datos.empresaA.email);
+  });
+
+  it('con la casilla del catálogo vacía el pedido entra y nadie del comercio recibe nada', async () => {
+    const { Catalogo, Pedido } = modelos;
+    await Catalogo.update({ email_avisos: null }, { where: { slug: 'pedidos-de-a' } });
+
+    const espia = jest.spyOn(email, 'sendEmail').mockResolvedValue({ ok: true, enviado: true });
+    const res = await mandar({}, 'avisos-sin-casilla');
+
+    expect(res.status).toBe(201);
+    expect(await Pedido.count()).toBe(1);
+    // Sin casilla y sin email del comprador, no se manda ninguno de los dos.
+    expect(espia).not.toHaveBeenCalled();
+    expect(res.body.data.email_enviado).toBe(false);
+  });
+
+  it('sin email del comprador, `email_enviado` es false aunque el correo del comercio salga', async () => {
+    jest.spyOn(email, 'sendEmail').mockResolvedValue({ ok: true, enviado: true });
+
+    const res = await mandar({}, 'avisos-sin-email');
+
+    // El campo habla del correo **del comprador**, que es el que la pantalla
+    // promete.
+    expect(res.body.data.email_enviado).toBe(false);
+    expect(res.body.data.email).toBeUndefined();
+  });
+
+  it('el enlace de WhatsApp lleva los precios congelados del pedido y no los del catálogo', async () => {
+    const { CatalogoReglaPrecio } = modelos;
+
+    const res = await mandar({}, 'whatsapp-1');
+    expect(res.status).toBe(201);
+
+    const enlace = res.body.data.whatsapp;
+    expect(enlace.startsWith('https://wa.me/5493425123456?text=')).toBe(true);
+
+    const texto = decodeURIComponent(enlace.split('text=')[1]);
+    expect(texto).toContain('#1');
+    // 1500 de lista con −20% = 1200, que es lo que se congeló.
+    expect(texto).toContain('1.200');
+
+    // Y si la regla cambia después, el enlace del pedido **ya emitido** no se
+    // mueve: se armó con las líneas congeladas y no con el catálogo.
+    await CatalogoReglaPrecio.update({ valor: 90 }, { where: {} });
+    const otro = await mandar({}, 'whatsapp-2');
+
+    expect(decodeURIComponent(otro.body.data.whatsapp.split('text=')[1])).toContain('150');
+    expect(texto).toContain('1.200');
+  });
+
+  it('sin número de destino no viaja ningún enlace de WhatsApp', async () => {
+    const { Catalogo } = modelos;
+    await Catalogo.update({ whatsapp_destino: null }, { where: { slug: 'pedidos-de-a' } });
+
+    const res = await mandar({}, 'whatsapp-sin-numero');
+
+    // Ausente, no vacío: la pantalla dibuja el botón sólo si hay enlace, y uno
+    // sin destinatario abre un chat con alguien que no es el comercio.
+    expect(res.body.data.whatsapp).toBeUndefined();
   });
 });
