@@ -891,7 +891,7 @@ previsualización devuelve los precios — **todo por HTTP y sin que exista ning
 pantalla**. Es lo que permite que la pantalla de F1.8 se dibuje contra un
 contrato real y no imaginado.
 
-- [ ] **T1432** Crear `apps/api/src/routes/catalogos.js` con el ABM:
+- [x] **T1432** Crear `apps/api/src/routes/catalogos.js` con el ABM:
       `GET /`, `POST /` (crea en **`borrador`** y normaliza el slug con
       `normalizarSlug` **antes** de guardar), `GET /:id`, `PUT /:id` con **campos
       explícitos y nunca `...req.body`**, `DELETE /:id` (en cascada sobre
@@ -926,7 +926,7 @@ contrato real y no imaginado.
       responde 409 `TIENE_PEDIDOS` (FR-069) porque la tabla `pedidos` no existe
       hasta F2.1. Acá borra en cascada, y está bien: no hay pedido que perder.
 
-- [ ] **T1433** En el mismo archivo, `POST /:id/publicar`, `POST /:id/pausar` y
+- [x] **T1433** En el mismo archivo, `POST /:id/publicar`, `POST /:id/pausar` y
       `POST /:id/despublicar`. **Publicar no es cambiar una columna**: es una
       verificación de **cuatro condiciones** —nombre visible, slug, punto de
       venta **activo** y al menos un producto que salga—, y si falta algo la
@@ -948,7 +948,7 @@ contrato real y no imaginado.
       **Qué se revierte para verlo en rojo**: devolver un string concatenado en
       vez de `faltan: []`; el primer test cuenta los elementos.
 
-- [ ] **T1434** En el mismo archivo, las reglas: `GET /:id/reglas` **con su
+- [x] **T1434** En el mismo archivo, las reglas: `GET /:id/reglas` **con su
       cobertura** —`{ alcanza, gana }` por regla, sacada de `resolverPrecios`—,
       `POST /:id/reglas`, `PUT /:id/reglas/:reglaId`, `DELETE /:id/reglas/:reglaId`
       y `GET /:id/categorias`, que devuelve **las categorías que existen hoy** en
@@ -974,7 +974,7 @@ contrato real y no imaginado.
       **Qué se revierte para verlo en rojo**: sacar el `findScoped` del objetivo;
       el primero crea una fila que apunta a la marca de otra empresa.
 
-- [ ] **T1435** En el mismo archivo, los productos del catálogo y la
+- [x] **T1435** En el mismo archivo, los productos del catálogo y la
       previsualización: `GET /:id/productos` —los del catálogo **y** los
       publicables que no están, con `en_el_catalogo`, `publicable`, `is_active` y
       los avisos `SIN_PRECIO` y `FOTO_EXTERNA` (que sale de `esImagenPropia`)—,
@@ -998,7 +998,7 @@ contrato real y no imaginado.
       **Qué se revierte para verlo en rojo**: dejar salir los `sinCosto`; el
       primer test los encuentra en la grilla.
 
-- [ ] **T1436** [P] En el mismo archivo, `POST /:id/imagen` (campo `tipo` =
+- [x] **T1436** [P] En el mismo archivo, `POST /:id/imagen` (campo `tipo` =
       `logo` | `portada`) y `DELETE /:id/imagen?tipo=`, reusando **tal cual**
       `utils/imagenes.js` de T1416 con las dos medidas propias: portada 1200×480
       JPEG y logo 400×400 **PNG**. Las columnas guardan la **ruta relativa**.
