@@ -792,6 +792,12 @@ router.get('/:id/categorias', checkPermission('catalogo.ver'), async (req, res) 
         publicable: true,
       },
       attributes: ['id', 'category'],
+      // ⚠ Orden explícito, y no es cosmético: la etiqueta de una categoría la
+      // fija el PRIMER producto que se lea con esa clave normalizada. Sin
+      // `order`, Postgres devuelve las filas como quiera y «Proteínas» o
+      // «proteinas» ganan según la corrida — pasó en CI y no en la máquina de
+      // trabajo, que es la peor forma de descubrirlo.
+      order: [['id', 'ASC']],
     });
 
     const porClave = new Map();
@@ -854,6 +860,9 @@ router.get('/:id/productos', checkPermission('catalogo.ver'), async (req, res) =
     const filas = await CatalogoProducto.findAll({
       where: { catalogo_id: catalogo.id },
       raw: true,
+      // Orden explícito: lo que sale de acá alimenta una lista, y sin él el
+      // resultado depende de cómo Postgres decida leer las filas.
+      order: [['id', 'ASC']],
     });
     const ordenPorProducto = new Map(filas.map((f) => [f.product_id, f.orden]));
 
@@ -862,6 +871,9 @@ router.get('/:id/productos', checkPermission('catalogo.ver'), async (req, res) =
         empresa_id: req.empresaId,
         [Op.or]: [{ publicable: true }, { id: filas.map((f) => f.product_id) }],
       },
+      // Orden explícito: lo que sale de acá alimenta una lista, y sin él el
+      // resultado depende de cómo Postgres decida leer las filas.
+      order: [['id', 'ASC']],
     });
 
     const settings = await ajustesDePrecio(req.empresaId);
@@ -932,7 +944,23 @@ router.post('/:id/productos', checkPermission('catalogo.editar'), async (req, re
 
     let orden = yaEstaban.reduce((max, f) => Math.max(max, f.orden), -1);
 
-    const nuevas = propios
+    // ⚠ El orden de los nuevos sale del orden en que el cliente mandó los ids,
+    // no del que devuelva Postgres.
+    //
+    // `propios` viene de un `findAll` sin `order`: sin esta línea, el `orden`
+    // que recibe cada producto depende de cómo el motor decida leer las filas, y
+    // eso cambia entre corridas. Se descubrió en CI, con el test verde en la
+    // máquina de trabajo — que es la peor forma de descubrirlo.
+    //
+    // Y respetar el orden del cliente no es sólo determinismo: es el orden en
+    // que quien armó el catálogo eligió los productos, que es el que espera ver
+    // en la grilla.
+    const posicionPedida = new Map(ids.map((id, i) => [Number(id), i]));
+    const enOrden = [...propios].sort(
+      (a, b) => (posicionPedida.get(a.id) ?? 0) - (posicionPedida.get(b.id) ?? 0)
+    );
+
+    const nuevas = enOrden
       .filter((p) => !presentes.has(p.id))
       .map((p) => ({ catalogo_id: catalogo.id, product_id: p.id, orden: ++orden }));
 
@@ -1205,6 +1233,9 @@ async function productosQueSalen(catalogo) {
   const filas = await CatalogoProducto.findAll({
     where: { catalogo_id: catalogo.id },
     raw: true,
+    // Orden explícito: lo que sale de acá alimenta una lista, y sin él el
+    // resultado depende de cómo Postgres decida leer las filas.
+    order: [['id', 'ASC']],
   });
   if (filas.length === 0) return [];
 
@@ -1219,6 +1250,9 @@ async function productosQueSalen(catalogo) {
         { price_override: { [Op.gt]: 0 } },
       ],
     },
+    // Orden explícito: lo que sale de acá alimenta una lista, y sin él el
+    // resultado depende de cómo Postgres decida leer las filas.
+    order: [['id', 'ASC']],
   });
 }
 
