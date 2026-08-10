@@ -1,0 +1,136 @@
+/* ════════════════════════════════════════════
+    La única hoja de estilos de la tienda, y qué hace acá adentro
+
+    El resto de la app se dibuja con estilos en línea, igual que la maqueta. Este
+    archivo tiene **solo lo que un estilo en línea no puede expresar**: consultas
+    de medios, fotogramas de animación y estados del navegador (`:focus-visible`,
+    `::placeholder`). Nada más. Si algo se puede escribir en el componente, se
+    escribe en el componente — así el estilo vive al lado del marcado que estiliza
+    y no en un archivo que hay que ir a buscar.
+
+    ⚠ Acá no hay un solo hexadecimal, y no es casualidad: `src/tests/guardiaDeLaTienda.test.js`
+    recorre también los `.css`. Todo color sale de las variables que escribe
+    `src/tema.js`.
+   ════════════════════════════════════════════ */
+
+/* ── La base ──
+   `apps/web` trae Tailwind con su preflight; acá no hay nada, así que el margen
+   del `<body>` y la caja de borde se declaran a mano. Son cinco líneas y son las
+   únicas: una hoja de normalización entera sería traerse una dependencia para
+   resolver cinco líneas. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--tinta);
+  background: var(--papel);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ⚠ `overflow-x: hidden` **no** está acá a propósito. Esconder el desborde es
+   exactamente lo que haría pasar en verde a la prueba de 390px de T1447 con la
+   grilla rota adentro. Si algo desborda, tiene que verse. */
+
+/* ── El ancho del contenido ──
+   En escritorio la tienda **no se abre a una grilla ancha**: el contenido se
+   queda en 720px centrados (maqueta `:449-464`). Es la decisión que hace que la
+   misma pantalla sirva a 390px y a 1440px sin dos maquetados. */
+.t-ancho {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* ── La grilla de productos ──
+   Dos columnas en el teléfono, tres en escritorio, **dentro de los mismos
+   720px**. El corte va en 720px porque es el ancho al que el contenido deja de
+   crecer: más allá, ensanchar las tarjetas solo agranda las fotos. */
+.t-grilla {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 720px) {
+  .t-grilla {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ── El esqueleto de «Cargando» ──
+   El brillo que recorre la silueta. Va acá porque `@keyframes` no existe en
+   línea, y la animación es la mitad del estado: una silueta quieta se lee como
+   una pantalla rota, no como una que está por llegar. */
+@keyframes t-brillo {
+  0% {
+    background-position: -320px 0;
+  }
+  100% {
+    background-position: 320px 0;
+  }
+}
+
+.t-esqueleto {
+  background: linear-gradient(
+    90deg,
+    var(--marcador) 0,
+    var(--marcador-alto) 40%,
+    var(--marcador) 80%
+  );
+  background-size: 320px 100%;
+  animation: t-brillo 1.4s linear infinite;
+}
+
+/* Quien pidió menos movimiento no recibe un brillo latiendo tres pantallas
+   seguidas. La silueta se queda quieta y sigue diciendo lo mismo. */
+@media (prefers-reduced-motion: reduce) {
+  .t-esqueleto {
+    animation: none;
+  }
+}
+
+/* ── El damero del marcador de foto ──
+   El lugar de una foto que no existe, del mismo tamaño que la foto: sin esto la
+   grilla se descuadra fila por medio según qué producto tenga imagen. */
+.t-damero {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--marcador) 0 8px,
+    var(--marcador-alto) 8px 16px
+  );
+}
+
+/* ── El foco ──
+   El anillo del navegador desaparece en cuanto se le pone `outline: none` a algo,
+   y en esta app se navega con el pulgar **y** con teclado (un lector de pantalla
+   en el teléfono es teclado). El anillo se dibuja con el color del comercio, que
+   es lo que se toca. */
+.t-foco:focus-visible {
+  outline: 2px solid var(--marca);
+  outline-offset: 2px;
+}
+
+.t-buscador::placeholder {
+  color: var(--tinta-suave);
+}
+
+/* Texto que solo existe para quien no ve la pantalla: el nombre del estado que
+   se está dibujando. No se puede usar `display: none` —los lectores lo saltan— ni
+   `visibility: hidden`, por lo mismo. */
+.t-solo-lectores {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

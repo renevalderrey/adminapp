@@ -1312,7 +1312,7 @@ formateados por el servidor.
       **Qué se revierte para verlo en rojo**: fijar `--marca-texto` en blanco; el
       primer test falla con el color claro.
 
-- [ ] **T1444** La pantalla **Catálogo**: portada, logo, buscador y píldoras de
+- [x] **T1444** La pantalla **Catálogo**: portada, logo, buscador y píldoras de
       categoría (`esCatalogo`, `:89-158`), la grilla y el «ver más». **El
       filtrado y el cambio de categoría se hacen en el navegador** sobre la
       primera página, que ya vino embebida: **cero llamadas por tecla** (FR-114,
@@ -1329,7 +1329,7 @@ formateados por el servidor.
       **Qué se revierte para verlo en rojo**: hacer que el buscador pida al
       servidor por tecla; el primer test cuenta las llamadas.
 
-- [ ] **T1445** La **ficha de producto** (`esProducto`, `:160-197`): descripción
+- [x] **T1445** La **ficha de producto** (`esProducto`, `:160-197`): descripción
       —**ausente cuando está vacía**, para que la ficha no quede con un hueco—,
       control de cantidad **acotado a `stock_disponible`**, y el botón «Sin
       stock» **inerte**. Su test de render.
@@ -1339,7 +1339,7 @@ formateados por el servidor.
       **Qué se revierte para verlo en rojo**: sacarle el `disabled` al botón; el
       primero registra la llamada al carrito.
 
-- [ ] **T1446** Los **seis estados** de este corte, en `src/estados/`, cada uno
+- [x] **T1446** Los **seis estados** de este corte, en `src/estados/`, cada uno
       con su salida propia y distinguible (criterio 18): `Cargando`, `Pausada`
       —que dibuja marca, nombre, descripción y WhatsApp y **nada más**, con el
       **mismo camino** que `no_disponible`, que es un estado neutro sin

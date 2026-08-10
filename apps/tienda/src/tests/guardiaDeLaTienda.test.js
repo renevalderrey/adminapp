@@ -190,13 +190,30 @@ describe('guardia de la tienda · no hay ninguna cabecera de sesión en apps/tie
   })
 
   // ── El ancla ──
+  //
+  // Sube a mano y con el motivo escrito al lado. Trece archivos, de cinco que
+  // eran: los ocho nuevos son las pantallas de T1444 y T1445 y los estados de
+  // T1446, más las dos piezas que comparten.
   it('revisó los archivos que dice revisar', () => {
     expect(REVISADOS.map((r) => r.nombre).sort()).toEqual([
       'App.jsx',
       'api.js',
       'carrito.js',
+      'estados/Cargando.jsx', //           T1446 · el esqueleto con la silueta del catálogo real
+      'estados/CarritoVacio.jsx', //       T1446 · el pedido sin líneas
+      'estados/CatalogoDetenido.jsx', //   T1446 · `pausado`, `no_disponible` y el slug que no existe, mismo camino
+      'estados/DemasiadasPeticiones.jsx', // T1446 · el 429 que invita a reintentar
+      'estados/PagoRechazado.jsx', //      T1446 · el rechazo del banco (maqueta `:560-584`)
+      'estados/SeAgoto.jsx', //            T1446 · la línea tachada arriba del total nuevo
+      'estados/SinResultados.jsx', //      T1446 · el vacío que ofrece la categoría más parecida
+      'estados/plantilla.jsx', //          el molde SIN texto que comparten los estados, y los botones
+      'formato.js', //                     T1444 · precio, normalización del servidor y la sugerencia de categoría
       'main.jsx',
+      'pantallas/Catalogo.jsx', //         T1444
+      'pantallas/Ficha.jsx', //            T1445
+      'pie.jsx', //                        el pie «powered by favalio» de todas las pantallas (FR-122)
       'tema.js',
+      'tienda.css', //                     lo único que un estilo en línea no puede: medios, fotogramas y `:focus-visible`
     ])
   })
 

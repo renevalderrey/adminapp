@@ -26,6 +26,55 @@ export const MARCA_POR_DEFECTO = '#00B4B6'
 export const TEXTO_OSCURO = '#101418'
 export const TEXTO_CLARO = '#FFFFFF'
 
+// ════════════════════════════════════════════
+//  Los neutros, y por qué también viven acá
+//
+//  El color **del comercio** es uno solo y sale de la base. Pero una pantalla no
+//  se dibuja con un color: se dibuja con un color y con quince grises —el borde
+//  de una tarjeta, el gris del texto secundario, el damero del marcador de foto,
+//  el rojo del aviso de pago rechazado—. Esos quince están en la maqueta y no los
+//  elige nadie: son fijos.
+//
+//  La tentación es escribirlos donde se usan, porque «no son el color de marca».
+//  El problema es que la guardia no puede distinguir un gris de un turquesa: los
+//  dos son `#rrggbb`, y una regla que dijera «hexadecimales sí, pero solo los
+//  grises» sería una regla que hay que leer antes de confiar en ella. Con los
+//  neutros acá adentro, la regla sigue siendo la que se puede verificar de un
+//  vistazo: **el hexadecimal vive en `src/tema.js` y en ningún otro archivo**, y
+//  la lista de exentos de la guardia sigue teniendo un solo nombre.
+//
+//  Los nombres son de función, no de color: `--borde` y no `--gris-claro`. El día
+//  que el borde cambie de tono, cambia acá y no hay que buscar en qué archivo un
+//  gris era un borde y en cuál era un texto.
+// ════════════════════════════════════════════
+export const NEUTROS = {
+  // Texto: los tres pesos de la maqueta.
+  '--tinta': TEXTO_OSCURO,
+  '--tinta-media': '#5A646E',
+  '--tinta-suave': '#8B959E',
+
+  // Superficies y bordes.
+  '--papel': TEXTO_CLARO,
+  '--superficie': '#FAFBFB',
+  '--borde': '#E5E8EA',
+  '--borde-fuerte': '#D5DADE',
+
+  // El damero del marcador de foto y el brillo del esqueleto de «Cargando».
+  '--marcador': '#F1F3F4',
+  '--marcador-alto': '#E9ECEE',
+  '--marcador-bajo': '#F6F7F8',
+
+  // El aviso rojo (pago rechazado) y el ámbar (se agotó). No son el color del
+  // comercio: un rechazo del banco se lee igual en un catálogo turquesa que en
+  // uno negro, y teñirlo con la marca sería teñir la mala noticia.
+  '--alerta': '#C42B2B',
+  '--alerta-fondo': '#FBEAEA',
+  '--alerta-borde': '#EFB4B4',
+  '--aviso': '#9A5B08',
+  '--aviso-fondo': '#FBF0DE',
+  '--aviso-borde': '#EBC48A',
+}
+
 /**
  * `#abc` y `#AABBCC` valen; cualquier otra cosa cae en el color por defecto.
  *
@@ -120,6 +169,12 @@ export function aplicarTema(colorMarca, raiz = document.documentElement) {
   const texto = textoSobre(marca)
   raiz.style.setProperty('--marca', marca)
   raiz.style.setProperty('--marca-texto', texto)
+
+  // Los neutros van en la misma pasada y no en una llamada aparte que alguien
+  // pueda olvidarse de hacer: una pantalla con `--marca` puesta y `--borde` sin
+  // poner se dibuja sin bordes y **no falla**, que es la peor forma de romperse.
+  for (const [nombre, valor] of Object.entries(NEUTROS)) raiz.style.setProperty(nombre, valor)
+
   return { marca, texto }
 }
 

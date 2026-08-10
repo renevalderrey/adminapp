@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 import { MARCA_POR_DEFECTO, aplicarTema } from './tema.js'
+import './tienda.css'
 
 // ⚠ El tema se aplica **antes** del primer render, con el color por defecto.
 //
