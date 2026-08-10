@@ -13,7 +13,22 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/
+
+# ⚠ El manifiesto del paquete va ANTES del `npm ci`, igual que en la imagen de
+# la API: npm crea el enlace del workspace durante la instalación, y si el
+# directorio todavía no existe el enlace queda colgado.
+#
+# Acá el síntoma es distinto y peor de encontrar: `apps/web` importa
+# `@favalio/precios` desde `store/useStore.js`, así que sin esto **el `vite
+# build` falla dentro del contenedor** —no en runtime— con un «failed to
+# resolve import». Y no lo veía ningún job del CI, que construye la imagen de la
+# API y no ésta.
+COPY packages/precios/package.json ./packages/precios/
+
 RUN npm ci --workspace apps/web --include-workspace-root
+
+# El código del paquete, ya con el enlace creado por el `npm ci` de arriba.
+COPY packages/precios/ ./packages/precios/
 
 COPY apps/web/ ./apps/web/
 

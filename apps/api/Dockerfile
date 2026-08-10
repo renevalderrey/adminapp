@@ -29,6 +29,7 @@ COPY apps/api/package.json ./apps/api/
 # falla **al arrancar en producción**, no en el build: la imagen se construye
 # entera, se sube, y el contenedor no levanta.
 COPY packages/precios/package.json ./packages/precios/
+COPY packages/pedido/package.json ./packages/pedido/
 
 # `--include-workspace-root` hace falta: sin eso npm no instala lo que declara
 # el manifiesto de arriba y el árbol queda incompleto.
@@ -39,8 +40,12 @@ COPY packages/precios/package.json ./packages/precios/
 # en un error raro en runtime.
 RUN npm ci --omit=dev --workspace apps/api --include-workspace-root
 
-# El código del paquete, ya con el enlace creado por el `npm ci` de arriba.
+# El código de los paquetes, ya con los enlaces creados por el `npm ci` de
+# arriba. **Los dos**: un paquete declarado y no copiado deja el enlace colgado
+# y el `require` falla al arrancar en producción, no en el build — que es
+# exactamente lo que pasó cuando entró `@favalio/pedido` y este `COPY` no.
 COPY packages/precios/ ./packages/precios/
+COPY packages/pedido/ ./packages/pedido/
 
 # Codigo fuente
 COPY apps/api/src/ ./apps/api/src/
