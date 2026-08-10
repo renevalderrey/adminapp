@@ -71,9 +71,10 @@ api.{$DOMINIO} {
 
 # ── Tienda ──
 #
-# El sitio nace con UN solo `handle`: el de las imágenes. Los otros tres —el
-# HTML de /c/:slug con sus metadatos, el bundle de apps/tienda y el resto—
-# entran con el servicio, más adelante en el hito.
+# Cuatro `handle`, en este orden: las imágenes desde el volumen, la API pública
+# y el HTML de /c/:slug al servicio `api`, y todo lo demás al bundle. El orden
+# importa: Caddy resuelve por especificidad, y el `handle` sin patrón es el que
+# recoge lo que no matcheó ninguno de los otros.
 #
 # ⚠ El `X-Robots-Tag` es de SITIO y no de una ruta, a propósito. El precio que
 # una empresa negoció con un socio se publica en una URL sin login: que no
@@ -98,5 +99,33 @@ tienda.{$DOMINIO} {
 		# El nombre del archivo es aleatorio y nunca se reusa: una foto que
 		# cambia es una URL nueva. Así que se puede cachear para siempre.
 		header Cache-Control "public, max-age=31536000, immutable"
+	}
+
+	# La API pública, en el MISMO origen que la tienda.
+	#
+	# Es lo que deja a la tienda hablando con rutas relativas: sin CORS de por
+	# medio no hay preflight que fallar en silencio, y no hay una URL de API que
+	# reconstruir cada vez que cambia el dominio.
+	handle /api/publico/* {
+		reverse_proxy api:5000
+	}
+
+	# TODO `/c/*` lo sirve la API, no el bundle.
+	#
+	# Cada URL de la tienda lleva el slug adentro, y cada una tiene que recibir
+	# los metadatos de SU catálogo: el nombre, la descripción y la portada que
+	# WhatsApp lee al compartir el enlace. La API le pide el `index.html` al
+	# servicio `tienda`, le reemplaza el marcador y lo devuelve.
+	#
+	# Alternativa descartada: que esto viviera en `/api/publico/pagina/:slug` y
+	# Caddy lo reescribiera. Pondría la forma de la URL pública en DOS archivos,
+	# y este archivo no tiene que hacer nada más que enrutar.
+	handle /c/* {
+		reverse_proxy api:5000
+	}
+
+	# Todo lo demás —el bundle, los assets, el robots.txt— sale de la tienda.
+	handle {
+		reverse_proxy tienda:80
 	}
 }

@@ -79,6 +79,24 @@ const ROUTERS_SIN_SESION = {
     'el POST /accept-invite se le escapaba de la revisión. Ahora son dos objetos ' +
     'distintos —`publico` y `privado`, como en routes/tiendanube.js— y acá queda ' +
     'exento únicamente el que de verdad se abre sin sesión.',
+  'routes/catalogoPublico.js paginas':
+    'Sirve la PÁGINA de la tienda, no una API: el `index.html` del servicio ' +
+    '`tienda` con los metadatos de Open Graph del catálogo puestos, que es lo que ' +
+    'lee WhatsApp al compartir el enlace. No se pueden poner desde React porque el ' +
+    'lector de previsualizaciones no ejecuta JavaScript. Se monta en `/c` y no bajo ' +
+    '`/api` a propósito, con su propio limitador. No lee ni escribe nada de una ' +
+    'sesión: resuelve el catálogo por el slug de la URL, con las mismas reglas de ' +
+    'visibilidad que el router público —borrador y slug inexistente devuelven el ' +
+    'mismo documento genérico—.',
+  'routes/catalogoPublico.js publico':
+    'Es la tienda que se abre escaneando un QR: del otro lado hay un socio de un ' +
+    'gimnasio que no tiene cuenta en Favalio y nunca la va a tener. La empresa no ' +
+    'sale de una sesión sino del slug de la URL, con `utils/tenantDeSlug.js`, y por ' +
+    'eso el router deja `req.empresaId` SIN DEFINIR a propósito: una consulta ' +
+    'copiada de un handler privado tira 500 en el primer request en vez de andar. ' +
+    'Todo lo que devuelve pasa por `utils/vistaPublica.js` campo por campo, y eso ' +
+    'lo verifica `tests/proyeccionPublica.test.js`. Lleva su propio limitador y ' +
+    'está eximido del global, atado por `tests/observabilidad.test.js`.',
   'routes/tiendanube.js publico':
     'Lo llama TiendaNube desde afuera: /callback es el redirect final del OAuth y ' +
     '/webhook se autentica con la firma HMAC del cuerpo crudo. No hay sesión de ' +
@@ -546,7 +564,7 @@ describe('la clasificación de montajes distingue con sesión de sin sesión', (
 });
 
 describe('la guardia leyó lo que dice leer, y no una lista vacía', () => {
-  it('lee los 20 archivos de routes/, y server.js los monta a todos', () => {
+  it('lee los 21 archivos de routes/, y server.js los monta a todos', () => {
     // **El ancla de archivos.** Un archivo de rutas que nadie monta es código
     // muerto —o peor, un router que alguien cree publicado— y además saldría de
     // esta guardia sin que nada avise.
@@ -555,7 +573,8 @@ describe('la guardia leyó lo que dice leer, y no una lista vacía', () => {
 
     expect(nombres).toEqual([
       'routes/afip.js', 'routes/auth.js', 'routes/cashflow.js',
-      // Ancla 2 · 19 → 20 en el hito 10: el ABM de catálogos.
+      // Ancla 2 · 19 → 21 en el hito 10: el ABM de catálogos y el router público.
+      'routes/catalogoPublico.js',
       'routes/catalogos.js',
       'routes/comparador.js',
       'routes/customers.js', 'routes/dashboard.js', 'routes/empresas.js',
@@ -1227,8 +1246,23 @@ const ESCRITURAS_DE_PUBLICABLE = [
   /['"]publicable['"]/,
 ];
 
+/**
+ * Los `where` se sacan ANTES de mirar, y ese detalle costó descubrirlo.
+ *
+ * `where: { publicable: true }` es un **filtro de lectura**, y es exactamente lo
+ * que el router público del catálogo tiene que hacer: mostrar únicamente los
+ * productos que el comercio marcó publicables. Sin esta línea la guardia marca
+ * al router que hace lo correcto, y seguiría sin marcar al que escribiera la
+ * columna desde otro lado — o sea, al revés de lo que existe para detectar.
+ *
+ * Se sacan los `where` de un solo nivel, que es como se escriben acá. Uno con
+ * objetos anidados adentro dejaría parte expuesta al detector, y está bien:
+ * prefiere marcar de más.
+ */
+const sinFiltros = (fuente) => fuente.replace(/where\s*:\s*\{[^{}]*\}/g, 'where: {}');
+
 const escribePublicable = (fuente) =>
-  ESCRITURAS_DE_PUBLICABLE.filter((patron) => patron.test(fuente));
+  ESCRITURAS_DE_PUBLICABLE.filter((patron) => patron.test(sinFiltros(fuente)));
 
 describe('publicable no se escribe desde afuera', () => {
   it('el detector distingue escribir de leer', () => {
@@ -1240,7 +1274,12 @@ describe('publicable no se escribe desde afuera', () => {
     // Muestra buena: leerla es legítimo y no se marca.
     expect(escribePublicable('if (producto.publicable) { mostrar(producto) }')).toEqual([]);
     expect(escribePublicable('const visibles = filas.filter((f) => f.publicable)')).toEqual([]);
-    expect(escribePublicable('where: { publicable: true }')).toHaveLength(1);
+    // Filtrar por la columna es LEERLA, y es lo que el catalogo publico hace.
+    expect(escribePublicable('where: { publicable: true }')).toEqual([]);
+    expect(escribePublicable('Product.findAll({ where: { empresa_id: 1, publicable: true } })')).toEqual([]);
+
+    // Escribirla desde un update si se marca, aunque haya un where al lado.
+    expect(escribePublicable('Product.update({ publicable: true }, { where: { id: 1 } })')).toHaveLength(1);
   });
 
   it('ninguno de los routers montados sin sesión la escribe', () => {

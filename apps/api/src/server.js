@@ -15,6 +15,10 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+// `ipKeyGenerator` normaliza la IP antes de usarla como clave. Sin él, el conteo
+// por IPv6 agrupa redes enteras: un proveedor móvil completo contaría como un
+// solo visitante, y el límite del catálogo público no limitaría nada.
+const { ipKeyGenerator } = require('express-rate-limit');
 const { sequelize, Usuario } = require('./models');
 const { checkJwt, extractUser, loadEmpresaContext, requireEmpresa } = require('./middleware/auth');
 const checkSubscription = require('./middleware/checkSubscription');
@@ -316,8 +320,58 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { ok: false, error: 'Demasiadas solicitudes. Intente de nuevo en 15 min.' },
+  // ⚠ El prefijo publico del catalogo NO consume este cupo, y sacar esta linea
+  // devuelve el problema **sin que nada falle**: el catalogo seguiria andando y
+  // las cajas del comercio empezarian a recibir 429 los sabados a la tarde.
+  //
+  // El motivo: este limitador cuenta por IP y corre ANTES de la autenticacion.
+  // Un gimnasio entero detras de un NAT comparte una sola IP con... nadie mas,
+  // salvo que el comercio este en la misma red — pero cincuenta personas
+  // escaneando el QR de una tienda comen 50 requests del cupo de 600 que el
+  // punto de venta necesita para vender.
+  //
+  // El catalogo tiene su propio limitador, `limitadorPublico`, mas abajo. Los
+  // dos van atados por `tests/observabilidad.test.js`: un prefijo eximido sin
+  // limitador propio es una superficie abierta.
+  //
+  // ⚠ `req.path` adentro de un `app.use('/api/', ...)` viene RELATIVO al punto
+  // de montaje: la comparacion es '/publico/' y no '/api/publico/'.
+  skip: (req) => req.path.startsWith('/publico/'),
 });
 app.use('/api/', limiter);
+
+// El limitador del catalogo publico.
+//
+// Ventana corta y cupo por IP **y slug**: el que abre una tienda no tiene por
+// que gastarle el cupo al que abre otra, y contar solo por IP agruparia a todo
+// un gimnasio detras de su NAT.
+//
+// `ipKeyGenerator` es de express-rate-limit v8 y hace falta: sin el, el conteo
+// por IPv6 agrupa redes enteras — un proveedor movil entero contaria como un
+// solo visitante.
+const limitadorPublico = rateLimit({
+  windowMs: 60 * 1000,
+  max: process.env.NODE_ENV === 'development' ? 10000 : 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const { slugDeLaRuta } = require('./utils/slugDeCatalogo');
+    return `${ipKeyGenerator(req.ip)}:${slugDeLaRuta(req.path) || '-'}`;
+  },
+  // ⚠ El `error` es un CÓDIGO y el texto va aparte, al revés que el limitador
+  // global. No es cosmético: `apps/tienda` decide qué pantalla dibuja mirando
+  // este código, y con un texto en castellano no lo reconoce — el 429 caía en la
+  // pantalla neutra de «no disponible» en vez de la de reintentar.
+  //
+  // Y no se veía en ningún test: los de la tienda simulan el cuerpo del
+  // contrato, así que estaban verdes contra una respuesta que el servidor no
+  // producía. Lo atrapó leer los dos archivos, no ejecutarlos.
+  message: {
+    ok: false,
+    error: 'DEMASIADAS_PETICIONES',
+    mensaje: 'Demasiadas solicitudes. Probá de nuevo en un minuto.',
+  },
+});
 
 // ── Rutas protegidas con Auth0 ──
 // Ahora usamos Auth0 incluso en desarrollo. Si necesitas bypass, usa BYPASS_AUTH=true
@@ -457,6 +511,37 @@ const authSinEmpresa = [...authMiddleware];
 app.use('/api/auth', require('./routes/auth').publico);
 app.use('/api/auth', ...authSinEmpresa, require('./routes/auth').privado);
 app.use('/api/empresas', ...authSinEmpresa, require('./routes/empresas'));
+
+// ════════════════════════════════════════════
+//  El catálogo público · POR QUÉ VA EXACTAMENTE ACÁ
+//
+//  **Arriba** del `app.use('/api', ...authEmpresa, general)` de más abajo,
+//  porque los middlewares de ese montaje corren para **todo** lo que empiece con
+//  `/api`, matchee o no el router de atrás: un visitante sin token recibiría el
+//  401 de `checkJwt` sin llegar nunca a un handler. Es el defecto que dejó
+//  `POST /api/auth/accept-invite` respondiendo 403 durante meses.
+//
+//  **Debajo** del `express.json` global, que es lo contrario del router público
+//  de TiendaNube: allá hace falta el cuerpo crudo para verificar la firma HMAC,
+//  acá no hay firma que verificar y el `POST /pedidos` necesita el cuerpo
+//  parseado.
+//
+//  Y con `limitadorPublico` aplicado en esta misma línea. El limitador global lo
+//  exime por prefijo; si esta línea perdiera su limitador, la exención quedaría
+//  eximiendo a una superficie sin límite. Los dos están atados por
+//  `tests/observabilidad.test.js`.
+// ════════════════════════════════════════════
+app.use('/api/publico', limitadorPublico, require('./routes/catalogoPublico').publico);
+
+// Y las PÁGINAS del catálogo, que no cuelgan de `/api` y es a propósito: es una
+// página HTML, no una API. Colgada de `/api` la vería el limitador global —que
+// exime `/publico/`, no `/c/`— y quedaría del lado de una cadena pensada para
+// JSON, con `checkSubscription` incluido.
+//
+// Sirve el `index.html` de la tienda con los metadatos del catálogo puestos, que
+// es lo que WhatsApp lee al compartir el enlace. Los metadatos NO se pueden
+// poner desde React: el lector de previsualizaciones no ejecuta JavaScript.
+app.use('/c', limitadorPublico, require('./routes/catalogoPublico').paginas);
 
 // El catálogo lleva el gate del módulo además de la cadena de sesión: es una
 // funcionalidad que se libera por empresa, y `requireModulo` es la mitad del

@@ -94,7 +94,15 @@ services:
       AUTH0_DOMAIN: ${AUTH0_DOMAIN}
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE}
 
-      ALLOWED_ORIGINS: https://${DOMINIO},https://www.${DOMINIO},https://app.${DOMINIO}
+      # ⚠ `tienda.` va acá aunque hoy no haga falta, y es de un renglón.
+      #
+      # La tienda habla contra su PROPIO origen —Caddy le pasa `/api/publico/*`
+      # al servicio `api` dentro del mismo nombre—, así que hoy no hay CORS de
+      # por medio. Se agrega igual porque cubre el día que alguien mueva ese
+      # `handle` o apunte la tienda directo al dominio de la API, y **ese fallo
+      # es silencioso y del lado del navegador**: la petición sale, el servidor
+      # contesta, y el navegador tira la respuesta sin que ningún log lo diga.
+      ALLOWED_ORIGINS: https://${DOMINIO},https://www.${DOMINIO},https://app.${DOMINIO},https://tienda.${DOMINIO}
       FRONTEND_URL: https://app.${DOMINIO}
       LANDING_URL: https://${DOMINIO}
 
@@ -154,6 +162,26 @@ services:
       args:
         VITE_APP_URL: https://app.${DOMINIO}
         VITE_CONTACT_EMAIL: ${VITE_CONTACT_EMAIL}
+    restart: unless-stopped
+
+  # ── Tienda ──
+  #
+  # El sexto servicio. Es la cara pública de los catálogos: lo que se abre
+  # escaneando el QR pegado en la recepción de un gimnasio.
+  #
+  # ⚠ Tiene que ser alcanzable por la red interna con el nombre `tienda`, y de
+  # eso depende `/c/:slug`: el handler de la API le pide a este servicio el
+  # `index.html` para inyectarle los metadatos de Open Graph del catálogo antes
+  # de devolverlo. Si el nombre del servicio cambia, ese handler devuelve 503 y
+  # los enlaces compartidos por WhatsApp pierden la previsualización.
+  #
+  # Sin `args`: la tienda no hornea ninguna VITE_* porque habla contra su propio
+  # origen con rutas relativas. Es lo que la deja sin CORS y sin una URL de API
+  # que haya que reconstruir cuando cambia el dominio.
+  tienda:
+    build:
+      context: .
+      dockerfile: apps/tienda/Dockerfile
     restart: unless-stopped
 
 volumes:

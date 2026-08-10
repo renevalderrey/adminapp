@@ -555,6 +555,163 @@ Ninguna de las dos cosas es un bug. Se resuelven con plan pago.
 
 ---
 
+## La tienda online del catálogo
+
+> ⚠ **No es TiendaNube.** Acá se habla de `tienda.<dominio>/c/<slug>`: el
+> catálogo propio, el que se abre escaneando el QR pegado en el mostrador. La
+> integración con la plataforma TiendaNube es otra cosa y está en
+> [«La tienda online no se actualiza»](#la-tienda-online-no-se-actualiza). Los
+> dos se llaman «la tienda» y no tienen nada que ver.
+
+### Cuántas llamadas cuesta una visita
+
+**El número está contado, no estimado**, y de él sale el tope del limitador. Si
+alguna vez deja de dar, el tope hay que recalcularlo — no es un número redondo
+elegido a ojo.
+
+| Qué hace el que entra | Llamadas a la API | Cuál |
+|---|---|---|
+| Abre el enlace | **1** | `GET /c/<slug>` — el HTML. **Lo sirve la API**, no el servicio `tienda` (`deploy/Caddyfile`: `handle /c/*` → `api:5000`) |
+| Se dibuja el catálogo | **1** | `GET /api/publico/c/<slug>` — marca, entrega, pagos, categorías **y la primera página de 24 productos, embebida** |
+| Escribe en el buscador | **0** | El filtrado se hace **en el navegador**, sobre la página que ya vino (`apps/tienda/src/pantallas/Catalogo.jsx`) |
+| Toca una categoría | **0** | Es el mismo filtro, sobre la misma lista |
+| Abre una ficha | **1** | Y **0** si la abrió tocando una tarjeta: ese producto ya vino en la primera página y viaja en memoria (`apps/tienda/src/App.jsx`) |
+| Toca «Ver más productos» | **1 por toque** | `GET /api/publico/c/<slug>/productos?pagina=N` |
+| Manda el pedido | **1** | `POST /api/publico/c/<slug>/pedidos` |
+| Las fotos, el bundle, el `robots.txt` | **0** | Los sirve Caddy —del volumen y del servicio `tienda`—: **no pasan por la API** y no gastan cupo |
+
+**Mirar y no comprar son 2**: el HTML y el catálogo. **Mirar tres fichas y
+comprar son 6**: el HTML, el catálogo, una por ficha y el pedido. El 6 es el
+**techo**, y es el número con el que hay que dimensionar: hoy las fichas que se
+abren desde la grilla salen gratis, así que ese mismo recorrido cuesta menos.
+
+**De ahí sale el tope: 120 por minuto por (IP, slug)** —`limitadorPublico`, en
+`apps/api/src/server.js`: ventana de 60 segundos, 120 en producción—. Contra las
+6 de una visita completa, son **veinte visitas completas por minuto desde la
+misma IP** antes de que alguien vea un 429; contra las 2 de una visita que solo
+mira, sesenta. Ese margen es lo que absorbe un gimnasio entero detrás de un solo
+NAT.
+
+**Por (IP, slug) y no por IP a secas**: la clave la arma `slugDeLaRuta`
+(`apps/api/src/utils/slugDeCatalogo.js`) pegándole el slug a la IP, así que el
+que abre un catálogo no le gasta el cupo al que abre otro.
+
+**Dónde está contado, para que el número no se pudra.**
+`apps/tienda/src/tests/renderDeLaVisita.test.jsx` cuenta la visita entera con el
+`fetch` espiado —catálogo, ficha, agregar y carrito: **una** llamada— y
+`renderDelCatalogo.test.jsx` cuenta que el buscador y las píldoras no llaman a
+nadie. **Si la tienda empieza a pedir más llamadas, esos dos tests se ponen en
+rojo antes que producción, y ahí hay que recontar y volver a fijar el 120.** Lo
+que devuelve el problema es lo cómodo: un `useEffect` que pida al servidor cuando
+cambia la búsqueda convierte «whey» en cuatro llamadas, y el mismo gimnasio que
+hoy entra sobrado empieza a comerse 429 los sábados a la tarde. El síntoma no
+dice «alguien agregó una llamada»: dice «la tienda no abre».
+
+**En desarrollo el tope es 10.000**, así que esto no se reproduce en la máquina
+de nadie. Es a propósito, y es también el motivo por el que el número tiene que
+salir de una cuenta y no de una prueba.
+
+⚠ **Y hoy el visitante que se pasa del tope no ve la pantalla que le
+corresponde.** El limitador devuelve el 429 con el texto en castellano
+(`{ ok: false, error: 'Demasiadas solicitudes…' }`, `server.js`) y la tienda
+espera el código `DEMASIADAS_PETICIONES` (`apps/tienda/src/App.jsx`), así que el
+429 cae en el estado neutro **«no disponible en este momento»**. Si alguien
+reporta que la tienda «no está disponible» y el catálogo está publicado y la API
+sana, **mirar el límite antes que cualquier otra cosa**: el síntoma que se ve no
+es el que corresponde a la causa.
+
+### `/c/<slug>` devuelve 503
+
+**Es el servicio `tienda` caído.** No es la API, no es la base, no es el
+catálogo despublicado.
+
+**Por qué la API se cae con la tienda.** `/c/*` no lo sirve el bundle: lo sirve
+la API (`deploy/Caddyfile`, `handle /c/*` → `api:5000`), porque cada URL tiene
+que salir con los metadatos de **su** catálogo —el nombre, la descripción y la
+portada que WhatsApp muestra al compartir el enlace—. Para eso el handler le pide
+el `index.html` al servicio `tienda` **por la red interna del compose**, le
+reemplaza el marcador `<!--FAVALIO_META-->` y devuelve el documento. Si el
+servicio no contesta, no hay documento: responde **503 con una página de una
+línea**, y no un HTML inventado sin el `<script>` del bundle, que sería una
+página en blanco sin explicación.
+
+⚠ **El caché de 60 segundos lo tapa parcialmente, y eso es lo peor del caso.**
+Mientras la copia del `index.html` siga vigente, `/c/<slug>` sigue andando con la
+tienda caída. O sea que **el síntoma aparece hasta un minuto tarde y se va solo
+cuando el servicio vuelve**: llega como «a veces no abre», que es el reporte que
+no se puede reproducir. No creerle a un `curl` que dio 200.
+
+**Se ve en el log**, en el `logger.error` del handler: nivel `50` con el `msg`
+del catálogo público. Ahí está, aunque el navegador ya no lo muestre.
+
+**Qué mirar, en orden.**
+
+```bash
+COMPOSE="docker compose -f /opt/favalio/docker-compose.produccion.yml"
+
+# 1 · ¿Está arriba el servicio?
+$COMPOSE ps tienda
+$COMPOSE logs --tail 50 tienda
+
+# 2 · La llamada exacta que hace el handler, desde el contenedor de la API.
+$COMPOSE exec api sh -c \
+  "wget -S -O /dev/null http://tienda/index.html 2>&1 | head -3"
+
+# 3 · Levantarlo.
+$COMPOSE up -d tienda
+```
+
+Si el contenedor está arriba y el paso 2 no contesta, **mirar el nombre del
+servicio**. El handler pide `http://tienda/`, y ese nombre es el del servicio en
+`docker-compose.produccion.yml`. Renombrarlo rompe `/c/<slug>` **y nada más**: la
+tienda sigue sirviendo el bundle, el panel sigue andando, y el único síntoma es
+que los enlaces compartidos dejan de abrir.
+
+**El otro 503 no es éste.** Un 503 **en JSON**, sobre `/api/publico/...`, con
+`NO_DISPONIBLE_POR_UN_MOMENTO`, es otra causa: no se pudo consultar la
+suscripción de la empresa —o sea, la base—. Queda en el log como
+`catalogo publico: no se pudo consultar la suscripcion`
+(`apps/api/src/routes/catalogoPublico.js`). Es 503 y no 402 a propósito: el 402
+afirmaría que la suscripción venció, y lo que pasó es que **no se pudo saber**.
+
+Y lo que **no** es un 503: un catálogo en borrador o un slug inventado dan
+**404**; uno pausado o de una empresa vencida dan **200** con la cara del
+catálogo y sin productos ni precios.
+
+### `trust proxy` está en `1`, y de eso depende que el límite signifique algo
+
+`app.set('trust proxy', 1)` — `apps/api/src/server.js`, bloque «Trust proxy». El
+`1` quiere decir: confiar en **un** proxy. Hoy ese proxy es Caddy, y es lo que
+hace que `req.ip` sea la IP del visitante y no la del contenedor de Caddy. De
+`req.ip` depende la clave del limitador público.
+
+⚠ **Si alguien mete un segundo proxy adelante** —Cloudflare, un balanceador, un
+WAF, un túnel— **y ese `1` no se toca, todas las peticiones públicas pasan a
+parecer de la misma IP.** La clave del limitador deja de ser (IP, slug) y pasa a
+ser (una sola IP, slug): un limitador **global por catálogo**. Un solo visitante
+—o un bot, o alguien recargando— se come los 120 del minuto y **le apaga el
+catálogo a todos los demás**, que reciben 429 sin haber hecho nada.
+
+**Es un cambio de infraestructura que rompe una garantía de seguridad sin tocar
+una línea de código.** No hay error, no hay log, no hay test en rojo, y el deploy
+sale verde: la única señal es gente que no puede abrir la tienda. Por eso está
+escrito acá y no en un comentario.
+
+**Cómo se comprueba**, que cuesta dos minutos. El limitador manda las cabeceras
+estándar (`standardHeaders: true`), así que desde **dos conexiones distintas**:
+
+```bash
+curl -sI "https://tienda.<dominio>/api/publico/c/<slug>" | grep -i ratelimit
+```
+
+`RateLimit-Remaining` tiene que bajar **por separado** en cada una. Si baja junto,
+las dos están contando como un solo visitante: el proxy nuevo quedó adelante y el
+`1` se quedó corto. Se corrige subiendo el número al total de saltos confiables
+—dos proxies, `2`— y no poniéndolo en `true`: con `true`, cualquiera puede
+mandar un `X-Forwarded-For` inventado y el límite deja de limitar del todo.
+
+---
+
 ## TiendaNube · habilitarla y configurarla
 
 Tres cosas, y las tres son de panel o de una llamada. Ninguna se resuelve con
@@ -731,10 +888,10 @@ un error de migración se vea en la máquina de quien lo escribió.
 
 ### El monorepo es workspaces
 
-Hay **un solo `package-lock.json`, en la raíz**, y las tres apps más
-`packages/precios` se instalan juntas. Cambió cómo se instala y cómo se
-construyen las imágenes, y ninguno de los síntomas dice «lo hiciste como antes»:
-dicen otra cosa.
+Hay **un solo `package-lock.json`, en la raíz**, y las **cuatro** apps —`api`,
+`web`, `landing` y `tienda`— más `packages/precios` se instalan juntas. Cambió
+cómo se instala y cómo se construyen las imágenes, y ninguno de los síntomas dice
+«lo hiciste como antes»: dicen otra cosa.
 
 **1 · Se instala una sola vez, desde la raíz.**
 
@@ -742,7 +899,7 @@ dicen otra cosa.
 npm ci
 ```
 
-Con eso quedan instaladas las tres apps y el paquete. **`install:all` ya no
+Con eso quedan instaladas las cuatro apps y el paquete. **`install:all` ya no
 existe**: si alguien lo copia de un README viejo o de un apunte, npm contesta que
 el script no está, y ese es el motivo — no es un clon incompleto ni un `node`
 mal instalado. Lo mismo con entrar a `apps/api` y hacer `npm install` ahí: no hay
@@ -772,9 +929,9 @@ el lock.
 
 El deploy normal del VPS ya lo hace bien y no se toca: en
 `docker-compose.produccion.yml` cada servicio declara `context: .` y
-`dockerfile: apps/X/Dockerfile`, así que `up -d --build` construye las tres
-imágenes con el contexto correcto. Lo de arriba es para cuando alguien construye
-una a mano.
+`dockerfile: apps/X/Dockerfile`, así que `up -d --build` construye las cuatro
+imágenes —`api`, `web`, `landing` y `tienda`— con el contexto correcto. Lo de
+arriba es para cuando alguien construye una a mano.
 
 **3 · Un `MODULE_NOT_FOUND` de `@favalio/precios` al arrancar el contenedor NO
 es una dependencia que falta.**
@@ -813,7 +970,8 @@ adentro de `apps/*` y npm no los adopta. Se borran a mano, **una sola vez**, y s
 vuelve a instalar:
 
 ```
-rm -rf apps/api/node_modules apps/web/node_modules apps/landing/node_modules
+rm -rf apps/api/node_modules apps/web/node_modules \
+       apps/landing/node_modules apps/tienda/node_modules
 npm ci
 ```
 

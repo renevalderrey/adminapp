@@ -1030,7 +1030,7 @@ router público que filtre datos de otra empresa pasa en verde. Lo que la sostie
 son los tests de `src/tests/integracion/` y las dos guardias estáticas nuevas, y
 las dos cosas hay que **pedirlas**.
 
-- [ ] **T1437** Crear `apps/api/src/tests/proyeccionPublica.test.js` **antes de
+- [x] **T1437** Crear `apps/api/src/tests/proyeccionPublica.test.js` **antes de
       que existan los archivos que mira** (FR-097), con `routes/catalogoPublico.js`
       y `utils/vistaPublica.js` en su lista. Tres reglas y un ancla (decisión 5):
       **Regla A**, sobre `vistaPublica.js`: no menciona ninguno de los **diez**
@@ -1062,7 +1062,7 @@ las dos cosas hay que **pedirlas**.
       **Qué se revierte para verlo en rojo**: quitar una muestra mala de la lista
       y comprobar que el `it` correspondiente falla.
 
-- [ ] **T1438** Crear las dos funciones puras del camino público, con sus tests:
+- [x] **T1438** Crear las dos funciones puras del camino público, con sus tests:
       **(a)** `apps/api/src/utils/tenantDeSlug.js` con
       `resolverCatalogoPorSlug(slug, { transaction })` → `{ empresaId,
       catalogoId, puntoDeVentaId, estado } | null`. **Cuatro columnas en
@@ -1095,7 +1095,7 @@ las dos cosas hay que **pedirlas**.
       spread de la fila; la regla A de la guardia lo nombra y el test de la clave
       `cost` también.
 
-- [ ] **T1439** Crear `apps/api/src/routes/catalogoPublico.js` exportando
+- [x] **T1439** Crear `apps/api/src/routes/catalogoPublico.js` exportando
       `{ publico }` —`paginas` llega en T1448— y montarlo. Es la tarea más
       delicada del corte y tiene cuatro partes:
       **(a) El middleware `contextoPublico`** del propio router:
@@ -1175,7 +1175,7 @@ las dos cosas hay que **pedirlas**.
       además hay guardia—. Y la mutación que sí se ve: quitarle el `where` de
       empresa a la consulta de productos.
 
-- [ ] **T1440** **La guardia que ata el `skip` al limitador propio.** Es una
+- [x] **T1440** **La guardia que ata el `skip` al limitador propio.** Es una
       tarea con nombre propio porque protege una línea que, borrada, **no rompe
       nada visible**: el catálogo sigue andando y las cajas del comercio empiezan
       a recibir 429 los sábados a la tarde, que es un síntoma que nadie relaciona
@@ -1215,7 +1215,7 @@ las dos cosas hay que **pedirlas**.
       ejercitan en la suite, y con `BYPASS_AUTH` el catálogo anda igual. La
       guardia estática es la única red.
 
-- [ ] **T1441** La suscripción en el camino público, dentro del handler y con
+- [x] **T1441** La suscripción en el camino público, dentro del handler y con
       `evaluarSuscripcion` de T1431 (FR-110): vigente o en gracia → normal;
       **vencida y gracia agotada, o sin fila de suscripción → 200 con
       `estado: 'no_disponible'` y sin productos ni precios**; **error de base →
@@ -1404,7 +1404,7 @@ y categorías, el séptimo job está en verde y el `<body>` no desborda.
 la portada **del catálogo**, y el catálogo no se indexa. Es el corte que vuelve
 utilizable el QR.
 
-- [ ] **T1448** En `apps/api/src/routes/catalogoPublico.js`, el **tercer router
+- [x] **T1448** En `apps/api/src/routes/catalogoPublico.js`, el **tercer router
       exportado**, `paginas`, montado en `/c` con `limitadorPublico`:
       `app.use('/c', limitadorPublico, require('./routes/catalogoPublico').paginas)`,
       con el comentario que dice **por qué no cuelga de `/api`**: es una página,
@@ -1457,7 +1457,7 @@ utilizable el QR.
       `replace(/<head>/, …)`; el segundo test deja de ver el registro y la página
       sale con metadatos duplicados.
 
-- [ ] **T1449** La infraestructura del sexto servicio. **(a)**
+- [x] **T1449** La infraestructura del sexto servicio. **(a)**
       `docker-compose.produccion.yml`: el servicio **`tienda`** (hoy hay cinco:
       `caddy`, `postgres`, `api`, `web`, `landing`), con `context: .` +
       `dockerfile: apps/tienda/Dockerfile`, alcanzable por la red interna como
@@ -1488,7 +1488,7 @@ utilizable el QR.
       la tienda»*.
       **Qué se revierte para verlo en rojo**: sacar el origen del compose.
 
-- [ ] **T1450** [P] `docs/OPERACION.md` gana **«La tienda online del catálogo»**,
+- [x] **T1450** [P] `docs/OPERACION.md` gana **«La tienda online del catálogo»**,
       con tres cosas: **(a)** el **número de llamadas por visita, medido** y no
       supuesto (FR-114) —1 al HTML, 1 al catálogo, 0 al buscar o cambiar de
       categoría, 1 por ficha, 1 al mandar el pedido; mirar y no comprar son

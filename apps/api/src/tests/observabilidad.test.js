@@ -709,3 +709,197 @@ describe('Ninguna llamada de axios de routes/, services/ ni utils/ queda sin tim
     expect(llamadasSinTimeout(contenido)).toEqual([]);
   });
 });
+
+// ════════════════════════════════════════════
+//  Guardia estática · el `skip` del limitador global y el limitador propio,
+//  atados
+//
+//  ── Por qué esta guardia tiene nombre propio ──
+//
+//  Protege una línea que, borrada, **no rompe nada visible**. El catálogo
+//  público seguiría andando perfecto; lo que empezaría a pasar es que el
+//  tráfico de la tienda consuma el cupo de 600 requests cada 15 minutos que
+//  comparte con el punto de venta del comercio, y las cajas empiecen a recibir
+//  429 los sábados a la tarde. Nadie relacionaría las dos cosas.
+//
+//  ── Por qué no se resuelve montando el router arriba del limitador ──
+//
+//  Sería lo obvio: si el router va antes que `app.use('/api/', limiter)`, el
+//  limitador no lo alcanza y listo. El problema es que entonces **la exención
+//  deja de estar escrita en ningún lado**.
+//
+//  Un router que quedó sin límite «por el orden» es un router que nadie sabe que
+//  está sin límite, y el día que alguien le saque el suyo la superficie pública
+//  queda desnuda sin que se mueva una línea del archivo del limitador. Con el
+//  `skip`, la exención vive **al lado del limitador que exime**.
+//
+//  ── Las dos mutaciones que hay que correr para creerle a esta guardia ──
+//
+//  Una por vez, de verdad:
+//    (1) borrar el `skip` del limitador global → la aserción 4 lo nombra;
+//    (2) dejar el `skip` y sacar `limitadorPublico` de la línea del montaje →
+//        la aserción 5 lo nombra.
+//  Una guardia de posición que no se probó en los dos sentidos es una
+//  descripción, no una guardia.
+//
+//  ⚠ **Ningún test de integración puede distinguir esto**: los límites no se
+//  ejercitan en la suite, y con BYPASS_AUTH el catálogo anda igual. Esta guardia
+//  es la única red.
+// ════════════════════════════════════════════
+
+describe('el prefijo público está eximido del limitador global, y tiene el suyo', () => {
+  const fs = require('fs');
+  const path = require('path');
+  /**
+   * Los comentarios se sacan antes de mirar.
+   *
+   * El comentario que está al lado del `skip` explica justamente que la
+   * comparación va relativa al montaje —`'/publico/'` y no la otra— y nombra la
+   * forma equivocada para que se entienda. Sin sacar comentarios, la guardia se
+   * marcaría a sí misma por explicar el defecto que previene, y el arreglo
+   * obvio sería borrar la explicación.
+   */
+  const FUENTE = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  /**
+   * El bloque de una declaración `const <nombre> = rateLimit({ … });`
+   *
+   * Devuelve `null` si no lo encuentra, y quien llama **falla** en ese caso en
+   * vez de pasar. Es la lección de este mismo archivo: una guardia que no
+   * encuentra lo que dice mirar tiene que ponerse en rojo, no en verde.
+   */
+  function bloqueDeLimitador(nombre) {
+    const inicio = FUENTE.indexOf(`const ${nombre} = rateLimit({`);
+    if (inicio === -1) return null;
+    const fin = FUENTE.indexOf('\n});', inicio);
+    if (fin === -1) return null;
+    return FUENTE.slice(inicio, fin);
+  }
+
+  /** La línea donde se monta el router público. */
+  function lineaDelMontaje() {
+    return FUENTE
+      .split('\n')
+      .find((l) => l.includes("app.use('/api/publico'")) || null;
+  }
+
+  it('la guardia encuentra las tres cosas que dice mirar', () => {
+    // El ancla. Sin esto, un renombre dejaría las cuatro reglas de abajo
+    // corriendo sobre `null` y pasando por vacío.
+    expect(bloqueDeLimitador('limiter')).not.toBeNull();
+    expect(bloqueDeLimitador('limitadorPublico')).not.toBeNull();
+    expect(lineaDelMontaje()).not.toBeNull();
+  });
+
+  it('el limitador global exime el prefijo público', () => {
+    const global = bloqueDeLimitador('limiter');
+    expect(global).not.toBeNull();
+
+    expect(global).toMatch(/skip\s*:/);
+    expect(global).toContain("'/publico/'");
+  });
+
+  it("la comparación es relativa al montaje: '/publico/' y no '/api/publico/'", () => {
+    // `req.path` adentro de un `app.use('/api/', …)` viene relativo al punto de
+    // montaje. Con `/api/publico/` el `skip` nunca daría verdadero y la exención
+    // sería una línea decorativa.
+    const global = bloqueDeLimitador('limiter');
+
+    expect(global).not.toContain("'/api/publico/'");
+  });
+
+  it('la atadura · si hay exención, hay limitador propio aplicado en el montaje', () => {
+    const global = bloqueDeLimitador('limiter');
+    const exime = global.includes("'/publico/'");
+
+    if (!exime) return; // Sin exención no hay nada que atar.
+
+    // Existe el limitador propio…
+    expect(bloqueDeLimitador('limitadorPublico')).not.toBeNull();
+
+    // …y está aplicado en la línea del montaje. Declararlo y no usarlo dejaría
+    // la superficie pública sin límite con la exención puesta, que es el peor de
+    // los dos mundos.
+    expect(lineaDelMontaje()).toContain('limitadorPublico');
+  });
+
+  it('el limitador propio cuenta por IP Y slug, no sólo por IP', () => {
+    const propio = bloqueDeLimitador('limitadorPublico');
+
+    // Sólo por IP, un gimnasio entero detrás de su NAT comparte un cupo. Y sin
+    // `ipKeyGenerator`, el conteo por IPv6 agrupa redes enteras.
+    expect(propio).toMatch(/keyGenerator/);
+    expect(propio).toMatch(/ipKeyGenerator/);
+    expect(propio).toMatch(/slugDeLaRuta/);
+  });
+
+  it('el detector reconoce las dos mutaciones', () => {
+    // Las muestras sintéticas: son las que sostienen esta guardia el día que el
+    // repositorio esté bien escrito.
+    const conSkip = "const limiter = rateLimit({\n  skip: (req) => req.path.startsWith('/publico/'),\n});";
+    const sinSkip = 'const limiter = rateLimit({\n  windowMs: 1,\n});';
+
+    expect(conSkip).toContain("'/publico/'");
+    expect(sinSkip).not.toContain("'/publico/'");
+
+    const montajeSinLimitador = "app.use('/api/publico', require('./routes/catalogoPublico').publico);";
+    expect(montajeSinLimitador).not.toContain('limitadorPublico');
+  });
+});
+
+// ════════════════════════════════════════════
+//  Guardia estática · el origen de la tienda está en ALLOWED_ORIGINS
+//
+//  Es una línea del compose que se olvida, y **el fallo es silencioso y del lado
+//  del navegador**: la petición sale, el servidor contesta bien, y el navegador
+//  tira la respuesta sin que ningún log del servidor lo diga. Del lado del
+//  visitante se ve como una tienda que no carga.
+//
+//  Hoy no haría falta —la tienda habla contra su propio origen, porque Caddy le
+//  pasa `/api/publico/*` al servicio `api` dentro del mismo nombre—, y por eso
+//  mismo es fácil de sacar «porque no se usa». Cubre el día que alguien mueva
+//  ese `handle` o apunte la tienda al dominio de la API.
+// ════════════════════════════════════════════
+
+describe('el compose declara el origen de la tienda', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const RAIZ = path.join(__dirname, '..', '..', '..', '..');
+  const COMPOSE = fs.readFileSync(path.join(RAIZ, 'docker-compose.produccion.yml'), 'utf8');
+  const CADDY = fs.readFileSync(path.join(RAIZ, 'deploy', 'Caddyfile'), 'utf8');
+
+  it('la guardia encuentra la línea que dice mirar', () => {
+    // El ancla: sin la línea, las dos reglas de abajo pasarían por vacío.
+    expect(COMPOSE).toMatch(/ALLOWED_ORIGINS:/);
+  });
+
+  it('ALLOWED_ORIGINS incluye el origen de la tienda', () => {
+    const linea = COMPOSE.split('\n').find((l) => l.includes('ALLOWED_ORIGINS:'));
+
+    expect(linea).toContain('tienda.${DOMINIO}');
+    // Por interpolación del compose y no de un `.env` suelto: así el origen
+    // sigue al dominio cuando el dominio cambia.
+    expect(linea).not.toMatch(/tienda\.favalio\.com/);
+  });
+
+  it('el servicio `tienda` existe y es alcanzable por la red interna con ese nombre', () => {
+    // De ese nombre depende `/c/:slug`: el handler le pide el index.html para
+    // inyectarle los metadatos. Si el servicio se renombra, los enlaces
+    // compartidos pierden la previsualización y el handler devuelve 503.
+    expect(COMPOSE).toMatch(/^ {2}tienda:$/m);
+    expect(COMPOSE).toMatch(/dockerfile: apps\/tienda\/Dockerfile/);
+    expect(CADDY).toMatch(/reverse_proxy tienda:80/);
+  });
+
+  it('el bloque de la tienda enruta /c/* y /api/publico/* a la API', () => {
+    const desde = CADDY.indexOf('tienda.{$DOMINIO}');
+    expect(desde).toBeGreaterThanOrEqual(0);
+
+    const bloque = CADDY.slice(desde);
+
+    expect(bloque).toMatch(/handle \/api\/publico\/\* \{\s*\n\s*reverse_proxy api:5000/);
+    expect(bloque).toMatch(/handle \/c\/\* \{\s*\n\s*reverse_proxy api:5000/);
+  });
+});
