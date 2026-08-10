@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+      ⚠ El marcador de la línea siguiente NO es un comentario decorativo: es el
+      único punto de inserción de este documento.
+
+      `GET /c/:slug` (contracts/api-endpoints.md, «Público · HTML») sirve este
+      mismo archivo ya buildeado, pero con las etiquetas Open Graph **de ese
+      catálogo** puestas: el nombre del comercio, su descripción y su portada.
+      Sin eso, un enlace pegado en WhatsApp muestra siempre el mismo título
+      genérico y el socio no reconoce a dónde lo mandaron.
+
+      El servidor reemplaza esa línea entera por el bloque de etiquetas.
+      Reemplazar un marcador —y no inyectar «justo antes del cierre del head» ni
+      parsear el HTML— es lo que hace que el punto de inserción esté escrito acá
+      y no en una expresión regular del servidor: si alguien lo borra, la
+      inyección falla de una manera visible en vez de poner las etiquetas en
+      cualquier lado.
+
+      Las etiquetas por defecto de más abajo son el caso «alguien abrió el
+      bundle sin pasar por la API» (el servidor de desarrollo, por ejemplo). No
+      nombran ningún comercio.
+    -->
+    <!--FAVALIO_META-->
+
+    <title>Catálogo</title>
+    <meta name="description" content="Catálogo de productos." />
+
+    <!--
+      `noindex` por defecto, y su gemelo en `public/robots.txt`.
+
+      Un catálogo se abre escaneando un QR pegado en un mostrador; no es una
+      página que el comercio quiera en resultados de búsqueda, y sobre todo no
+      es una página que quiera indexada mientras está en borrador o pausada. El
+      día que un comercio pida lo contrario, la etiqueta la reemplaza la
+      inyección de arriba por catálogo — que es exactamente para lo que sirve
+      tener un solo punto de inserción.
+    -->
+    <meta name="robots" content="noindex, nofollow" />
+  </head>
+  <body>
+    <div id="raiz"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

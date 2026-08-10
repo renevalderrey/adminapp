@@ -1,0 +1,14 @@
+# Favalio · tienda pública
+#
+# Los catálogos se abren escaneando un QR pegado en el mostrador del comercio o
+# desde un enlace que el comercio mandó por WhatsApp. No son páginas que se
+# busquen: se llegan.
+#
+# Y hay un motivo más fuerte que la preferencia: `/c/:slug` responde 200 para un
+# catálogo pausado y para uno sin suscripción al día — con la pantalla neutra,
+# no con un 404, porque el socio tiene que reconocer que llegó al lugar
+# correcto. Un buscador que indexe esas URLs deja cacheada la versión apagada de
+# un comercio que después vuelve a publicar.
+
+User-agent: *
+Disallow: /c/

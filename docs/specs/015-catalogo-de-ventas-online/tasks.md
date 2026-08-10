@@ -1259,7 +1259,7 @@ contra un contrato imaginado. `apps/tienda` **no puede tener reglas propias**
 (H2): no calcula precios, no formatea importes por su cuenta, los recibe
 formateados por el servidor.
 
-- [ ] **T1442** Crear el esqueleto de `apps/tienda`: `package.json`
+- [x] **T1442** Crear el esqueleto de `apps/tienda`: `package.json`
       (`favalio-tienda`, `type: module`, `dependencies` **solo** `react` y
       `react-dom`), `vite.config.js` (`server.port 5175 strictPort`, bloque
       `test` con jsdom), `index.html` **con el marcador `<!--FAVALIO_META-->` en
@@ -1284,7 +1284,7 @@ formateados por el servidor.
       **Qué se revierte para verlo en rojo**: agregar un
       `headers: { Authorization: … }` en cualquier archivo de `src/`.
 
-- [ ] **T1443** [P] Las tres piezas de base, cada una con su test de función
+- [x] **T1443** [P] Las tres piezas de base, cada una con su test de función
       pura: **(a)** `src/api.js`, cliente HTTP con **`fetch` nativo, no axios**
       (FR-120) — treinta líneas, sin interceptores, sin `Authorization`, sin
       `X-Sesion-Id` y sin el manejo de 401 que dispara el logout
