@@ -607,12 +607,13 @@ describe('El nombre del menú y el título de la pantalla coinciden', () => {
     ['/panel', 'pages/Dashboard.jsx'],
     ['/facturacion', 'pages/Settings.jsx'],
     ['/tiendanube', 'pages/Tiendanube.jsx'],
-    // 13 → 14 (ancla 10 de `docs/specs/015-catalogo-de-ventas-online/tasks.md`):
-    // entra `/catalogos` con la pantalla del hito 10. El `titulo` del
-    // `PageHeader` y el `label` del menú se comparan por igualdad, así que los
-    // dos dicen **«Catálogos»** y no «Mis catálogos». `/pedidos` NO entra acá:
-    // es del corte siguiente y su ítem de menú tampoco existe todavía.
+    // 13 → 14 → 15 (ancla 10 de `docs/specs/015-catalogo-de-ventas-online/tasks.md`):
+    // entran `/catalogos` y, con el corte de la bandeja, `/pedidos`. El `titulo`
+    // del `PageHeader` y el `label` del menú se comparan por igualdad, así que
+    // los dos dicen **«Catálogos»** y **«Pedidos»** — no «Mis catálogos» ni
+    // «Bandeja de pedidos».
     ['/catalogos', 'pages/Catalogos.jsx'],
+    ['/pedidos', 'pages/Pedidos.jsx'],
     ['/team', 'pages/Team.jsx'],
     ['/suscripcion', 'pages/SubscriptionSettings.jsx'],
   ]
@@ -707,10 +708,11 @@ describe('Cada pantalla entra con la misma animación', () => {
   /**
    * Las pantallas del sistema, con el archivo que las dibuja.
    *
-   * 11 → 12 (ancla 10 de `docs/specs/015-catalogo-de-ventas-online/tasks.md`):
-   * entra `pages/Catalogos.jsx`. La lista sube de a una por pantalla nueva, y
-   * en el mismo cambio que la pantalla: agregada después, se escribiría para el
-   * código que ya está y entonces no sería una guardia sino una descripción.
+   * 11 → 12 → 13 (ancla 10 de `docs/specs/015-catalogo-de-ventas-online/tasks.md`):
+   * entran `pages/Catalogos.jsx` y `pages/Pedidos.jsx`. La lista sube de a una
+   * por pantalla nueva, y en el mismo cambio que la pantalla: agregada después,
+   * se escribiría para el código que ya está y entonces no sería una guardia
+   * sino una descripción.
    */
   const PANTALLAS = [
     'pages/InvoicesList.jsx',
@@ -725,6 +727,7 @@ describe('Cada pantalla entra con la misma animación', () => {
     'pages/Tiendanube.jsx',
     'pages/Team.jsx',
     'pages/Catalogos.jsx',
+    'pages/Pedidos.jsx',
   ]
 
   it('ninguna se quedó sin `anim-subida`', () => {

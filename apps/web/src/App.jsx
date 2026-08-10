@@ -35,6 +35,7 @@ import Faltantes from '@/pages/Faltantes'
 import Comparador from '@/pages/Comparador'
 import Tiendanube from '@/pages/Tiendanube'
 import Catalogos from '@/pages/Catalogos'
+import Pedidos from '@/pages/Pedidos'
 
 function RouteGuard({ children, requiredModule, soloSuperadmin }) {
   const usuario = useStore(s => s.usuario)
@@ -320,6 +321,7 @@ function App() {
                   que es lo que pasaba con `/proveedores`—. Lo verifica
                   `tests/marcoDePantalla.test.js`. */}
               <Route path="/catalogos" element={<MarcoDePantalla><RouteGuard requiredModule="catalogo"><Catalogos /></RouteGuard></MarcoDePantalla>} />
+              <Route path="/pedidos" element={<MarcoDePantalla><RouteGuard requiredModule="catalogo"><Pedidos /></RouteGuard></MarcoDePantalla>} />
               <Route path="/team" element={<MarcoDePantalla><Team /></MarcoDePantalla>} />
               <Route path="/suscripcion" element={<MarcoDePantalla><SubscriptionSettings /></MarcoDePantalla>} />
               <Route path="/calculator" element={<Navigate to="/panel" replace />} />

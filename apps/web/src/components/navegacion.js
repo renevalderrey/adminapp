@@ -1,7 +1,7 @@
 import {
   ShoppingCart, ClipboardList, Package, Truck, Wallet, BarChart3, AlertTriangle,
   Scale, FileCheck, FileSpreadsheet, Zap, Factory, Users, DollarSign, UserCog,
-  CreditCard, Store, ShoppingBag,
+  CreditCard, Store, ShoppingBag, Inbox,
 } from 'lucide-react'
 
 // ════════════════════════════════════════════
@@ -65,11 +65,10 @@ export const GRUPOS = [
   },
   // ── Venta online ──
   //
-  // Nace con UN solo ítem, y eso es deliberado: «Pedidos» es del corte
-  // siguiente. `marcoDePantalla.test.js` exige que toda ruta cuyo ítem declara
-  // `modulo` lleve `RouteGuard` con ese mismo módulo, así que un ítem de menú
-  // sin su `<Route>` pondría esa guardia en rojo por un motivo que no es el del
-  // hito. El ítem y su ruta van en el mismo cambio o no van.
+  // Los dos ítems del grupo. `marcoDePantalla.test.js` exige que toda ruta cuyo
+  // ítem declara `modulo` lleve `RouteGuard` con ese mismo módulo, así que un
+  // ítem de menú sin su `<Route>` pone esa guardia en rojo: el ítem y su ruta
+  // van en el mismo cambio o no van.
   {
     label: 'Venta online',
     items: [
@@ -79,6 +78,12 @@ export const GRUPOS = [
       // que se ve acá. Un control que se dibuja y no hace nada es exactamente lo
       // que el hito 9 corrigió en ocho pantallas.
       { to: '/catalogos', icon: ShoppingBag, label: 'Catálogos', permission: 'catalogo.ver', modulo: 'catalogo', alcance: 'empresa' },
+      // ⚠ `modulo: 'catalogo'` y no un módulo `pedidos` propio: lo que se
+      // libera por empresa es la funcionalidad entera —el ABM, la tienda
+      // pública y los pedidos que entran por ella—. Con dos módulos se podría
+      // habilitar una mitad sin la otra, y una bandeja sin catálogo no puede
+      // recibir un solo pedido.
+      { to: '/pedidos', icon: Inbox, label: 'Pedidos', permission: 'pedidos.ver', modulo: 'catalogo', alcance: 'empresa' },
     ],
   },
   {

@@ -564,7 +564,7 @@ describe('la clasificación de montajes distingue con sesión de sin sesión', (
 });
 
 describe('la guardia leyó lo que dice leer, y no una lista vacía', () => {
-  it('lee los 21 archivos de routes/, y server.js los monta a todos', () => {
+  it('lee los 22 archivos de routes/, y server.js los monta a todos', () => {
     // **El ancla de archivos.** Un archivo de rutas que nadie monta es código
     // muerto —o peor, un router que alguien cree publicado— y además saldría de
     // esta guardia sin que nada avise.
@@ -579,6 +579,8 @@ describe('la guardia leyó lo que dice leer, y no una lista vacía', () => {
       'routes/comparador.js',
       'routes/customers.js', 'routes/dashboard.js', 'routes/empresas.js',
       'routes/gastosVariables.js', 'routes/general.js', 'routes/import.js',
+      // Ancla 2 · 21 → 22 en el corte F2.4: la bandeja de pedidos.
+      'routes/pedidos.js',
       'routes/precios.js', 'routes/production.js', 'routes/products.js',
       'routes/reports.js', 'routes/sales.js', 'routes/stock.js', 'routes/suppliers.js',
       'routes/taxes.js', 'routes/tiendanube.js',

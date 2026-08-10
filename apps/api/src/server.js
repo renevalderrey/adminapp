@@ -586,6 +586,11 @@ app.use('/c', limitadorPublico, require('./routes/catalogoPublico').paginas);
 // funcionalidad que se libera por empresa, y `requireModulo` es la mitad del
 // gate que hasta el hito 10 vivía sólo en el navegador.
 app.use('/api/catalogos', ...authEmpresa, requireModulo('catalogo'), require('./routes/catalogos'));
+// La bandeja lleva el gate del **mismo** modulo: `catalogo` libera la
+// funcionalidad entera —el ABM, la tienda publica y los pedidos que entran por
+// ella—. Un modulo `pedidos` aparte dejaria habilitar una mitad sin la otra, y
+// una bandeja sin catalogo no puede recibir un solo pedido.
+app.use('/api/pedidos', ...authEmpresa, requireModulo('catalogo'), require('./routes/pedidos'));
 app.use('/api/products', ...authEmpresa, require('./routes/products'));
 app.use('/api/sales', ...authEmpresa, require('./routes/sales'));
 app.use('/api/suppliers', ...authEmpresa, require('./routes/suppliers'));
