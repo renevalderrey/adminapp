@@ -28,6 +28,32 @@ export default defineConfig({
     // navegador que falla con «connection refused» y manda a mirar la app.
     port: 5175,
     strictPort: true,
+
+    // ── El único agregado de T1447, y por qué no se puede evitar ──
+    //
+    // `src/api.js` pide `/api/publico/...` **contra su propio origen**: no hay
+    // `VITE_API_URL`, no hay URL absoluta y no hay CORS. En producción eso lo
+    // resuelve Caddy con `handle /api/publico/* { reverse_proxy api:5000 }`
+    // (`tasks.md` T1467), o sea que el mismo dominio sirve el documento y la
+    // API. En desarrollo no hay Caddy, así que el que tiene que hacer de Caddy
+    // es este servidor: sin estas líneas, `GET /api/publico/c/<slug>` cae en el
+    // 404 de Vite y la tienda dibuja «no disponible» **con la API arriba**.
+    //
+    // El prefijo es `/api/publico` y no `/api`, igual que el Caddyfile: la
+    // tienda no llama a ninguna ruta privada, y si alguien escribiera una, acá
+    // tiene que fallar en vez de andar. Un proxy más ancho que el de producción
+    // es un desarrollo donde funciona algo que en la calle no existe.
+    //
+    // ⚠ La variable no se llama `VITE_`: es del servidor de desarrollo, no del
+    // bundle. Una `VITE_` la lee el navegador y volvería a existir la URL de la
+    // API compilada adentro del documento público, que es justo lo que este
+    // diseño no tiene.
+    proxy: {
+      '/api/publico': {
+        target: process.env.FAVALIO_ORIGEN_DE_LA_API || 'http://localhost:5000',
+        changeOrigin: true,
+      },
+    },
   },
 
   // ── Por qué hace falta declarar el JSX acá ──

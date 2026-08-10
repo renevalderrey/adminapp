@@ -825,6 +825,32 @@ describe('el prefijo público está eximido del limitador global, y tiene el suy
     expect(lineaDelMontaje()).toContain('limitadorPublico');
   });
 
+  it('el alta de pedidos tiene su propio cupo, y más chico que el de lectura', () => {
+    // 120 lecturas por minuto son un socio mirando la tienda; 120 **altas** son
+    // 120 pedidos falsos en la bandeja del comercio, que después tiene que
+    // borrar a mano y que le tapan los de verdad. Si esta línea desaparece, el
+    // alta hereda el cupo de las lecturas y nadie se entera hasta que aparece la
+    // bandeja llena.
+    const alta = bloqueDeLimitador('limitadorDePedidos');
+    expect(alta).not.toBeNull();
+
+    // El cupo de producción es **el más chico de los dos** que escribe el
+    // ternario, en los dos limitadores: el otro número es el de desarrollo, que
+    // está alto a propósito.
+    const cupo = (bloque) => Math.min(...(bloque.match(/max:.*/)[0].match(/\d+/g) || []).map(Number));
+    expect(cupo(alta)).toBeLessThan(cupo(bloqueDeLimitador('limitadorPublico')));
+
+    // Y aplicado, no sólo declarado. Va **antes** del montaje del router: al
+    // revés, el otro `app.use` cuenta primero y este queda de adorno.
+    const lineas = FUENTE.split('\n');
+    const iAlta = lineas.findIndex((l) => l.includes("app.use('/api/publico/c/:slug/pedidos'"));
+    const iRouter = lineas.findIndex((l) => l.includes("app.use('/api/publico'"));
+
+    expect(iAlta).toBeGreaterThan(-1);
+    expect(lineas[iAlta]).toContain('limitadorDePedidos');
+    expect(iAlta).toBeLessThan(iRouter);
+  });
+
   it('el limitador propio cuenta por IP Y slug, no sólo por IP', () => {
     const propio = bloqueDeLimitador('limitadorPublico');
 

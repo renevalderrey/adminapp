@@ -373,6 +373,40 @@ const limitadorPublico = rateLimit({
   },
 });
 
+// El limitador del ALTA de pedidos, que es otra cosa.
+//
+// 120 lecturas por minuto son un socio mirando la tienda; 120 **altas** por
+// minuto son 120 pedidos falsos en la bandeja del comercio, que despues tiene
+// que borrar a mano y que le tapan los de verdad. Leer y escribir desde una
+// pagina publica no pueden compartir cupo.
+//
+// El cuerpo es el mismo codigo `DEMASIADAS_PETICIONES`: la tienda ya sabe
+// dibujarlo, y un codigo nuevo seria una pantalla que nadie escribio.
+const limitadorDePedidos = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  // ⚠ La condicion es sobre `production` y no sobre `development`, al reves que
+  // el limitador de arriba. El motivo: este cupo es de diez, y la suite de
+  // integracion manda muchos mas pedidos que eso desde la misma IP — con la
+  // condicion escrita al reves, catorce casos se caian con 429 y el mensaje de
+  // error acusaba al handler, que estaba bien.
+  max: process.env.NODE_ENV === 'production' ? 10 : 10000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const { slugDeLaRuta } = require('./utils/slugDeCatalogo');
+    // ⚠ `originalUrl` y no `path`: adentro de un `app.use` con ruta, `req.path`
+    // viene **relativo al montaje**, o sea '/'. Con `path`, el slug siempre sale
+    // nulo y las diez altas por ventana quedan compartidas entre TODOS los
+    // catalogos — un comercio con movimiento le gasta el cupo a los demas.
+    return `pedido:${ipKeyGenerator(req.ip)}:${slugDeLaRuta(req.originalUrl) || '-'}`;
+  },
+  message: {
+    ok: false,
+    error: 'DEMASIADAS_PETICIONES',
+    mensaje: 'Ya mandaste varios pedidos seguidos. Esperá unos minutos.',
+  },
+});
+
 // ── Rutas protegidas con Auth0 ──
 // Ahora usamos Auth0 incluso en desarrollo. Si necesitas bypass, usa BYPASS_AUTH=true
 const authMiddleware = process.env.BYPASS_AUTH === 'true'
@@ -531,6 +565,11 @@ app.use('/api/empresas', ...authSinEmpresa, require('./routes/empresas'));
 //  eximiendo a una superficie sin límite. Los dos están atados por
 //  `tests/observabilidad.test.js`.
 // ════════════════════════════════════════════
+// El alta de pedidos lleva SU limitador, y va **antes** del montaje del router:
+// `app.use` con ruta corre para lo que empiece con ese camino, asi que este
+// llega primero y el otro cuenta despues. Al reves, el alta quedaria con el cupo
+// de las lecturas.
+app.use('/api/publico/c/:slug/pedidos', limitadorDePedidos);
 app.use('/api/publico', limitadorPublico, require('./routes/catalogoPublico').publico);
 
 // Y las PÁGINAS del catálogo, que no cuelgan de `/api` y es a propósito: es una

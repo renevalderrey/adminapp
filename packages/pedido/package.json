@@ -1,0 +1,13 @@
+{
+  "name": "@favalio/pedido",
+  "private": true,
+  "version": "0.0.0",
+  "description": "El teléfono argentino y el enlace de WhatsApp de un pedido. Una copia, para el navegador y para el servidor.",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  }
+}

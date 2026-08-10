@@ -77,3 +77,14 @@ tmp_*.js
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/blob-report/
+
+# Y los de `apps/tienda`, que tiene su propio arnés (T1447): config propio,
+# siembra propia y job propio en el CI. Las rutas van repetidas y no unificadas
+# en `*/test-results/` porque un patrón así también taparía una carpeta con ese
+# nombre en cualquier otra app, incluida una que sí quiera versionarla.
+apps/tienda/test-results/
+apps/tienda/playwright-report/
+apps/tienda/blob-report/
+
+# Worktrees de agentes: son repos git aparte, no contenido del repo.
+.claude/worktrees/

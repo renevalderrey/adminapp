@@ -61,6 +61,8 @@ const Catalogo = require('./Catalogo');
 const CatalogoProducto = require('./CatalogoProducto');
 const CatalogoReglaPrecio = require('./CatalogoReglaPrecio');
 const CatalogoVisita = require('./CatalogoVisita');
+const Pedido = require('./Pedido');
+const PedidoItem = require('./PedidoItem');
 const ActualizacionPrecio = require('./ActualizacionPrecio');
 const GastoVariable = require('./GastoVariable');
 const ListaProveedor = require('./ListaProveedor');
@@ -250,6 +252,8 @@ module.exports = {
   CatalogoProducto,
   CatalogoReglaPrecio,
   CatalogoVisita,
+  Pedido,
+  PedidoItem,
   ActualizacionPrecio,
   GastoVariable,
   ListaProveedor,

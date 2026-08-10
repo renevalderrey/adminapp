@@ -607,6 +607,12 @@ describe('El nombre del menú y el título de la pantalla coinciden', () => {
     ['/panel', 'pages/Dashboard.jsx'],
     ['/facturacion', 'pages/Settings.jsx'],
     ['/tiendanube', 'pages/Tiendanube.jsx'],
+    // 13 → 14 (ancla 10 de `docs/specs/015-catalogo-de-ventas-online/tasks.md`):
+    // entra `/catalogos` con la pantalla del hito 10. El `titulo` del
+    // `PageHeader` y el `label` del menú se comparan por igualdad, así que los
+    // dos dicen **«Catálogos»** y no «Mis catálogos». `/pedidos` NO entra acá:
+    // es del corte siguiente y su ítem de menú tampoco existe todavía.
+    ['/catalogos', 'pages/Catalogos.jsx'],
     ['/team', 'pages/Team.jsx'],
     ['/suscripcion', 'pages/SubscriptionSettings.jsx'],
   ]
@@ -698,7 +704,14 @@ describe('El nombre del menú y el título de la pantalla coinciden', () => {
 // ════════════════════════════════════════════
 
 describe('Cada pantalla entra con la misma animación', () => {
-  /** Las doce pantallas del sistema, con el archivo que las dibuja. */
+  /**
+   * Las pantallas del sistema, con el archivo que las dibuja.
+   *
+   * 11 → 12 (ancla 10 de `docs/specs/015-catalogo-de-ventas-online/tasks.md`):
+   * entra `pages/Catalogos.jsx`. La lista sube de a una por pantalla nueva, y
+   * en el mismo cambio que la pantalla: agregada después, se escribiría para el
+   * código que ya está y entonces no sería una guardia sino una descripción.
+   */
   const PANTALLAS = [
     'pages/InvoicesList.jsx',
     'pages/Inventory.jsx',
@@ -711,6 +724,7 @@ describe('Cada pantalla entra con la misma animación', () => {
     'pages/Settings.jsx',
     'pages/Tiendanube.jsx',
     'pages/Team.jsx',
+    'pages/Catalogos.jsx',
   ]
 
   it('ninguna se quedó sin `anim-subida`', () => {
@@ -722,8 +736,13 @@ describe('Cada pantalla entra con la misma animación', () => {
     expect(sinAnimacion).toEqual([])
   })
 
-  it('la guardia miró de verdad: los once archivos existen', () => {
+  it('la guardia miró de verdad: los doce archivos existen', () => {
     // Ancla. Una lista de archivos que no existen da cero hallazgos y verde.
+    //
+    // ⚠ El número del encabezado se ajusta JUNTO con la lista: un encabezado que
+    // dice «once» sobre una lista de doce es peor que no escribirlo, porque
+    // quien lo lee cree que alguien lo revisó. Ya pasó en el hito 9 con la
+    // cuenta de `guardiasDeDiseno.test.js`.
     const faltan = PANTALLAS.filter(
       (archivo) => !ARCHIVOS.some(({ nombre }) => nombre === archivo)
     )

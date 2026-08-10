@@ -1,7 +1,7 @@
 import {
   ShoppingCart, ClipboardList, Package, Truck, Wallet, BarChart3, AlertTriangle,
   Scale, FileCheck, FileSpreadsheet, Zap, Factory, Users, DollarSign, UserCog,
-  CreditCard, Store,
+  CreditCard, Store, ShoppingBag,
 } from 'lucide-react'
 
 // ════════════════════════════════════════════
@@ -61,6 +61,24 @@ export const GRUPOS = [
       { to: '/proveedores', icon: Truck, label: 'Proveedores', permission: 'proveedores.ver', modulo: 'proveedores', alcance: 'empresa' },
       { to: '/comparador', icon: Scale, label: 'Comparador de proveedores', permission: 'proveedores.ver', alcance: 'empresa' },
       { to: '/ordenes-compra', icon: ClipboardList, label: 'Órdenes de compra', permission: 'ordenes_compra.ver', modulo: 'ordenes-compra' },
+    ],
+  },
+  // ── Venta online ──
+  //
+  // Nace con UN solo ítem, y eso es deliberado: «Pedidos» es del corte
+  // siguiente. `marcoDePantalla.test.js` exige que toda ruta cuyo ítem declara
+  // `modulo` lleve `RouteGuard` con ese mismo módulo, así que un ítem de menú
+  // sin su `<Route>` pondría esa guardia en rojo por un motivo que no es el del
+  // hito. El ítem y su ruta van en el mismo cambio o no van.
+  {
+    label: 'Venta online',
+    items: [
+      // ⚠ `alcance: 'empresa'` y NO sucursal, y no es un descuido: **el catálogo
+      // declara su propio punto de venta adentro** (`punto_de_venta_id`), así
+      // que cambiar la sucursal del selector de arriba no cambiaría nada de lo
+      // que se ve acá. Un control que se dibuja y no hace nada es exactamente lo
+      // que el hito 9 corrigió en ocho pantallas.
+      { to: '/catalogos', icon: ShoppingBag, label: 'Catálogos', permission: 'catalogo.ver', modulo: 'catalogo', alcance: 'empresa' },
     ],
   },
   {

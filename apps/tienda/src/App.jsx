@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
-import { traerCatalogo } from './api.js'
+import { crearPedido, traerCatalogo } from './api.js'
 import { useCarrito } from './carrito.js'
+import { PASOS, claveDeIntento, cuerpoDelPedido } from './checkout.js'
+import { subtotalDelCarrito } from './totales.js'
 import { MARCA_POR_DEFECTO, useTema } from './tema.js'
 import Catalogo from './pantallas/Catalogo.jsx'
 import Ficha from './pantallas/Ficha.jsx'
+import CarritoPantalla from './pantallas/Carrito.jsx'
+import Checkout from './pantallas/Checkout.jsx'
+import Confirmacion from './pantallas/Confirmacion.jsx'
 import Cargando from './estados/Cargando.jsx'
 import CarritoVacio from './estados/CarritoVacio.jsx'
+import SeAgoto from './estados/SeAgoto.jsx'
 import DemasiadasPeticiones from './estados/DemasiadasPeticiones.jsx'
 import { NoDisponible, NoEncontrada, Pausada } from './estados/CatalogoDetenido.jsx'
 
@@ -98,21 +104,38 @@ export function useRuta() {
   return { camino, ruta: resolverRuta(camino), ir: useCallback(navegar, []) }
 }
 
-// El carrito, el checkout y la confirmación llegan en el corte F2. Hasta
-// entonces cada una dibuja su nombre, que es lo que le permite a la prueba de
-// navegador de T1447 verificar que el ruteo resuelve antes de que exista la
-// pantalla.
-function Pendiente({ nombre, parametros }) {
-  return (
-    <main data-pantalla={nombre} style={{ padding: '24px', color: 'var(--marca)' }}>
-      <h1>{nombre}</h1>
-      {Object.entries(parametros).map(([clave, valor]) => (
-        <p key={clave} data-parametro={clave}>
-          {clave}: {valor}
-        </p>
-      ))}
-    </main>
-  )
+// ════════════════════════════════════════════
+//  El envío del pedido
+//
+//  ── La clave de idempotencia se genera UNA VEZ por intento ──
+//
+//  Si se generara en cada envío, el segundo toque de «Confirmar» —el del
+//  comprador impaciente, o el del teléfono que reintenta al recuperar señal—
+//  llegaría con una clave nueva y el servidor lo tomaría como un pedido
+//  distinto. Que es exactamente el defecto que la clave existe para evitar.
+//
+//  Vive en el estado y sólo cambia cuando **empieza otro pedido**: al volver al
+//  catálogo después de confirmar, o al reintentar con el cuerpo que devolvió el
+//  409 de stock —que trae su propia clave, porque es otro pedido—.
+// ════════════════════════════════════════════
+
+/**
+ * Las líneas para la pantalla «se agotó», con las quitadas **en su lugar**.
+ *
+ * ⚠ El total sale de multiplicar el precio que ya resolvió el servidor por la
+ * cantidad nueva, igual que el carrito. No hay otro número disponible: el 409 no
+ * trae un total —no llegó a crearse ningún pedido— y lo que el comprador tiene
+ * que ver antes de decidir es cuánto va a salir si sigue.
+ */
+function lineasDespuesDelRecorte(lineas, ajustes = []) {
+  const porProducto = new Map(ajustes.map((a) => [a.product_id, a]))
+
+  return lineas.map((l) => {
+    const ajuste = porProducto.get(l.product_id)
+    if (!ajuste) return l
+    if (ajuste.accion === 'quitada') return { ...l, quitada: true }
+    return { ...l, cantidad: ajuste.disponible, pedida: ajuste.pedida }
+  })
 }
 
 // ════════════════════════════════════════════
@@ -227,6 +250,53 @@ export default function App() {
   // primera página (FR-114).
   const [abierto, setAbierto] = useState(null)
 
+  // ── El checkout ──
+  const [paso, setPaso] = useState(0)
+  const [formulario, setFormulario] = useState({})
+  const [clave, setClave] = useState(claveDeIntento)
+  const [enviando, setEnviando] = useState(false)
+  const [pedido, setPedido] = useState(null)
+  const [recorte, setRecorte] = useState(null)
+
+  const [aviso, setAviso] = useState(null)
+
+  const escribir = useCallback((campo, valor) => {
+    setFormulario((f) => ({ ...f, [campo]: valor }))
+  }, [])
+
+  /**
+   * Manda el pedido. Recibe el cuerpo **ya armado**, porque el reintento del 409
+   * manda el que devolvió el servidor y no uno reconstruido acá.
+   */
+  const enviar = async (cuerpo) => {
+    setAviso(null)
+    setEnviando(true)
+
+    try {
+      const { data } = await crearPedido(activo, cuerpo)
+
+      // El carrito se vacía **después** de que el pedido existe. Al revés, un
+      // error de red deja al comprador sin carrito y sin pedido.
+      carrito.vaciar()
+      setPedido(data)
+      ir(`/confirmado/${data.numero}`)
+    } catch (error) {
+      if (error.codigo === 'STOCK_INSUFICIENTE' && error.cuerpo) {
+        setRecorte(error.cuerpo)
+      } else if (error.codigo === 'SIN_LINEAS_DISPONIBLES') {
+        setRecorte({ lineas: (error.cuerpo && error.cuerpo.lineas) || [], reintentar_con: null })
+      } else if (error.codigo === 'DEMASIADAS_PETICIONES') {
+        setAviso('Mandaste varios pedidos seguidos. Esperá unos minutos y probá de nuevo.')
+      } else {
+        // Sin culpar a nadie: no se sabe si fue el servidor o la señal del
+        // teléfono, y decirlo mal manda a alguien a llamar al gimnasio.
+        setAviso('No pudimos mandar el pedido. Probá de nuevo en un momento.')
+      }
+    } finally {
+      setEnviando(false)
+    }
+  }
+
   const datos = estado.fase === 'listo' ? estado.datos : null
   const catalogo = datos ? datos.catalogo : undefined
 
@@ -275,11 +345,91 @@ export default function App() {
     )
   }
 
-  if (ruta.nombre === 'carrito' && carrito.lineas.length === 0) {
-    return <CarritoVacio catalogo={catalogo} alVolverAlCatalogo={() => ir(`/c/${activo}`)} />
+  const alCatalogo = () => ir(`/c/${activo}`)
+
+  // ── Se agotó algo mientras compraba ──
+  //
+  // Va **antes** que las rutas: el 409 llega desde el checkout y lo que hay que
+  // mostrar no es el paso en el que estaba, es qué se cayó.
+  if (recorte) {
+    return (
+      <SeAgoto
+        catalogo={catalogo}
+        lineas={lineasDespuesDelRecorte(carrito.lineas, recorte.lineas)}
+        total={subtotalDelCarrito(
+          lineasDespuesDelRecorte(carrito.lineas, recorte.lineas).filter((l) => !l.quitada)
+        )}
+        alSeguir={() => {
+          // ⚠ Se manda **`reintentar_con` tal cual vino**. Reconstruirlo acá
+          // sería el cliente restando por su cuenta, y se equivocaría justo en
+          // el caso que importa.
+          setRecorte(null)
+          enviar(recorte.reintentar_con)
+        }}
+      />
+    )
   }
 
-  if (ruta.nombre !== 'catalogo') return <Pendiente nombre={ruta.nombre} parametros={ruta.parametros} />
+  if (ruta.nombre === 'confirmado' && pedido) {
+    return (
+      <Confirmacion
+        pedido={pedido}
+        catalogo={catalogo}
+        alVolver={() => {
+          // Otro pedido, otra clave.
+          setPedido(null)
+          setFormulario({})
+          setPaso(0)
+          setClave(claveDeIntento())
+          alCatalogo()
+        }}
+      />
+    )
+  }
+
+  // Un carrito vacío no tiene ni carrito ni checkout: los dos serían pantallas
+  // sobre nada. La confirmación de arriba es la excepción, porque justamente
+  // acaba de vaciarlo.
+  if ((ruta.nombre === 'carrito' || ruta.nombre === 'checkout') && carrito.lineas.length === 0) {
+    return <CarritoVacio catalogo={catalogo} alVolverAlCatalogo={alCatalogo} />
+  }
+
+  if (ruta.nombre === 'carrito') {
+    return (
+      <CarritoPantalla
+        lineas={carrito.lineas}
+        catalogo={catalogo}
+        alPoner={carrito.poner}
+        alQuitar={carrito.quitar}
+        alVolver={alCatalogo}
+        alContinuar={() => {
+          setPaso(0)
+          ir('/checkout')
+        }}
+      />
+    )
+  }
+
+  if (ruta.nombre === 'checkout') {
+    return (
+      <Checkout
+        paso={paso}
+        catalogo={catalogo}
+        lineas={carrito.lineas}
+        formulario={formulario}
+        enviando={enviando}
+        aviso={aviso}
+        alEscribir={escribir}
+        alAtras={() => (paso === 0 ? ir('/carrito') : setPaso(paso - 1))}
+        alAvanzar={() => {
+          if (paso < PASOS.length - 1) return setPaso(paso + 1)
+          return enviar(cuerpoDelPedido(formulario, carrito.lineas, clave))
+        }}
+      />
+    )
+  }
+
+  if (ruta.nombre !== 'catalogo') return <NoEncontrada alReintentar={alCatalogo} />
 
   return (
     <Catalogo

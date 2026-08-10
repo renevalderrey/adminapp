@@ -872,3 +872,85 @@ describe('las imágenes del catálogo', () => {
     expect(datos.catalogoDeB.logo_url).toBeNull();
   });
 });
+
+// ════════════════════════════════════════════
+//  T1461 · El catálogo con pedidos no se borra: se pausa
+// ════════════════════════════════════════════
+
+describe('borrar un catálogo', () => {
+  let datos;
+
+  beforeEach(async () => {
+    await limpiarLaBase();
+    datos = await sembrarCatalogos();
+  });
+
+  it('un catálogo sin pedidos se borra, y se lleva sus filas dependientes', async () => {
+    const res = await request(app).delete(`/api/catalogos/${datos.catalogo.id}`);
+
+    expect(res.status).toBe(200);
+    expect(await Catalogo.count({ where: { id: datos.catalogo.id } })).toBe(0);
+    expect(await CatalogoProducto.count({ where: { catalogo_id: datos.catalogo.id } })).toBe(0);
+    expect(await CatalogoReglaPrecio.count({ where: { catalogo_id: datos.catalogo.id } })).toBe(0);
+  });
+
+  it('borrar un catálogo con un pedido responde 409, ofrece pausar, y el catálogo y el pedido siguen ahí', async () => {
+    const { Pedido } = modelos;
+
+    await Pedido.create({
+      id: '11111111-2222-3333-4444-555555555555',
+      empresa_id: datos.empresaA.id,
+      catalogo_id: datos.catalogo.id,
+      punto_de_venta_id: datos.centroA.id,
+      numero: 1,
+      comprador_nombre: 'Martina Olivera',
+      comprador_telefono: '5493425123456',
+      entrega: 'retiro_local',
+      subtotal: 1000,
+      total: 1000,
+      medio_pago: 'efectivo',
+      idempotency_key: 'clave-del-pedido-de-prueba',
+    });
+
+    const res = await request(app).delete(`/api/catalogos/${datos.catalogo.id}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('TIENE_PEDIDOS');
+    // Ofrece la alternativa: pausar deja el catálogo fuera de línea sin perder
+    // ni el historial ni el QR impreso, que es lo que el comercio quería.
+    expect(res.body.alternativa).toBe('pausar');
+    expect(res.body.mensaje.toLowerCase()).toContain('pausa');
+
+    // Las dos filas siguen. Sin el `count` previo, el borrado falla igual —la
+    // restricción del motor lo impide— pero falla con un 500 que nombra
+    // `pedidos_catalogo_id_fkey`, y el comercio no puede leer eso.
+    expect(await Catalogo.count({ where: { id: datos.catalogo.id } })).toBe(1);
+    expect(await Pedido.count()).toBe(1);
+  });
+
+  it('el pedido de OTRA empresa no impide borrar este catálogo', async () => {
+    // El `count` va scopeado: si mirara sólo `catalogo_id`, un choque de ids
+    // entre empresas bloquearía un borrado legítimo.
+    const { Pedido } = modelos;
+
+    await Pedido.create({
+      id: '99999999-8888-7777-6666-555555555555',
+      empresa_id: datos.empresaB.id,
+      catalogo_id: datos.catalogoDeB.id,
+      punto_de_venta_id: datos.localB.id,
+      numero: 1,
+      comprador_nombre: 'Otro comprador',
+      comprador_telefono: '5491154782210',
+      entrega: 'retiro_local',
+      subtotal: 500,
+      total: 500,
+      medio_pago: 'efectivo',
+      idempotency_key: 'clave-de-la-empresa-b',
+    });
+
+    const res = await request(app).delete(`/api/catalogos/${datos.catalogo.id}`);
+
+    expect(res.status).toBe(200);
+    expect(await Pedido.count()).toBe(1);
+  });
+});

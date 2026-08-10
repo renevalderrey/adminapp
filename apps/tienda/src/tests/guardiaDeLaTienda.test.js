@@ -199,6 +199,7 @@ describe('guardia de la tienda · no hay ninguna cabecera de sesión en apps/tie
       'App.jsx',
       'api.js',
       'carrito.js',
+      'checkout.js', //                    T1465 · las reglas del checkout y la puerta de FR-147a
       'estados/Cargando.jsx', //           T1446 · el esqueleto con la silueta del catálogo real
       'estados/CarritoVacio.jsx', //       T1446 · el pedido sin líneas
       'estados/CatalogoDetenido.jsx', //   T1446 · `pausado`, `no_disponible` y el slug que no existe, mismo camino
@@ -209,11 +210,15 @@ describe('guardia de la tienda · no hay ninguna cabecera de sesión en apps/tie
       'estados/plantilla.jsx', //          el molde SIN texto que comparten los estados, y los botones
       'formato.js', //                     T1444 · precio, normalización del servidor y la sugerencia de categoría
       'main.jsx',
+      'pantallas/Carrito.jsx', //          T1464
       'pantallas/Catalogo.jsx', //         T1444
+      'pantallas/Checkout.jsx', //         T1465 · los tres pasos
+      'pantallas/Confirmacion.jsx', //     T1466 · el pedido hecho
       'pantallas/Ficha.jsx', //            T1445
       'pie.jsx', //                        el pie «powered by favalio» de todas las pantallas (FR-122)
       'tema.js',
       'tienda.css', //                     lo único que un estilo en línea no puede: medios, fotogramas y `:focus-visible`
+      'totales.js', //                     T1464 · la aritmética del carrito, que NO es formación de precio
     ])
   })
 

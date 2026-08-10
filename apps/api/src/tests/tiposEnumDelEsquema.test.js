@@ -96,6 +96,13 @@ const NACEN_COMO_TIPO = [
   'catalogo_reglas_precio.tipo',
   'catalogo_visitas.estado_catalogo',
   'catalogos.estado',
+  // Los cuatro de `pedidos`, creados con su `CREATE TYPE` en `20260819-pedidos`.
+  // `origen` tiene **un solo valor** hoy (`catalogo`) y es a propósito: es lo que
+  // hace que el día que entre un segundo canal no haya que migrar datos.
+  'pedidos.entrega',
+  'pedidos.estado',
+  'pedidos.medio_pago',
+  'pedidos.origen',
 ];
 
 describe('Los ocho ENUM que la migración crea', () => {
@@ -106,7 +113,9 @@ describe('Los ocho ENUM que la migración crea', () => {
   it('el lector encuentra las columnas que dice leer', () => {
     // Ancla. Sin esto, un cambio en cómo se exportan los modelos dejaría la
     // lista vacía y el test pasaría comparando nada contra nada.
-    expect(todosLosDelModelo).toHaveLength(12);
+    // 16 = los 8 que convirtió `20260809` + los 8 que nacieron como tipo
+    // (cuatro de catálogos, cuatro de pedidos).
+    expect(todosLosDelModelo).toHaveLength(16);
     expect(delModelo).toHaveLength(8);
     expect(deLaMigracion).toHaveLength(8);
   });

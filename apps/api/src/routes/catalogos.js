@@ -29,7 +29,7 @@ const router = express.Router();
 const { Op } = require('sequelize');
 const { calcularPrecios } = require('@favalio/precios');
 const {
-  Catalogo, CatalogoProducto, CatalogoReglaPrecio, CatalogoVisita,
+  Catalogo, CatalogoProducto, CatalogoReglaPrecio, CatalogoVisita, Pedido,
   Product, Brand, Empresa, PuntoDeVenta, sequelize,
 } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
@@ -260,9 +260,17 @@ router.put('/:id', checkPermission('catalogo.editar'), async (req, res) => {
 
 // DELETE /api/catalogos/:id
 //
-// 📌 Todavía NO responde 409 TIENE_PEDIDOS: la tabla `pedidos` no existe hasta
-// la etapa 2. Acá borra en cascada y está bien, porque no hay pedido que perder.
-// El rechazo se agrega junto con la bandeja.
+// ── El catálogo con pedidos no se borra: se pausa ──
+//
+// `pedidos.catalogo_id` es `ON DELETE RESTRICT`, así que **la garantía la da el
+// motor**: aunque este handler tuviera un bug, la base no deja borrar un
+// catálogo con pedidos. Lo que da el handler es el mensaje legible.
+//
+// Sin el `count` de acá abajo el borrado igual falla, pero falla con el error de
+// Sequelize —«update or delete on table "catalogos" violates foreign key
+// constraint "pedidos_catalogo_id_fkey"»—, que el comercio no puede leer y que
+// además llega como 500. Con el `count`, llega un 409 que dice qué pasó y qué
+// hacer en su lugar.
 router.delete('/:id', checkPermission('catalogo.editar'), async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -270,6 +278,27 @@ router.delete('/:id', checkPermission('catalogo.editar'), async (req, res) => {
     if (!catalogo) {
       await t.rollback();
       return res.status(404).json({ ok: false, error: 'Catálogo no encontrado' });
+    }
+
+    const conPedidos = await Pedido.count({
+      where: { catalogo_id: catalogo.id, empresa_id: req.empresaId },
+      transaction: t,
+    });
+
+    if (conPedidos > 0) {
+      await t.rollback();
+      // Se ofrece la alternativa en la misma respuesta: pausar deja el catálogo
+      // fuera de línea sin perder ni el historial ni el QR impreso, que es lo
+      // que el comercio quería cuando pidió borrarlo.
+      return res.status(409).json({
+        ok: false,
+        error: 'TIENE_PEDIDOS',
+        mensaje:
+          `Este catálogo tiene ${conPedidos} ${conPedidos === 1 ? 'pedido' : 'pedidos'} y no se puede eliminar. ` +
+          'Pausalo para sacarlo de línea sin perder el historial.',
+        pedidos: conPedidos,
+        alternativa: 'pausar',
+      });
     }
 
     // La base ya tiene ON DELETE CASCADE en las tres. Se borran explícitamente

@@ -34,6 +34,7 @@ import SubscriptionSettings from '@/pages/SubscriptionSettings'
 import Faltantes from '@/pages/Faltantes'
 import Comparador from '@/pages/Comparador'
 import Tiendanube from '@/pages/Tiendanube'
+import Catalogos from '@/pages/Catalogos'
 
 function RouteGuard({ children, requiredModule, soloSuperadmin }) {
   const usuario = useStore(s => s.usuario)
@@ -313,6 +314,12 @@ function App() {
                   lo que ve el cliente. El gate es el módulo, y hoy ninguna empresa
                   lo tiene: sin el paso manual P4 esta ruta redirige a `/pos`. */}
               <Route path="/tiendanube" element={<MarcoDePantalla><RouteGuard requiredModule="tiendanube"><Tiendanube /></RouteGuard></MarcoDePantalla>} />
+              {/* El ítem del menú y esta ruta van en el MISMO cambio: el ítem
+                  declara `modulo: 'catalogo'`, así que sin este `RouteGuard` la
+                  URL escrita a mano entraría igual —la mitad inútil del gateo,
+                  que es lo que pasaba con `/proveedores`—. Lo verifica
+                  `tests/marcoDePantalla.test.js`. */}
+              <Route path="/catalogos" element={<MarcoDePantalla><RouteGuard requiredModule="catalogo"><Catalogos /></RouteGuard></MarcoDePantalla>} />
               <Route path="/team" element={<MarcoDePantalla><Team /></MarcoDePantalla>} />
               <Route path="/suscripcion" element={<MarcoDePantalla><SubscriptionSettings /></MarcoDePantalla>} />
               <Route path="/calculator" element={<Navigate to="/panel" replace />} />

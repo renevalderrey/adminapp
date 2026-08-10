@@ -31,17 +31,24 @@
 const express = require('express');
 const publico = express.Router();
 const { Op } = require('sequelize');
+const crypto = require('crypto');
 const {
   Catalogo, CatalogoProducto, CatalogoReglaPrecio, CatalogoVisita,
+  Pedido, PedidoItem, Customer,
   Product, Brand, Stock, Suscripcion, sequelize,
 } = require('../models');
 const logger = require('../utils/logger');
 const { fallo } = require('../utils/errores');
 const { calcularPrecios } = require('@favalio/precios');
+const { normalizarTelefono } = require('@favalio/pedido');
+const { findScoped, scoped } = require('../utils/tenantScope');
 const { resolverCatalogoPorSlug } = require('../utils/tenantDeSlug');
 const { normalizarTexto } = require('../utils/textoDeBusqueda');
 const { resolverPrecios } = require('../utils/reglasDePrecio');
 const { evaluarSuscripcion } = require('../utils/estadoDeSuscripcion');
+const { ajustesDeLaEmpresa } = require('../utils/ajustesDeLaEmpresa');
+const { totalDePedido } = require('../utils/totalDePedido');
+const { consolidarLineas, validarComprador } = require('../utils/pedidoPublico');
 const { fechaDelNegocio } = require('../utils/fechas');
 const vistaPublica = require('../utils/vistaPublica');
 
@@ -229,8 +236,13 @@ async function productosDelCatalogo(publicoDeLaPeticion, { filtro } = {}) {
   });
 
   // El precio de lista sale del mismo cálculo que el punto de venta: una sola
-  // copia de la fórmula, en `packages/precios`.
-  const settings = (catalogo && catalogo.settings) || {};
+  // copia de la fórmula, en `packages/precios`, y **los mismos ajustes** que usa
+  // el mostrador.
+  //
+  // ⚠ Acá decía `catalogo.settings`, que no es una columna de `catalogos`: los
+  // ajustes llegaban siempre en `{}`, `calcularPrecios` tomaba margen 0 y la
+  // tienda pública mostraba **el costo de compra** como precio de venta.
+  const settings = await ajustesDeLaEmpresa(empresaId);
   const conLista = productos.map((p) => ({
     fila: p,
     id: p.id,
@@ -418,6 +430,459 @@ publico.get('/c/:slug/productos/:id', contextoPublico, async (req, res) => {
     res.json({ ok: true, data: { estado: req.publico.estado, producto } });
   } catch (err) {
     fallo(req, res, err, 'Error al abrir el producto');
+  }
+});
+
+// ════════════════════════════════════════════
+//  POST /api/publico/c/:slug/pedidos
+//
+//  **El único endpoint público que escribe.** Del otro lado hay alguien sin
+//  sesión, sin empresa y sin nada que lo identifique, y lo que manda termina en
+//  la misma base donde el comercio factura.
+//
+//  ── El orden de los doce pasos no es negociable ──
+//
+//  Todo lo que puede rechazar el pedido pasa **antes** de crear la primera fila.
+//  Un producto de otra empresa en la línea siete no puede encontrar seis líneas
+//  ya escritas: rechaza el pedido entero y no deja rastro (FR-132).
+//
+//  ── Dos apartamientos del molde de `routes/sales.js` ──
+//
+//  **1 · La lectura de stock va SIN `lock`.** `sales.js:518-526` lo toma porque
+//  va a descontar; acá **no se descuenta nada** (FR-140), así que el lock sólo
+//  haría esperar a dos compradores por una fila que ninguno va a modificar.
+//
+//  La consecuencia se dice en voz alta: **dos personas que piden la última
+//  unidad al mismo tiempo se llevan las dos un pedido creado** (US14, escenario
+//  8). Es a propósito. Es un pedido, no una venta: el comercio lo resuelve por
+//  WhatsApp, que es lo que hoy hace igual. Reservar stock desde una página
+//  pública es la puerta para que cualquiera con el enlace deje el inventario del
+//  comercio en cero sin comprar nada.
+//
+//  **2 · El total NO se compara contra un declarado.** El cliente no manda
+//  ninguno: `consolidarLineas` lo tira en el paso 2. Aceptar un `total` opcional
+//  «para verificar» sería exactamente la puerta que este endpoint no puede
+//  tener: la que deja fijar el precio desde afuera.
+//
+//  ── La idempotencia se sostiene en el UNIQUE, no en el findOne ──
+//
+//  El `findOne` del paso 4 es el camino normal; **la garantía es el índice**.
+//  Dos requests en vuelo pasan los dos por el `findOne` y el que pierde choca
+//  contra `uq_pedido_idempotencia`; ahí se relee y se devuelve el mismo cuerpo.
+// ════════════════════════════════════════════
+
+/** El id del advisory lock que serializa la numeración de pedidos por empresa. */
+//
+// El **947214**: el siguiente al `947213` que usa `apps/api/scripts/migrar.js:41`,
+// para que el día que alguien se pregunte de dónde salieron los encuentre juntos.
+//
+// Es un lock **de transacción** (`_xact_`): se suelta solo en el commit o en el
+// rollback. No hay forma de olvidarse de liberarlo, que es lo que pasa con
+// `pg_advisory_lock` cuando el handler sale por una rama de error.
+const LOCK_DE_NUMERACION = 947214;
+
+const CATALOGO_NO_DISPONIBLE = {
+  ok: false,
+  error: 'CATALOGO_NO_DISPONIBLE',
+  mensaje: 'Esta tienda no está recibiendo pedidos en este momento.',
+};
+
+/** El siguiente número de pedido de la empresa. Sólo se llama con el lock tomado. */
+async function siguienteNumero(empresaId, transaction) {
+  await sequelize.query('SELECT pg_advisory_xact_lock($lock, $empresaId)', {
+    bind: { lock: LOCK_DE_NUMERACION, empresaId },
+    transaction,
+  });
+
+  const [filas] = await sequelize.query(
+    'SELECT COALESCE(MAX(numero), 0) + 1 AS siguiente FROM pedidos WHERE empresa_id = $empresaId',
+    { bind: { empresaId }, transaction }
+  );
+
+  return Number(filas[0].siguiente);
+}
+
+publico.post('/c/:slug/pedidos', contextoPublico, async (req, res) => {
+  // 1 · El contexto ya resolvió empresa, catálogo, sucursal, suscripción y
+  // estado. Borrador ya salió por 404 en `contextoPublico`; pausado y empresa
+  // vencida no reciben pedidos.
+  if (req.publico.estado !== 'publicado') {
+    return res.status(409).json(CATALOGO_NO_DISPONIBLE);
+  }
+
+  const { empresaId, catalogoId, puntoDeVentaId, catalogo } = req.publico;
+
+  // 2 · Normalizar. De acá para abajo **no existe** ningún precio del cuerpo.
+  const cuerpo = req.body || {};
+
+  const consolidado = consolidarLineas(cuerpo.items);
+  if (!consolidado.ok) return res.status(400).json(consolidado);
+
+  const validado = validarComprador(cuerpo.comprador, catalogo);
+  if (!validado.ok) return res.status(400).json(validado);
+
+  // La clave la genera el navegador. Si no viene, se inventa una: sin clave no
+  // hay idempotencia, pero tampoco hay motivo para rechazar el pedido de alguien
+  // que ya llenó el formulario.
+  const idempotencyKey = String(cuerpo.idempotency_key || '').trim().slice(0, 64)
+    || crypto.randomUUID();
+
+  // 3 · La transacción.
+  const t = await sequelize.transaction();
+
+  // Lo que hace falta para reintentar el alta si el número choca. Se llena justo
+  // antes de crear; hasta entonces vale `null` y no hay reintento posible, que es
+  // lo correcto: antes del alta, un error no es una carrera.
+  let paraReintentar = null;
+
+  try {
+    // 4 · Idempotencia, camino rápido.
+    const yaEstaba = await Pedido.findOne({
+      where: scoped({ idempotency_key: idempotencyKey }, empresaId),
+      transaction: t,
+    });
+
+    if (yaEstaba) {
+      const lineasPrevias = await PedidoItem.findAll({
+        where: { pedido_id: yaEstaba.id },
+        order: [['id', 'ASC']],
+        transaction: t,
+      });
+      await t.commit();
+      return res.status(201).json({
+        ok: true,
+        yaRegistrado: true,
+        data: vistaPublica.pedidoPublico(yaEstaba, lineasPrevias),
+      });
+    }
+
+    // 5 · **Validar TODOS los productos antes de crear nada.**
+    //
+    // El bucle es explícito y vive acá, en el handler, con el `findScoped`
+    // delante del `Pedido.create`. Es una restricción de arquitectura y no de
+    // estilo: el detector de «padre ajeno» de `aislamientoEmpresas.test.js` da
+    // por validado un `create` cuando encuentra un `findScoped` **antes, en el
+    // mismo handler**, y mudar esto a un servicio parte el ámbito y lo deja sin
+    // validar a ojos de la guardia. Molde: `suppliers.js:1015-1039`.
+    // `catalogo_productos` **no tiene `empresa_id`**: es una tabla de unión, y su
+    // empresa es la del catálogo. El aislamiento lo dan las dos puntas —el
+    // catálogo salió del slug y cada producto pasa por `findScoped`— y no esta
+    // consulta.
+    const delCatalogo = await CatalogoProducto.findAll({
+      attributes: ['product_id'],
+      where: { catalogo_id: catalogoId },
+      raw: true,
+      transaction: t,
+    });
+    const estaEnElCatalogo = new Set(delCatalogo.map((f) => f.product_id));
+
+    const productos = [];
+
+    for (const linea of consolidado.lineas) {
+      // Un producto de otra empresa **no resuelve**: `findScoped` filtra por
+      // `empresa_id` y devuelve `null`. El 404 no dice si existía.
+      const producto = await findScoped(Product, linea.product_id, empresaId, { transaction: t });
+
+      const usable = producto
+        && producto.is_active === true
+        && producto.publicable === true
+        && estaEnElCatalogo.has(producto.id);
+
+      if (!usable) {
+        await t.rollback();
+        return res.status(404).json(PRODUCTO_NO_ENCONTRADO);
+      }
+
+      productos.push({ producto, cantidad: linea.cantidad });
+    }
+
+    // 6 · El precio lo pone el servidor. Los ajustes y las reglas se leen **una
+    // vez**, no una por línea.
+    const settings = await ajustesDeLaEmpresa(empresaId, { transaction: t });
+
+    const reglas = await CatalogoReglaPrecio.findAll({
+      where: { catalogo_id: catalogoId, empresa_id: empresaId },
+      transaction: t,
+    });
+
+    const paraResolver = productos.map(({ producto }) => ({
+      id: producto.id,
+      brand_id: producto.brand_id,
+      category: producto.category,
+      precioLista: calcularPrecios(producto, settings).cashPrice,
+    }));
+
+    const { porProducto } = resolverPrecios(paraResolver, reglas);
+    const listaPorId = new Map(paraResolver.map((p) => [p.id, p.precioLista]));
+
+    // 7 · Revalidar stock. **Sin `lock`** — ver el encabezado de esta sección.
+    const stock = await Stock.findAll({
+      attributes: ['product_id', 'available'],
+      where: {
+        empresa_id: empresaId,
+        punto_de_venta_id: puntoDeVentaId,
+        product_id: productos.map((p) => p.producto.id),
+      },
+      raw: true,
+      transaction: t,
+    });
+    const disponible = new Map(stock.map((s) => [s.product_id, Number(s.available)]));
+
+    const lineasFinales = [];
+    const ajustadas = [];
+
+    for (const { producto, cantidad } of productos) {
+      const crudo = disponible.has(producto.id) ? disponible.get(producto.id) : 0;
+
+      if (crudo < 0) {
+        // Un `available` negativo es un dato inconsistente del inventario, no un
+        // caso de negocio. Se trata como agotado y queda registrado.
+        logger.warn(
+          { producto: producto.id, empresa: empresaId, punto_de_venta: puntoDeVentaId, available: crudo },
+          'pedido publico: available negativo'
+        );
+      }
+
+      // Sin fila de stock es agotado y **no es un error**: un producto que nunca
+      // se cargó en esa sucursal no está disponible ahí.
+      const hay = crudo > 0 ? crudo : 0;
+
+      if (hay <= 0) {
+        ajustadas.push({ product_id: producto.id, nombre: producto.name, pedida: cantidad, disponible: 0, accion: 'quitada' });
+        continue;
+      }
+
+      const final = Math.min(cantidad, hay);
+      if (final < cantidad) {
+        ajustadas.push({ product_id: producto.id, nombre: producto.name, pedida: cantidad, disponible: hay, accion: 'recortada' });
+      }
+
+      const precioLista = listaPorId.get(producto.id);
+      const resuelto = porProducto.get(producto.id) || { precio: precioLista, gana: null };
+      const precioUnitario = Number(resuelto.precio);
+
+      // Los cuatro congelados (FR-131): el nombre, para que un pedido cuyo
+      // producto se borró se siga leyendo; el precio de lista y la regla, para
+      // poder contestar «¿por qué salió a este precio?» seis meses después.
+      lineasFinales.push({
+        product_id: producto.id,
+        nombre: producto.name,
+        precio_unitario: precioUnitario,
+        precio_lista: precioLista,
+        regla_id: resuelto.gana ? resuelto.gana.id : null,
+        cantidad: final,
+        subtotal: Math.round(precioUnitario * final * 100) / 100,
+      });
+    }
+
+    // 8 · Cero líneas es **ningún pedido** (FR-139).
+    if (lineasFinales.length === 0) {
+      await t.rollback();
+      return res.status(409).json({
+        ok: false,
+        error: 'SIN_LINEAS_DISPONIBLES',
+        mensaje: 'Los productos del pedido se agotaron. Volvé a mirar la tienda.',
+        lineas: ajustadas,
+      });
+    }
+
+    // Si algo se recortó, el comprador tiene que confirmarlo. `reintentar_con`
+    // es **el cuerpo exacto** que la tienda vuelve a mandar: sin él tendría que
+    // reconstruirlo restando por su cuenta —el cliente recalculando— y se
+    // equivocaría justo en el caso que importa.
+    if (ajustadas.length > 0) {
+      await t.rollback();
+      return res.status(409).json({
+        ok: false,
+        error: 'STOCK_INSUFICIENTE',
+        mensaje: 'Cambió el stock de algunos productos mientras armabas el pedido.',
+        lineas: ajustadas,
+        reintentar_con: {
+          idempotency_key: crypto.randomUUID(),
+          items: lineasFinales.map((l) => ({ product_id: l.product_id, cantidad: l.cantidad })),
+          comprador: cuerpo.comprador,
+        },
+      });
+    }
+
+    // 9 · El total.
+    const totales = totalDePedido(lineasFinales, catalogo, validado.comprador.entrega);
+
+    // 10 · El cliente, **scopeado a la empresa del resolvedor** y nunca a una
+    // que venga en el cuerpo (FR-150).
+    const telefonoNormalizado = normalizarTelefono(validado.comprador.comprador_telefono);
+    let customerId = null;
+
+    if (telefonoNormalizado) {
+      const existente = await Customer.findOne({
+        where: scoped({ phone: telefonoNormalizado }, empresaId),
+        transaction: t,
+      });
+
+      if (existente) {
+        customerId = existente.id;
+      } else {
+        const nuevo = await Customer.create({
+          empresa_id: empresaId,
+          name: validado.comprador.comprador_nombre,
+          phone: telefonoNormalizado,
+          email: validado.comprador.comprador_email,
+        }, { transaction: t });
+        customerId = nuevo.id;
+      }
+    }
+
+    // 11 · El número y el pedido, en esta transacción.
+    const numero = await siguienteNumero(empresaId, t);
+
+    paraReintentar = { comprador: validado.comprador, telefonoNormalizado, customerId, totales, lineasFinales };
+
+    const pedido = await Pedido.create({
+      id: crypto.randomUUID(),
+      empresa_id: empresaId,
+      catalogo_id: catalogoId,
+      punto_de_venta_id: puntoDeVentaId,
+      origen: 'catalogo',
+      numero,
+      estado: 'pendiente_pago',
+      comprador_nombre: validado.comprador.comprador_nombre,
+      comprador_telefono: telefonoNormalizado || validado.comprador.comprador_telefono,
+      comprador_email: validado.comprador.comprador_email,
+      comprador_nro_socio: validado.comprador.comprador_nro_socio,
+      customer_id: customerId,
+      entrega: validado.comprador.entrega,
+      envio_direccion: validado.comprador.envio_direccion,
+      envio_localidad: validado.comprador.envio_localidad,
+      envio_cp: validado.comprador.envio_cp,
+      subtotal: totales.subtotal,
+      envio_costo: totales.envio_costo,
+      total: totales.total,
+      medio_pago: validado.comprador.medio_pago,
+      notas: validado.comprador.notas,
+      idempotency_key: idempotencyKey,
+    }, { transaction: t });
+
+    const guardadas = await PedidoItem.bulkCreate(
+      lineasFinales.map((l) => ({
+        pedido_id: pedido.id,
+        product_id: l.product_id,
+        nombre: l.nombre,
+        precio_unitario: l.precio_unitario,
+        precio_lista: l.precio_lista,
+        regla_id: l.regla_id,
+        cantidad: l.cantidad,
+        subtotal: l.subtotal,
+      })),
+      { transaction: t }
+    );
+
+    // 12 · Commit, y los avisos **después**, fuera de la transacción: un correo
+    // que tarda no puede tener abierta una transacción sobre `pedidos`.
+    await t.commit();
+
+    logger.info(
+      { empresa: empresaId, catalogo: catalogoId, numero, lineas: guardadas.length, total: totales.total },
+      'pedido publico: pedido creado'
+    );
+
+    res.status(201).json({ ok: true, data: vistaPublica.pedidoPublico(pedido, guardadas) });
+  } catch (err) {
+    await t.rollback();
+
+    // La otra mitad de la idempotencia, y la que de verdad sostiene la garantía.
+    // Cuando el que perdió la carrera llega acá, el que ganó ya commiteó
+    // —Postgres lo hizo esperar en el índice—, así que la fila está.
+    //
+    // Se relee en vez de confiar en el nombre de la restricción: si el choque
+    // fue por otra cosa, no se encuentra nada y sale por `fallo()`.
+    if (err.name === 'SequelizeUniqueConstraintError') {
+      const registrado = await Pedido.findOne({
+        where: scoped({ idempotency_key: idempotencyKey }, empresaId),
+      });
+
+      if (registrado) {
+        const lineasPrevias = await PedidoItem.findAll({
+          where: { pedido_id: registrado.id },
+          order: [['id', 'ASC']],
+        });
+
+        logger.info(
+          { empresa: empresaId, numero: registrado.numero },
+          'pedido publico: dos requests con la misma clave, se devuelve el pedido ya registrado'
+        );
+
+        return res.status(201).json({
+          ok: true,
+          yaRegistrado: true,
+          data: vistaPublica.pedidoPublico(registrado, lineasPrevias),
+        });
+      }
+
+      // El otro choque posible es el del número, y `uq_pedido_numero` es **la
+      // red**: con el advisory lock puesto no debería activarse nunca. Si se
+      // activa igual —dos procesos, un lock que no se tomó, lo que sea— se
+      // reintenta **una sola vez** con un número nuevo. Reintentar en un bucle
+      // convertiría una carrera en un martilleo contra la base.
+      const choqueDeNumero = String(err.parent && err.parent.constraint) === 'uq_pedido_numero';
+
+      if (choqueDeNumero && paraReintentar) {
+        logger.warn({ empresa: empresaId }, 'pedido publico: choque de numero, se reintenta una vez');
+
+        const t2 = await sequelize.transaction();
+        try {
+          const numero = await siguienteNumero(empresaId, t2);
+
+          const pedido = await Pedido.create({
+            id: crypto.randomUUID(),
+            empresa_id: empresaId,
+            catalogo_id: catalogoId,
+            punto_de_venta_id: puntoDeVentaId,
+            origen: 'catalogo',
+            numero,
+            estado: 'pendiente_pago',
+            comprador_nombre: paraReintentar.comprador.comprador_nombre,
+            comprador_telefono: paraReintentar.telefonoNormalizado || paraReintentar.comprador.comprador_telefono,
+            comprador_email: paraReintentar.comprador.comprador_email,
+            comprador_nro_socio: paraReintentar.comprador.comprador_nro_socio,
+            customer_id: paraReintentar.customerId,
+            entrega: paraReintentar.comprador.entrega,
+            envio_direccion: paraReintentar.comprador.envio_direccion,
+            envio_localidad: paraReintentar.comprador.envio_localidad,
+            envio_cp: paraReintentar.comprador.envio_cp,
+            subtotal: paraReintentar.totales.subtotal,
+            envio_costo: paraReintentar.totales.envio_costo,
+            total: paraReintentar.totales.total,
+            medio_pago: paraReintentar.comprador.medio_pago,
+            notas: paraReintentar.comprador.notas,
+            idempotency_key: idempotencyKey,
+          }, { transaction: t2 });
+
+          const guardadas = await PedidoItem.bulkCreate(
+            paraReintentar.lineasFinales.map((l) => ({
+              pedido_id: pedido.id,
+              product_id: l.product_id,
+              nombre: l.nombre,
+              precio_unitario: l.precio_unitario,
+              precio_lista: l.precio_lista,
+              regla_id: l.regla_id,
+              cantidad: l.cantidad,
+              subtotal: l.subtotal,
+            })),
+            { transaction: t2 }
+          );
+
+          await t2.commit();
+          return res.status(201).json({ ok: true, data: vistaPublica.pedidoPublico(pedido, guardadas) });
+        } catch (err2) {
+          // Si vuelve a chocar, sale por `fallo()`: dos choques seguidos con el
+          // lock tomado no son una carrera, son un problema que hay que mirar.
+          await t2.rollback();
+          return fallo(req, res, err2, 'Error al registrar el pedido');
+        }
+      }
+    }
+
+    fallo(req, res, err, 'Error al registrar el pedido');
   }
 });
 

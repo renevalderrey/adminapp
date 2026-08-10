@@ -313,6 +313,172 @@ jobs:
         if: failure()
         run: cat /tmp/api-navegador.log || true
 
+  # ════════════════════════════════════════════
+  #  La tienda pública
+  #
+  #  ── Por qué es un job propio y NO dos pasos más adentro de `navegador` ──
+  #
+  #  Porque `navegador` ya es el job más lento del CI —Chromium, un Postgres y
+  #  la API arriba— y agregarle un segundo servidor de desarrollo y un segundo
+  #  recorrido lo pone en el camino crítico de **cada push**: todo el mundo
+  #  esperaría esos minutos extra para saber si un test unitario falló. Como job
+  #  aparte corre EN PARALELO con los otros seis, así que el CI sigue tardando lo
+  #  que tarda el más lento y no la suma de los dos.
+  #
+  #  Y hay una segunda razón, que es la misma por la que `paquetes` no cuelga de
+  #  `web`: el nombre. Una regresión en el ancho de la tienda es un catálogo roto
+  #  en el teléfono de alguien parado en la puerta de un gimnasio; reportada como
+  #  «Web — pruebas de navegador» manda a mirar la aplicación de escritorio.
+  #
+  #  ── Y por qué no comparte NADA del arnés de `apps/web` ──
+  #
+  #  Aquel arnés existe alrededor del bypass de sesión, y la tienda no tiene
+  #  sesión que falsear: el porqué completo está en el encabezado de
+  #  `apps/tienda/playwright.config.js`. Lo que se ve acá son las consecuencias:
+  #  no hace falta `ALLOWED_ORIGINS` —la tienda habla contra su propio origen, no
+  #  hay CORS—, no hace falta `TIENDANUBE_CLIENT_ID`, y no hace falta activar el
+  #  superadmin, porque ninguna pantalla de la tienda está detrás de un módulo.
+  # ════════════════════════════════════════════
+  tienda:
+    name: Tienda — tests y build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: favalio
+          POSTGRES_PASSWORD: favalio
+          POSTGRES_DB: favalio_tienda_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://favalio:favalio@localhost:5432/favalio_tienda_e2e
+      DB_SSL: 'false'
+      # El origen de la API descartable, SIN `/api`: es el destino del `proxy` de
+      # `apps/tienda/vite.config.js`, que es lo que hace de Caddy en desarrollo.
+      # El 5098 es propio, y no el 5099 de `navegador`, para que las dos suites
+      # se puedan levantar a la vez en una máquina de trabajo.
+      FAVALIO_ORIGEN_DE_LA_API: http://localhost:5098
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          # El cache es lo único que no se copió de `navegador`, que no lo tiene:
+          # los otros cuatro jobs sí, y ahorra la instalación completa del
+          # monorepo en cada corrida.
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # Un solo npm ci: los workspaces instalan api y tienda juntos.
+      - run: npm ci
+
+      # ── Los dos pasos baratos primero ──
+      #
+      # Es el criterio del job `api` («los rápidos primero»): el build y los 134
+      # tests con jsdom son medio minuto y cubren casi todo. Si algo se rompió
+      # ahí, no tiene sentido esperar a que se baje un Chromium y migre una base.
+      - name: Build
+        run: npm run build -w apps/tienda
+
+      - name: Tests
+        run: npm test -w apps/tienda
+
+      # El Chromium se cachea por versión de Playwright. La clave es LA MISMA que
+      # la del job `navegador` a propósito: las dos apps declaran la misma
+      # versión, así que es el mismo navegador y bajarlo dos veces sería pagar
+      # 115 MB por gusto. La clave sale del package-lock, así que se invalida
+      # sola cuando Playwright sube de versión.
+      - name: Versión de Playwright
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        working-directory: apps/tienda
+
+      - uses: actions/cache@v4
+        id: cache-navegadores
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Bajar Chromium
+        if: steps.cache-navegadores.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/tienda
+
+      # Las dependencias del sistema no van en el cache: son paquetes de apt.
+      - name: Dependencias del sistema para Chromium
+        if: steps.cache-navegadores.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+        working-directory: apps/tienda
+
+      # Las migraciones PRIMERO y el arranque en desarrollo después, igual que en
+      # `navegador` y por el mismo motivo: correr las dos cosas seguidas es LA
+      # verificación de que el esquema de los modelos y el de las migraciones no
+      # divergieron. Si alguien agrega una columna al modelo sin su migración, el
+      # `sequelize.sync({ alter: true })` del arranque la encuentra distinta y
+      # este job se cae.
+      - name: Migrar la base de la tienda
+        run: node scripts/migrar.js
+        working-directory: apps/api
+
+      # El arranque en desarrollo siembra los permisos, la empresa 1, sus tres
+      # sucursales y **la suscripción en `trialing`** (`src/setup.js:47-63`). Esa
+      # última es la que hace falta acá y en ningún otro job: sin fila de
+      # suscripción, `GET /api/publico/c/:slug` responde `no_disponible` y la
+      # tienda dibuja el estado neutro en vez del catálogo.
+      - name: Levantar la API con BYPASS_AUTH
+        run: |
+          # Los dos AUTH0_* van aunque BYPASS_AUTH esté activo, como red: si
+          # alguien saca el bypass de este paso, el servidor arranca igual y la
+          # falla se ve en las pruebas y no en noventa segundos de espera.
+          NODE_ENV=development BYPASS_AUTH=true PORT=5098 \
+            AUTH0_DOMAIN=ci.example.com AUTH0_AUDIENCE=https://ci.example.com/api \
+            LOG_LEVEL=warn \
+            node src/server.js > /tmp/api-tienda.log 2>&1 &
+
+          for i in $(seq 1 45); do
+            if curl -sf http://localhost:5098/api/health > /dev/null; then
+              echo "La API respondió."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "La API no respondió en 90s."
+          cat /tmp/api-tienda.log
+          exit 1
+        working-directory: apps/api
+
+      # `globalSetup` siembra el catálogo publicado y sus tres productos, y el
+      # `webServer` levanta `vite --port 5175 --strictPort`. Los dos salen de
+      # `apps/tienda/playwright.config.js`.
+      - name: Pruebas de navegador
+        run: npx playwright test
+        working-directory: apps/tienda
+
+      - name: Reporte y trazas si algo falló
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-informe-tienda
+          path: |
+            apps/tienda/playwright-report/
+            apps/tienda/test-results/
+          retention-days: 7
+
+      - name: Log de la API si algo falló
+        if: failure()
+        run: cat /tmp/api-tienda.log || true
+
   landing:
     name: Landing — build
     runs-on: ubuntu-latest

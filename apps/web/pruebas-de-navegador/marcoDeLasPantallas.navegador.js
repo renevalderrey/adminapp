@@ -58,6 +58,11 @@ const CON_MARCO = [
   '/impuestos', '/proveedores', '/ordenes-compra', '/faltantes', '/comparador',
   '/reportes', '/gastos', '/panel', '/facturacion', '/team', '/suscripcion',
   '/tiendanube',
+  // 18 → 19 (ancla 11 de `docs/specs/015-catalogo-de-ventas-online/tasks.md`):
+  // `/catalogos`, del hito 10. Va **al final y no en el medio**, como las
+  // demás: `abrir()` corta el bucle con una excepción, así que lo que va antes
+  // se mide igual y el informe conserva las dieciocho que ya funcionaban.
+  '/catalogos',
 ]
 
 /** El tope del marco, tal cual `MarcoDePantalla.jsx`. */

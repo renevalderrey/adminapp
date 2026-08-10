@@ -958,9 +958,9 @@ Dos cosas que ahorran perseguir el error equivocado:
   `optimizeDeps.include`. Sin esa línea, `npm run dev -w apps/web` rompe y
   `npm run build -w apps/web` anda. Un `MODULE_NOT_FOUND` en el contenedor y uno
   en el servidor de desarrollo no tienen la misma causa.
-- **El CI lo agarra antes, si se lo mira.** De los seis jobs de
+- **El CI lo agarra antes, si se lo mira.** De los siete jobs de
   `.github/workflows/ci.yml`, el que ve este defecto es **«API — la imagen
-  arranca y migra»**: construye la imagen y la levanta de verdad. Los otros cinco
+  arranca y migra»**: construye la imagen y la levanta de verdad. Los otros seis
   pueden estar en verde con este problema adentro.
 
 **4 · Si un `npm ci` de la raíz deja `apps/landing` sin `node_modules`.**
