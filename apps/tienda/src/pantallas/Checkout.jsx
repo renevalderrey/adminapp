@@ -215,6 +215,68 @@ function Transferencia({ datos }) {
 }
 
 /**
+ * Lo que se dibuja cuando el catálogo no ofrece nada que se pueda elegir.
+ *
+ * ⚠ Una lista vacía **no es una pantalla**: el comprador ve un paso en blanco y
+ * un botón que no hace nada, y lo lee como que la tienda está rota. Con esto lee
+ * que el problema es del comercio, y tiene una salida —WhatsApp— en vez de
+ * cerrar la pestaña.
+ *
+ * No debería pasar nunca: el servidor no deja publicar un catálogo así. Queda
+ * para el que ya estaba publicado cuando le apagaron la transferencia.
+ */
+function SinOpciones({ que, whatsapp }) {
+  return (
+    <div
+      data-sin-opciones={que}
+      role="alert"
+      style={{
+        padding: '14px',
+        borderRadius: '12px',
+        border: '1px solid var(--aviso-borde)',
+        background: 'var(--aviso-fondo)',
+        display: 'grid',
+        gap: '10px',
+      }}
+    >
+      <p style={{ margin: 0, fontSize: '13.5px', fontWeight: 600, color: 'var(--aviso)' }}>
+        {que === 'entrega'
+          ? 'Esta tienda no está recibiendo pedidos ahora mismo'
+          : 'No hay forma de pagar esta entrega'}
+      </p>
+      <p style={{ margin: 0, fontSize: '12.5px', lineHeight: 1.5, color: 'var(--tinta-media)' }}>
+        {que === 'entrega'
+          ? 'Le falta configurar cómo entrega y cómo cobra. Escribile y lo resuelven por ahí.'
+          : 'Probá con otra forma de entrega, o escribiles y lo coordinan por ahí.'}
+      </p>
+
+      {whatsapp ? (
+        <a
+          className="t-foco"
+          data-whatsapp-ayuda
+          href={`https://wa.me/${whatsapp.replace(/\D/g, '')}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'grid',
+            placeItems: 'center',
+            height: '42px',
+            borderRadius: '10px',
+            background: 'var(--marca)',
+            color: 'var(--marca-texto)',
+            fontSize: '14px',
+            fontWeight: 620,
+            textDecoration: 'none',
+          }}
+        >
+          Escribir por WhatsApp
+        </a>
+      ) : null}
+    </div>
+  )
+}
+
+/**
  * @param {object} props
  * @param {number} props.paso Índice dentro de `PASOS`.
  * @param {object} props.formulario
@@ -243,6 +305,11 @@ export default function Checkout({
 
   const totales = totalesDelPedido(lineas, catalogo.entrega, formulario.entrega)
   const ultimo = paso === PASOS.length - 1
+
+  // Sin nada que elegir, el botón se apaga: dejarlo activo sobre una lista vacía
+  // es un botón que rechaza sin decir por qué.
+  const sinSalida = (actual === 'entrega' && entregas.length === 0)
+    || (actual === 'pago' && pagos.length === 0)
 
   const intentar = () => {
     if (falta) {
@@ -355,6 +422,8 @@ export default function Checkout({
 
         {actual === 'entrega' ? (
           <>
+            {entregas.length === 0 ? <SinOpciones que="entrega" whatsapp={catalogo.whatsapp} /> : null}
+
             {entregas.map((o) => (
               <Opcion
                 key={o.clave}
@@ -384,6 +453,8 @@ export default function Checkout({
 
         {actual === 'pago' ? (
           <>
+            {pagos.length === 0 ? <SinOpciones que="pago" whatsapp={catalogo.whatsapp} /> : null}
+
             {pagos.map((o) => (
               <Opcion
                 key={o.clave}
@@ -438,19 +509,19 @@ export default function Checkout({
             type="button"
             className="t-foco"
             data-avanzar
-            disabled={enviando}
+            disabled={enviando || sinSalida}
             onClick={intentar}
             style={{
               width: '100%',
               height: '50px',
               borderRadius: '12px',
               border: '1px solid transparent',
-              background: enviando ? 'var(--marcador)' : 'var(--marca)',
-              color: enviando ? 'var(--tinta-suave)' : 'var(--marca-texto)',
+              background: enviando || sinSalida ? 'var(--marcador)' : 'var(--marca)',
+              color: enviando || sinSalida ? 'var(--tinta-suave)' : 'var(--marca-texto)',
               font: 'inherit',
               fontSize: '15px',
               fontWeight: 640,
-              cursor: enviando ? 'default' : 'pointer',
+              cursor: enviando || sinSalida ? 'default' : 'pointer',
             }}
           >
             {enviando ? 'Enviando…' : ultimo ? 'Confirmar pedido' : 'Continuar'}

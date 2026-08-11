@@ -216,6 +216,78 @@ describe('checkout · paso 3, el pago', () => {
   })
 })
 
+// ════════════════════════════════════════════
+//  El callejón sin salida: una entrega que no se puede pagar
+//
+//  Caso real, encontrado probando: un catálogo con **envío encendido y sin CBU
+//  cargado**. La única forma de pago que quedaba era efectivo, y con envío a
+//  domicilio el efectivo no se ofrece (FR-142). El comprador elegía envío,
+//  llenaba la dirección, llegaba al paso 3 y **no había nada para elegir**.
+// ════════════════════════════════════════════
+
+describe('checkout · una entrega sin forma de pago', () => {
+  // El catálogo del caso: envío sí, transferencia no.
+  const SIN_CBU = {
+    ...CATALOGO,
+    pagos: { mercadopago: false, transferencia: false, efectivo: true },
+    transferencia: undefined,
+  }
+
+  it('la entrega que no se puede pagar NO se ofrece', async () => {
+    // No ofrecerla es mejor que ofrecerla y frenar después: el comprador elige
+    // otra y compra igual.
+    const p = montar({ paso: 1, catalogo: SIN_CBU, formulario: { nombre: 'M', telefono: '3425123456' } })
+
+    expect(p.ver('[data-opcion="retiro_local"]')).not.toBeNull()
+    expect(p.ver('[data-opcion="envio"]')).toBeNull()
+  })
+
+  it('con el CBU cargado, el envío vuelve a estar', () => {
+    // El contra-caso: si el envío desapareciera siempre, el primer test pasaría
+    // sobre una pantalla que perdió una opción por otro motivo.
+    const p = montar({ paso: 1, formulario: { nombre: 'M', telefono: '3425123456' } })
+
+    expect(p.ver('[data-opcion="envio"]')).not.toBeNull()
+  })
+
+  it('sin ninguna entrega posible se dibuja el aviso con salida, no una lista vacía', () => {
+    // Una lista vacía no es una pantalla: el comprador ve un paso en blanco y un
+    // botón que no hace nada, y lo lee como que la tienda está rota.
+    const nadaPagable = {
+      ...CATALOGO,
+      entrega: { retiro_socio: false, retiro_local: false, envio: true, coordinar_whatsapp: false },
+      pagos: { mercadopago: false, transferencia: false, efectivo: true },
+      transferencia: undefined,
+      whatsapp: '3425123456',
+    }
+
+    const p = montar({ paso: 1, catalogo: nadaPagable, formulario: { nombre: 'M', telefono: '3425123456' } })
+
+    expect(p.ver('[data-sin-opciones="entrega"]')).not.toBeNull()
+    // Y con una salida: escribirle al comercio.
+    expect(p.ver('[data-whatsapp-ayuda]').getAttribute('href')).toBe('https://wa.me/3425123456')
+  })
+
+  it('sobre el aviso, el botón de avanzar está apagado', () => {
+    // Dejarlo activo es un botón que rechaza sin decir por qué.
+    const nadaPagable = {
+      ...CATALOGO,
+      entrega: { retiro_socio: false, retiro_local: false, envio: true, coordinar_whatsapp: false },
+      pagos: { mercadopago: false, transferencia: false, efectivo: true },
+      transferencia: undefined,
+    }
+
+    const p = montar({ paso: 1, catalogo: nadaPagable, formulario: { nombre: 'M', telefono: '3425123456' } })
+
+    expect(p.ver('[data-avanzar]').disabled).toBe(true)
+  })
+
+  it('`opcionesDeEntrega` filtra por pago posible, no sólo por el interruptor', () => {
+    expect(opcionesDeEntrega(SIN_CBU).map((o) => o.clave)).toEqual(['retiro_socio', 'retiro_local'])
+    expect(opcionesDeEntrega(CATALOGO).map((o) => o.clave)).toEqual(['retiro_socio', 'retiro_local', 'envio'])
+  })
+})
+
 describe('checkout · las reglas puras', () => {
   it('las opciones salen del catálogo, no de una lista fija', () => {
     expect(opcionesDeEntrega(CATALOGO).map((o) => o.clave)).toEqual(['retiro_socio', 'retiro_local', 'envio'])

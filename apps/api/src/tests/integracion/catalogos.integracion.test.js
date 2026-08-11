@@ -954,3 +954,80 @@ describe('borrar un catálogo', () => {
     expect(await Pedido.count()).toBe(1);
   });
 });
+
+// ════════════════════════════════════════════
+//  Publicar · toda entrega encendida se tiene que poder pagar
+//
+//  El caso real: un catálogo con **envío encendido y sin CBU cargado**. La única
+//  forma de pago que quedaba era efectivo, y con envío a domicilio el efectivo
+//  no se ofrece (FR-142). El comprador elegía envío, llenaba la dirección,
+//  llegaba al paso de pago y no había nada para elegir.
+//
+//  Se frena al publicar y no en la tienda: el comercio se entera donde lo puede
+//  arreglar, y no cuando pierde un cliente.
+// ════════════════════════════════════════════
+
+describe('publicar un catálogo', () => {
+  let datos;
+
+  beforeEach(async () => {
+    await limpiarLaBase();
+    datos = await sembrarCatalogos();
+  });
+
+  const publicar = () => request(app).post(`/api/catalogos/${datos.catalogo.id}/publicar`);
+
+  it('con envío encendido y sin datos de transferencia responde 409 y NO publica', async () => {
+    await datos.catalogo.update({ retiro_local: true, envio: true, datos_transferencia: {} });
+
+    const res = await publicar();
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('FALTAN_REQUISITOS');
+
+    const falta = res.body.faltan.find((f) => f.que === 'entrega_sin_pago');
+    expect(falta).toBeTruthy();
+    // El mensaje nombra la entrega en castellano y dice las dos salidas.
+    expect(falta.detalle).toContain('Envío a domicilio');
+    expect(falta.detalle).toContain('transferencia');
+
+    await datos.catalogo.reload();
+    expect(datos.catalogo.estado).toBe('borrador');
+  });
+
+  it('con el CBU cargado publica', async () => {
+    // El contra-caso: si el 409 saliera siempre, el de arriba pasaría sin
+    // depender de la regla nueva.
+    await datos.catalogo.update({
+      retiro_local: true,
+      envio: true,
+      datos_transferencia: { titular: 'Comprafit', cbu: '0720123488000012345678' },
+    });
+
+    const res = await publicar();
+
+    expect(res.status).toBe(200);
+
+    await datos.catalogo.reload();
+    expect(datos.catalogo.estado).toBe('publicado');
+  });
+
+  it('un catálogo que sólo retira publica sin datos bancarios', async () => {
+    // El retiro se paga en efectivo, así que no hace falta CBU: exigirlo sería
+    // pedirle datos bancarios a quien sólo vende en el mostrador.
+    await datos.catalogo.update({ retiro_local: true, envio: false, datos_transferencia: {} });
+
+    expect((await publicar()).status).toBe(200);
+  });
+
+  it('la lista de lo que falta llega entera, no de a una', async () => {
+    // Concatenada en un solo mensaje, el comercio arregla una cosa, reintenta,
+    // descubre la siguiente y repite.
+    await datos.catalogo.update({ nombre_visible: '', envio: true, datos_transferencia: {} });
+
+    const res = await publicar();
+
+    expect(res.status).toBe(409);
+    expect(res.body.faltan.map((f) => f.que).sort()).toEqual(['entrega_sin_pago', 'nombre_visible']);
+  });
+});

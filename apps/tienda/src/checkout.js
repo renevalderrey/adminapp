@@ -33,8 +33,11 @@ export const PASOS = ['datos', 'entrega', 'pago']
  * Se arman desde el bloque `entrega` que devolvió la API. Ofrecer una que el
  * comercio no hace termina en un pedido que no puede cumplir, y el que da la
  * cara es el gimnasio.
+ *
+ * ⚠ Esta es la lista **cruda**. La que se dibuja es `opcionesDeEntrega`, que le
+ * saca las que no se pueden pagar.
  */
-export function opcionesDeEntrega(catalogo = {}) {
+function entregasEncendidas(catalogo = {}) {
   const e = catalogo.entrega || {}
   const opciones = []
 
@@ -81,6 +84,25 @@ export function opcionesDeEntrega(catalogo = {}) {
   }
 
   return opciones
+}
+
+/**
+ * Las entregas que se ofrecen de verdad: encendidas **y pagables**.
+ *
+ * ⚠ Una entrega sin ningún medio de pago es un callejón sin salida, y el
+ * comprador lo descubre en el último paso, con el formulario ya lleno. Pasó de
+ * verdad: un catálogo con envío encendido y sin CBU cargado dejaba «efectivo»
+ * como única forma de pago, y con envío a domicilio el efectivo no se ofrece
+ * (FR-142). El paso 3 quedaba vacío.
+ *
+ * No ofrecerla es mejor que ofrecerla y frenar después: el comprador elige otra
+ * y compra igual. El servidor además lo frena al **publicar**, que es donde el
+ * comercio lo puede arreglar; esto es la red para el catálogo que ya estaba
+ * publicado cuando le apagaron la transferencia.
+ */
+export function opcionesDeEntrega(catalogo = {}) {
+  return entregasEncendidas(catalogo)
+    .filter((o) => opcionesDePago(catalogo, o.clave).length > 0)
 }
 
 /**

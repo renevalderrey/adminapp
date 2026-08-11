@@ -102,6 +102,11 @@ async function sembrarParaPedidos(datos) {
     envio_costo: 2500.50,
     // Al peso, el subtotal de dos unidades a 1200. Es el borde de FR-143.
     envio_gratis_desde: 2400.00,
+    // ⚠ Con CBU, y hace falta: una entrega sin ninguna forma de pago no se
+    // ofrece, y con envío a domicilio el efectivo no cuenta (FR-142). Sin esto,
+    // los dos casos del envío se caerían por «entrega inválida» y dejarían de
+    // probar el umbral.
+    datos_transferencia: { titular: 'Comprafit', cbu: '0720123488000012345678' },
   });
 
   // El segundo catálogo de A. Existe para que «cayó en el catálogo equivocado»
@@ -350,6 +355,8 @@ describe('el alta pública de pedidos', () => {
       .post('/api/publico/c/pedidos-de-a/pedidos')
       .send(cuerpo([{ product_id: datos.harina.id, cantidad: 2 }], 'clave-envio-justo', {
         entrega: 'envio',
+        // Transferencia: con envío a domicilio el efectivo no se ofrece.
+        medio_pago: 'transferencia',
         envio_direccion: 'Av. Rivadavia 4821',
         envio_localidad: 'CABA',
         envio_cp: '1424',
@@ -365,6 +372,8 @@ describe('el alta pública de pedidos', () => {
       .post('/api/publico/c/pedidos-de-a/pedidos')
       .send(cuerpo([{ product_id: datos.harina.id, cantidad: 1 }], 'clave-envio-paga', {
         entrega: 'envio',
+        // Transferencia: con envío a domicilio el efectivo no se ofrece.
+        medio_pago: 'transferencia',
         envio_direccion: 'Av. Rivadavia 4821',
         envio_localidad: 'CABA',
         envio_cp: '1424',

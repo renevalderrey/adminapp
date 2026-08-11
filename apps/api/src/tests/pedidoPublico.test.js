@@ -1,4 +1,6 @@
-const { consolidarLineas, validarComprador, entregasDelCatalogo } = require('../utils/pedidoPublico');
+const {
+  consolidarLineas, validarComprador, entregasDelCatalogo, entregasSinPago, pagosDeLaEntrega,
+} = require('../utils/pedidoPublico');
 
 // ════════════════════════════════════════════
 //  Lo que se acepta de un visitante sin sesión
@@ -10,6 +12,11 @@ const CATALOGO = {
   envio: true,
   coordinar_whatsapp: false,
   pide_nro_socio: true,
+  // Con CBU cargado, y hace falta: sin datos de transferencia el envío se queda
+  // sin ninguna forma de pago —el efectivo no se ofrece con envío a domicilio—
+  // y deja de ser una entrega ofrecida. Sin esta línea, los casos del envío de
+  // abajo probarían otra cosa.
+  datos_transferencia: { cbu: '0720123488000012345678', alias: 'COMPRAFIT.SUPLE' },
 };
 
 const COMPRADOR = {
@@ -115,6 +122,11 @@ describe('validarComprador', () => {
     const r = validarComprador({
       ...COMPRADOR,
       entrega: 'envio',
+      // ⚠ Transferencia y no el efectivo de `COMPRADOR`: con envío a domicilio
+      // el efectivo no es un pago posible (FR-142), así que este caso —que es
+      // sobre la dirección— se caería por el medio de pago y dejaría de probar
+      // lo que dice probar.
+      medio_pago: 'transferencia',
       envio_direccion: 'Av. Rivadavia 4821',
       envio_localidad: 'CABA',
       envio_cp: '1424',
@@ -157,5 +169,70 @@ describe('validarComprador', () => {
     const r = validarComprador({ ...COMPRADOR, nombre: 'M'.repeat(400) }, CATALOGO);
 
     expect(r.comprador.comprador_nombre).toHaveLength(120);
+  });
+});
+
+// ════════════════════════════════════════════
+//  Una entrega que no se puede pagar no se ofrece
+//
+//  El caso real, encontrado probando: un catálogo con **envío encendido y sin
+//  CBU cargado**. La única forma de pago que quedaba era efectivo, y con envío a
+//  domicilio el efectivo no se ofrece (FR-142). El comprador llegaba al último
+//  paso con el formulario lleno y no había nada para elegir.
+// ════════════════════════════════════════════
+
+describe('las entregas y sus pagos', () => {
+  const SIN_CBU = { ...CATALOGO, datos_transferencia: {} };
+
+  const conEnvio = {
+    ...COMPRADOR,
+    entrega: 'envio',
+    envio_direccion: 'Av. Rivadavia 4821',
+    envio_localidad: 'CABA',
+    envio_cp: '1424',
+  };
+
+  it('sin CBU, el envío no es una entrega ofrecida', () => {
+    expect(entregasDelCatalogo(CATALOGO)).toContain('envio');
+    expect(entregasDelCatalogo(SIN_CBU)).not.toContain('envio');
+    // Y las otras siguen en pie: el retiro se paga en efectivo.
+    expect(entregasDelCatalogo(SIN_CBU)).toEqual(['retiro_socio', 'retiro_local']);
+  });
+
+  it('`entregasSinPago` nombra exactamente la que quedó sin salida', () => {
+    // Es lo que usa el handler de publicar para armar el mensaje.
+    expect(entregasSinPago(SIN_CBU)).toEqual(['envio']);
+    expect(entregasSinPago(CATALOGO)).toEqual([]);
+  });
+
+  it('el efectivo no es un pago posible del envío, con CBU o sin él', () => {
+    expect(pagosDeLaEntrega(CATALOGO, 'envio')).toEqual(['transferencia']);
+    expect(pagosDeLaEntrega(CATALOGO, 'retiro_local')).toEqual(['transferencia', 'efectivo']);
+    expect(pagosDeLaEntrega(SIN_CBU, 'envio')).toEqual([]);
+    expect(pagosDeLaEntrega(SIN_CBU, 'retiro_local')).toEqual(['efectivo']);
+  });
+
+  it('un pedido con envío + efectivo se rechaza, aunque la tienda no lo ofrezca', () => {
+    // La tienda no dibuja esa combinación, pero un `POST` armado a mano la
+    // pasaba: el pedido entraba con algo que el comercio no puede cumplir.
+    expect(validarComprador({ ...conEnvio, medio_pago: 'efectivo' }, CATALOGO))
+      .toMatchObject({ ok: false, error: 'PAGO_INVALIDO' });
+
+    expect(validarComprador({ ...conEnvio, medio_pago: 'transferencia' }, CATALOGO).ok).toBe(true);
+  });
+
+  it('sin CBU, el pedido con envío se rechaza por la entrega y no por el pago', () => {
+    expect(validarComprador({ ...conEnvio, medio_pago: 'transferencia' }, SIN_CBU))
+      .toMatchObject({ ok: false, error: 'ENTREGA_INVALIDA' });
+  });
+
+  it('la dirección incompleta se avisa ANTES que el medio de pago', () => {
+    // El orden es el de los pasos del checkout: entrega y después pago. Al
+    // revés, a quien eligió envío y no completó la dirección le contestaríamos
+    // «elegí cómo vas a pagar», que manda a mirar la pantalla equivocada.
+    const sinDireccion = { ...COMPRADOR, entrega: 'envio', medio_pago: 'efectivo' };
+
+    expect(validarComprador(sinDireccion, CATALOGO))
+      .toMatchObject({ ok: false, error: 'ENVIO_INCOMPLETO' });
   });
 });

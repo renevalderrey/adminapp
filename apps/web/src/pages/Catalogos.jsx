@@ -936,6 +936,22 @@ function PestanaEntrega({ catalogo, puedeEditar, onGuardar }) {
 
   const sinEnvioGratis = forma.envio_gratis_desde === '' || numeroOCero(forma.envio_gratis_desde) === 0
 
+  // ⚠ Una entrega encendida sin ninguna forma de pago es un callejón sin salida
+  // en la tienda: el comprador la elige, llena el formulario y llega al último
+  // paso sin nada para elegir.
+  //
+  // Pasa con **envío a domicilio y sin CBU**: el efectivo no se ofrece con envío
+  // (el que lo elige pediría que se lo lleven a casa y pagarlo en un local al
+  // que no va a ir), así que la transferencia es la única, y sin datos bancarios
+  // no existe.
+  //
+  // El servidor no deja publicar así. Acá se avisa **mientras se configura**, que
+  // es cuando se puede arreglar sin haber intentado nada.
+  const hayTransferencia = Boolean(
+    (forma.datos_transferencia.cbu || '').trim() || (forma.datos_transferencia.alias || '').trim()
+  )
+  const envioSinPago = forma.envio && !hayTransferencia
+
   return (
     <div className="grid items-start gap-5 lg:grid-cols-2">
       <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-nivel-1">
@@ -1051,6 +1067,27 @@ function PestanaEntrega({ catalogo, puedeEditar, onGuardar }) {
         </div>
 
         <div className="flex flex-col gap-3 px-5 py-4">
+          {/* ⚠ Va ARRIBA de los campos, no al pie: quien viene a configurar el
+              pago tiene que leerlo antes de decidir que ya terminó. */}
+          {envioSinPago && (
+            <div
+              data-envio-sin-pago
+              role="alert"
+              className="flex items-start gap-2.5 rounded-lg border border-warn-line bg-warn-soft px-3 py-2.5"
+            >
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
+              <p className="text-[12.5px] text-fg-2">
+                <span className="font-semibold text-warn">
+                  Con envío a domicilio y sin datos de transferencia, el comprador no tiene con qué pagar.
+                </span>
+                {' '}
+                El efectivo no se ofrece con envío —lo pagaría al retirar en un local al que no va a ir—,
+                así que el pedido se traba en el último paso. Cargá el CBU o el alias, o apagá el envío.
+                Mientras esté así, el catálogo no se puede publicar.
+              </p>
+            </div>
+          )}
+
           <div className="flex items-start gap-2.5 rounded-lg border border-info-line bg-info-soft px-3 py-2.5">
             <Info className="mt-0.5 h-4 w-4 shrink-0 text-info" />
             <p className="text-[12.5px] text-fg-2">

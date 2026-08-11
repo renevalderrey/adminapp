@@ -34,6 +34,7 @@ const {
 } = require('../models');
 const checkPermission = require('../middleware/checkPermission');
 const { ajustesDeLaEmpresa } = require('../utils/ajustesDeLaEmpresa');
+const { entregasSinPago } = require('../utils/pedidoPublico');
 const { fechaDelNegocio } = require('../utils/fechas');
 const logger = require('../utils/logger');
 const { findScoped } = require('../utils/tenantScope');
@@ -42,6 +43,14 @@ const { normalizarSlug, validarSlug } = require('../utils/slugDeCatalogo');
 const { normalizarTexto } = require('../utils/textoDeBusqueda');
 const { validarRegla, resolverPrecios } = require('../utils/reglasDePrecio');
 const { redimensionarYGuardar, borrarImagen, esImagenPropia } = require('../utils/imagenes');
+
+/** Los nombres que el comercio reconoce, para el mensaje de lo que falta. */
+const ENTREGAS_LEGIBLES = {
+  retiro_socio: 'Retiro en el gimnasio',
+  retiro_local: 'Retiro en el local',
+  envio: 'Envío a domicilio',
+  coordinar: 'A coordinar por WhatsApp',
+};
 
 /**
  * Los campos que el cliente puede escribir.
@@ -369,6 +378,26 @@ router.post('/:id/publicar', checkPermission('catalogo.editar'), async (req, res
       faltan.push({
         que: 'productos',
         detalle: 'Ningún producto del catálogo puede salir: revisá que estén publicables, activos y con precio.',
+      });
+    }
+
+    // ── Toda entrega encendida se tiene que poder pagar ──
+    //
+    // El caso que esto frena es real y no se veía por ningún lado: un catálogo
+    // con **envío encendido y sin CBU cargado**. La única forma de pago que
+    // quedaba era efectivo, que con envío a domicilio no se ofrece (FR-142), así
+    // que el comprador elegía «envío», llenaba la dirección, llegaba al paso de
+    // pago y **no había nada para elegir**. Un callejón sin salida con el
+    // formulario lleno, que además se lee como que la tienda está rota.
+    //
+    // Se frena acá, al publicar, y no en la tienda: el comercio se entera cuando
+    // decide publicar —donde lo puede arreglar— y no cuando pierde un cliente.
+    const sinPago = entregasSinPago(catalogo);
+    if (sinPago.length > 0) {
+      faltan.push({
+        que: 'entrega_sin_pago',
+        detalle: `${sinPago.map((e) => ENTREGAS_LEGIBLES[e] || e).join(' y ')}: no hay ninguna forma de pago `
+          + 'para esa entrega. Cargá los datos de transferencia, o apagá esa forma de entrega.',
       });
     }
 

@@ -739,6 +739,41 @@ describe('El QR y el enlace', () => {
     expect(document.querySelector('[data-origenes]').textContent).toContain('7 por qr')
   })
 
+  it('avisa cuando el envío quedó sin ninguna forma de pago', async () => {
+    // El caso real: envío encendido y sin CBU. El efectivo no se ofrece con
+    // envío (FR-142), así que el comprador llega al último paso y no tiene con
+    // qué pagar. El aviso va donde se configura, que es donde se arregla.
+    await montar({
+      lista: [{ ...PUBLICADO, envio: true, datos_transferencia: {} }],
+    })
+    await irA('Entrega y pago')
+
+    const aviso = document.querySelector('[data-envio-sin-pago]')
+
+    expect(aviso).not.toBeNull()
+    expect(aviso.textContent).toContain('no tiene con qué pagar')
+    expect(aviso.textContent).toContain('no se puede publicar')
+  })
+
+  it('con el CBU cargado ese aviso NO está', async () => {
+    // El contra-caso. Un aviso que aparece siempre deja de ser un aviso.
+    await montar()
+    await irA('Entrega y pago')
+
+    expect(document.querySelector('[data-envio-sin-pago]')).toBeNull()
+  })
+
+  it('sin envío tampoco aparece, aunque no haya datos bancarios', async () => {
+    // Un catálogo que sólo retira cobra en efectivo: pedirle el CBU sería pedirle
+    // datos bancarios a quien vende en el mostrador.
+    await montar({
+      lista: [{ ...PUBLICADO, envio: false, datos_transferencia: {} }],
+    })
+    await irA('Entrega y pago')
+
+    expect(document.querySelector('[data-envio-sin-pago]')).toBeNull()
+  })
+
   it('el enlace que se copia lleva el protocolo, listo para pegar en WhatsApp', async () => {
     await montar()
     await irA('QR y enlace')
