@@ -15,14 +15,28 @@ services:
     runtime: docker
     plan: free
     region: oregon
-    # Monorepo: el build context es apps/api, donde vive el Dockerfile.
-    rootDir: apps/api
-    dockerfilePath: ./Dockerfile
+    # ⚠ El contexto de build es LA RAÍZ del repositorio, no `apps/api`.
+    #
+    # Antes decía `rootDir: apps/api` y funcionaba, porque cada app tenía su
+    # propio `package-lock.json`. Desde que el monorepo usa workspaces el
+    # lockfile es uno solo y vive arriba, junto con `packages/precios` y
+    # `packages/pedido`: con el contexto en `apps/api`, el primer
+    # `COPY package.json package-lock.json ./` del Dockerfile no encuentra los
+    # archivos y el build falla antes de instalar una sola dependencia.
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
     # Solo redeploya si cambio la API. Sin esto, cada push a la landing
     # reconstruiria el backend.
     buildFilter:
       paths:
         - apps/api/**
+        # Los paquetes compartidos y el lockfile entran a la imagen: un cambio
+        # en `@favalio/precios` o `@favalio/pedido` que no redesplegara la API
+        # dejaría el cálculo del navegador y el del servidor en versiones
+        # distintas, que es la falla más difícil de ver de todas.
+        - packages/**
+        - package.json
+        - package-lock.json
     # /api/health verifica que se pueda consultar la base, no solo que el
     # proceso responda. Con /api/ping el servicio figuraba SANO aunque Postgres
     # estuviera caido y cada request devolviera 500.
@@ -57,6 +71,35 @@ services:
       # Ej: ^https://favalio-web-.*\.vercel\.app$
       - key: VERCEL_PREVIEW_PATTERN
         sync: false
+
+      # ── La tienda pública ──
+      #
+      # De dónde saca la API el `index.html` al que le inyecta las etiquetas
+      # Open Graph antes de responder `/c/:slug`. El defecto del código es
+      # `http://tienda`, que es el nombre del servicio en el compose del VPS y
+      # acá no resuelve: sin esta variable, cada enlace de catálogo devuelve el
+      # 503 «Volvemos en un rato» con el resto del sistema sano.
+      #
+      # Va el dominio público de la tienda (Vercel), ej.
+      # https://tienda.favalio.com. No hay ciclo: los rewrites de Vercel mandan
+      # `/c/*` a la API, pero `/index.html` lo sirve el bundle estático.
+      - key: URL_DE_LA_TIENDA
+        sync: false
+
+      # ── Fotos de productos ──
+      #
+      # En el VPS las sirve Caddy desde un volumen y la API no las toca. Acá no
+      # hay Caddy ni volumen: sin esto, cada miniatura del panel y cada foto de
+      # la tienda son un 404 aunque el dato en la base esté bien.
+      #
+      # ⚠ El disco de Render free es EFÍMERO: cada deploy y cada reinicio se
+      # lleva las fotos subidas, y la base queda apuntando a archivos que ya no
+      # existen. Sirve para probar en línea; para un comercio real hace falta un
+      # disco persistente (plan pago) o el VPS.
+      - key: SERVIR_IMAGENES
+        value: "true"
+      - key: RUTA_DE_IMAGENES
+        value: /var/favalio/imagenes
 
       # ── Email transaccional (Resend) ──
       - key: RESEND_API_KEY

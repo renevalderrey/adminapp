@@ -1074,7 +1074,24 @@ paginas.get('/:slug{/*resto}', async (req, res) => {
     );
   }
 
-  const base = `${req.protocol}://${req.get('host')}`;
+  // ── El host de AFUERA, no el de adentro ──
+  //
+  // De acá salen `og:url` y `og:image`, que es lo que WhatsApp muestra al
+  // compartir el enlace. Tienen que decir `tienda.favalio.com`, que es donde
+  // entró la persona.
+  //
+  // Con Caddy delante, `Host` ya llega con el nombre público y las dos ramas
+  // dan lo mismo. Con Vercel reescribiendo `/c/*` hacia Render, no: el pedido
+  // llega con `Host: favalio-api.onrender.com` y el nombre real viaja en
+  // `X-Forwarded-Host`. Sin esta línea, la previsualización compartida apunta a
+  // la URL interna de la API —que no sirve la tienda— y la portada es un 404.
+  //
+  // Se lee la cabecera y no `req.hostname` porque `req.hostname` descarta el
+  // puerto, y en desarrollo `localhost:5000` sin puerto no resuelve a nada.
+  // `trust proxy` ya está en 1 (`server.js`), así que la cabecera es del proxy
+  // y no de cualquiera.
+  const host = req.get('x-forwarded-host') || req.get('host');
+  const base = `${req.protocol}://${host}`;
   const url = `${base}/c/${req.params.slug}`;
 
   // Genéricos por defecto: es lo que sale para un slug que no existe, para un

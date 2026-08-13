@@ -16,17 +16,25 @@ favalio/
 ├── apps/
 │   ├── api/        API REST · Node + Express 5 + Sequelize + PostgreSQL + Auth0
 │   ├── web/        SPA de la aplicación · React 19 + Vite + Tailwind 4
+│   ├── tienda/     Tienda pública del catálogo · React 19 + Vite
 │   └── landing/    Landing pública · React 19 + TypeScript + Vite + Tailwind 4
+├── packages/
+│   ├── precios/    Cálculo de precios, compartido entre api y web
+│   └── pedido/     Totales y estados de pedido, compartidos
 ├── docs/           Documentación y especificaciones (spec-kit)
 ├── legacy/         Código PHP original, previo a la migración. Solo referencia.
 ├── render.yaml     Blueprint de Render para la API
 └── .env.example    Referencia única de variables de entorno
 ```
 
-Es un **monorepo aislado**: cada app mantiene su propio `package.json` y su
-propio lockfile. No usa npm workspaces, porque las plataformas de deploy
-construyen cada servicio con un *Root Directory* distinto y desde ahí no verían
-un lockfile ubicado en la raíz.
+Es un monorepo con **npm workspaces**: un solo `package-lock.json`, en la raíz,
+y las dependencias instaladas de una sola vez con `npm ci` desde ahí.
+
+> Antes cada app tenía su propio lockfile, para que las plataformas de deploy
+> pudieran construir cada servicio con un *Root Directory* distinto. Los
+> paquetes de `packages/` no se pueden compartir así, y el cambio tiene un
+> precio: el build de cada plataforma necesita ver la raíz. Cómo se configura
+> eso está en [docs/DESPLIEGUE-PAAS.md](docs/DESPLIEGUE-PAAS.md) §2 y §3.
 
 ---
 
@@ -36,6 +44,7 @@ un lockfile ubicado en la raíz.
 |---|---|---|
 | `apps/landing` | contenedor nginx en el VPS | `favalio.com` |
 | `apps/web` | contenedor nginx en el VPS | `app.favalio.com` |
+| `apps/tienda` | contenedor nginx en el VPS | `tienda.favalio.com` |
 | `apps/api` | contenedor Node en el VPS | `api.favalio.com` |
 | PostgreSQL | contenedor en el VPS, disco propio | — |
 | TLS y ruteo | Caddy, en el VPS | — |
@@ -115,15 +124,20 @@ servidor, Auth0, correo, respaldos y actualizaciones— está en
 > Las `VITE_*` se hornean en el bundle **durante el build**: cambiar una en el
 > `.env` no tiene efecto hasta un `up -d --build`.
 
-### Alternativa PaaS — Render + Vercel + Neon
+### Alternativa PaaS — Neon + Vercel + Render
 
-`render.yaml` y los `vercel.json` de cada app siguen versionados y funcionan:
-API en Render (Blueprint, `rootDir: apps/api`), web y landing en Vercel (un
-proyecto por app), base en Neon con el connection string *pooled*.
+Paso a paso en [docs/DESPLIEGUE-PAAS.md](docs/DESPLIEGUE-PAAS.md). Base en Neon,
+los tres frontends en Vercel (un proyecto por app), API en Render con Docker, y
+el dominio en Hostinger haciendo sólo de DNS.
 
-En ese esquema hay que cargar a mano `ALLOWED_ORIGINS`, `FRONTEND_URL` y
-`LANDING_URL` en el dashboard de Render; con el compose del VPS se arman solas
-a partir de `DOMINIO`.
+Es el esquema para **probar en línea sin pagar**. Lo que en el VPS resuelve Caddy
+—el mismo origen para la tienda y la API pública, el `/c/:slug` que sirve la API,
+las fotos— acá se reparte entre `render.yaml` y los `vercel.json`. Y las
+variables que el compose arma solas a partir de `DOMINIO` (`ALLOWED_ORIGINS`,
+`FRONTEND_URL`, `LANDING_URL`, `URL_DE_LA_TIENDA`) se cargan a mano en Render.
+
+⚠ Las fotos de productos quedan **efímeras**: el disco de Render free se borra en
+cada deploy. Alcanza para probar, no para vender.
 
 ### En cualquiera de los dos
 
@@ -157,12 +171,16 @@ Aplican durante la fase de desarrollo; desaparecen al pasar a planes pagos.
   posterior tarda ~50 s. Por eso el timeout de axios está en 60 s
   (`VITE_API_TIMEOUT`).
 - **`subscriptionCron` no corre de forma confiable**: con el servicio dormido no
-  se procesan los vencimientos de suscripción. Requiere plan pago o un cron
-  externo.
+  se procesan los vencimientos de suscripción. Lo cubre
+  `.github/workflows/tareas-diarias.yml`, que despierta el servicio una vez por
+  día; hace falta cargar `API_URL` y `CRON_SECRET` como secretos del repositorio.
 - **Neon free autosuspende** a los 5 min. Sequelize reintenta la conexión, pero
   la primera query tras la suspensión puede tardar.
 - **Sin disco persistente.** Por eso los logos de empresa se guardan como data
   URI en la base y no en el filesystem, que es efímero en las tres plataformas.
+  Las **fotos de productos** sí van al filesystem —son grandes y se sirven por
+  URL—, así que en el esquema PaaS se pierden en cada deploy. En el VPS viven en
+  un volumen y no.
 - **Migraciones al arrancar.** Funciona con una sola instancia. Al escalar a
   varias réplicas hay que moverlas a un pre-deploy job, o correrían en paralelo.
 

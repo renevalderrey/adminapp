@@ -1,9 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
+  "installCommand": "cd ../.. && npm ci",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
+    {
+      "source": "/img/:ruta*",
+      "destination": "https://api.favalio.com/img/:ruta*"
+    },
     {
       "source": "/((?!assets/|.*\\.).*)",
       "destination": "/index.html"

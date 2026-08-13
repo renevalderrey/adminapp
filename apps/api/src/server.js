@@ -188,6 +188,56 @@ app.use('/api/tiendanube', require('./routes/tiendanube').publico);
 
 app.use(express.json({ limit: '10mb' }));
 
+// ════════════════════════════════════════════
+//  Las fotos, SOLO cuando no hay quien las sirva mejor
+//
+//  `utils/imagenes.js` dice —y sigue siendo cierto— que las fotos no las sirve
+//  la API: un proceso de Node mandando archivos estáticos compite por el mismo
+//  event loop que las cajas del comercio. En el VPS las sirve Caddy desde el
+//  volumen, y este bloque queda apagado.
+//
+//  El esquema PaaS (Render + Vercel + Neon) no tiene Caddy ni volumen: no hay
+//  ningún otro proceso que pueda leer el directorio donde `guardarImagen`
+//  escribió. Sin este bloque, cada miniatura del panel y cada foto de la tienda
+//  son un 404 — y el dato en la base está bien, así que no hay a dónde mirar.
+//
+//  Por eso va detrás de una variable y NO es el defecto: que encenderlo sea una
+//  decisión explícita del que despliega, y que el que lea esto en el VPS no
+//  crea que la API ya está sirviendo archivos.
+//
+//  ⚠ En Render free el disco es EFÍMERO: cada deploy y cada reinicio del
+//  servicio se lleva las fotos subidas. La base sigue apuntando a rutas que ya
+//  no existen. Es aceptable para probar en línea; no lo es para un comercio
+//  real, y ese es uno de los motivos por los que existe el VPS.
+//
+//  Va antes del limitador global —que sólo cuelga de `/api/`— y con el mismo
+//  `Cache-Control` que pone Caddy: el nombre del archivo es aleatorio y nunca
+//  se reusa, así que una foto que cambia es una URL nueva.
+// ════════════════════════════════════════════
+if (process.env.SERVIR_IMAGENES === 'true') {
+  const rutaDeImagenes = process.env.RUTA_DE_IMAGENES || '/var/favalio/imagenes';
+
+  logger.warn(
+    { ruta: rutaDeImagenes },
+    'imagenes: las sirve la API (SERVIR_IMAGENES=true). En el VPS esto lo hace Caddy'
+  );
+
+  app.use('/img', express.static(rutaDeImagenes, {
+    // `index` y `redirect` apagados: `/img/aa/` no tiene que listar ni redirigir
+    // a ningún lado. Sólo se sirve el archivo exacto que pidió alguien que ya
+    // conocía el nombre — que es lo único que aísla estas fotos entre empresas.
+    index: false,
+    redirect: false,
+    dotfiles: 'ignore',
+    maxAge: '1y',
+    immutable: true,
+    // Sin `fallthrough`: un `/img/` que no existe termina en 404 acá y no sigue
+    // bajando por la cadena de autenticación, que respondería 401 y mandaría a
+    // buscar un problema de sesión donde hay un archivo que falta.
+    fallthrough: false,
+  }));
+}
+
 // ── Health Check (público: sin auth y sin rate limit) ──
 // Va DESPUES de cors y ANTES del rate limiter, a proposito.
 // Antes estaba declarado arriba de app.use(cors(...)), con lo cual no recibia
