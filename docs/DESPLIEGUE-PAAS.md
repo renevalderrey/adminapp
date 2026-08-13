@@ -33,7 +33,8 @@ marcadores se reemplazan al pegar en cada panel, no en el documento.
 
 ## Checklist
 
-- [ ] §1 Neon — copiar el connection string *pooled*
+- [ ] §1 Neon — copiar el connection string *pooled*, y limpiar el esquema si la
+      base viene de antes de las migraciones
 - [ ] §2 Render — corregir el build (es lo que rompió el servicio)
 - [ ] §3 Render — pegar las variables
 - [ ] §4 Vercel — los tres proyectos, con el toggle del monorepo
@@ -81,45 +82,101 @@ postgresql://usuario:clave@ep-algo-123456-pooler.us-east-2.aws.neon.tech/favalio
   selector a *Pooled connection*.
 - El `?sslmode=require` va incluido. Neon rechaza toda conexión sin TLS.
 
-**Las migraciones no se corren a mano**: el contenedor las aplica al arrancar,
-con un advisory lock de PostgreSQL. Si una falla, el servicio no levanta — es
-deliberado, es preferible a arrancar con el schema a medias.
+**Las migraciones no se corren a mano**: el `startCommand` las aplica al
+arrancar, con un advisory lock de PostgreSQL. Si una falla, el servicio no
+levanta — es deliberado, es preferible a arrancar con el schema a medias.
+
+### Si el deploy muere con «constraint … already exists»
+
+```
+== 20260531-initial-schema: migrating =======
+ERROR: constraint "brands_empresa_id_empresas_fk" for relation "brands" already exists
+```
+
+**La base tiene el esquema pero `SequelizeMeta` está vacía.** Pasa cuando esa
+base se creó con `sequelize.sync()`, antes de que existieran las migraciones —
+es la historia de la base vieja, y está contada en el encabezado de
+`20260806-esquema-de-permisos.js`.
+
+Por qué falla justo ahí y no antes: `createTable` de Sequelize emite
+`CREATE TABLE IF NOT EXISTS`, así que las 30 primeras líneas de la migración no
+hacen nada y no se quejan. `addConstraint` es un `ALTER TABLE` a secas, sin
+`IF NOT EXISTS`: es la primera línea que se encuentra con la realidad.
+
+El reintento infinito que se ve en el log es Render relanzando el proceso.
+
+**La salida es empezar con el esquema limpio.** Neon Console → SQL Editor:
+
+```sql
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+GRANT ALL ON SCHEMA public TO PUBLIC;
+```
+
+> ⚠ **Eso borra todas las tablas y todos los datos de esa base, y no se puede
+> deshacer.** Antes de correrlo, mirar qué hay:
+>
+> ```sql
+> SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY 1;
+> ```
+>
+> Si hay algo que interese, la alternativa es crear una base nueva en el mismo
+> proyecto de Neon y apuntar `DATABASE_URL` ahí: la vieja queda intacta.
+
+Después, en Render: *Manual Deploy → Deploy latest commit*. Las 30 migraciones
+corren de cero y la base queda con la misma forma que la del CI y la del VPS.
+
+Verificar que quedó bien:
+
+```sql
+SELECT count(*) FROM "SequelizeMeta";
+```
+
+Tiene que devolver **30**.
 
 ---
 
 ## 2. Render — el build
 
-**Esto es lo que rompió el servicio** cuando el repositorio pasó a npm
-workspaces. Antes cada app tenía su lockfile; ahora hay uno solo, en la raíz,
-junto con `packages/precios` y `packages/pedido`.
+> **El servicio corre el runtime nativo de Node, no Docker.** El Dockerfile de
+> `apps/api` existe y funciona —lo construye el CI, es lo que corre en el VPS—
+> pero el servicio de Render está creado como Node, y Render **no deja cambiarle
+> el runtime a un servicio existente**: habría que crear otro, migrarle las
+> variables y el dominio, y borrar el viejo. Por eso `render.yaml` dice
+> `runtime: node`. Si en el panel no ves campos de Docker, es esto y está bien.
 
 Dashboard → servicio **favalio-api** → **Settings**. Cuatro campos:
 
 | Campo | Valor |
 |---|---|
-| Root Directory | *(vacío — borrar `apps/api`)* |
-| Dockerfile Path | `./apps/api/Dockerfile` |
-| Docker Build Context Directory | `.` |
+| Root Directory | `apps/api` |
+| Build Command | `cd ../.. && npm ci --omit=dev --workspace apps/api --include-workspace-root` |
+| Start Command | `npm run migrate && node src/server.js` |
 | Health Check Path | `/api/health` |
 
-Los tres que se pegan:
+Para pegar:
 
 ```
-./apps/api/Dockerfile
+apps/api
 ```
 
 ```
-.
+cd ../.. && npm ci --omit=dev --workspace apps/api --include-workspace-root
+```
+
+```
+npm run migrate && node src/server.js
 ```
 
 ```
 /api/health
 ```
 
-> Con `Root Directory: apps/api`, el build muere en la primera línea del
-> Dockerfile —`COPY package.json package-lock.json ./`— porque esos archivos no
-> están en el contexto. El error que aparece es un `COPY failed` y no menciona
-> workspaces por ningún lado.
+⚠ **El install sale de `apps/api` antes de correr, y no es un rodeo.** Desde que
+el monorepo usa workspaces el `package-lock.json` es uno solo y vive en la raíz:
+un `npm ci` lanzado dentro de `apps/api` falla, porque npm exige que corra en la
+raíz del workspace. `npm install` a secas parece funcionar —npm sube solo hasta
+la raíz— pero ignora el lockfile, que es justo lo que un deploy no debería hacer.
 
 *Save Changes*. Todavía no hace falta desplegar: falta el §3.
 
@@ -131,6 +188,7 @@ Los tres que se pegan:
 entero de una sola vez (reemplazando los cinco marcadores del principio):
 
 ```dotenv
+NODE_VERSION=22
 DATABASE_URL=PEGAR_DATABASE_URL
 AUTH0_DOMAIN=PEGAR_AUTH0_DOMAIN
 AUTH0_AUDIENCE=https://api.favalio.com
@@ -139,7 +197,7 @@ FRONTEND_URL=https://app.favalio.com
 LANDING_URL=https://favalio.com
 URL_DE_LA_TIENDA=https://tienda.favalio.com
 SERVIR_IMAGENES=true
-RUTA_DE_IMAGENES=/var/favalio/imagenes
+RUTA_DE_IMAGENES=/opt/render/project/src/imagenes
 RESEND_API_KEY=PEGAR_RESEND_API_KEY
 RESEND_FROM_EMAIL=noreply@favalio.com
 CRON_SECRET=PEGAR_CRON_SECRET
@@ -156,8 +214,16 @@ TIENDANUBE_CLIENT_SECRET=
 SENTRY_DSN=
 ```
 
-Tres cosas que se rompen seguido:
+Cinco cosas que se rompen seguido:
 
+- ⚠ **`NODE_VERSION=22`.** Los `package.json` declaran `"node": ">=22"`, y Render
+  lo lee como «la última que haya»: el primer deploy de este servicio arrancó en
+  **Node 26.7.0**, un major que no probó nadie. El CI corre en 22 y el Dockerfile
+  es `node:22-alpine`. Render mira esta variable antes que `engines`.
+- ⚠ **`RUTA_DE_IMAGENES` NO es `/var/favalio/imagenes`**, que es la ruta del
+  volumen del VPS. En el runtime nativo el proceso no es root y `/var` no se
+  puede escribir: la primera foto que suba alguien falla con `EACCES`, y el error
+  aparece recién ahí, no al desplegar.
 - ⚠ **`ALLOWED_ORIGINS` sin espacios y sin barra final.** El origen que manda el
   navegador es `https://app.favalio.com`, exacto. Una barra de más y el CORS
   rechaza en silencio: la API sana, todas las pantallas en blanco.
@@ -478,10 +544,13 @@ Qué significa cada resultado del paso 4:
 - **Neon free autosuspende** a los 5 min. Sequelize reintenta, pero la primera
   consulta después tarda.
 - **Las fotos de productos son efímeras.** `SERVIR_IMAGENES=true` hace que la API
-  sirva `/img/*` desde su propio disco, y el disco de Render free se borra en
-  cada deploy y en cada reinicio. La base queda apuntando a archivos que ya no
-  existen: las miniaturas del panel y las fotos de la tienda pasan a 404 sin que
-  cambie ningún dato. **Alcanza para probar, no para vender.**
+  sirva `/img/*` desde `/opt/render/project/src/imagenes`, que es el directorio
+  del proyecto y se borra en cada deploy. La base queda apuntando a archivos que
+  ya no existen: las miniaturas del panel y las fotos de la tienda pasan a 404
+  sin que cambie ningún dato. **Alcanza para probar, no para vender.**
+- **El runtime no es el que prueba el CI.** El CI construye y arranca el
+  contenedor de `apps/api`; Render corre el runtime nativo de Node. Con
+  `NODE_VERSION=22` las dos usan el mismo major, pero no es la misma imagen.
 - **Los logos de empresa** se guardan como data URI en la base justamente por
   esto, y sí sobreviven.
 - **Un proceso de Node sirviendo archivos estáticos** compite por el mismo event

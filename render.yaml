@@ -7,26 +7,56 @@
 #  Uso: Render Dashboard -> New -> Blueprint -> apuntar a este repo.
 #  Los secrets marcados sync:false se cargan a mano en el dashboard; no
 #  se versionan.
+#
+#  ── Por qué runtime `node` y no `docker` ──
+#
+#  El Dockerfile de `apps/api` existe y funciona: lo construye el CI y es lo
+#  que corre en el VPS. Acá igual se usa el runtime nativo, porque **es el que
+#  ya tiene creado el servicio** y Render no deja cambiarle el runtime a un
+#  servicio existente: habría que crear uno nuevo, migrarle las variables y el
+#  dominio, y borrar el viejo.
+#
+#  Lo que se pierde: el entorno de Render no es idéntico al del contenedor que
+#  prueba el CI. Lo que se gana: nada técnico, sólo no rehacer el servicio. Si
+#  algún día hay que recrearlo, conviene hacerlo en `docker` y borrar esta nota.
 # ══════════════════════════════════════════════════════════════
 
 services:
   - type: web
     name: favalio-api
-    runtime: docker
+    runtime: node
     plan: free
     region: oregon
-    # ⚠ El contexto de build es LA RAÍZ del repositorio, no `apps/api`.
+
+    # Los comandos corren DESDE `apps/api`, que es lo que fija `rootDir`.
+    rootDir: apps/api
+
+    # ⚠ El install se hace desde LA RAÍZ, no desde `apps/api`.
     #
-    # Antes decía `rootDir: apps/api` y funcionaba, porque cada app tenía su
-    # propio `package-lock.json`. Desde que el monorepo usa workspaces el
-    # lockfile es uno solo y vive arriba, junto con `packages/precios` y
-    # `packages/pedido`: con el contexto en `apps/api`, el primer
-    # `COPY package.json package-lock.json ./` del Dockerfile no encuentra los
-    # archivos y el build falla antes de instalar una sola dependencia.
-    dockerfilePath: ./apps/api/Dockerfile
-    dockerContext: .
+    # Desde que el monorepo usa workspaces el `package-lock.json` es uno solo y
+    # vive arriba, junto con `packages/precios` y `packages/pedido`. Un
+    # `npm ci` lanzado dentro de `apps/api` falla directamente: npm exige que
+    # `npm ci` corra en la raíz del workspace.
+    #
+    # Es el mismo comando del Dockerfile, y por los mismos motivos:
+    # `--omit=dev` para no traer vite ni jest de las otras apps, y
+    # `--include-workspace-root` porque sin eso npm no instala lo que declara
+    # el manifiesto de arriba y el árbol queda incompleto.
+    buildCommand: cd ../.. && npm ci --omit=dev --workspace apps/api --include-workspace-root
+
+    # Las migraciones corren antes del servidor, con un advisory lock de
+    # PostgreSQL de por medio (`scripts/migrar.js`). Si fallan, el proceso no
+    # arranca: es preferible a arrancar con el schema a medio migrar.
+    startCommand: npm run migrate && node src/server.js
+
     # Solo redeploya si cambio la API. Sin esto, cada push a la landing
     # reconstruiria el backend.
+    #
+    # ⚠ Estas rutas son relativas a la RAÍZ del repositorio, no a `rootDir`.
+    # Si alguna vez dejaran de serlo, el síntoma es que los push a `apps/api`
+    # no disparan deploy y el servicio se queda viejo **sin ningún error**:
+    # después de tocar este bloque, confirmar en el panel que el primer push
+    # dispara una corrida.
     buildFilter:
       paths:
         - apps/api/**
@@ -44,6 +74,20 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+
+      # ── La versión de Node, fijada ──
+      #
+      # Los `package.json` declaran `"node": ">=22"`, y Render lo lee como
+      # «la última que haya»: el primer deploy de este servicio arrancó con
+      # **Node 26.7.0**, un major que no probó nadie. El CI corre en 22 y el
+      # Dockerfile es `node:22-alpine`.
+      #
+      # Un rango abierto en `engines` está bien para desarrollar y mal para
+      # desplegar: convierte la salida de una versión nueva de Node en un
+      # cambio de producción que nadie pidió. Render mira `NODE_VERSION` antes
+      # que `engines`, así que esto gana.
+      - key: NODE_VERSION
+        value: "22"
 
       # ── Base de datos ──
       # Neon durante desarrollo. Usar el connection string *pooled*
@@ -96,10 +140,15 @@ services:
       # lleva las fotos subidas, y la base queda apuntando a archivos que ya no
       # existen. Sirve para probar en línea; para un comercio real hace falta un
       # disco persistente (plan pago) o el VPS.
+      # ⚠ La ruta NO es `/var/favalio/imagenes`, que es la del volumen del VPS.
+      # En el runtime nativo el proceso no corre como root y `/var` no es
+      # escribible: la primera foto que alguien suba falla con EACCES, y el
+      # error aparece recién ahí, no al desplegar. El directorio del proyecto sí
+      # es escribible.
       - key: SERVIR_IMAGENES
         value: "true"
       - key: RUTA_DE_IMAGENES
-        value: /var/favalio/imagenes
+        value: /opt/render/project/src/imagenes
 
       # ── Email transaccional (Resend) ──
       - key: RESEND_API_KEY

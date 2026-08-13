@@ -8,8 +8,9 @@
 //  Existe porque **los tres fallos que cubre son silenciosos y ninguno aparece
 //  en un log del servidor**:
 //
-//   · Si `render.yaml` vuelve a construir con el contexto en `apps/api`, el
-//     build muere en el primer `COPY` con un mensaje que no menciona workspaces.
+//   · Si el `buildCommand` de `render.yaml` deja de instalar desde la raíz, npm
+//     rechaza el `npm ci` —exige la raíz del workspace— y el build muere con un
+//     mensaje que no menciona workspaces por ningún lado.
 //   · Si se pierde `URL_DE_LA_TIENDA`, la API busca el `index.html` en
 //     `http://tienda` —el nombre del servicio en el compose, que en Render no
 //     resuelve— y cada enlace de catálogo compartido devuelve «Volvemos en un
@@ -35,7 +36,7 @@ const RAIZ = path.join(__dirname, '..', '..', '..', '..');
 const leer = (...partes) => fs.readFileSync(path.join(RAIZ, ...partes), 'utf8');
 const leerJson = (...partes) => JSON.parse(leer(...partes));
 
-describe('render.yaml construye la API desde la raíz del monorepo', () => {
+describe('render.yaml instala el monorepo desde la raíz', () => {
   const RENDER = leer('render.yaml');
 
   it('la guardia encuentra el servicio que dice mirar', () => {
@@ -43,16 +44,25 @@ describe('render.yaml construye la API desde la raíz del monorepo', () => {
     expect(RENDER).toMatch(/name: favalio-api/);
   });
 
-  it('el contexto de build es la raíz y no apps/api', () => {
-    // El Dockerfile arranca con `COPY package.json package-lock.json ./`, y
-    // desde que el monorepo usa workspaces el lockfile es uno solo y vive
-    // arriba, junto con `packages/precios` y `packages/pedido`.
-    expect(RENDER).toMatch(/dockerfilePath: \.\/apps\/api\/Dockerfile/);
-    expect(RENDER).toMatch(/dockerContext: \./);
+  it('el install sale de apps/api antes de correr', () => {
+    // `npm ci` exige la raíz del workspace: lanzado dentro de `apps/api` falla
+    // sin mencionar workspaces. Y el lockfile es uno solo desde que el
+    // monorepo los usa.
+    expect(RENDER).toMatch(/buildCommand: cd \.\.\/\.\. && npm ci/);
+    expect(RENDER).toMatch(/--include-workspace-root/);
+  });
 
-    // Y explícitamente NO el que había antes: es la línea que rompió el
-    // servicio al pasar a workspaces, y la que más fácil vuelve.
-    expect(RENDER).not.toMatch(/^\s*rootDir: apps\/api\s*$/m);
+  it('las migraciones corren antes del servidor', () => {
+    // Con `&&`: si migrar falla, el servidor no arranca. Arrancar con el
+    // schema a medio migrar es peor que no arrancar.
+    expect(RENDER).toMatch(/startCommand: npm run migrate && node src\/server\.js/);
+  });
+
+  it('la versión de Node está fijada y no la elige la plataforma', () => {
+    // `engines: ">=22"` hizo que el primer deploy arrancara en Node 26.7.0,
+    // un major que no probó nadie: el CI corre en 22 y el Dockerfile es
+    // `node:22-alpine`. Render mira NODE_VERSION antes que engines.
+    expect(RENDER).toMatch(/- key: NODE_VERSION\s*\n\s*value: "22"/);
   });
 
   it('el buildFilter incluye los paquetes compartidos y el lockfile', () => {
@@ -71,7 +81,17 @@ describe('render.yaml construye la API desde la raíz del monorepo', () => {
     // `guardarImagen` escribió: cada miniatura del panel y cada foto de la
     // tienda son un 404 con el dato de la base perfecto.
     expect(RENDER).toMatch(/- key: SERVIR_IMAGENES\s*\n\s*value: "true"/);
-    expect(RENDER).toMatch(/- key: RUTA_DE_IMAGENES/);
+  });
+
+  it('las fotos van a un directorio escribible, y no al del volumen del VPS', () => {
+    // `/var/favalio/imagenes` es la ruta del volumen del compose. En el
+    // runtime nativo el proceso no es root y `/var` no se puede escribir: la
+    // primera subida falla con EACCES, y recién ahí, no al desplegar.
+    const linea = RENDER.split('\n')
+      .find((l, i, todas) => todas[i - 1] && todas[i - 1].includes('RUTA_DE_IMAGENES'));
+
+    expect(linea).toContain('/opt/render/project/src');
+    expect(linea).not.toContain('/var/favalio');
   });
 });
 
