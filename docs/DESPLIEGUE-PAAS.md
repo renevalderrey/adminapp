@@ -238,7 +238,9 @@ Cinco cosas que se rompen seguido:
 api.favalio.com
 ```
 
-Render devuelve el destino del CNAME (algo como `favalio-api.onrender.com`).
+Render devuelve el destino del CNAME. **No es `favalio-api.onrender.com`**: el
+servicio conserva el nombre de antes del rebrand, así que el destino real es
+`adminapp-c558.onrender.com`. Copiar el que muestra el panel.
 **Anotarlo, va en el §6.**
 
 Ahora sí: *Manual Deploy → Deploy latest commit*.
@@ -392,7 +394,7 @@ correo; borrar un MX sí.
 | CNAME | `www` | `cname.vercel-dns.com` | 300 |
 | CNAME | `app` | `cname.vercel-dns.com` | 300 |
 | CNAME | `tienda` | `cname.vercel-dns.com` | 300 |
-| CNAME | `api` | `favalio-api.onrender.com` | 300 |
+| CNAME | `api` | `adminapp-c558.onrender.com` | 300 |
 
 ⚠ **Los valores de Vercel se copian del panel si difieren de estos.** Vercel
 viene cambiando la IP del ápice y los destinos de CNAME por región: `76.76.21.21`
