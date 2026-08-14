@@ -23,6 +23,7 @@ tenés que traer vos. Anotalos acá antes de empezar y después seguí de corrid
 | `PEGAR_DATABASE_URL` | Neon, §1 |
 | `PEGAR_AUTH0_DOMAIN` | Auth0 → Applications → tu SPA → *Domain*. Sin `https://` |
 | `PEGAR_AUTH0_CLIENT_ID` | Auth0 → Applications → tu SPA → *Client ID* |
+| `PEGAR_AUTH0_AUDIENCE` | Auth0 → APIs → tu API → *Identifier*, tal cual. §7 |
 | `PEGAR_RESEND_API_KEY` | [resend.com](https://resend.com) → API Keys |
 | `PEGAR_CRON_SECRET` | lo generás vos, §8 |
 
@@ -191,7 +192,7 @@ entero de una sola vez (reemplazando los cinco marcadores del principio):
 NODE_VERSION=22
 DATABASE_URL=PEGAR_DATABASE_URL
 AUTH0_DOMAIN=PEGAR_AUTH0_DOMAIN
-AUTH0_AUDIENCE=https://api.favalio.com
+AUTH0_AUDIENCE=PEGAR_AUTH0_AUDIENCE
 ALLOWED_ORIGINS=https://app.favalio.com,https://favalio.com,https://www.favalio.com,https://tienda.favalio.com
 FRONTEND_URL=https://app.favalio.com
 LANDING_URL=https://favalio.com
@@ -227,7 +228,10 @@ Cinco cosas que se rompen seguido:
 - ⚠ **`ALLOWED_ORIGINS` sin espacios y sin barra final.** El origen que manda el
   navegador es `https://app.favalio.com`, exacto. Una barra de más y el CORS
   rechaza en silencio: la API sana, todas las pantallas en blanco.
-- ⚠ **`AUTH0_DOMAIN` sin `https://`** y sin barra. Es `tenant.us.auth0.com`.
+- ⚠ **`AUTH0_DOMAIN` es el tenant de Auth0, no tu API.** Sin `https://` y sin
+  barra: `tenant.us.auth0.com`. Puesto como `api.favalio.com`, el navegador va a
+  pedirle `/authorize` a tu propia API y el botón de iniciar sesión muestra
+  `Cannot GET /authorize`, que es el 404 de Express.
 - ⚠ **`tienda.favalio.com` va igual en `ALLOWED_ORIGINS`**, aunque la tienda
   hable por rutas relativas. No es para su `fetch` —ése es same-origin—: es para
   el `/c/:slug` que la API sirve cuando Vercel se lo reenvía.
@@ -338,7 +342,7 @@ VITE_API_URL=https://api.favalio.com/api
 VITE_API_TIMEOUT=60000
 VITE_AUTH0_DOMAIN=PEGAR_AUTH0_DOMAIN
 VITE_AUTH0_CLIENT_ID=PEGAR_AUTH0_CLIENT_ID
-VITE_AUTH0_AUDIENCE=https://api.favalio.com
+VITE_AUTH0_AUDIENCE=PEGAR_AUTH0_AUDIENCE
 VITE_TIENDA_URL=https://tienda.favalio.com
 ```
 
@@ -449,18 +453,28 @@ lleva, y Auth0 compara la cadena exacta.
 Si querés que los deploy previews de Vercel también puedan loguear, agregá a las
 tres listas —separado por coma— el dominio del preview.
 
-### La API del tenant
+### El audience: se COPIA de Auth0, no se elige
 
-**APIs → tu API → Settings.** El *Identifier* tiene que ser exactamente:
+**APIs → tu API → Settings → Identifier.** Ese valor es el que va en
+`AUTH0_AUDIENCE` (Render, §3) y en `VITE_AUTH0_AUDIENCE` (Vercel, §5). Los tres
+tienen que decir exactamente lo mismo.
+
+⚠ **No es `https://api.favalio.com` sólo porque el dominio se llame así.** El
+Identifier es una cadena opaca —no una URL que alguien visite— y **Auth0 no deja
+cambiarlo después de crear la API**. En este tenant quedó de antes del rebrand:
 
 ```
-https://api.favalio.com
+https://api.sistema-de-facturacion.com
 ```
 
-Ese valor aparece **tres veces** y las tres tienen que decir lo mismo:
-`AUTH0_AUDIENCE` en Render (§3), `VITE_AUTH0_AUDIENCE` en Vercel (§5) y el
-Identifier acá. Es una cadena, no una URL que se visite: una barra de
-diferencia devuelve 401 en cada request con el login andando perfecto.
+Que no coincida con el dominio no rompe nada. Lo que rompe es inventarlo: si
+`VITE_AUTH0_AUDIENCE` pide un audience que no existe, Auth0 contesta
+`Service not found`; y si el que pide el navegador no es el que valida la API,
+el login anda perfecto y **cada request devuelve 401**.
+
+Si algún día se quiere el nombre nuevo, hay que crear otra API en Auth0 con
+Identifier `https://api.favalio.com` y actualizar los dos lugares. No hay
+renombre.
 
 ---
 
