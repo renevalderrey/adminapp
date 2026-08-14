@@ -44,6 +44,38 @@ const upload = multer({
   },
 });
 
+// ════════════════════════════════════════════
+//  El onboarding es IDEMPOTENTE: dos llamadas no son dos empresas
+//
+//  `POST /onboarding` creaba una empresa cada vez que se lo llamaba, sin mirar
+//  si el usuario ya tenia una. En produccion eso cuadruplico una empresa: la
+//  pantalla no avanzaba —`loadEmpresaContext` salia sin recargar y el usuario
+//  seguia viendo el formulario—, el boton se volvia a habilitar, y cada clic
+//  era una empresa nueva con su punto de venta y su suscripcion.
+//
+//  El `disabled` del boton NO alcanza, y por eso la garantia esta aca. Vuelven
+//  a llamar a esta ruta un reintento de la red, un F5, una segunda pestaña y
+//  cualquier cliente futuro. Una garantia que vive en el navegador no es una
+//  garantia.
+//
+//  ── Por que un lock y no solo el SELECT ──
+//
+//  Dos clics rapidos son dos requests en paralelo: los dos leen «no tiene
+//  empresa» antes de que ninguno escriba, y los dos crean. `pg_advisory_xact_lock`
+//  es por usuario y se libera solo al terminar la transaccion, asi que el
+//  segundo espera al primero y despues ve la empresa que aquel creo.
+//
+//  El desplazamiento evita chocar con otros locks del sistema —`migrar.js` usa
+//  947213— sin tener que coordinar numeros: el espacio es de 64 bits y los
+//  ids de usuario empiezan en 1.
+//
+//  ⚠ Esta ruta es «crear MI PRIMERA empresa». La segunda empresa de un usuario
+//  se crea por `POST /api/empresas`, que pide permiso `config.editar` y no pasa
+//  por aca: no hay un unico global sobre `usuario_id` porque pertenecer a
+//  varias empresas es una funcionalidad, no un accidente.
+// ════════════════════════════════════════════
+const LOCK_DE_ONBOARDING = 8800000;
+
 /** Convierte el archivo en memoria a data URI, o null si no vino archivo. */
 function fileToDataUri(file) {
   if (!file) return null;
@@ -71,6 +103,40 @@ router.post('/onboarding', (req, res, next) => {
 
     const logoDataUri = fileToDataUri(req.file);
 
+    // ════════════════════════════════════════════
+    //  Onboarding IDEMPOTENTE: dos llamadas no son dos empresas
+    //
+    //  Esta ruta creaba una empresa cada vez que se la llamaba, sin mirar si el
+    //  usuario ya tenia una. En produccion eso cuadruplico una empresa: la
+    //  pantalla no avanzaba —`loadEmpresaContext` salia sin recargar y el
+    //  usuario seguia viendo el formulario—, el boton se volvia a habilitar, y
+    //  cada clic era una empresa nueva con su punto de venta y su suscripcion.
+    //
+    //  El `disabled` del boton NO alcanza y por eso el arreglo esta ACA. Lo
+    //  vuelven a llamar un reintento de la red, un F5, una segunda pestaña y
+    //  cualquier cliente futuro. Una garantia que vive en el navegador no es
+    //  una garantia.
+    //
+    //  ── Por que 200 con la empresa existente y no un 409 ──
+    //
+    //  Porque para el que llama el resultado es el mismo: «tu empresa esta
+    //  creada, segui». Un 409 obligaria a cada cliente a distinguir «ya existe»
+    //  de «fallo», y el que no lo hiciera mostraria un error sobre una cuenta
+    //  que quedo perfecta. Idempotente significa que repetir no cambia nada,
+    //  incluida la cara que pone el que repite.
+    //
+    //  ── Por que un lock y no solo el SELECT ──
+    //
+    //  Dos clics rapidos son dos requests en paralelo: los dos leen «no tiene
+    //  empresa» antes de que ninguno escriba, y los dos crean. El advisory lock
+    //  es por usuario y dura lo que dura la transaccion, asi que el segundo
+    //  espera al primero y despues ve la empresa que aquel creo.
+    //
+    //  ⚠ Esta ruta es «crear MI PRIMERA empresa». La segunda empresa de un
+    //  usuario se crea por `POST /api/empresas`, que pide permiso `config.editar`
+    //  y no pasa por aca: no hay un unico global sobre `usuario_id` porque
+    //  pertenecer a varias empresas es una funcionalidad, no un accidente.
+    // ════════════════════════════════════════════
     const trialEnd = new Date();
     trialEnd.setDate(trialEnd.getDate() + 15);
     const graceEnd = new Date(trialEnd);
@@ -88,7 +154,28 @@ router.post('/onboarding', (req, res, next) => {
     // El email queda FUERA a proposito: mandarlo no es reversible, y que el
     // proveedor de correo este caido no es razon para deshacer una empresa que
     // se creo bien.
-    const { empresa, defaultPv } = await sequelize.transaction(async (t) => {
+    const { empresa, defaultPv, yaExistia } = await sequelize.transaction(async (t) => {
+      // El lock y la lectura, DENTRO de la transaccion y en este orden.
+      await sequelize.query(
+        'SELECT pg_advisory_xact_lock(:clave)',
+        { replacements: { clave: LOCK_DE_ONBOARDING + Number(usuario.id) }, transaction: t }
+      );
+
+      const membresia = await UsuarioEmpresa.findOne({
+        where: { usuario_id: usuario.id },
+        include: [{ model: Empresa, as: 'empresa', include: [{ model: PuntoDeVenta, as: 'puntosDeVenta', required: false }] }],
+        order: [['id', 'ASC']],
+        transaction: t,
+      });
+
+      if (membresia && membresia.empresa) {
+        return {
+          empresa: membresia.empresa,
+          defaultPv: (membresia.empresa.puntosDeVenta || [])[0] || null,
+          yaExistia: true,
+        };
+      }
+
       const empresa = await Empresa.create({
         name,
         cuit: cuit || null,
@@ -135,8 +222,40 @@ router.post('/onboarding', (req, res, next) => {
         grace_period_ends: graceEnd,
       }, { transaction: t });
 
-      return { empresa, defaultPv };
+      return { empresa, defaultPv, yaExistia: false };
     });
+
+    // ── El repetido sale por aca ──
+    //
+    // Mismo cuerpo que el alta, con 200 en vez de 201: para el que llama el
+    // resultado es «tu empresa esta creada, segui», que es exactamente lo que
+    // tiene que hacer. Y sin mail: el de bienvenida ya salio la primera vez.
+    if (yaExistia) {
+      logger.info(
+        { requestId: req.id, usuarioId: usuario.id, empresaId: empresa.id },
+        'onboarding: el usuario ya tenia empresa, no se crea otra'
+      );
+
+      return res.status(200).json({
+        ok: true,
+        data: {
+          empresa: {
+            id: empresa.id,
+            name: empresa.name,
+            cuit: empresa.cuit,
+            phone: empresa.phone,
+            address: empresa.address,
+            city: empresa.city,
+            state: empresa.state,
+            logo: empresa.logo,
+            settings: empresa.settings,
+          },
+          puntoDeVenta: defaultPv
+            ? { id: defaultPv.id, name: defaultPv.name, code: defaultPv.code }
+            : null,
+        },
+      });
+    }
 
     // Si el correo no sale, la empresa igual quedo creada y el usuario ya esta
     // adentro: se registra y se sigue.

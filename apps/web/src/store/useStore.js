@@ -114,10 +114,29 @@ const useStore = create((set, get) => ({
     set({ products: get().products.filter((p) => p.id !== id) });
   },
 
-  // Load empresa context after login
-  loadEmpresaContext: async () => {
+  // ════════════════════════════════════════════
+  //  Cargar el contexto — y por qué hace falta poder FORZARLO
+  //
+  //  El `if (state.usuario) return` está bien puesto: esta función la llama el
+  //  arranque de la app y no tiene que pedir el contexto dos veces por el doble
+  //  render del modo estricto de React.
+  //
+  //  Pero el onboarding la llamaba para lo contrario —«acabo de crear la
+  //  empresa, traeme el contexto nuevo»— y ahí el usuario **ya estaba
+  //  cargado**, así que salía sin hacer nada. `empresaActiva` seguía en null,
+  //  `App.jsx` seguía rindiendo `<Onboarding />` para toda ruta, y el
+  //  `navigate('/pos')` no llevaba a ningún lado: el formulario quedaba en
+  //  pantalla como si no hubiera pasado nada. Ese fue el primer eslabón de la
+  //  empresa cuadruplicada.
+  //
+  //  Se separa en dos intenciones distintas en vez de sacar la guardia:
+  //  `loadEmpresaContext()` es «cargá si no cargaste» y `recargarContexto()` es
+  //  «volvé a pedirlo, pasó algo». Sacar la guardia habría arreglado el
+  //  onboarding devolviendo la petición duplicada del arranque.
+  // ════════════════════════════════════════════
+  loadEmpresaContext: async (forzar = false) => {
     const state = get();
-    if (state.usuario) return;
+    if (state.usuario && !forzar) return;
     set({ loadingUsuario: true, contextError: false });
     try {
       const res = await api.get('/empresas/mi-contexto', { timeout: 20000 });
@@ -131,15 +150,41 @@ const useStore = create((set, get) => ({
           puntoDeVentaActivo: empresaActiva?.puntosDeVenta?.[0] || null,
           loadingUsuario: false,
         });
-      } else {
-        set({ loadingUsuario: false });
+
+        // Lo que devuelve NO es «respondió»: es «hay empresa activa». Es lo
+        // único que el onboarding necesita saber para decidir si avanzar, y
+        // pedirle que lo deduzca del store desde afuera es pedirle que adivine.
+        return Boolean(empresaActiva);
       }
+
+      set({ loadingUsuario: false });
+      return false;
     } catch (err) {
-      if (get().usuario) return;
       console.warn('[store] Error loading empresa context:', err.message);
-      set({ loadingUsuario: false, contextError: true });
+
+      // ⚠ `loadingUsuario` se apaga SIEMPRE, incluso con un usuario ya cargado.
+      //
+      // Antes acá había un `if (get().usuario) return` que salía **sin
+      // apagarlo**: en la carga inicial nunca se notaba —el usuario todavía no
+      // estaba—, pero en una recarga forzada dejaba la app en la pantalla de
+      // «cargando» para siempre, sin error y sin salida.
+      //
+      // `contextError` sí queda atado a que no haya usuario: es el que manda a
+      // cerrar sesión (`App.jsx`), y un fallo al refrescar no tiene por qué
+      // echar a alguien que ya está trabajando adentro.
+      set({ loadingUsuario: false, contextError: !get().usuario });
+      return false;
     }
   },
+
+  /**
+   * Volver a pedir el contexto porque pasó algo que lo cambió.
+   *
+   * Distinta de `loadEmpresaContext()` en la intención, no en el mecanismo: esa
+   * es la del arranque y no repite; esta es la de después de crear la empresa,
+   * y tiene que repetir.
+   */
+  recargarContexto: () => get().loadEmpresaContext(true),
 
   // Switch active empresa
   setEmpresaActiva: async (empresaId) => {
