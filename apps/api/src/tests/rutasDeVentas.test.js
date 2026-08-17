@@ -449,6 +449,107 @@ describe('La condicion de IVA del receptor sale de la ficha del cliente (FR-043)
 });
 
 // ════════════════════════════════════════════
+//  El arnés de comportamiento: la API con los dobles montados
+//
+//  Vive en el módulo y no adentro de un `describe` porque lo usan los tres
+//  bloques de abajo —la anulación, la puerta de `POST /api/sales` y el aviso de
+//  stock insuficiente—. Escribir un segundo arnés al lado del que ya existe es
+//  cómo terminan dos suites que montan la misma ruta con dobles distintos y
+//  contestan cosas distintas sobre el mismo handler.
+// ════════════════════════════════════════════
+
+const EMPRESA = 7;
+const SUCURSAL = 31;
+
+/**
+ * `bulkCreate`, que `modelosFalsos` no trae.
+ *
+ * `POST /api/sales` escribe las líneas con `SaleItem.bulkCreate`. Sin esto la
+ * ruta tira un TypeError, `fallo()` lo convierte en un 500 y un test que
+ * afirmara «no quedó ninguna línea» pasaría **sin haber ejercitado nada**:
+ * vería la tabla vacía y creería que la validación rechazó la venta.
+ */
+mockSaleItem.bulkCreate = async (filas = [], opciones = {}) => {
+  mockSaleItem.llamadas.push({ metodo: 'bulkCreate', filas, ...opciones });
+
+  const creadas = filas.map((datos, i) => ({ id: mockSaleItem.filas.length + i + 1, ...datos }));
+  mockSaleItem.filas.push(...creadas);
+  return creadas;
+};
+
+function levantarApi(empresaId = EMPRESA) {
+  const api = express();
+  api.use(express.json());
+  api.use((req, _res, siguiente) => {
+    req.empresaId = empresaId;
+    req.userId = 'auth0|quien-anula';
+    req.id = 'req-de-prueba';
+    siguiente();
+  });
+  api.use('/api/sales', require('../routes/sales'));
+  return api;
+}
+
+/** El producto que se cobra en los tickets de prueba. */
+const PRODUCTO = 501;
+
+/**
+ * Deja los dobles en el estado desde el que se puede cobrar un ticket.
+ *
+ * `quantity` y `available` se pasan como los entrega el driver —número hoy,
+ * texto con la columna en `DECIMAL`— porque los dos casos hacen falta: el
+ * número es el control y el texto es el que distingue el defecto.
+ */
+function sembrarParaVender({ quantity = 20, available = 20 } = {}) {
+  mockTransaccion.commits = 0;
+  mockTransaccion.rollbacks = 0;
+
+  mockEmpresa.filas = [{ id: EMPRESA, timezone: 'America/Argentina/Buenos_Aires' }];
+  mockPuntoDeVenta.filas = [
+    { id: SUCURSAL, empresa_id: EMPRESA, code: 'general', name: 'Principal', is_active: true },
+  ];
+  mockSale.filas = [];
+  mockSaleItem.filas = [];
+  mockStockMovement.filas = [];
+  mockStock.filas = [{
+    id: 1,
+    product_id: PRODUCTO,
+    empresa_id: EMPRESA,
+    punto_de_venta_id: SUCURSAL,
+    quantity,
+    available,
+  }];
+
+  for (const doble of [mockSale, mockSaleItem, mockStock, mockStockMovement, mockPuntoDeVenta, mockEmpresa]) {
+    doble.llamadas = [];
+  }
+}
+
+/**
+ * Un ticket de una línea, como lo manda el POS.
+ *
+ * **Sin `total` a propósito**: el servidor lo calcula a partir de las líneas, y
+ * mandarlo hace que una cantidad disparatada salga rechazada por
+ * `TOTAL_INCONSISTENTE` antes de llegar a la validación que se está probando —o
+ * sea que el test pasaría por la rama equivocada—. Los casos que necesitan
+ * afirmar el total lo pasan explícitamente.
+ */
+function vender(cantidad, cuerpo = {}) {
+  return request(levantarApi())
+    .post('/api/sales')
+    .send({
+      id: 'sale_1738099999',
+      items: [{
+        product_id: PRODUCTO,
+        product_name: 'Creatina 300g',
+        quantity: cantidad,
+        unit_price: 1200,
+      }],
+      ...cuerpo,
+    });
+}
+
+// ════════════════════════════════════════════
 //  Anular una venta devuelve la mercadería, no una concatenación
 //
 //  `sales.js:722-723` sumaba con `+` dos valores que **los dos** vienen de la
@@ -468,22 +569,6 @@ describe('La condicion de IVA del receptor sale de la ficha del cliente (FR-043)
 // ════════════════════════════════════════════
 
 describe('PUT /api/sales/:id/void repone el stock sumando, no concatenando', () => {
-  const EMPRESA = 7;
-  const SUCURSAL = 31;
-
-  function levantarApi(empresaId = EMPRESA) {
-    const api = express();
-    api.use(express.json());
-    api.use((req, _res, siguiente) => {
-      req.empresaId = empresaId;
-      req.userId = 'auth0|quien-anula';
-      req.id = 'req-de-prueba';
-      siguiente();
-    });
-    api.use('/api/sales', require('../routes/sales'));
-    return api;
-  }
-
   beforeEach(() => {
     mockTransaccion.commits = 0;
     mockTransaccion.rollbacks = 0;
@@ -579,5 +664,233 @@ describe('PUT /api/sales/:id/void repone el stock sumando, no concatenando', () 
     expect(mockSale.filas[0].status).toBe('voided');
     expect(mockTransaccion.commits).toBe(1);
     expect(mockTransaccion.rollbacks).toBe(0);
+  });
+});
+
+// ════════════════════════════════════════════
+//  La puerta de POST /api/sales
+//
+//  `sales.js:321-323` validaba `l.quantity <= 0` sobre el valor de JavaScript,
+//  donde `0.4` es mayor que cero y **pasa**. La columna es `INTEGER`, así que
+//  Postgres redondeaba al asignar y la venta quedaba asentada con cantidad
+//  CERO: se descontaba cero de stock, el importe quedaba intacto y la respuesta
+//  era un 201. **Eso pasa hoy, en producción.**
+//
+//  Migrar la columna no lo arregla: lo corre un escalón. Con `DECIMAL(14,4)` el
+//  que se guardaría en cero pasa a ser `0.00004`, o sea el mismo defecto con
+//  cuatro ceros más. Lo que estaba mal era aceptar lo que la columna no puede
+//  representar.
+//
+//  ⚠ Lo que este bloque NO puede afirmar es que **no quedó ninguna fila**: los
+//  dobles no tienen transacción de verdad, así que el rollback de la ruta no
+//  borra nada. Acá se ve que el handler corta antes de escribir; que la base
+//  quede como estaba es de `integracion/cantidadesDecimales.integracion.test.js`.
+// ════════════════════════════════════════════
+
+describe('POST /api/sales rechaza la cantidad que la columna no puede guardar', () => {
+  beforeEach(() => {
+    sembrarParaVender();
+  });
+
+  it('NO guarda 0,4 como una línea de venta en cero', async () => {
+    const res = await vender(0.4);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ ok: false, error: 'ITEM_INVALIDO' });
+
+    // Corta antes de escribir: ni la venta, ni la línea, ni el movimiento, y el
+    // stock sigue en 20. Con la validación vieja esto respondía 201 y dejaba una
+    // línea en cero que descontaba cero de inventario.
+    expect(mockSale.filas).toEqual([]);
+    expect(mockSaleItem.filas).toEqual([]);
+    expect(mockStockMovement.filas).toEqual([]);
+    expect(mockStock.filas[0].quantity).toBe(20);
+    expect(mockTransaccion.commits).toBe(0);
+    expect(mockTransaccion.rollbacks).toBe(1);
+  });
+
+  it('el mensaje escribe «cantidad 0,4» y no «cantidad 0.4»', async () => {
+    // El rechazo lo lee quien está cobrando. La cantidad pasa por
+    // `textoDeCantidadRecibida`, que la escribe con coma y sin la escala de la
+    // columna: un «0.4000» adentro de un mensaje al usuario sería el mismo
+    // defecto de presentación que esta funcionalidad viene a evitar.
+    const res = await vender(0.4);
+
+    expect(res.body.message).toContain('"Creatina 300g"');
+    expect(res.body.message).toContain('cantidad 0,4');
+    expect(res.body.message).not.toContain('0.4');
+  });
+
+  it('NO le contesta «cantidad 0» a quien mandó 0,00004', async () => {
+    // ⚠ Este caso es el ÚNICO que separa las dos funciones de texto, y por eso
+    // existe: para 0,4 las dos contestan «0,4» y un test escrito solo con ese
+    // valor pasa con `textoDeCantidad` y con `textoDeCantidadRecibida` por
+    // igual — o sea que no afirma nada sobre cuál se usa.
+    //
+    // `textoDeCantidad` redondea a 3 decimales porque describe cantidades
+    // reales; acá se describe lo que el cliente escribió, que justamente es
+    // inválido. Con aquella, el rechazo decía «cantidad 0» y mandaba a
+    // corregir un cero que nadie había mandado.
+    //
+    // Hoy la puerta solo acepta enteros y este valor no llega desde ninguna
+    // pantalla. En la 017, con la constante en 3, pasa a ser exactamente el
+    // caso que la regla nueva existe para atajar.
+    const res = await vender(0.00004);
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('cantidad 0,00004');
+    // La salida con el defecto puesto, entera: `textoDeCantidad` deja «0» y la
+    // frase sigue con el precio. Se nombra completa porque «cantidad 0,» es
+    // subcadena del texto CORRECTO y no distinguiría nada.
+    expect(res.body.message).not.toContain('cantidad 0, precio');
+  });
+
+  it('999999999999999 da 400 con un mensaje legible y no un 500 de Postgres', async () => {
+    // Por encima de lo que entra en `DECIMAL(14,4)` el motor responde «numeric
+    // field overflow», que es un 500 con nombres de columna adentro. Se rechaza
+    // antes. Con la validación vieja este ticket pasaba la puerta y salía por
+    // otra rama entera —el control de stock—, así que el código del error es lo
+    // que distingue las dos.
+    const res = await vender(999999999999999);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('ITEM_INVALIDO');
+    expect(mockSale.filas).toEqual([]);
+  });
+
+  it('el rechazo NO nombra la tabla, la columna ni la restricción (FR-021)', async () => {
+    const res = await vender(0.4);
+    const respuesta = JSON.stringify(res.body).toLowerCase();
+
+    for (const filtracion of ['sale_items', 'quantity', 'numeric', 'decimal', 'constraint', 'column', 'overflow']) {
+      expect(respuesta).not.toContain(filtracion);
+    }
+  });
+
+  it.each([
+    ['cero', 0],
+    ['negativa', -5],
+    ['«tres»', 'tres'],
+  ])('la cantidad %s se sigue rechazando, con la misma forma de respuesta', async (_, cantidad) => {
+    // US3.2, US3.3 y US3.4: los tres se rechazaban antes y se tienen que seguir
+    // rechazando **igual**. Si la forma de la respuesta hubiera cambiado, esto
+    // es lo que lo diría.
+    const res = await vender(cantidad);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ ok: false, error: 'ITEM_INVALIDO' });
+    expect(mockSale.filas).toEqual([]);
+  });
+
+  it('la cantidad negativa —el defecto viejo— responde EXACTAMENTE el mismo texto', async () => {
+    // Una cantidad negativa pasaba el control de stock y después hacía
+    // `quantity - (-5)`: SUMABA inventario. El texto de ese rechazo está en
+    // `contracts/api-endpoints.md` y no cambia con esta funcionalidad.
+    const res = await vender(-5);
+
+    expect(res.body.message)
+      .toBe('El item "Creatina 300g" tiene cantidad o precio inválidos (cantidad -5, precio 1200).');
+  });
+
+  it('un precio negativo se sigue rechazando: la otra mitad de la condición', async () => {
+    // La validación mira la cantidad **y** el precio. Sin este caso, cambiar la
+    // condición podría llevarse puesta la mitad del precio sin que nada avise.
+    const res = await vender(3, {
+      items: [{ product_id: PRODUCTO, product_name: 'Creatina 300g', quantity: 3, unit_price: -1 }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('ITEM_INVALIDO');
+  });
+
+  it('una venta normal de 3 unidades se registra igual que antes', async () => {
+    // Sin este caso, una validación que rechaza siempre pasaría todos los de
+    // arriba y dejaría el punto de venta sin poder cobrar. Se afirman el total,
+    // el descuento de stock y el movimiento: los tres que US3.6 nombra.
+    const res = await vender(3, { total: 3600 });
+
+    expect(res.status).toBe(201);
+    expect(mockSale.filas).toHaveLength(1);
+    expect(mockSale.filas[0]).toMatchObject({
+      id: 'sale_1738099999',
+      empresa_id: EMPRESA,
+      punto_de_venta_id: SUCURSAL,
+      total: 3600,
+      status: 'active',
+    });
+    expect(mockSaleItem.filas).toHaveLength(1);
+    expect(mockSaleItem.filas[0]).toMatchObject({ quantity: 3, unit_price: 1200 });
+    expect(mockStock.filas[0].quantity).toBe(17);
+    expect(mockStock.filas[0].available).toBe(17);
+    expect(mockStockMovement.filas).toHaveLength(1);
+    expect(mockStockMovement.filas[0]).toMatchObject({
+      tipo: 'sale',
+      cantidad_anterior: 20,
+      cantidad_nueva: 17,
+    });
+    expect(mockTransaccion.commits).toBe(1);
+  });
+});
+
+// ════════════════════════════════════════════
+//  El aviso de stock insuficiente al vender
+//
+//  `sales.js:548` interpolaba `${stock.available}` crudo. Con la columna en
+//  `DECIMAL` el driver entrega «5.0000» y el operador —que está con el cliente
+//  enfrente— lee «disponible 5.0000». Es el punto 8 de los diez donde una
+//  cantidad se dibuja, y el único de los dos que vive en el servidor junto con
+//  el de la transferencia.
+// ════════════════════════════════════════════
+
+describe('El aviso de stock insuficiente al vender dice «disponible 5», no «disponible 5.0000»', () => {
+  it('NO escribe la escala de la columna adentro del mensaje', async () => {
+    sembrarParaVender({ quantity: '5.0000', available: '5.0000' });
+
+    const res = await vender(8);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error)
+      .toBe('Stock insuficiente para "Creatina 300g": disponible 5, requerido 8');
+    expect(res.body.error).not.toContain('5.0000');
+  });
+
+  it('una cantidad fraccionaria se escribe con coma: «disponible 9,6»', async () => {
+    // El caso del insumo que pasó por producción: 9,6 y no 9.6, que es el punto
+    // decimal de otro idioma en una frase en castellano.
+    sembrarParaVender({ quantity: '9.6000', available: '9.6000' });
+
+    const res = await vender(10);
+
+    expect(res.body.error)
+      .toBe('Stock insuficiente para "Creatina 300g": disponible 9,6, requerido 10');
+  });
+
+  it('el catch sigue reconociendo el error por el texto y responde 400, no 500', async () => {
+    // `sales.js` distingue esta condición con
+    // `err.message.startsWith('Stock insuficiente')`: no hay código de error que
+    // la separe. Si el mensaje dejara de empezar así, el aviso saldría por
+    // `fallo()` como un 500 «Error al registrar la venta» y el operador no se
+    // enteraría de que lo que falta es mercadería. Leerlo en el fuente no
+    // alcanza: acá se ejecuta.
+    sembrarParaVender({ quantity: '5.0000', available: '5.0000' });
+
+    const res = await vender(8);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/^Stock insuficiente/);
+    expect(res.body.ok).toBe(false);
+    expect(mockTransaccion.commits).toBe(0);
+    expect(mockTransaccion.rollbacks).toBe(1);
+  });
+
+  it('con stock suficiente el aviso no aparece y la venta se registra', async () => {
+    // El control: sin esto, un handler que respondiera 400 siempre pasaría los
+    // tres casos de arriba.
+    sembrarParaVender({ quantity: '20.0000', available: '20.0000' });
+
+    const res = await vender(3, { total: 3600 });
+
+    expect(res.status).toBe(201);
+    expect(mockStockMovement.filas).toHaveLength(1);
   });
 });

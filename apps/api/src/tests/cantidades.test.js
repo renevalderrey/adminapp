@@ -19,6 +19,7 @@ const {
   sumarCantidades,
   redondearCantidad,
   textoDeCantidad,
+  textoDeCantidadRecibida,
   motivoDeCantidadInvalida,
   DECIMALES_DE_UNA_LINEA_DE_VENTA,
 } = require('../utils/cantidades');
@@ -254,5 +255,43 @@ describe('Los cuatro caminos por los que una cantidad de texto rompe', () => {
   it('parseInt("0.4") es 0: truncar no avisa', () => {
     expect(parseInt('0.4', 10)).toBe(0);
     expect(aCantidad('0.4')).toBe(0.4);
+  });
+});
+
+describe('textoDeCantidadRecibida · repetir lo que mandaron, sin mentir', () => {
+  // Las dos funciones de texto contestan preguntas distintas y por eso son dos.
+  // `textoDeCantidad` describe una cantidad REAL —un stock, un disponible— y
+  // redondea a 3 decimales. Ésta describe **lo que el cliente escribió**, que
+  // justamente es inválido: redondearlo borra la evidencia de por qué se
+  // rechazó.
+  it('NO contesta «0» a quien mandó 0,00004', () => {
+    // El defecto que evita: el mensaje de ITEM_INVALIDO usaba
+    // `textoDeCantidad`, así que el rechazo de 0.00004 decía «cantidad 0» y
+    // mandaba a corregir un cero que nadie había mandado.
+    expect(textoDeCantidad(0.00004)).toBe('0');
+    expect(textoDeCantidadRecibida(0.00004)).toBe('0,00004');
+  });
+
+  it('escribe la coma decimal, como el resto del sistema', () => {
+    expect(textoDeCantidadRecibida(0.4)).toBe('0,4');
+    expect(textoDeCantidadRecibida(-5)).toBe('-5');
+    expect(textoDeCantidadRecibida(3)).toBe('3');
+  });
+
+  it('no deja que el mensaje de error sea un altavoz', () => {
+    const largo = 'x'.repeat(500);
+    expect(textoDeCantidadRecibida(largo).length).toBeLessThanOrEqual(21);
+  });
+
+  it('no desfigura un texto que no es un número cambiándole los puntos', () => {
+    // El reemplazo de punto por coma es para números. Sobre un texto
+    // arbitrario sólo lo vuelve más difícil de reconocer para quien lo mandó.
+    expect(textoDeCantidadRecibida('a.b')).toBe('a.b');
+  });
+
+  it('distingue el vacío del cero, que es lo que el cero no dice', () => {
+    expect(textoDeCantidadRecibida(null)).toBe('(vacío)');
+    expect(textoDeCantidadRecibida('')).toBe('(vacío)');
+    expect(textoDeCantidadRecibida(0)).toBe('0');
   });
 });

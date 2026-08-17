@@ -159,6 +159,60 @@ function textoDeCantidad(valor) {
 }
 
 /**
+ * Cuánto máximo se repite de lo que mandó el cliente, en un mensaje de rechazo.
+ *
+ * El valor viene del cuerpo de un request, así que puede ser cualquier cosa. Se
+ * corta para que nadie use el mensaje de error como altavoz de diez kilobytes.
+ */
+const LARGO_DE_UNA_CANTIDAD_RECHAZADA = 20;
+
+/**
+ * La cantidad **tal como llegó**, para repetirla en un mensaje de rechazo.
+ *
+ * ⚠ No usa `textoDeCantidad`, y la diferencia importa: aquella redondea a 3
+ * decimales porque describe una cantidad real —un stock, un disponible—, y acá
+ * lo que se describe es **lo que el cliente escribió**, que justamente es
+ * inválido. Medido: `textoDeCantidad(0.00004)` da `'0'`, o sea que el rechazo
+ * de `0.00004` contestaba «cantidad 0» y mandaba a corregir un cero que nadie
+ * había mandado.
+ *
+ * Hoy el caso es inalcanzable —el endpoint solo acepta enteros— y por eso se
+ * arregla ahora: la **017** mueve `DECIMALES_DE_UNA_LINEA_DE_VENTA` a 3 y abre
+ * la puerta, y entonces éste pasa a ser exactamente el caso que la regla nueva
+ * existe para atajar. Un mensaje que miente justo ahí es peor que ninguno.
+ *
+ * Repetir un valor del request en la respuesta es lo que ya hace la misma
+ * frase con el nombre del producto. Viaja como JSON y la pantalla lo dibuja
+ * como texto, pero se acota igual por las dudas.
+ *
+ * ⚠ **Lo que esto NO arregla, porque se pierde antes.** En
+ * `POST /api/sales` el valor pasa por `calculosVenta.js:30`, que hace
+ * `Number.isFinite(cantidad) ? cantidad : 0`: un `'tres'` ya llegó acá
+ * convertido en **0**, y el rechazo dice «cantidad 0» con el motivo «tiene que
+ * ser mayor que cero» en vez de «tiene que ser un número». Es un defecto de
+ * `normalizarItem` —aplanar lo ilegible antes de que alguien pueda
+ * rechazarlo— y no de esta función, que recibe el cero ya hecho. Anotado y no
+ * arreglado acá: tocar `normalizarItem` cambia el contrato de todas las
+ * lineas de venta y no es de la 016.
+ *
+ * @returns {string}
+ */
+function textoDeCantidadRecibida(valor) {
+  if (valor === null || valor === undefined) return '(vacío)';
+
+  const crudo = String(valor).trim();
+  if (crudo === '') return '(vacío)';
+
+  const recortado = crudo.length > LARGO_DE_UNA_CANTIDAD_RECHAZADA
+    ? `${crudo.slice(0, LARGO_DE_UNA_CANTIDAD_RECHAZADA)}…`
+    : crudo;
+
+  // Solo la coma decimal, y solo si es un número: cambiar puntos por comas en
+  // un texto arbitrario lo desfigura sin ayudar a nadie.
+  return Number.isFinite(Number(crudo)) ? recortado.replace('.', ',') : recortado;
+}
+
+/**
  * Por qué una cantidad **no** se puede aceptar, o `null` si se puede.
  *
  * Devuelve un fragmento en castellano para que quien llama arme el mensaje
@@ -205,6 +259,7 @@ module.exports = {
   sumarCantidades,
   redondearCantidad,
   textoDeCantidad,
+  textoDeCantidadRecibida,
   motivoDeCantidadInvalida,
   DECIMALES_DE_UNA_LINEA_DE_VENTA,
   DECIMALES_DE_LA_COLUMNA,

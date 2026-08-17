@@ -188,7 +188,7 @@ en producción— y los dos mensajes de stock insuficiente dejan de depender del
 del valor. Todo esto **corrige defectos que existen hoy** y no espera a la
 migración.
 
-- [ ] **T201** `apps/api/src/routes/sales.js:321-332` — `motivoDeCantidadInvalida(l.quantity,
+- [x] **T201** `apps/api/src/routes/sales.js:321-332` — `motivoDeCantidadInvalida(l.quantity,
       DECIMALES_DE_UNA_LINEA_DE_VENTA)` reemplaza a `l.quantity <= 0`. **La forma de
       la respuesta no cambia**: sigue siendo
       `400 { ok: false, error: 'ITEM_INVALIDO', message: … }` con el producto y la
@@ -202,7 +202,7 @@ migración.
       sin tocarse** (US3.3): si hubo que editarlo, la forma de la respuesta cambió y
       eso es un fallo de la tarea.
 
-- [ ] **T202** Crear `apps/api/src/tests/integracion/cantidadesDecimales.integracion.test.js`
+- [x] **T202** Crear `apps/api/src/tests/integracion/cantidadesDecimales.integracion.test.js`
       con la mitad de US3 que solo se ve contra Postgres: `POST /api/sales` con
       `quantity: 0.4` se rechaza **y no queda ninguna fila**. *(Depende de T201.)*
       **Verificación**: después del 400, `sales`, `sale_items` y `stock_movements` no
@@ -214,7 +214,7 @@ migración.
       `limpiarLaBase()` + `sembrarDosEmpresas()` en el `beforeEach` y `cerrar()` en el
       `afterAll`.
 
-- [ ] **T203** [P] `apps/api/src/routes/sales.js:548` — el mensaje de stock
+- [x] **T203** [P] `apps/api/src/routes/sales.js:548` — el mensaje de stock
       insuficiente al vender escribe `textoDeCantidad(stock.available)`.
       *(Depende de T101.)*
       **Verificación**: con `stock.available` inyectado como `'5.0000'` el mensaje
@@ -222,7 +222,7 @@ migración.
       reconoce el error por `err.message.startsWith('Stock insuficiente')`, sigue
       entrando por esa rama —hay un test que lo ejercita, no alcanza con leerlo—.
 
-- [ ] **T204** [P] `apps/api/src/routes/stock.js:142` —
+- [x] **T204** [P] `apps/api/src/routes/stock.js:142` —
       `sourceStock?.quantity || 0` pasa a `textoDeCantidad(sourceStock?.quantity)`.
       **No se arregla formateando el resultado**: con la cadena `"0.0000"`, que es
       *truthy*, el `||` deja de caer al cero. Lo que se saca es la dependencia de que

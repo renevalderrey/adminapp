@@ -18,7 +18,13 @@ const { filtroVentas } = require('../utils/filtroVentas');
 const { filaDeExport, totalDelPeriodo } = require('../utils/exportVentas');
 const { condicionIvaDeAfip } = require('../utils/condicionIvaAfip');
 const { resolverSucursal, sucursalPorDefecto } = require('../utils/sucursalDeStock');
-const { sumarCantidades } = require('../utils/cantidades');
+const {
+  sumarCantidades,
+  textoDeCantidad,
+  textoDeCantidadRecibida,
+  motivoDeCantidadInvalida,
+  DECIMALES_DE_UNA_LINEA_DE_VENTA,
+} = require('../utils/cantidades');
 
 /**
  * La sucursal a la que vuelve la mercadería de una venta anulada.
@@ -319,16 +325,54 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
     // Una cantidad negativa pasaba el control de stock (available < -5 es
     // falso) y despues hacia quantity - (-5), es decir SUMABA inventario.
     // Registrar una venta con cantidad -5 creaba mercaderia de la nada.
+    //
+    // Y el `l.quantity <= 0` que atajaba eso dejaba pasar `0.4`: validaba el
+    // valor de JavaScript, donde 0,4 es mayor que cero, y la columna es
+    // INTEGER, asi que Postgres lo redondeaba al asignar y la venta quedaba
+    // asentada con cantidad CERO. Se descontaba cero de stock, el importe
+    // quedaba intacto y la respuesta era un 201: nada avisaba. Eso pasa hoy,
+    // en produccion, y **migrar la columna no lo arregla**: lo corre un
+    // escalon, porque con DECIMAL(14,4) el que se guardaria como cero pasa a
+    // ser `0.00004`. El defecto no es el tipo de la columna sino aceptar lo
+    // que la columna no puede representar.
+    //
+    // `DECIMALES_DE_UNA_LINEA_DE_VENTA` vale 0 en la 016: la capacidad queda
+    // en el esquema y **la puerta sigue cerrada a toda fraccion** (PENDIENTE 2
+    // de la spec, resuelto), que es lo que permite afirmar que ninguna venta
+    // puede tener una cantidad que antes no podia tener. La 017 abre la puerta
+    // moviendo esa constante a 3 —un gramo— junto con la pantalla que la
+    // necesita; esta linea no se toca entonces.
     const invalida = lineas
       .map((item, i) => ({ i, ...normalizarItem(item) }))
-      .find((l) => l.quantity <= 0 || l.unit_price < 0);
+      .find((l) => motivoDeCantidadInvalida(l.quantity, DECIMALES_DE_UNA_LINEA_DE_VENTA)
+        || l.unit_price < 0);
 
     if (invalida) {
       await t.rollback();
       return res.status(400).json({
         ok: false,
         error: 'ITEM_INVALIDO',
-        message: `El item "${invalida.product_name}" tiene cantidad o precio inválidos (cantidad ${invalida.quantity}, precio ${invalida.unit_price}).`,
+        // La forma de la respuesta es la de siempre —mismo status, mismo
+        // codigo, el producto y la cantidad nombrados— para que el rechazo de
+        // la cantidad negativa siga contestando lo mismo que contestaba.
+        //
+        // La cantidad no va interpolada cruda —un «0.4» con punto, en un
+        // sistema donde todo lo demas usa coma, es el mismo defecto de
+        // presentacion que esta funcionalidad viene a evitar— pero tampoco por
+        // `textoDeCantidad`, y la diferencia es la que hace que el mensaje no
+        // mienta.
+        //
+        // `textoDeCantidad` redondea a 3 decimales porque describe cantidades
+        // REALES: un stock, un disponible. Acá lo que se describe es lo que el
+        // cliente escribio, que justamente es invalido. Medido:
+        // `textoDeCantidad(0.00004)` da «0», o sea que el rechazo contestaba
+        // «cantidad 0» y mandaba a corregir un cero que nadie mando.
+        //
+        // Hoy es inalcanzable —la puerta solo acepta enteros— y por eso se
+        // arregla ahora: la 017 mueve la constante a 3 y abre la puerta, y
+        // entonces `0.00004` pasa a ser exactamente el caso que la regla nueva
+        // existe para atajar. No nombra tabla, columna ni restriccion (FR-021).
+        message: `El item "${invalida.product_name}" tiene cantidad o precio inválidos (cantidad ${textoDeCantidadRecibida(invalida.quantity)}, precio ${invalida.unit_price}).`,
       });
     }
 
@@ -546,7 +590,17 @@ router.post('/', checkPermission('ventas.crear'), async (req, res) => {
         if (stock) {
           const qty = si.quantity;
           if (stock.available < qty) {
-            throw new Error(`Stock insuficiente para "${si.product_name}": disponible ${stock.available}, requerido ${qty}`);
+            // `stock.available` sale de la base: con la columna en DECIMAL el
+            // driver lo entrega como «5.0000» y el aviso que lee quien esta
+            // cobrando pasaria a decir «disponible 5.0000». `textoDeCantidad`
+            // lo escribe como se lee —5, y 9,6 con coma— sin separador de
+            // miles, que adentro de una frase se lee de dos maneras.
+            //
+            // ⚠ El texto tiene que seguir empezando por «Stock insuficiente»:
+            // el catch de este mismo handler reconoce esta condicion por
+            // `err.message.startsWith('Stock insuficiente')` para contestar 400
+            // en vez de 500, y no hay codigo de error que lo distinga.
+            throw new Error(`Stock insuficiente para "${si.product_name}": disponible ${textoDeCantidad(stock.available)}, requerido ${qty}`);
           }
           const oldQty = stock.quantity;
           const oldAvail = stock.available;

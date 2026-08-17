@@ -799,6 +799,109 @@ describe('POST /api/stock/transfer suma en el destino, no concatena', () => {
 });
 
 // ════════════════════════════════════════════
+//  El aviso de stock insuficiente al transferir
+//
+//  `stock.js:142` escribía `${sourceStock?.quantity || 0}`. **Esto no se
+//  arregla formateando el resultado**, y por eso es el más difícil de los diez
+//  puntos donde una cantidad se dibuja: ese `|| 0` no estaba ahí por el formato
+//  sino para cubrir el caso sin fila de stock, y con la columna en `DECIMAL` el
+//  driver entrega la cadena «0.0000», que es *truthy*. El `||` deja de caer al
+//  cero **justo en el stock cero, que es el único caso en que este mensaje se
+//  lee**: para que aparezca, el disponible tiene que ser menor que lo que se
+//  quiere mover.
+//
+//  Los tres casos van juntos a propósito. El de «0.0000» es el que distingue el
+//  defecto; los otros dos son el control de que la corrección no rompió lo que
+//  ya andaba —y sin ellos, cambiar la expresión por cualquier cosa que devuelva
+//  «0» siempre pasaría igual—.
+// ════════════════════════════════════════════
+
+describe('el aviso de la transferencia dice «disponible: 0», con la cantidad en texto o en número', () => {
+  const ORIGEN = 31;
+  const DESTINO = 32;
+
+  beforeEach(() => {
+    mockTransaccion.commits = 0;
+    mockTransaccion.rollbacks = 0;
+
+    mockProductModelo.filas = [{ id: 501, empresa_id: PROPIA, name: 'Creatina 300g' }];
+    mockPuntoDeVentaModelo.filas = [
+      { id: ORIGEN, empresa_id: PROPIA, name: 'Depósito', code: 'general', is_active: true },
+      { id: DESTINO, empresa_id: PROPIA, name: 'Sucursal Ortiz', code: 'ortiz', is_active: true },
+    ];
+    mockStockTransferModelo.filas = [];
+    mockStockModelo.filas = [];
+    mockStockModelo.llamadas = [];
+  });
+
+  /** La fila del origen, con la cantidad tal como la entrega el driver. */
+  function sembrarOrigen(cantidad) {
+    mockStockModelo.filas = [{
+      id: 1, product_id: 501, empresa_id: PROPIA, punto_de_venta_id: ORIGEN,
+      quantity: cantidad, available: cantidad,
+    }];
+  }
+
+  const transferir = () => request(levantarApi(PROPIA))
+    .post('/api/stock/transfer')
+    .send({
+      from_punto_de_venta_id: ORIGEN,
+      to_punto_de_venta_id: DESTINO,
+      items: [{ product_id: 501, quantity: 2 }],
+    });
+
+  const ESPERADO = 'Stock insuficiente en "Depósito" para "Creatina 300g" (disponible: 0, requerido: 2)';
+
+  it('NO dice «disponible: 0.0000» cuando el driver entrega el cero como texto', async () => {
+    // **El caso que importa.** Es exactamente donde la expresión de hoy cambia
+    // de rama: «0.0000» es *truthy*, así que el `|| 0` no cae y el mensaje sale
+    // con la escala de la columna adentro.
+    sembrarOrigen('0.0000');
+
+    const res = await transferir();
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe(ESPERADO);
+    expect(res.body.error).not.toContain('0.0000');
+  });
+
+  it('con el cero numérico de hoy sigue diciendo lo mismo', async () => {
+    // El control: con `INTEGER`, `0 || 0` ya daba 0. Este caso NO distingue el
+    // defecto y se afirma para que la corrección no cambie lo que se lee hoy.
+    sembrarOrigen(0);
+
+    const res = await transferir();
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe(ESPERADO);
+  });
+
+  it('sin fila de stock en el origen también dice «disponible: 0»', async () => {
+    // El caso que el `|| 0` cubría de verdad: `undefined || 0`. Es el que se
+    // rompería si alguien «arreglara» esto con un `Number(...)` suelto, que
+    // daría «disponible: NaN».
+    mockStockModelo.filas = [];
+
+    const res = await transferir();
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe(ESPERADO);
+    expect(res.body.error).not.toContain('NaN');
+  });
+
+  it('una transferencia que sí tiene stock no dispara el aviso', async () => {
+    // Sin este caso, un handler que rechazara siempre pasaría los tres de
+    // arriba y la transferencia quedaría rota.
+    sembrarOrigen('10.0000');
+
+    const res = await transferir();
+
+    expect(res.status).toBe(201);
+    expect(mockTransaccion.commits).toBe(1);
+  });
+});
+
+// ════════════════════════════════════════════
 //  La edición manual de stock: el `Math.max` que parece coercionado
 //
 //  `general.js:90` y `:181` son el peor de los cinco sitios de la 016 **y el

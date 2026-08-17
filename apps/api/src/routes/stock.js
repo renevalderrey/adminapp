@@ -6,7 +6,7 @@ const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo, ErrorDeNegocio } = require('../utils/errores');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
-const { sumarCantidades } = require('../utils/cantidades');
+const { sumarCantidades, textoDeCantidad } = require('../utils/cantidades');
 
 // GET /api/stock/sucursales — Las sucursales de la empresa, INCLUIDAS las inactivas
 //
@@ -140,7 +140,15 @@ router.post('/transfer', checkPermission('stock.transferir'), async (req, res) =
 
       if (!sourceStock || sourceStock.quantity < qty) {
         const product = await findScoped(Product, productId, empresaId);
-        throw new ErrorDeNegocio(`Stock insuficiente en "${fromPv.name}" para "${product?.name || 'Producto'}" (disponible: ${sourceStock?.quantity || 0}, requerido: ${qty})`);
+        // ⚠ Esto **no se arregla formateando el resultado**. La expresion era
+        // `sourceStock?.quantity || 0`, y ese `|| 0` no estaba ahi por el
+        // formato: era lo que cubria el caso sin fila de stock. Con la columna
+        // en DECIMAL el driver entrega la cadena «0.0000», que es *truthy*, y
+        // el `||` deja de caer al cero — justo en el stock cero, que es el
+        // UNICO caso en que este mensaje se lee. Lo que se saca es la
+        // dependencia de que el valor sea *falsy*: `textoDeCantidad` contesta
+        // «0» tanto para `undefined` como para «0.0000» como para el 0.
+        throw new ErrorDeNegocio(`Stock insuficiente en "${fromPv.name}" para "${product?.name || 'Producto'}" (disponible: ${textoDeCantidad(sourceStock?.quantity)}, requerido: ${qty})`);
       }
 
       sourceStock.quantity -= qty;
