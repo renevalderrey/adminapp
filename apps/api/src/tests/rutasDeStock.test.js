@@ -126,7 +126,11 @@ describe('PUT /stock/:id no mueve mercadería de sucursal', () => {
   });
 
   it('sigue sincronizando available cuando solo viene quantity', () => {
-    expect(PUT_STOCK).toMatch(/Math\.max\(0, oldAvail \+ delta\)/);
+    // ⚠ La forma cambió en la 016 y el motivo está escrito en `general.js`:
+    // `Math.max` convierte DESPUÉS de que el `+` concatenó, así que la suma va
+    // sobre `aCantidad(...)`. Lo que esta guardia sigue afirmando es que la
+    // sincronización existe —que es lo que protegía— y no la forma vieja.
+    expect(PUT_STOCK).toMatch(/Math\.max\(0, aCantidad\(oldAvail\) \+ delta\)/);
   });
 
   it('sigue dejando el StockMovement', () => {
@@ -392,6 +396,12 @@ const mockBrandModelo = crearModelo([]);
 const mockFixedExpenseModelo = crearModelo([]);
 const mockSettingModelo = crearModelo([]);
 const mockSupplierModelo = crearModelo([]);
+const mockStockTransferModelo = crearModelo([]);
+const mockProductCostHistoryModelo = crearModelo([]);
+
+// La transacción de `POST /api/stock/transfer`. Se cuentan commit y rollback
+// para poder afirmar que una transferencia que falla no queda a medias.
+const mockTransaccion = { commits: 0, rollbacks: 0 };
 
 // findScoped normaliza el id contra la clave primaria del modelo. Sin esto, un
 // id que llega como '501' en el cuerpo no coincidiría nunca con el 501 del
@@ -420,16 +430,57 @@ mockStockModelo.findOrCreate = async (opciones = {}) => {
   return [mockStockModelo._hidratar(fila), true];
 };
 
+/**
+ * `save()`, que `modelosFalsos` no trae.
+ *
+ * `POST /api/stock/transfer` escribe con `instancia.save()` y no con
+ * `update()`. Sin esto la ruta tira un TypeError, `fallo` lo convierte en un
+ * 500 y una prueba que mira el stock del destino pasaría **sin haber
+ * ejercitado nada** —vería la fila como estaba y creería que no se tocó—.
+ */
+const findOneDeStock = mockStockModelo.findOne.bind(mockStockModelo);
+
+mockStockModelo.findOne = async (opciones = {}) => {
+  const instancia = await findOneDeStock(opciones);
+  if (!instancia) return null;
+
+  const fila = mockStockModelo.filas.find((f) => f.id === instancia.id);
+
+  instancia.save = async () => {
+    const { update, destroy, toJSON, save, ...datos } = instancia;
+    Object.assign(fila, datos);
+    return instancia;
+  };
+
+  return instancia;
+};
+
 jest.mock('../models', () => ({
   Stock: mockStockModelo,
   Product: mockProductModelo,
   PuntoDeVenta: mockPuntoDeVentaModelo,
   StockMovement: mockStockMovementModelo,
+  StockTransfer: mockStockTransferModelo,
+  ProductCostHistory: mockProductCostHistoryModelo,
   Brand: mockBrandModelo,
   FixedExpense: mockFixedExpenseModelo,
   Setting: mockSettingModelo,
   Supplier: mockSupplierModelo,
+  sequelize: {
+    transaction: async () => ({
+      LOCK: { UPDATE: 'UPDATE' },
+      commit: async () => { mockTransaccion.commits++; },
+      rollback: async () => { mockTransaccion.rollbacks++; },
+    }),
+  },
 }));
+
+// ⚠ `general.js:96` NO toma `StockMovement` de `../models`: lo requiere
+// directo del archivo del modelo, adentro del handler. Mockear `../models` no
+// alcanza, y sin este segundo mock el `create` va contra la base real,
+// `fallo()` lo convierte en un 500 y una prueba sobre el disponible fallaría
+// por un motivo que no es el suyo.
+jest.mock('../models/StockMovement', () => mockStockMovementModelo);
 
 function levantarApi(empresaId) {
   const api = express();
@@ -441,6 +492,8 @@ function levantarApi(empresaId) {
     siguiente();
   });
   api.use('/api', require('../routes/general'));
+  api.use('/api/stock', require('../routes/stock'));
+  api.use('/api/import', require('../routes/import'));
   return api;
 }
 
@@ -625,5 +678,350 @@ describe('POST /api/stock/bulk tampoco cuelga filas de productos ajenos', () => 
       });
 
     expect(res.status).toBe(200);
+  });
+});
+
+// ════════════════════════════════════════════
+//  La transferencia suma bien EN EL DESTINO
+//
+//  `stock.js` tiene el defecto y la corrección en el mismo bucle: `:145-146`
+//  saca del origen con `-=` —que fuerza a número y anda— y diez líneas más
+//  abajo `:155-156` sumaba al destino con `+=`. Con la columna en DECIMAL el
+//  driver entrega texto y la suma concatena, así que una transferencia sacaría
+//  bien de una sucursal y escribiría basura en la otra: **la mercadería
+//  desaparece de un local y no aparece en el otro**.
+//
+//  ⚠ Por eso todo este bloque mira el DESTINO. Un test que verificara el
+//  origen —que es lo primero que sale escribir— pasa en verde con el defecto
+//  puesto, porque la resta cierra igual con y sin la corrección.
+//
+//  ⚠ Y por eso son dobles y no integración: con `stock.quantity` todavía en
+//  `INTEGER`, Postgres devuelve números y el defecto **no existe todavía**. El
+//  doble devuelve lo que se le puso: `destStock.quantity = '20.0000'` lo
+//  distingue hoy.
+// ════════════════════════════════════════════
+
+describe('POST /api/stock/transfer suma en el destino, no concatena', () => {
+  const ORIGEN = 31;
+  const DESTINO = 32;
+
+  beforeEach(() => {
+    mockTransaccion.commits = 0;
+    mockTransaccion.rollbacks = 0;
+
+    mockProductModelo.filas = [{ id: 501, empresa_id: PROPIA, name: 'Creatina 300g' }];
+    mockPuntoDeVentaModelo.filas = [
+      { id: ORIGEN, empresa_id: PROPIA, name: 'Depósito', code: 'general', is_active: true },
+      { id: DESTINO, empresa_id: PROPIA, name: 'Sucursal Ortiz', code: 'ortiz', is_active: true },
+    ];
+    mockStockTransferModelo.filas = [];
+    mockStockModelo.llamadas = [];
+  });
+
+  /** El origen y el destino, con las cantidades como las entrega el driver. */
+  function sembrar(enOrigen, enDestino) {
+    mockStockModelo.filas = [
+      {
+        id: 1, product_id: 501, empresa_id: PROPIA, punto_de_venta_id: ORIGEN,
+        quantity: enOrigen, available: enOrigen,
+      },
+      {
+        id: 2, product_id: 501, empresa_id: PROPIA, punto_de_venta_id: DESTINO,
+        quantity: enDestino, available: enDestino,
+      },
+    ];
+  }
+
+  const transferir = (cantidad) => request(levantarApi(PROPIA))
+    .post('/api/stock/transfer')
+    .send({
+      from_punto_de_venta_id: ORIGEN,
+      to_punto_de_venta_id: DESTINO,
+      items: [{ product_id: 501, quantity: cantidad }],
+    });
+
+  const destino = () => mockStockModelo.filas.find((f) => f.punto_de_venta_id === DESTINO);
+  const origen = () => mockStockModelo.filas.find((f) => f.punto_de_venta_id === ORIGEN);
+
+  it('NO concatena cuando el driver devuelve la cantidad del destino como texto', async () => {
+    // El destino en 20 y se mandan 5: tiene que quedar en 25. Con el `+=`
+    // desnudo queda en «20.00005», que es cuatro mil veces más mercadería de
+    // la que hay y que ninguna restricción rechaza.
+    sembrar('50.0000', '20.0000');
+
+    const res = await transferir(5);
+
+    expect(res.status).toBe(201);
+    expect(destino().quantity).toBe(25);
+    expect(destino().available).toBe(25);
+    expect(destino().quantity).not.toBe('20.00005');
+  });
+
+  it('el ORIGEN cierra igual con y sin la corrección: no sirve de control', async () => {
+    // Se afirma a propósito. La resta fuerza a número, así que este número es
+    // el mismo antes y después del arreglo — y un test que mirara solo esto
+    // pasaría en verde con la transferencia rota.
+    sembrar('50.0000', '20.0000');
+
+    await transferir(5);
+
+    expect(origen().quantity).toBe(45);
+    expect(origen().available).toBe(45);
+  });
+
+  it('una cantidad fraccionaria llega entera al destino', async () => {
+    // 20 + 0,5 tiene que dar 20,5 exactos. Con la concatenación da «20.00000.5»,
+    // que ni siquiera es un número.
+    sembrar('50.0000', '20.0000');
+
+    const res = await transferir(0.5);
+
+    expect(res.status).toBe(201);
+    expect(destino().quantity).toBe(20.5);
+  });
+
+  it('la transferencia queda registrada y la transacción se confirma', async () => {
+    // Sin esto, los casos de arriba pasarían con un endpoint que responde y no
+    // escribe nada.
+    sembrar('50.0000', '20.0000');
+
+    await transferir(5);
+
+    expect(mockStockTransferModelo.filas).toHaveLength(1);
+    expect(mockStockTransferModelo.filas[0]).toMatchObject({
+      from_punto_de_venta_id: ORIGEN,
+      to_punto_de_venta_id: DESTINO,
+      empresa_id: PROPIA,
+    });
+    expect(mockTransaccion.commits).toBe(1);
+    expect(mockTransaccion.rollbacks).toBe(0);
+  });
+});
+
+// ════════════════════════════════════════════
+//  La edición manual de stock: el `Math.max` que parece coercionado
+//
+//  `general.js:90` y `:181` son el peor de los cinco sitios de la 016 **y el
+//  que más fácil pasa una revisión de código**:
+//
+//      Math.max(0, "100" + 5)   →   1005
+//
+//  Hay una función numérica alrededor de la suma, así que la línea da la
+//  impresión de estar convertida. No lo está: `Math.max` convierte DESPUÉS de
+//  que el `+` ya concatenó. No lanza nada, no rompe ninguna restricción, y
+//  devuelve un número creíble — mil y pico donde había ciento cinco.
+//
+//  Se ejercitan **las dos puertas**, porque son dos handlers distintos con la
+//  misma cuenta escrita dos veces: `PUT /api/stock/:id` (la fila que ya
+//  existe) y `POST /api/stock` (el alta que encuentra la fila existente).
+// ════════════════════════════════════════════
+
+describe('la edición manual deja el disponible en 105 y no en 1005', () => {
+  const SUCURSAL = 31;
+
+  beforeEach(() => {
+    mockProductModelo.filas = [{ id: 501, empresa_id: PROPIA, name: 'Creatina 300g' }];
+    mockPuntoDeVentaModelo.filas = [
+      { id: SUCURSAL, empresa_id: PROPIA, name: 'Depósito', code: 'principal', is_active: true },
+    ];
+    // Los valores como los entrega el driver con la columna en DECIMAL. Con
+    // números —lo que devuelve hoy `INTEGER`— este bloque pasaría en verde con
+    // el defecto puesto.
+    mockStockModelo.filas = [{
+      id: 1,
+      product_id: 501,
+      empresa_id: PROPIA,
+      punto_de_venta_id: SUCURSAL,
+      quantity: '100.0000',
+      available: '100.0000',
+      min_stock: '0.0000',
+    }];
+    mockStockMovementModelo.filas = [];
+    mockStockModelo.llamadas = [];
+  });
+
+  const fila = () => mockStockModelo.filas[0];
+
+  it('PUT /api/stock/:id — NO concatena adentro del Math.max', async () => {
+    const res = await request(levantarApi(PROPIA))
+      .put('/api/stock/1')
+      .send({ quantity: 105 });
+
+    expect(res.status).toBe(200);
+    expect(fila().quantity).toBe(105);
+    expect(fila().available).toBe(105);
+    expect(fila().available).not.toBe(1005);
+  });
+
+  it('POST /api/stock — la otra puerta, con la misma cuenta escrita aparte', async () => {
+    // Dos handlers, dos copias de la misma línea. Arreglar una sola deja el
+    // defecto vivo por el camino que usa la pantalla de alta.
+    const res = await request(levantarApi(PROPIA))
+      .post('/api/stock')
+      .send({ product_id: 501, quantity: 105, punto_de_venta_id: SUCURSAL });
+
+    expect(res.status).toBe(200);
+    expect(fila().quantity).toBe(105);
+    expect(fila().available).toBe(105);
+    expect(fila().available).not.toBe(1005);
+  });
+
+  it('bajar el stock sigue bajando el disponible el mismo delta', async () => {
+    // La resta anda con y sin la corrección, así que este caso NO sirve de
+    // control: se afirma para que la conversión no haya roto el camino que
+    // funcionaba.
+    const res = await request(levantarApi(PROPIA))
+      .put('/api/stock/1')
+      .send({ quantity: 90 });
+
+    expect(res.status).toBe(200);
+    expect(fila().available).toBe(90);
+  });
+
+  it('el Math.max(0, …) se conserva: un disponible negativo sigue quedando en cero', async () => {
+    // Esta funcionalidad **no** cambia el trato del disponible negativo. Solo
+    // hace que la suma de adentro sea una suma.
+    mockStockModelo.filas[0].available = '3.0000';
+
+    const res = await request(levantarApi(PROPIA))
+      .put('/api/stock/1')
+      .send({ quantity: 10 });
+
+    expect(res.status).toBe(200);
+    // delta = 10 - 100 = -90; 3 - 90 = -87 → 0.
+    expect(fila().available).toBe(0);
+  });
+
+  it('el movimiento manual registra el disponible ya sumado', async () => {
+    // `disponible_nuevo` es lo que después lee la auditoría de inventario: si
+    // la cuenta concatena, el movimiento deja asentada la concatenación.
+    await request(levantarApi(PROPIA))
+      .put('/api/stock/1')
+      .send({ quantity: 105 });
+
+    expect(mockStockMovementModelo.filas).toHaveLength(1);
+    expect(mockStockMovementModelo.filas[0]).toMatchObject({
+      tipo: 'manual',
+      disponible_anterior: '100.0000',
+      disponible_nuevo: 105,
+    });
+  });
+});
+
+// ════════════════════════════════════════════
+//  La importación de planillas: `parseInt` trunca y no avisa
+//
+//  `import.js:406` leía la columna de stock con `parseInt(data.quantity, 10)`.
+//  `parseInt('0.4')` es **0**: una planilla que dice 0,4 kg importaba cero, sin
+//  error, sin aviso y sin fila de errores. Y `:431` hacía lo mismo con el
+//  mínimo.
+//
+//  ⚠ Lo que NO se puede perder al arreglarlo es la distinción que el comentario
+//  de ese bloque documenta desde antes: **celda vacía ≠ cero**. Una planilla
+//  parcial —solo para actualizar precios, con la columna de stock en blanco—
+//  no puede vaciar el inventario. Por eso el caso de la celda vacía va al lado
+//  del de 0,4: son las dos mitades de la misma corrección, y arreglar una sola
+//  es cambiar un defecto por otro peor.
+// ════════════════════════════════════════════
+
+describe('la importación NO trunca la cantidad, y la celda vacía sigue sin tocar la fila', () => {
+  const SUCURSAL = 31;
+
+  beforeEach(() => {
+    mockProductModelo.filas = [{ id: 501, empresa_id: PROPIA, name: 'Creatina 300g', cost: 900 }];
+    mockPuntoDeVentaModelo.filas = [
+      { id: SUCURSAL, empresa_id: PROPIA, name: 'Depósito', code: 'principal', is_active: true },
+    ];
+    mockStockModelo.filas = [{
+      id: 1,
+      product_id: 501,
+      empresa_id: PROPIA,
+      punto_de_venta_id: SUCURSAL,
+      quantity: '7.0000',
+      available: '7.0000',
+      min_stock: '0.0000',
+    }];
+    mockProductCostHistoryModelo.filas = [];
+    mockStockModelo.llamadas = [];
+  });
+
+  /** Sube una planilla CSV de una sola fila. */
+  const importar = (csv) => request(levantarApi(PROPIA))
+    .post('/api/import/products')
+    .attach('file', Buffer.from(csv, 'utf8'), 'lista.csv');
+
+  const fila = () => mockStockModelo.filas[0];
+
+  it('NO importa 0,4 como 0: parseInt trunca y no avisa', async () => {
+    const res = await importar('nombre,stock\nCreatina 300g,0.4\n');
+
+    expect(res.status).toBe(200);
+    expect(fila().quantity).toBe(0.4);
+    expect(fila().available).toBe(0.4);
+    expect(fila().quantity).not.toBe(0);
+  });
+
+  it('lee la cantidad escrita a la argentina, igual que la columna de costo', async () => {
+    // `aNumero` es el único lector de números escritos por una persona que hay
+    // en el sistema y ya lo usaba la columna Costo del mismo archivo. Que la
+    // cantidad se lea distinto de como se lee el costo, en la misma fila de la
+    // misma planilla, es exactamente lo que el encabezado de `utils/importes.js`
+    // dice que pasó la vez anterior.
+    const res = await importar('nombre,stock\nCreatina 300g,"0,4"\n');
+
+    expect(res.status).toBe(200);
+    expect(fila().quantity).toBe(0.4);
+  });
+
+  it('la celda VACÍA sigue dejando la fila como estaba', async () => {
+    // El defecto que el comentario de `import.js` documenta desde antes: una
+    // planilla parcial con la columna de stock en blanco vaciaba el inventario.
+    const res = await importar('nombre,stock\nCreatina 300g,\n');
+
+    expect(res.status).toBe(200);
+    expect(fila().quantity).toBe('7.0000');
+    expect(fila().available).toBe('7.0000');
+  });
+
+  it('la columna que NO viene tampoco toca la fila', async () => {
+    const res = await importar('nombre,costo\nCreatina 300g,1200\n');
+
+    expect(res.status).toBe(200);
+    expect(fila().quantity).toBe('7.0000');
+  });
+
+  it('un cero explícito SÍ pone el stock en cero', async () => {
+    // La otra mitad: sin este caso, «no toques la fila si la celda no es un
+    // número» podría estar tratando el cero como vacío, y entonces no habría
+    // forma de poner un stock en cero desde una planilla.
+    const res = await importar('nombre,stock\nCreatina 300g,0\n');
+
+    expect(res.status).toBe(200);
+    expect(fila().quantity).toBe(0);
+  });
+
+  it('el mínimo tampoco se trunca al crear la fila', async () => {
+    // `:431` tenía el mismo `parseInt`. Solo se ve en el alta, que es donde el
+    // mínimo se escribe.
+    mockStockModelo.filas = [];
+
+    const res = await importar('nombre,stock,stock_minimo\nProteína 1kg,3,0.5\n');
+
+    expect(res.status).toBe(200);
+    expect(mockStockModelo.filas).toHaveLength(1);
+    expect(mockStockModelo.filas[0].min_stock).toBe(0.5);
+  });
+
+  it('la plantilla ya no le dice al usuario que la cantidad tiene que ser entera', () => {
+    // FR-026. La nota de la columna es lo único que le dice a quien arma la
+    // planilla qué puede escribir: dejarla en «Número entero» después de migrar
+    // es documentar una restricción que ya no existe.
+    const IMPORT = fs.readFileSync(path.join(SRC, 'routes', 'import.js'), 'utf8');
+    const notas = IMPORT.split('\n').filter((l) => l.includes("key: 'quantity'"));
+
+    expect(notas.length).toBeGreaterThan(0);
+    for (const nota of notas) {
+      expect(nota).not.toMatch(/Número entero/);
+    }
   });
 });

@@ -13,6 +13,57 @@
 
 const fs = require('fs');
 const path = require('path');
+const express = require('express');
+const request = require('supertest');
+const { crearModelo } = require('./helpers/modelosFalsos');
+
+// ── Los dobles ──
+//
+// Se declaran ANTES del `require('../routes/sales')` porque `jest.mock` se
+// iza al tope del archivo y el router se arma con lo que haya en `../models`
+// en ese momento. Las guardias estáticas de más abajo no los usan: leen el
+// fuente y el stack del router, que no cambian por estar mockeado.
+const mockSale = crearModelo([]);
+const mockSaleItem = crearModelo([]);
+const mockStock = crearModelo([]);
+const mockStockMovement = crearModelo([]);
+const mockPuntoDeVenta = crearModelo([]);
+const mockProduct = crearModelo([]);
+const mockEmpresa = crearModelo([]);
+const mockCustomer = crearModelo([]);
+const mockSetting = crearModelo([]);
+
+// `Sale.id` es STRING(40) —el navegador genera «sale_1738012345»— y
+// `normalizarId` lo mira para decidir si castea a entero. Sin esto, findScoped
+// devolvería null y la anulación daría 404 por el motivo equivocado.
+mockSale.primaryKeyAttribute = 'id';
+mockSale.rawAttributes = { id: { type: { key: 'STRING' } } };
+
+jest.mock('../models', () => ({
+  Sale: mockSale,
+  SaleItem: mockSaleItem,
+  Stock: mockStock,
+  StockMovement: mockStockMovement,
+  PuntoDeVenta: mockPuntoDeVenta,
+  Product: mockProduct,
+  Empresa: mockEmpresa,
+  Customer: mockCustomer,
+  Setting: mockSetting,
+}));
+
+// `config/database` construye la conexión al importarse. Acá se reemplaza por
+// una transacción de mentira: se registran commit y rollback para poder
+// afirmar cuál se llamó, y no hay base contra la cual abrir nada.
+const mockTransaccion = { commits: 0, rollbacks: 0 };
+
+jest.mock('../config/database', () => ({
+  transaction: async () => ({
+    LOCK: { UPDATE: 'UPDATE' },
+    commit: async () => { mockTransaccion.commits++; },
+    rollback: async () => { mockTransaccion.rollbacks++; },
+  }),
+}));
+
 const router = require('../routes/sales');
 
 const FUENTE = fs.readFileSync(path.join(__dirname, '..', 'routes', 'sales.js'), 'utf8');
@@ -394,5 +445,139 @@ describe('La condicion de IVA del receptor sale de la ficha del cliente (FR-043)
   // Toda lectura por un id que sale de un registro del cliente lleva empresa.
   it('la ficha se lee acotada por empresa', () => {
     expect(resolver()).toMatch(/scoped\(\{ id: sale\.customer_id \}, empresaId\)/);
+  });
+});
+
+// ════════════════════════════════════════════
+//  Anular una venta devuelve la mercadería, no una concatenación
+//
+//  `sales.js:722-723` sumaba con `+` dos valores que **los dos** vienen de la
+//  base. Mientras `stock.quantity` sea `INTEGER`, `pg` devuelve números y la
+//  suma es una suma. Con la columna en `DECIMAL(14,4)` el driver devuelve
+//  texto —`"10.2500"`— y el `+` concatena: la anulación escribe
+//  `"10.25000.2500"`, que no es «el stock un poco mal», es un valor que la
+//  columna rechaza o —cuando el otro operando es entero— un número mucho
+//  mayor. Anular pasaría a inventar mercadería.
+//
+//  ⚠ **Por qué acá y no en un test de integración.** Hoy la columna todavía es
+//  `INTEGER`: contra Postgres el defecto **no existe todavía** y ninguna
+//  integración lo puede mostrar. Un doble, en cambio, devuelve lo que se le
+//  puso: inyectarle `'10.5000'` distingue el defecto **hoy**, que es lo que
+//  hace desplegable esta fase sola. El mismo caso vuelve a correr contra la
+//  base real en la Fase 3 (FR-028).
+// ════════════════════════════════════════════
+
+describe('PUT /api/sales/:id/void repone el stock sumando, no concatenando', () => {
+  const EMPRESA = 7;
+  const SUCURSAL = 31;
+
+  function levantarApi(empresaId = EMPRESA) {
+    const api = express();
+    api.use(express.json());
+    api.use((req, _res, siguiente) => {
+      req.empresaId = empresaId;
+      req.userId = 'auth0|quien-anula';
+      req.id = 'req-de-prueba';
+      siguiente();
+    });
+    api.use('/api/sales', require('../routes/sales'));
+    return api;
+  }
+
+  beforeEach(() => {
+    mockTransaccion.commits = 0;
+    mockTransaccion.rollbacks = 0;
+
+    mockPuntoDeVenta.filas = [
+      { id: SUCURSAL, empresa_id: EMPRESA, code: 'general', name: 'Principal', is_active: true },
+    ];
+    mockSale.filas = [{
+      id: 'sale_1738012345',
+      empresa_id: EMPRESA,
+      status: 'completed',
+      punto_de_venta_id: SUCURSAL,
+      afip_cae: null,
+      location: 'general',
+    }];
+    mockStockMovement.filas = [];
+
+    for (const doble of [mockSale, mockSaleItem, mockStock, mockStockMovement, mockPuntoDeVenta]) {
+      doble.llamadas = [];
+    }
+  });
+
+  /** El stock y la línea, con los valores que el driver entrega como texto. */
+  function sembrar({ stockQuantity, stockAvailable, itemQuantity }) {
+    mockStock.filas = [{
+      id: 1,
+      product_id: 501,
+      empresa_id: EMPRESA,
+      punto_de_venta_id: SUCURSAL,
+      quantity: stockQuantity,
+      available: stockAvailable,
+    }];
+    mockSaleItem.filas = [{
+      id: 1, sale_id: 'sale_1738012345', product_id: 501, quantity: itemQuantity,
+    }];
+  }
+
+  const anular = () => request(levantarApi()).put('/api/sales/sale_1738012345/void');
+
+  it('NO concatena cuando el driver devuelve la cantidad como texto', async () => {
+    // El caso que manda de la funcionalidad: stock en 10,25 —lo que quedó
+    // después de vender 0,250 sobre 10,5— y una línea de 0,250. Tiene que
+    // volver a **exactamente 10,5**, y la aserción es de igualdad exacta y no
+    // un `toBeLessThan`: revertida, la línea da la cadena «10.25000.2500».
+    sembrar({ stockQuantity: '10.2500', stockAvailable: '10.2500', itemQuantity: '0.2500' });
+
+    const res = await anular();
+
+    expect(res.status).toBe(200);
+    expect(mockStock.filas[0].quantity).toBe(10.5);
+    expect(mockStock.filas[0].available).toBe(10.5);
+    expect(mockStock.filas[0].quantity).not.toBe('10.25000.2500');
+  });
+
+  it('el caso que un revisor deja pasar: 100 + 3 escribe «100.00003», que es creíble', async () => {
+    // Con la línea entera el resultado de concatenar **sí** es un número, y
+    // encima parecido: 100,00003 en vez de 103. Ninguna restricción lo rechaza
+    // y ningún log lo nombra; se ve tres meses después en un recuento físico.
+    sembrar({ stockQuantity: '100.0000', stockAvailable: '100.0000', itemQuantity: 3 });
+
+    const res = await anular();
+
+    expect(res.status).toBe(200);
+    expect(mockStock.filas[0].quantity).toBe(103);
+    expect(mockStock.filas[0].available).toBe(103);
+  });
+
+  it('el movimiento de inventario registra el valor nuevo ya sumado', async () => {
+    // `cantidad_nueva` es lo que después lee la auditoría de stock. Si la
+    // reposición concatena, el movimiento deja asentada la concatenación.
+    sembrar({ stockQuantity: '10.2500', stockAvailable: '10.2500', itemQuantity: '0.2500' });
+
+    await anular();
+
+    expect(mockStockMovement.filas).toHaveLength(1);
+    expect(mockStockMovement.filas[0]).toMatchObject({
+      tipo: 'sale_void',
+      product_id: 501,
+      punto_de_venta_id: SUCURSAL,
+      cantidad_anterior: '10.2500',
+      cantidad_nueva: 10.5,
+      disponible_nuevo: 10.5,
+    });
+  });
+
+  it('la venta queda anulada y la transacción se confirma', async () => {
+    // Sin esto, los tres casos de arriba pasarían con un endpoint que responde
+    // 200 y no hace nada.
+    sembrar({ stockQuantity: '10.2500', stockAvailable: '10.2500', itemQuantity: '0.2500' });
+
+    await anular();
+
+    expect(mockSale.filas[0].status).toBe('voided');
+    expect(mockTransaccion.commits).toBe(1);
+    expect(mockTransaccion.rollbacks).toBe(0);
   });
 });

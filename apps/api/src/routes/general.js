@@ -13,6 +13,10 @@ const { sumaEnCentavos } = require('../utils/centavos');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
 const { UMBRAL_POR_DEFECTO, limiteDeStockBajo, esStockBajo } = require('../utils/stockBajo');
 const { esSecreto, sinSecretos, esDeSoloLectura } = require('../utils/settingsSecretos');
+// `aCantidad` y no `Number(x) || 0` inline: con las columnas de cantidad en
+// DECIMAL el driver las entrega como texto, y acá hay dos sumas envueltas en un
+// `Math.max` que **parecen** coercionadas y no lo están.
+const { aCantidad } = require('../utils/cantidades');
 
 // Los dos mensajes de stock negativo viven acá porque los usan las DOS puertas
 // —`PUT /stock/:id` y `POST /stock`— y tienen que decir exactamente lo mismo.
@@ -85,9 +89,20 @@ router.put('/stock/:id', checkPermission('stock.editar'), async (req, res) => {
     // quantity y available describen el mismo inventario: available es lo que
     // se puede vender, quantity lo que hay fisicamente. Mover una sin la otra
     // las hace divergir hasta que available supera a quantity.
+    //
+    // ⚠ El `Math.max` de acá abajo es el peor de los cinco sitios de la 016 y
+    // el que más fácil pasa una revisión: **convierte DESPUÉS de que el `+` ya
+    // concatenó**. `Math.max(0, "100" + 5)` es 1005, no 105, y no lanza nada:
+    // devuelve un número perfectamente creíble. Con `oldAvail` llegando como
+    // «100.0000» desde la base, editar el stock a 105 dejaba el disponible en
+    // mil y pico.
+    //
+    // El `Math.max(0, …)` **se conserva**: esta funcionalidad no cambia el
+    // trato del disponible negativo, solo hace que la suma de adentro sea una
+    // suma.
     if (cambios.quantity !== undefined && cambios.available === undefined) {
-      const delta = cambios.quantity - oldQty;
-      cambios.available = Math.max(0, oldAvail + delta);
+      const delta = aCantidad(cambios.quantity) - aCantidad(oldQty);
+      cambios.available = Math.max(0, aCantidad(oldAvail) + delta);
     }
 
     await stock.update(cambios);
@@ -175,10 +190,15 @@ router.post('/stock', checkPermission('stock.editar'), async (req, res) => {
     if (!created) {
       // Si solo viene quantity, available se mueve el mismo delta: son dos
       // vistas del mismo inventario y actualizar una sola las desincroniza.
+      //
+      // El mismo `Math.max` que engaña arriba, en la otra puerta: los dos
+      // operandos de adentro salen de la base y con la columna en DECIMAL
+      // llegan como texto. `aCantidad` en los tres es lo que hace que la suma
+      // sume; el `Math.max(0, …)` queda como estaba.
       const nuevaQty = quantity ?? stock.quantity;
       const nuevaDisp = available ?? (
         quantity !== undefined
-          ? Math.max(0, stock.available + (quantity - stock.quantity))
+          ? Math.max(0, aCantidad(stock.available) + (aCantidad(quantity) - aCantidad(stock.quantity)))
           : stock.available
       );
 

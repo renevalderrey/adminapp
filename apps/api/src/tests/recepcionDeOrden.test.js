@@ -1367,3 +1367,90 @@ describe('Lo que receiveOrder ya resolvía y no puede volver', () => {
     expect(resolucion).toBeLessThan(inicioDelBucle);
   });
 });
+
+// ════════════════════════════════════════════
+//  Recibir sobre una fila de stock que YA existe
+//
+//  `purchaseService.js:496-497` sumaba con `+` un valor leído de la base y uno
+//  del cuerpo del request. Con `stock.quantity` en `DECIMAL(14,4)` el driver
+//  entrega el primero como texto y `'7.0000' + 10` es la cadena «7.000010»: un
+//  millón de unidades donde entraron diez. La restricción no lo rechaza, la
+//  transacción cierra bien y la pantalla dice «Mercadería recibida».
+//
+//  ⚠ El resto de este archivo ejercita el camino de ALTA —`mockStock.filas`
+//  arranca vacío en el `beforeEach` general, así que se toma la rama del
+//  `Stock.create`— y ese camino **no tiene el defecto**: escribe la cantidad
+//  tal cual. Por eso hace falta este bloque: la rama rota es la del update, que
+//  es además la normal en un depósito que ya tenía el producto.
+//
+//  Con dobles y no con integración porque hoy la columna sigue siendo
+//  `INTEGER`: Postgres devuelve números y el defecto no existe todavía. El doble
+//  devuelve lo que se le puso.
+// ════════════════════════════════════════════
+
+describe('La recepción suma sobre el stock existente, no concatena', () => {
+  const SUCURSAL = 1;
+
+  beforeEach(() => {
+    mockSupplierOrder.filas = [{
+      id: 1400, empresa_id: PROPIA, supplier_id: 10, status: 'pending', date: '2026-07-20',
+      detail: [
+        { product_id: 41, product_name: 'Colágeno 300g', quantity: 10, unit_price: 1200, quantity_received: 0 },
+      ],
+    }];
+  });
+
+  /** La fila de stock que ya existía, con la cantidad como la entrega el driver. */
+  function sembrarStock(quantity, available = quantity) {
+    mockStock.filas = [{
+      id: 1,
+      product_id: 41,
+      empresa_id: PROPIA,
+      punto_de_venta_id: SUCURSAL,
+      location: 'principal',
+      quantity,
+      available,
+      min_stock: 0,
+    }];
+  }
+
+  const recibir = (cantidad) => request(levantarApi())
+    .put('/api/suppliers/orders/1400/receive')
+    .send({ items: [{ linea: 0, cantidad }] });
+
+  it('NO concatena cuando el driver devuelve el stock existente como texto', async () => {
+    // 7 pendientes de 10 recibidas: tiene que quedar en 17. Revertida, la línea
+    // escribe «7.000010».
+    sembrarStock('7.0000');
+
+    const res = await recibir(10);
+
+    expect(res.status).toBe(200);
+    expect(mockStock.filas).toHaveLength(1);
+    expect(mockStock.filas[0].quantity).toBe(17);
+    expect(mockStock.filas[0].available).toBe(17);
+    expect(mockStock.filas[0].quantity).not.toBe('7.000010');
+  });
+
+  it('una recepción fraccionaria sobre stock fraccionario da el número exacto', async () => {
+    // 10,5 + 0,5 = 11 exactos, no 10,999999… ni «10.50000.5».
+    sembrarStock('10.5000');
+
+    const res = await recibir(0.5);
+
+    expect(res.status).toBe(200);
+    expect(mockStock.filas[0].quantity).toBe(11);
+  });
+
+  it('la deuda y el estado de la orden siguen saliendo igual', async () => {
+    // Sin esto, los dos casos de arriba pasarían con una recepción que no
+    // registra nada. La corrección es de aritmética y no puede tocar el resto.
+    sembrarStock('7.0000');
+
+    const res = await recibir(10);
+
+    expect(res.body.data.status).toBe('received');
+    expect(mockSupplierMovement.filas).toHaveLength(1);
+    expect(mockSupplierMovement.filas[0].amount).toBe(12000);
+  });
+});

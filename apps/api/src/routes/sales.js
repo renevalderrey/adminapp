@@ -18,6 +18,7 @@ const { filtroVentas } = require('../utils/filtroVentas');
 const { filaDeExport, totalDelPeriodo } = require('../utils/exportVentas');
 const { condicionIvaDeAfip } = require('../utils/condicionIvaAfip');
 const { resolverSucursal, sucursalPorDefecto } = require('../utils/sucursalDeStock');
+const { sumarCantidades } = require('../utils/cantidades');
 
 /**
  * La sucursal a la que vuelve la mercadería de una venta anulada.
@@ -718,9 +719,26 @@ router.put('/:id/void', checkPermission('ventas.anular'), async (req, res) => {
       if (stock) {
         const oldQty = stock.quantity;
         const oldAvail = stock.available;
+
+        // `sumarCantidades` y no `+`: los dos operandos vienen de la base y con
+        // las columnas en DECIMAL el driver los entrega como texto. Un
+        // `stock.quantity + item.quantity` sobre «10.5000» y «0.2500» concatena
+        // en vez de sumar y da «10.50000.2500».
+        //
+        // Acá los DOS traen la escala puesta, así que la concatenación tiene
+        // dos puntos y como número es `NaN`: Postgres rechaza la escritura y la
+        // anulación falla con un error visible. Es el caso RUIDOSO, y es el
+        // menos grave de los dos que describe `utils/cantidades.js`.
+        //
+        // Se corrige igual porque el ruido depende de un detalle que no está
+        // garantizado: si alguna vez `item.quantity` llegara como número entero
+        // —una venta vieja, una migración de datos, un reintento armado a
+        // mano—, la concatenación tendría un solo punto, sería un número válido
+        // y **más chico** que el correcto, y anular una venta pasaría a comerse
+        // stock sin que nada avise.
         await stock.update({
-          quantity: stock.quantity + item.quantity,
-          available: stock.available + item.quantity,
+          quantity: sumarCantidades(stock.quantity, item.quantity),
+          available: sumarCantidades(stock.available, item.quantity),
         }, { transaction: t });
 
         await StockMovement.create({

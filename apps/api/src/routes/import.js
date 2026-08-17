@@ -10,6 +10,7 @@ const logger = require('../utils/logger');
 const { fallo } = require('../utils/errores');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
 const { aNumero } = require('../utils/importes');
+const { aCantidad } = require('../utils/cantidades');
 const { registrarCambioDeCosto, MOTIVOS } = require('../utils/historialDeCostos');
 
 const upload = multer({
@@ -93,7 +94,10 @@ const TEMPLATES = {
       { header: 'fecha', key: 'date', note: 'YYYY-MM-DD, Obligatorio' },
       { header: 'hora', key: 'time', note: 'HH:mm' },
       { header: 'producto', key: 'product_name', note: 'Nombre del producto, Obligatorio' },
-      { header: 'cantidad', key: 'quantity', note: 'Número entero' },
+      // Deja de decir «Número entero»: la columna admite fracciones desde la
+      // 016 y la nota de la plantilla es lo único que le dice al usuario qué
+      // puede escribir (FR-026).
+      { header: 'cantidad', key: 'quantity', note: 'Número, ej: 3 o 0,4' },
       { header: 'precio_unitario', key: 'unit_price', note: 'Precio por unidad' },
       { header: 'total', key: 'total', note: 'Total de la venta' },
       { header: 'metodo_pago', key: 'payment_method', note: 'ef / tr / td / tc1 / qr' },
@@ -403,9 +407,29 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
         // Antes alcanzaba con que la columna existiera: una celda vacia es
         // '' , que no es undefined, y parseInt('') || 0 daba 0. Importar una
         // planilla con la columna cantidad en blanco vaciaba el inventario.
-        const qtyImportada = parseInt(data.quantity, 10);
-        if (Number.isFinite(qtyImportada)) {
-          const qty = qtyImportada;
+        //
+        // ⚠ `parseInt` salió además por otra razón: **trunca sin avisar**.
+        // `parseInt('0.4')` es `0`, así que una planilla que dice 0,4 kg
+        // importaba cero (FR-026). Ahora la lectura es en dos pasos, y son dos
+        // preguntas distintas:
+        //
+        //   1. `aNumero` contesta **si la celda traía un número**. Devuelve
+        //      `null` para la celda vacía y para la ilegible, que es la
+        //      distinción que este comentario documenta desde antes. Es además
+        //      el único lector de números escritos por una persona que hay en
+        //      el sistema —el mismo `toNum` que usa la columna Costo en este
+        //      mismo handler—, así que un `0,4` argentino se lee igual en las
+        //      dos columnas de la misma fila. Que no fuera así es literalmente
+        //      lo que cuenta el encabezado de `utils/importes.js`.
+        //   2. `aCantidad` contesta **cuánto**, con el redondeo a los 4
+        //      decimales de la columna hecho explícito.
+        //
+        // No se pueden fusionar: para `aCantidad` una celda vacía y una celda
+        // que dice cero son el mismo cero, y ahí volvería el defecto de vaciar
+        // el inventario con una planilla parcial.
+        const cantidadDeLaCelda = aNumero(data.quantity);
+        if (cantidadDeLaCelda !== null) {
+          const qty = aCantidad(cantidadDeLaCelda);
 
           // La columna Sucursal se resuelve contra el `code` **de esta
           // empresa**. Antes se escribía como texto en `location`: la
@@ -428,7 +452,12 @@ router.post('/products', checkPermission('products.crear'), upload.single('file'
               available: qty,
               ...ubicacion,
               empresa_id: empresaId,
-              min_stock: parseInt(data.min_stock) || 0,
+              // `min_stock` también migra a DECIMAL(14,4), y también truncaba:
+              // un mínimo de 0,5 kg entraba como 0. El `|| 0` de antes lo
+              // reemplaza `aCantidad`, que ya devuelve 0 ante el `null` de una
+              // celda vacía — acá el cero **sí** es el valor correcto, porque
+              // es el default de la columna y no una fila que se pisa.
+              min_stock: aCantidad(aNumero(data.min_stock)),
               current_batch: data.current_batch || null,
               expiration_date: data.expiration_date || null,
               purchase_date: data.purchase_date || null,

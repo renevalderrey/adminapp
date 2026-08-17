@@ -36,6 +36,10 @@ const {
 // del usuario: «revisá esa receta» no dice cuál de las dos cosas pasó, y el
 // aviso es lo único que quedaba si el error se traga en silencio.
 const logger = require('../utils/logger');
+// La suma de cantidades pasa por una función y no por un `+`: `stock.quantity`
+// viene de la base y, con la columna en DECIMAL, el driver la entrega como
+// texto.
+const { sumarCantidades } = require('../utils/cantidades');
 
 /**
  * Propaga el costo nuevo de un insumo a los elaborados que lo usan.
@@ -492,9 +496,20 @@ class PurchaseService {
         });
 
         if (stock) {
+          // `sumarCantidades` y no `+`: lo de la izquierda sale de la base y lo
+          // de la derecha del cuerpo del request. Con la columna en DECIMAL el
+          // primero llega como texto, así que `'7.0000' + 10` concatena y da
+          // «7.000010», que como número es **7.00001** cuando lo correcto era
+          // 17.
+          //
+          // ⚠ El resultado es más CHICO que el correcto, no más grande: recibir
+          // diez unidades dejaría el stock casi igual que antes, o sea que la
+          // mercadería del camión se pierde en silencio. Y como tiene un solo
+          // punto es un número válido: Postgres lo acepta y nada avisa. El
+          // recuento físico es lo único que lo encuentra.
           await stock.update({
-            quantity: stock.quantity + linea.recibido_ahora,
-            available: stock.available + linea.recibido_ahora,
+            quantity: sumarCantidades(stock.quantity, linea.recibido_ahora),
+            available: sumarCantidades(stock.available, linea.recibido_ahora),
           }, { transaction: t });
         } else {
           await Stock.create({

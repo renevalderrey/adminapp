@@ -6,6 +6,7 @@ const checkPermission = require('../middleware/checkPermission');
 const { findScoped } = require('../utils/tenantScope');
 const { fallo, ErrorDeNegocio } = require('../utils/errores');
 const { resolverSucursal, ubicacionDeStock } = require('../utils/sucursalDeStock');
+const { sumarCantidades } = require('../utils/cantidades');
 
 // GET /api/stock/sucursales — Las sucursales de la empresa, INCLUIDAS las inactivas
 //
@@ -152,8 +153,22 @@ router.post('/transfer', checkPermission('stock.transferir'), async (req, res) =
       });
 
       if (destStock) {
-        destStock.quantity += qty;
-        destStock.available += qty;
+        // ⚠ Diez líneas más arriba la misma cuenta se hace con `-=` y **está
+        // bien**: la resta fuerza a número, así que `'20.0000' - 5` es 15. La
+        // suma no: con la columna en DECIMAL el driver entrega texto y
+        // `destStock.quantity += qty` concatena.
+        //
+        // Y acá cae del lado peligroso: `qty` es un `parseFloat` de diez líneas
+        // arriba, o sea un número, así que `'20.0000' + 5` da «20.00005» —un
+        // solo punto, un número **válido** y más chico que los 25 correctos—.
+        // Postgres lo acepta sin chistar. La transferencia descuenta bien del
+        // origen y el destino queda casi como estaba: cinco unidades que
+        // salieron de una sucursal y no llegaron a la otra, sin ningún error.
+        //
+        // Por eso el test de esta corrección mira el DESTINO: el origen cierra
+        // igual con y sin ella y no sirve de control.
+        destStock.quantity = sumarCantidades(destStock.quantity, qty);
+        destStock.available = sumarCantidades(destStock.available, qty);
         await destStock.save({ transaction: t });
       } else {
         // Con `punto_de_venta_id` SIEMPRE. Antes iba solo si el destino había
