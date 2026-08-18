@@ -47,6 +47,21 @@ const Suscripcion = sequelize.define('Suscripcion', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+  /**
+   * El aviso de vencimiento mas chico que ya se envio, en dias. NULL = ninguno.
+   *
+   * Entero y no booleano porque hay dos avisos —DIAS_DE_AVISO = [5, 1]— y el
+   * segundo tiene que salir aunque el primero ya haya salido. El cron manda el
+   * de `dias` solo si esto es NULL o mayor que `dias`: la secuencia es
+   * NULL -> 5 -> 1 y ninguno se repite.
+   *
+   * Sin esta columna, un trial se queda VEINTICUATRO HORAS dentro de su
+   * ventana de aviso y el tick horario le manda el mismo correo cada vez.
+   */
+  aviso_vencimiento_enviado: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
 }, {
   tableName: 'suscripciones',
   indexes: [

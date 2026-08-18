@@ -70,11 +70,22 @@ async function expireTrials() {
  * Antes no se avisaba nada: el usuario se enteraba cuando la app le empezaba a
  * devolver 402 y dejaba de funcionar en medio de una venta.
  *
- * Para no mandar el mismo aviso todos los dias, se marca en el registro con
- * `aviso_vencimiento_enviado`. Como esa columna no existe todavia, el aviso se
- * limita a los dias exactos de corte, que es una aproximacion razonable con un
- * cron horario: puede repetirse dentro del mismo dia si el proceso reinicia.
- * Ver la nota en docs/AUDITORIA-SUSCRIPCIONES.md.
+ * Para no mandar el mismo aviso mas de una vez se marca la fila con
+ * `aviso_vencimiento_enviado`, que guarda el aviso mas chico ya enviado en
+ * dias. La columna la crea `20260821-aviso-de-vencimiento-enviado.js`.
+ *
+ * ⚠ Antes de esa columna esto era un defecto, y el comentario que estaba aca
+ * lo subestimaba: decia «puede repetirse dentro del mismo dia si el proceso
+ * reinicia». **No hacia falta ningun reinicio.** La ventana se calcula contra
+ * `ahora`, asi que un trial que vence en T entra mientras `ahora` va de
+ * `T - dias` a `T - (dias - 1)`: veinticuatro horas seguidas. Con `tick()`
+ * corriendo cada hora, eso son hasta VEINTICUATRO correos identicos por
+ * empresa y por ventana.
+ *
+ * No se noto por dos motivos que se taparon entre si: ningun trial habia
+ * cruzado una ventana con el servicio despierto, y el cron externo que lo
+ * dispara fallo sus diecisiete corridas por falta de `API_URL` y
+ * `CRON_SECRET`.
  */
 const DIAS_DE_AVISO = [5, 1];
 
@@ -90,6 +101,14 @@ async function avisarVencimientosProximos() {
       where: {
         status: 'trialing',
         trial_ends_at: { [Op.gt]: desde, [Op.lte]: hasta },
+        // Lo que evita el correo repetido. `NULL` es «no se le aviso nada», y
+        // en SQL `NULL > 1` no es verdadero: sin la rama explicita del `Op.or`
+        // la comparacion sola dejaria afuera justo a las que nunca recibieron
+        // aviso, que son todas las de hoy.
+        [Op.or]: [
+          { aviso_vencimiento_enviado: null },
+          { aviso_vencimiento_enviado: { [Op.gt]: dias } },
+        ],
       },
       include: [{ model: Empresa, as: 'empresa', attributes: ['id', 'name'] }],
     });
@@ -106,7 +125,16 @@ async function avisarVencimientosProximos() {
 
       // Solo cuenta lo que realmente salio. Contar los intentos hacia que el
       // log dijera "5 avisos enviados" con el correo sin configurar.
-      if (envio.ok) enviados++;
+      //
+      // Y la marca va DENTRO de este `if` por el mismo motivo: marcar un envio
+      // que fallo apagaria el reintento y el cliente no se enteraria nunca.
+      // Este repositorio ya pago una vez el precio de dar por enviado lo que no
+      // salio —`sendEmail` devolvia `ok: true` sin mandar nada, y las
+      // invitaciones se perdian en silencio—.
+      if (envio.ok) {
+        enviados++;
+        await s.update({ aviso_vencimiento_enviado: dias });
+      }
     }
   }
 
