@@ -162,8 +162,11 @@ describe('Un order/paid firmado entra por la app real y descuenta', () => {
 
     const norte = await stockDe(datos.harina, datos.norteA);
 
-    expect(norte.quantity).toBe(5);
-    expect(norte.available).toBe(3);
+    // El `Number(…)` es de la migración 31: las columnas de cantidad son
+    // `DECIMAL(14,4)` y `pg` las entrega como texto —`"5.0000"`—, así que lo que
+    // se compara es el valor y no cómo lo escribe el driver.
+    expect(Number(norte.quantity)).toBe(5);
+    expect(Number(norte.available)).toBe(3);
 
     const movimientos = await StockMovement.findAll({
       where: { empresa_id: datos.empresaA.id, referencia_id: 'tn_order_3344556' },
@@ -192,11 +195,11 @@ describe('Un order/paid firmado entra por la app real y descuenta', () => {
     // 7 y 5 arrancan distintos a propósito: los ocho caminos que escriben stock
     // los mueven juntos, así que con los dos iguales bajar uno u otro daría el
     // mismo número.
-    expect(norte.quantity).toBe(5);
-    expect(norte.available).toBe(3);
+    expect(Number(norte.quantity)).toBe(5);
+    expect(Number(norte.available)).toBe(3);
     // Y la sucursal por defecto no perdió ni una unidad.
-    expect(centro.quantity).toBe(20);
-    expect(centro.available).toBe(20);
+    expect(Number(centro.quantity)).toBe(20);
+    expect(Number(centro.available)).toBe(20);
 
     // El pedido guarda la designada del momento: si mañana cambia, esta fila
     // tiene que seguir diciendo de dónde salió la mercadería.
@@ -235,8 +238,8 @@ describe('El mismo pedido dos veces: una sola vez descuenta', () => {
 
     const norte = await stockDe(datos.harina, datos.norteA);
 
-    expect(norte.quantity).toBe(5);
-    expect(norte.available).toBe(3);
+    expect(Number(norte.quantity)).toBe(5);
+    expect(Number(norte.available)).toBe(3);
 
     expect(await TiendanubePedido.count({ where: { empresa_id: datos.empresaA.id } })).toBe(1);
     expect(await StockMovement.count({ where: { referencia_id: 'tn_order_3344556' } })).toBe(1);
@@ -263,8 +266,8 @@ describe('El mismo pedido dos veces: una sola vez descuenta', () => {
 
     const norte = await stockDe(datos.harina, datos.norteA);
 
-    expect(norte.quantity).toBe(5);
-    expect(norte.available).toBe(3);
+    expect(Number(norte.quantity)).toBe(5);
+    expect(Number(norte.available)).toBe(3);
     expect(await TiendanubePedido.count()).toBe(1);
   });
 });
@@ -336,8 +339,8 @@ describe('Un pedido que falla a la mitad no queda marcado como procesado', () =>
     // Y el stock de los dos primeros quedó como estaba.
     for (const { producto } of cinco.slice(0, 2)) {
       const fila = await stockDe(producto, datos.norteA);
-      expect(fila.quantity).toBe(fila.available);
-      expect(fila.quantity).toBeGreaterThan(10);
+      expect(Number(fila.quantity)).toBe(Number(fila.available));
+      expect(Number(fila.quantity)).toBeGreaterThan(10);
     }
 
     expect(await StockMovement.count({ where: { referencia_id: 'tn_order_3344556' } })).toBe(0);
@@ -408,7 +411,7 @@ describe('Lo que no descontó queda escrito con su motivo', () => {
     // El stock de levadura en centro sigue intacto: no se descontó de otra
     // sucursal para «salvar» el ítem.
     const centro = await stockDe(datos.levadura, datos.centroA);
-    expect(centro.quantity).toBe(50);
+    expect(Number(centro.quantity)).toBe(50);
   });
 
   it('GET /status cuenta ese pedido en pedidos_con_items_sin_descontar', async () => {
@@ -505,8 +508,8 @@ describe('El pedido de una tienda es de UNA empresa, resuelta por el índice ún
     // El stock de A quedó como estaba, incluso el de la variante con el mismo
     // producto de por medio.
     const norte = await stockDe(datos.harina, datos.norteA);
-    expect(norte.quantity).toBe(7);
-    expect(norte.available).toBe(5);
+    expect(Number(norte.quantity)).toBe(7);
+    expect(Number(norte.available)).toBe(5);
   });
 
   it('un pedido de una tienda que no está vinculada responde 200 y no escribe nada', async () => {

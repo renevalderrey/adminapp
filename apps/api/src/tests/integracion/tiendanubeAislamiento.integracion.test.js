@@ -762,9 +762,11 @@ describe('POST /sincronizar contra Postgres: el arriendo lo decide la base', () 
 
     expect(String(url)).toContain('/variants/5000001');
     expect(cuerpo.stock).toBe(5);
-    // `stock.available` es INTEGER y el driver lo devuelve como número, pero un
-    // DECIMAL vuelve como string y `toBe(5)` sobre `'5'` fallaría sin decir por
-    // qué: la afirmación sobre el tipo es la que lo nombra.
+    // ⚠ Desde la migración 31 `stock.available` **es** `DECIMAL(14,4)` y el
+    // driver la entrega como `"5.0000"`, así que esta afirmación sobre el tipo
+    // dejó de ser una precaución y pasó a ser la que verifica que
+    // `tiendanubeCola.stockAPublicar` convierte: sin ella, un `"5.0000"` mandado
+    // a la API de TiendaNube fallaría allá y no acá.
     expect(typeof cuerpo.stock).toBe('number');
 
     expect(res.body.mandadas).toBe(1);
@@ -1006,7 +1008,7 @@ describe('El hook de Stock encola la variante mapeada de ese producto', () => {
     });
 
     // 20 − 3: el stock se descontó igual.
-    expect(stock.available).toBe(17);
+    expect(Number(stock.available)).toBe(17);
   });
 
   it('un error SQL del encolado tampoco envenena la transacción de la venta', async () => {
@@ -1041,7 +1043,7 @@ describe('El hook de Stock encola la variante mapeada de ese producto', () => {
       },
     });
 
-    expect(stock.available).toBe(17);
+    expect(Number(stock.available)).toBe(17);
   });
 });
 

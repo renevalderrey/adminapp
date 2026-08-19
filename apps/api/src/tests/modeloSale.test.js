@@ -13,9 +13,17 @@
 
 const fs = require('fs');
 const path = require('path');
-const { Sale } = require('../models/Sale');
+const { Sale, SaleItem } = require('../models/Sale');
 
 const MIGRACIONES = path.join(__dirname, '..', 'migrations');
+
+// ── La migración 31, la que cambia la escala de `sale_items.quantity` ──
+const ARCHIVO_DE_CANTIDADES = '20260820-cantidades-decimales.js';
+const CANTIDADES = require(`../migrations/${ARCHIVO_DE_CANTIDADES}`);
+const FUENTE_DE_CANTIDADES = fs.readFileSync(
+  path.join(MIGRACIONES, ARCHIVO_DE_CANTIDADES),
+  'utf8'
+);
 
 function fuenteDeMigraciones() {
   return fs.readdirSync(MIGRACIONES)
@@ -78,5 +86,50 @@ describe('Indice del historial', () => {
 
     expect(campos).toContain(JSON.stringify(['date']));
     expect(campos).toContain(JSON.stringify(['empresa_id']));
+  });
+});
+
+// ════════════════════════════════════════════
+//  La cantidad de una línea de venta es DECIMAL(14,4)
+//
+//  ⚠ `scripts/verificar-esquema.js` no puede ver este caso: compara `udt_name`
+//  y nada más (`:204`), o sea que para él `numeric(14,4)` y `numeric(12,4)` son
+//  la misma columna. Un modelo escrito con menos escala que la migración
+//  degradaría la columna en el próximo `sync({ alter: true })` sin que CI dijera
+//  una palabra.
+//
+//  ── Lo que este tipo NO decide ──
+//
+//  Cuántos decimales admite una línea de venta lo impone un validador
+//  (`utils/cantidades.js:DECIMALES_DE_UNA_LINEA_DE_VENTA`, hoy en 0), no la
+//  columna. Acá está la capacidad; allá, la regla de negocio.
+// ════════════════════════════════════════════
+describe('sale_items.quantity y la migración dicen la misma escala', () => {
+  it('la migración 31 declara 14,4 y lo escribe en el SQL, no solo en una constante', () => {
+    // Las dos mitades: una lista que dice 14,4 y un `ALTER` que escribe otra
+    // cosa dejarían el caso de abajo verde sobre una promesa que la base nunca
+    // recibe.
+    expect(CANTIDADES.PRECISION).toBe(14);
+    expect(CANTIDADES.ESCALA).toBe(4);
+    expect(FUENTE_DE_CANTIDADES).toContain('TYPE NUMERIC(${PRECISION}, ${ESCALA})');
+  });
+
+  it('el modelo declara DECIMAL con la MISMA precisión y escala que la migración', () => {
+    const tipo = SaleItem.rawAttributes.quantity.type;
+
+    expect(tipo.key).toBe('DECIMAL');
+    expect(tipo.options.precision).toBe(CANTIDADES.PRECISION);
+    expect(tipo.options.scale).toBe(CANTIDADES.ESCALA);
+  });
+
+  it('y la columna está en la lista que la migración convierte', () => {
+    expect(CANTIDADES.COLUMNAS).toContainEqual({ tabla: 'sale_items', columna: 'quantity' });
+  });
+
+  it('el default sigue siendo 1: una línea sin cantidad es una unidad, no cero', () => {
+    // `ALTER COLUMN … TYPE` convierte el `DEFAULT` al tipo nuevo —el 1 pasa a
+    // 1.0000, que es el mismo valor—. Si alguien lo tocara al pasar, una línea
+    // creada sin cantidad entraría en cero y la venta cobraría igual.
+    expect(SaleItem.rawAttributes.quantity.defaultValue).toBe(1);
   });
 });

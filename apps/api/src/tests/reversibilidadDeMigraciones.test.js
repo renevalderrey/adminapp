@@ -151,6 +151,47 @@ describe('Las que se niegan a revertirse lo dicen, y dicen qué hacer', () => {
   });
 });
 
+describe('La de cantidades decimales se niega CONDICIONALMENTE, y por eso no va en SE_NIEGAN', () => {
+  // ⚠ Esta guardia protege una decisión que es fácil de deshacer «ordenando»:
+  // `20260820-cantidades-decimales` **se niega a revertirse** cuando hay filas
+  // con cantidades fraccionarias, así que alguien puede leer eso y agregarla al
+  // mapa `SE_NIEGAN`. No va, y el motivo es que ese mapa es de las que se niegan
+  // **siempre**: su caso de arriba corre el `down` esperando que falle, y sobre
+  // una base limpia —que es la que levanta `verificar-reversibilidad.js`— esta
+  // migración revierte **bien**. Metida ahí, el script pasaría a reportar en rojo
+  // una migración que hace exactamente lo que tiene que hacer.
+  //
+  // El precedente correcto es `20260804-identidad-de-sucursal-en-stock`, que se
+  // niega por una condición de los datos y tiene su propio caso.
+  //
+  // La negativa ejecutada —con filas fraccionarias sembradas de verdad— vive en
+  // `integracion/reversionDeCantidades.integracion.test.js`: acá no se puede,
+  // porque la rama depende de un COUNT(*) sobre filas reales y un doble
+  // contestaría lo que se le pida.
+  const MIGRACION = '20260820-cantidades-decimales.js';
+
+  it('existe y exporta `up` y `down`', () => {
+    expect(ARCHIVOS).toContain(MIGRACION);
+    expect(typeof cargar(MIGRACION).up).toBe('function');
+    expect(typeof cargar(MIGRACION).down).toBe('function');
+  });
+
+  it('NO está en SE_NIEGAN', () => {
+    expect(Object.keys(SE_NIEGAN)).not.toContain(MIGRACION);
+    // Y el mapa sigue teniendo una sola: la que se niega siempre es el esquema
+    // de permisos, y ninguna otra. Si aparece una segunda entrada, o alguien
+    // metió ésta, o hay una decisión nueva que merece su propio comentario.
+    expect(Object.keys(SE_NIEGAN)).toEqual(['20260806-esquema-de-permisos.js']);
+  });
+
+  it('está DENTRO del rango que el script recorre, así que su `down` se ejecuta', () => {
+    // Sobre la base descartable del script —vacía— revierte limpio y el esquema
+    // comparado queda idéntico. Ese es el resultado correcto, y es el que
+    // convierte a esta migración en una verificada y no en una excepción.
+    expect(migracionesDelRango(DESDE_POR_DEFECTO)).toContain(MIGRACION);
+  });
+});
+
 describe('El archivo de la fusión guarda la fecha ENTERA', () => {
   // Lo encontró el paso P5: el `down` reinsertaba las filas absorbidas con
   // `created_at` truncado al milisegundo, así que la fila volvía pero no era la

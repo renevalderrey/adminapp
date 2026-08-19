@@ -163,6 +163,8 @@ describe('Los endpoints que ESCRIBEN tampoco alcanzan a la otra empresa', () => 
     const stockB = await Stock.findOne({
       where: { empresa_id: datos.empresaB.id, punto_de_venta_id: datos.localB.id },
     });
-    expect(stockB.quantity).toBe(30);
+    // `Number(…)` desde la migración 31: `stock.quantity` es `DECIMAL(14,4)` y el
+    // driver la entrega como texto (`"30.0000"`).
+    expect(Number(stockB.quantity)).toBe(30);
   });
 });

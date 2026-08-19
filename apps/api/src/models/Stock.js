@@ -40,18 +40,36 @@ const Stock = sequelize.define('Stock', {
     allowNull: false,
     references: { model: 'puntos_de_venta', key: 'id' },
   },
+  // ── Las tres cantidades son DECIMAL(14,4) desde la migración 31 ──
+  //
+  // Eran `INTEGER`, y `recipe_items.quantity` —lo que producción resta de acá—
+  // ya era `DECIMAL(12,4)`: un consumo de 0,4 sobre un stock de 10 dejaba **10**
+  // en la base, porque Postgres redondea al asignar y nadie se entera. Cuatro
+  // decimales y no tres para no degradar esa columna al restar.
+  //
+  // ⚠ El tipo tiene que decir lo mismo que
+  // `migrations/20260820-cantidades-decimales.js`, y quien lo ata es
+  // `tests/modeloStock.test.js`: `scripts/verificar-esquema.js` compara
+  // `udt_name` y nada más, así que para él `numeric(14,4)` y `numeric(12,4)` son
+  // la misma columna y un modelo mal escrito degradaría la escala sin que CI
+  // dijera nada.
+  //
+  // ⚠⚠ Consecuencia que hay que tener presente en cada lectura: `pg` devuelve un
+  // `NUMERIC` como **texto** con la escala puesta, así que un stock de doce
+  // llega como `"12.0000"`. Sumarlo con `+` concatena. Se convierte con
+  // `utils/cantidades.js` y hay una guardia estática que lo exige.
   quantity: {
-    type: DataTypes.INTEGER, // Campo "cant" original
+    type: DataTypes.DECIMAL(14, 4), // Campo "cant" original
     allowNull: false,
     defaultValue: 0,
   },
   available: {
-    type: DataTypes.INTEGER, // Campo "disp" original
+    type: DataTypes.DECIMAL(14, 4), // Campo "disp" original
     allowNull: false,
     defaultValue: 0,
   },
   min_stock: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.DECIMAL(14, 4),
     allowNull: false,
     defaultValue: 0,
   },

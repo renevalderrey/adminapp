@@ -1046,9 +1046,29 @@ código ya lo fijan. **Si alguno es falso, cambia la funcionalidad.**
 2. **La conversión `INTEGER → NUMERIC` de Postgres es sin pérdida.** Todo entero
    existente entra en `DECIMAL(14,4)` sin cambiar de valor, y FR-005 lo verifica en
    vez de darlo por hecho.
-3. **El hallazgo `auditoria-frente2-hallazgos.json:335` es correcto.** Tiene
-   veredicto CONFIRMADO y su `razon_veredicto` reproduce los números y verifica que
-   Sequelize 6.37.8 no valida el tipo. **Esta spec no lo vuelve a derivar.**
+3. ⚠ **El hallazgo `auditoria-frente2-hallazgos.json:335` describe MAL el modo de
+   falla.** Esta suposición decía que el hallazgo era correcto y que la spec no lo
+   volvería a derivar. **Se derivó, y no se sostiene.** El hallazgo afirma que «los
+   consumos fraccionarios se redondean y el stock nunca baja», con `10 - 0.4 → 10`.
+   Medido contra Postgres, lo que pasa depende de **cómo escribe Sequelize**:
+
+   | Camino | Quién lo usa | Con 9,6 en una columna `INTEGER` |
+   |---|---|---|
+   | Literal en el SQL | `bulkCreate` | **redondea a 10**, en silencio |
+   | Parámetro bindeado | `instance.update()` | **error**: `invalid input syntax for type integer: "9.6"` |
+
+   Producción descuenta stock con `instance.update()`, así que un consumo
+   fraccionario **no redondea: falla con 500 y revierte la orden entera**. El
+   módulo es inutilizable con recetas fraccionarias — un defecto peor en
+   disponibilidad y mejor en silencio que el que el hallazgo describe.
+
+   Lo que **sí** es mudo es el defecto de la línea de venta en cero, porque
+   `sale_items` se escribe con `bulkCreate`. Esa asimetría es la que el hallazgo
+   no distingue, y es la que explica por qué los dos defectos se ven tan distinto.
+
+   Los criterios de aceptación que hablan de «dejar el stock en 9,6» siguen
+   valiendo: describen lo que tiene que pasar **después** de migrar, y eso no
+   cambia. Lo que cambia es contra qué defecto se los está comparando.
 4. **Recetas y producción son módulos solo para superadmin**, así que el daño
    probablemente no le esté ocurriendo a ningún cliente hoy. **Eso no lo vuelve
    aceptable**: el código existe y el defecto está adentro.

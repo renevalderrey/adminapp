@@ -29,7 +29,13 @@ const { sembrarDosEmpresas } = require('./fixtures');
 //  que había que rechazar» de «no registra nada nunca».
 // ════════════════════════════════════════════
 
-const { Sale, SaleItem, Stock, StockMovement } = modelos;
+// ⚠ Se requiere DESPUÉS de `baseDePruebas`: arrastra `models/index.js`, que
+// arrastra `config/database.js`, que arma la conexión al importarse.
+const productionService = require('../../services/productionService');
+
+const {
+  Sale, SaleItem, Stock, StockMovement, Product, Recipe, RecipeItem,
+} = modelos;
 
 let datos;
 
@@ -101,13 +107,15 @@ describe('POST /api/sales con una cantidad que la columna no puede guardar', () 
 
     // Y el stock quedó **exactamente** en lo que valía.
     //
-    // ⚠ Contra las columnas `INTEGER` de hoy, esta comparación **no** es la que
-    // distingue el defecto y hay que decirlo: con la validación vieja el
-    // handler escribía `20 - 0.4 = 19.6` y Postgres lo redondeaba de vuelta a
-    // 20 al asignarlo, así que la fila quedaba igual. Los que se ponen en rojo
-    // hoy son los conteos: la venta, su línea en cero y el movimiento sí
-    // quedaban. Después de la Fase 3 la columna guarda 19,6 y entonces esta
-    // comparación pasa a ser la que muerde. Van las dos cosas juntas por eso.
+    // ⚠ Con las columnas ya en `DECIMAL(14,4)` esta comparación **sí** es la que
+    // muerde: revertir la validación deja el handler escribiendo 19,6 y la fila
+    // queda distinta. Antes de la Fase 3 no distinguía nada, y el motivo estaba
+    // mal contado acá: no era que Postgres redondeara `19.6` de vuelta a 20 al
+    // asignarlo —medido, `stock.update({ quantity: 19.6 })` viaja como
+    // parámetro y contra una columna `INTEGER` respondía
+    // `invalid input syntax for type integer`, o sea un 500 y un rollback—.
+    // Los conteos se ponen en rojo por su cuenta: la línea en cero la escribe
+    // `bulkCreate`, que sí usa literales y sí recibe el cast de asignación.
     const despues = await stockDeLaHarina();
 
     expect(despues.quantity).toBe(antes.quantity);
@@ -156,5 +164,198 @@ describe('POST /api/sales con una cantidad que la columna no puede guardar', () 
     expect(Number(despues.available)).toBe(Number(antes.available) - 3);
 
     expect(await StockMovement.count({ where: { referencia_id: 'VENTA-FRACCIONADA-0001' } })).toBe(1);
+  });
+});
+
+// ════════════════════════════════════════════
+//  US1 · La base representa 9,6
+//
+//  Es el hallazgo `auditoria-frente2-hallazgos.json:335` ejecutado, y ejecutarlo
+//  lo corrigió: **el hallazgo describe mal el modo de falla**, y conviene que
+//  quede escrito porque el que lo lea va a buscar el síntoma equivocado.
+//
+//  El hallazgo dice que un consumo de 0,4 sobre 10 dejaba **10** —«se puede
+//  producir infinitas veces sin que la harina baje nunca»— porque «el cast de
+//  asignación numeric→int4 redondea». Medido contra Postgres 16 y Sequelize
+//  6.37.8, con las columnas todavía en `INTEGER`: `stockRecord.update({ quantity:
+//  9.6 })` viaja como **parámetro**, y un parámetro no recibe cast de asignación
+//  —Postgres parsea el texto directo como entero— así que la respuesta era
+//  `invalid input syntax for type integer: "9.6"`. La orden se revertía entera y
+//  **no se registraba ninguna producción**: no había stock redondeado, había un
+//  módulo que no se podía usar con recetas fraccionarias.
+//
+//  El redondeo silencioso que el hallazgo describe existe, pero es de otro
+//  camino: `bulkCreate` escribe **literales** en el SQL, y ahí sí el cast de
+//  asignación convierte 0,4 en 0 sin avisar. Es el defecto de US3, el de arriba,
+//  y por eso una línea de venta quedaba en cero mientras una producción moría
+//  con un 500.
+//
+//  Las dos mitades las arregla la misma columna.
+//
+//  ── Por qué se llama al servicio y no al endpoint ──
+//
+//  `/api/production` está detrás de `requireSuperadmin` (`server.js:655`) y el
+//  usuario de la sesión de estos tests no lo es: por HTTP la respuesta sería un
+//  404 y el test fallaría por el motivo equivocado. El servicio **es** el código
+//  de producción —la ruta no hace más que llamarlo— y lo que se está afirmando
+//  es qué queda escrito en la columna.
+// ════════════════════════════════════════════
+
+/**
+ * Un elaborado con receta que consume `porUnidad` de harina, y la harina en 10.
+ *
+ * ⚠ El stock arranca en **10 exactos** porque es el número del hallazgo. Los
+ * casos que sí necesitan un valor no redondo para poder distinguir el defecto
+ * —las sumas de US2— viven en `sumasDeStock.integracion.test.js` y arrancan de
+ * 10,5000: acá el defecto se distingue igual, porque lo que se mira es la parte
+ * decimal del resultado y no una suma que cierre.
+ */
+async function recetaQueConsume(porUnidad) {
+  const elaborado = await Product.create({
+    empresa_id: datos.empresaA.id,
+    name: 'Pan de campo',
+    sku: 'PAN-001',
+    cost: 0,
+    unit_type: 'unidad',
+  });
+
+  const receta = await Recipe.create({
+    empresa_id: datos.empresaA.id,
+    product_id: elaborado.id,
+    yield: 1,
+    loss_percentage: 0,
+  });
+
+  await RecipeItem.create({
+    recipe_id: receta.id,
+    ingredient_product_id: datos.harina.id,
+    quantity: porUnidad,
+  });
+
+  await Stock.update(
+    { quantity: 10, available: 10 },
+    { where: { product_id: datos.harina.id, punto_de_venta_id: datos.centroA.id } }
+  );
+
+  return elaborado;
+}
+
+/** El stock de harina en la sucursal desde la que produce el test. */
+async function harinaEnCentro() {
+  return Stock.findOne({
+    where: {
+      empresa_id: datos.empresaA.id,
+      product_id: datos.harina.id,
+      punto_de_venta_id: datos.centroA.id,
+    },
+  });
+}
+
+describe('Una orden de producción que consume una fracción', () => {
+  it('consumir 0,4 sobre un stock de 10 deja 9,6 y NO 10', async () => {
+    const elaborado = await recetaQueConsume(0.4);
+
+    await productionService.createProductionOrder(
+      { product_id: elaborado.id, quantity_produced: 1, batch_code: 'LOTE-1', production_date: '2026-08-20' },
+      datos.empresaA.id,
+      datos.centroA.id
+    );
+
+    const harina = await harinaEnCentro();
+
+    // Igualdad exacta contra 9,6 y no un rango: un `toBeCloseTo` o un
+    // `toBeLessThan(10)` daría verde con 9,5999 o con 9, que son justamente los
+    // números que este cambio de columna existe para no producir. Con la
+    // columna en `INTEGER` esta escritura ni siquiera llegaba: fallaba con
+    // `invalid input syntax for type integer: "9.6"` (ver el encabezado).
+    expect(Number(harina.quantity)).toBe(9.6);
+    expect(Number(harina.available)).toBe(9.6);
+
+    // Y tal como está en la columna, con la escala puesta: es lo que la API le
+    // manda al navegador y lo que la Fase 4 tiene que dibujar como «9,6».
+    expect(harina.quantity).toBe('9.6000');
+  });
+
+  it('consumir 0,6 sobre un stock de 10 deja 9,4 y NO 9', async () => {
+    // El segundo número del hallazgo, y no es una repetición: con `INTEGER` el
+    // primero redondeaba **para arriba** (10) y éste **para abajo** (9). Un solo
+    // caso dejaría media regla sin ejercitar.
+    const elaborado = await recetaQueConsume(0.6);
+
+    await productionService.createProductionOrder(
+      { product_id: elaborado.id, quantity_produced: 1, batch_code: 'LOTE-1', production_date: '2026-08-20' },
+      datos.empresaA.id,
+      datos.centroA.id
+    );
+
+    const harina = await harinaEnCentro();
+
+    // `10 - 0.6` da 9.4 en punto flotante y `10 - 0.4` da 9.6, los dos exactos;
+    // si alguna vez no lo fueran, los 4 decimales de la columna redondean el
+    // sobrante y el número que queda escrito sigue siendo éste.
+    expect(Number(harina.quantity)).toBe(9.4);
+    expect(harina.quantity).toBe('9.4000');
+  });
+
+});
+
+describe('Lo que la columna guarda y lo que el driver devuelve', () => {
+  it('una línea de venta escrita con 0,4 DIRECTO en el modelo vale 0,4 al releerla', async () => {
+    // Por el modelo y no por el endpoint: la 016 deja `POST /api/sales` cerrado
+    // a toda fracción (PENDIENTE 2), así que intentarlo por HTTP daría 400 y el
+    // test fallaría por el motivo equivocado. Lo que se afirma acá es la
+    // **capacidad de la columna**, que es lo que la 017 va a usar cuando abra la
+    // puerta; la puerta cerrada la afirman los casos de arriba.
+    const linea = await SaleItem.create({
+      sale_id: datos.ventaA.id,
+      product_id: datos.harina.id,
+      product_name: 'Harina 000',
+      quantity: 0.4,
+      unit_price: 1234.56,
+    });
+
+    const releida = await SaleItem.findByPk(linea.id);
+
+    expect(Number(releida.quantity)).toBe(0.4);
+    expect(releida.quantity).toBe('0.4000');
+  });
+
+  it('una fila de stock en 12 sigue valiendo doce, aunque el driver la entregue como "12.0000"', async () => {
+    // Es el hecho del driver escrito y ejecutado, no deducido: `pg` devuelve un
+    // `NUMERIC` como **texto con la escala puesta**, así que un stock de doce
+    // vuelve `"12.0000"` sin que exista un solo decimal en toda la base. De acá
+    // salen los diez puntos de dibujo de la Fase 4 y las cinco sumas de la Fase
+    // 1: el valor no cambió, cambió su tipo en JavaScript.
+    await Stock.update(
+      { quantity: 12, available: 12 },
+      { where: { product_id: datos.harina.id, punto_de_venta_id: datos.centroA.id } }
+    );
+
+    const harina = await harinaEnCentro();
+
+    expect(typeof harina.quantity).toBe('string');
+    expect(harina.quantity).toBe('12.0000');
+    expect(Number(harina.quantity)).toBe(12);
+
+    // Las dos trampas que esto abre, fijadas para que nadie las descubra en
+    // producción: la comparación estricta contra un número deja de andar, y la
+    // suma concatena.
+    expect(harina.quantity === 12).toBe(false);
+    expect(harina.quantity + 5).toBe('12.00005');
+  });
+
+  it('un stock en cero vuelve "0.0000", que es *truthy*: todo `|| 0` cambia de rama', async () => {
+    // El caso que rompió `stock.js:142` y que la Fase 2 corrigió. Se fija acá
+    // porque es la única forma de ver que el string existe: contra un doble,
+    // `quantity` es el número 0 y el `||` cae al cero como siempre.
+    await Stock.update(
+      { quantity: 0, available: 0 },
+      { where: { product_id: datos.harina.id, punto_de_venta_id: datos.centroA.id } }
+    );
+
+    const harina = await harinaEnCentro();
+
+    expect(harina.quantity).toBe('0.0000');
+    expect(Boolean(harina.quantity)).toBe(true);
   });
 });

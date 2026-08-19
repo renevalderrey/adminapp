@@ -46,6 +46,15 @@
 //  - **`available` es distinto de `quantity` en la sucursal designada.** Los
 //    ocho caminos que escriben stock los mueven juntos, así que en cualquier
 //    otro dato publicar uno u otro da el mismo número.
+//  - **Las cantidades de stock son ENTERAS a propósito.** Desde la 016 las nueve
+//    columnas de cantidad son `DECIMAL(14,4)` y el driver las devuelve como
+//    texto —un stock de 20 vuelve `"20.0000"`—, pero acá siguen siendo enteras
+//    porque **treinta archivos comparten esta fixture y varios afirman conteos**:
+//    sumarle un producto o una fila a la empresa A mueve los números del panel,
+//    del catálogo y de los listados. La fila fraccionaria —un stock de
+//    `10.5000`, que es lo que hace distinguible una suma que concatena de una
+//    que suma— vive en el `beforeEach` de
+//    `sumasDeStock.integracion.test.js`, junto con su producto propio.
 // ════════════════════════════════════════════
 
 const { modelos } = require('./baseDePruebas');

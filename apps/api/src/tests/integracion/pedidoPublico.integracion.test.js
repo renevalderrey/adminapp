@@ -345,7 +345,11 @@ describe('el alta pública de pedidos', () => {
       .send(res.body.reintentar_con);
 
     expect(segundo.status).toBe(201);
-    expect(segundo.body.data.lineas[0].cantidad).toBe(20);
+    // Como string desde la migración 31: `pedido_items.cantidad` es
+    // `DECIMAL(14,4)` y lo que hay en la columna viaja tal cual, igual que
+    // `subtotal` (`contracts/api-endpoints.md`, §1). La tienda pública no lo
+    // dibuja —muestra su propio carrito— y sigue vendiendo por unidad.
+    expect(segundo.body.data.lineas[0].cantidad).toBe('20.0000');
   });
 
   it('con el subtotal exactamente igual al umbral el envío es gratis', async () => {

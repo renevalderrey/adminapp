@@ -31,7 +31,14 @@ const PedidoItem = sequelize.define('PedidoItem', {
   precio_lista: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
   regla_id: { type: DataTypes.INTEGER, allowNull: true },
   // La EFECTIVAMENTE pedida, después del recorte por stock.
-  cantidad: { type: DataTypes.INTEGER, allowNull: false },
+  //
+  // DECIMAL(14,4) desde la migración 31, igual que las otras ocho columnas de
+  // cantidad. Hoy nada escribe decimales acá —`apps/tienda/src/carrito.js:55`
+  // hace `Math.floor` y la tienda pública sigue vendiendo por unidad—, pero el
+  // recorte por stock sale de `stock.quantity`, que sí puede ser fraccionario:
+  // dejarla en `INTEGER` sería sembrar el mismo redondeo silencioso en la única
+  // columna que quedó afuera. El tipo lo ata `tests/modeloPedidoItem.test.js`.
+  cantidad: { type: DataTypes.DECIMAL(14, 4), allowNull: false },
   subtotal: { type: DataTypes.DECIMAL(12, 2), allowNull: false },
 }, {
   tableName: 'pedido_items',

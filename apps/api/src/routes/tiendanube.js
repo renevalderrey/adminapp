@@ -1022,8 +1022,19 @@ privado.get('/variantes', checkPermission('config.ver'), async (req, res) => {
       const mapeo = mapeoPorVariante.get(clave) || null;
       const producto = mapeo ? productoPorId.get(mapeo.product_id) : null;
 
+      // `Number(…)` desde la migración 31: `stock.available` es `DECIMAL(14,4)` y
+      // el driver la entrega como texto, así que sin esto la pantalla de
+      // TiendaNube (`Tiendanube.jsx:858`, que dibuja `{variante.disponible ?? '—'}`)
+      // pasaría a mostrar «5.0000». Es el mismo envoltorio que ya tienen
+      // `catalogoPublico.js:237` y `:689` sobre la misma columna.
+      //
+      // ⚠ El `null` NO se convierte, y la diferencia es de negocio:
+      // `motivoDeNoPublicar` distingue «no hay fila de stock en la sucursal
+      // designada» —que se anota y **no se publica**— de «hay cero». Un
+      // `Number(null)` valdría 0 y publicaría cero, que agota en la tienda una
+      // variante que sí tiene mercadería (FR-046).
       const disponible = producto && disponiblePorProducto.has(producto.id)
-        ? disponiblePorProducto.get(producto.id)
+        ? Number(disponiblePorProducto.get(producto.id))
         : null;
 
       return {

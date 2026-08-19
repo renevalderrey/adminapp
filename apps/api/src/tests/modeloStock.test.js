@@ -24,6 +24,14 @@ const MIGRACION = fs.readFileSync(
   'utf8'
 );
 
+// ── La migración 31, la que cambia la escala de las tres cantidades ──
+const ARCHIVO_DE_CANTIDADES = '20260820-cantidades-decimales.js';
+const CANTIDADES = require(`../migrations/${ARCHIVO_DE_CANTIDADES}`);
+const FUENTE_DE_CANTIDADES = fs.readFileSync(
+  path.join(__dirname, '..', 'migrations', ARCHIVO_DE_CANTIDADES),
+  'utf8'
+);
+
 describe('punto_de_venta_id es la identidad de la sucursal', () => {
   it('NO admite nulos, como la columna en la base después de la migración 14', () => {
     // Una fila de stock sin sucursal es mercadería que la pantalla no puede
@@ -61,5 +69,47 @@ describe('la lista de indexes describe la base y no un deseo', () => {
     const comunes = declarados.filter((i) => !i.unique).map((i) => i.fields.join(','));
 
     expect(comunes.sort()).toEqual(['empresa_id', 'location', 'punto_de_venta_id']);
+  });
+});
+
+// ════════════════════════════════════════════
+//  La escala de las tres cantidades, atada a la migración que la escribe
+//
+//  ⚠ Esto no lo puede ver `scripts/verificar-esquema.js`: compara `udt_name` y
+//  nada más (`:204`), así que para él `numeric(14,4)` y `numeric(12,4)` son la
+//  misma columna. O sea que alguien puede escribir `DECIMAL(12,4)` en el modelo,
+//  el job «API — la imagen arranca y migra» sale en verde, y la degradación de
+//  la escala solo aparece el día que un `sync({ alter: true })` de desarrollo la
+//  aplique — o nunca, con el modelo mintiendo para siempre.
+//
+//  Las DOS mitades hacen falta y por separado no dicen nada: el modelo puede
+//  declarar 14,4 y la migración escribir otra cosa, y al revés.
+// ════════════════════════════════════════════
+describe('quantity, available y min_stock son DECIMAL(14,4) y no INTEGER', () => {
+  const LAS_TRES = ['quantity', 'available', 'min_stock'];
+
+  it('la migración 31 declara la escala y la escribe en el SQL, no solo en una constante', () => {
+    // Ancla y primera mitad. Una lista que dice 14,4 y un `ALTER` que escribe
+    // otra cosa dejarían los cuatro casos de abajo pasando sobre una promesa que
+    // la base nunca recibe — es el mismo par de mitades que
+    // `reversibilidadDeMigraciones.test.js` exige para el UNIQUE de `sesiones`.
+    expect(CANTIDADES.PRECISION).toBe(14);
+    expect(CANTIDADES.ESCALA).toBe(4);
+    expect(FUENTE_DE_CANTIDADES).toContain('TYPE NUMERIC(${PRECISION}, ${ESCALA})');
+  });
+
+  it.each(LAS_TRES)('el modelo declara stock.%s con la MISMA escala que la migración', (columna) => {
+    const tipo = Stock.rawAttributes[columna].type;
+
+    expect(tipo.key).toBe('DECIMAL');
+    expect(tipo.options.precision).toBe(CANTIDADES.PRECISION);
+    expect(tipo.options.scale).toBe(CANTIDADES.ESCALA);
+  });
+
+  it.each(LAS_TRES)('y la migración convierte stock.%s, o el modelo estaría solo', (columna) => {
+    // La otra mitad: un modelo en `DECIMAL(14,4)` sobre una columna que ninguna
+    // migración convirtió es una fila que Sequelize lee como texto de una
+    // columna `INTEGER`, y nadie lo nota hasta la primera suma.
+    expect(CANTIDADES.COLUMNAS).toContainEqual({ tabla: 'stock', columna });
   });
 });

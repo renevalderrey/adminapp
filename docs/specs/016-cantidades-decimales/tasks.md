@@ -250,7 +250,7 @@ vuelve como string. Acá se corrige el hallazgo `auditoria-frente2-hallazgos.jso
 ⚠ **A partir de esta fase la interfaz muestra `3.0000` hasta que termine la Fase 4.**
 Es la puerta de despliegue del preámbulo: en producción las dos van juntas.
 
-- [ ] **T301** Crear `apps/api/src/migrations/20260820-cantidades-decimales.js` **y
+- [x] **T301** Crear `apps/api/src/migrations/20260820-cantidades-decimales.js` **y
       cambiar los nueve atributos de los cuatro modelos en el mismo commit** (FR-006):
       `Sale.js:176`, `Stock.js:43,48,53`, `StockMovement.js:30,34,38,42`,
       `PedidoItem.js:34` a `DataTypes.DECIMAL(14, 4)`. El `up` va entero en una
@@ -269,7 +269,7 @@ Es la puerta de despliegue del preámbulo: en producción las dos van juntas.
       recorre y verifica que exporta `up` y `down`; y `SE_NIEGAN` sigue teniendo una
       sola entrada.
 
-- [ ] **T302** [P] Extender `apps/api/src/tests/modeloStock.test.js` y
+- [x] **T302** [P] Extender `apps/api/src/tests/modeloStock.test.js` y
       `modeloSale.test.js` con el caso «el modelo declara `DECIMAL(14,4)` **y** la
       migración escribe `NUMERIC(14,4)`», leyendo `rawAttributes[…].type.options` de
       un lado y el fuente de la migración del otro. *(Depende de T301.)*
@@ -278,14 +278,14 @@ Es la puerta de despliegue del preámbulo: en producción las dos van juntas.
       **no** puede ver, porque compara `udt_name` y nada más (`:204`): para él
       `numeric(14,4)` y `numeric(12,4)` son la misma columna.
 
-- [ ] **T303** [P] Crear `apps/api/src/tests/modeloStockMovement.test.js` y
+- [x] **T303** [P] Crear `apps/api/src/tests/modeloStockMovement.test.js` y
       `modeloPedidoItem.test.js` con la misma atadura, para las cuatro columnas de
       `stock_movements` y para `pedido_items.cantidad`. *(Depende de T301.)*
       **Verificación**: las cinco columnas, una por una, con el mismo caso de rojo
       que T302. Son los dos modelos que hoy no tienen guardia y por eso son los que
       se degradan sin que nadie se entere.
 
-- [ ] **T304** Completar `cantidadesDecimales.integracion.test.js` con US1: una orden
+- [x] **T304** Completar `cantidadesDecimales.integracion.test.js` con US1: una orden
       de producción que consume **0,4** sobre un stock de 10 deja **9,6**, y una de
       **0,6** deja **9,4**; una línea de venta con `0.4` **escrita directo en el
       modelo** —no por el endpoint, que la rechaza (PENDIENTE 2)— vale 0,4 al leerla;
@@ -296,7 +296,7 @@ Es la puerta de despliegue del preámbulo: en producción las dos van juntas.
       Revertir el tipo de `stock.quantity` a `INTEGER` pone los dos casos en rojo. La
       comparación es por igualdad exacta contra `9.6` y `9.4`, no un rango.
 
-- [ ] **T305** Crear `apps/api/src/tests/integracion/sumasDeStock.integracion.test.js`
+- [x] **T305** Crear `apps/api/src/tests/integracion/sumasDeStock.integracion.test.js`
       con los cuatro caminos de US2, cada uno con su propio caso para que se sepa
       cuál se rompió (FR-028). El `beforeEach` siembra, después de
       `sembrarDosEmpresas()`, **un stock de `10.5000`**, una fila con `available = 0`
@@ -314,13 +314,13 @@ Es la puerta de despliegue del preámbulo: en producción las dos van juntas.
       `available` en 105 y no en 1005 **por los dos caminos** de `general.js`. Cada
       uno se revierte por separado y solo su caso se pone en rojo.
 
-- [ ] **T306** [P] Agregar a `sumasDeStock.integracion.test.js` el caso de la
+- [x] **T306** [P] Agregar a `sumasDeStock.integracion.test.js` el caso de la
       importación: una planilla con la columna cantidad en `0,4` guarda **0,4**.
       *(Depende de T106 y T301.)*
       **Verificación**: con `parseInt` de vuelta el test da 0 y se pone en rojo. Va
       con su gemelo de celda vacía, que tiene que seguir dejando la fila como estaba.
 
-- [ ] **T307** Crear
+- [x] **T307** Crear
       `apps/api/src/tests/integracion/reversionDeCantidades.integracion.test.js` con
       US5 y con la promesa de la migración. El `down` se llama pasándole un
       `queryInterface` cuyo `sequelize.transaction(fn)` abre un **SAVEPOINT** sobre

@@ -173,8 +173,16 @@ const SaleItem = sequelize.define('SaleItem', {
     type: DataTypes.INTEGER, // FK opcional al producto (puede no existir si fue eliminado)
     allowNull: true,
   },
+  // DECIMAL(14,4) desde la migración 31, la misma escala que `stock`: una línea
+  // de venta y el descuento de inventario que produce tienen que poder
+  // representar el mismo número. **Cuantos decimales admite una línea es otra
+  // pregunta y la contesta un validador** —hoy `POST /api/sales` solo acepta
+  // enteros (`utils/cantidades.js:DECIMALES_DE_UNA_LINEA_DE_VENTA`)—: acá está
+  // la capacidad, no la regla de negocio.
+  //
+  // El tipo lo ata a la migración `tests/modeloSale.test.js`.
   quantity: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.DECIMAL(14, 4),
     allowNull: false,
     defaultValue: 1,
   },

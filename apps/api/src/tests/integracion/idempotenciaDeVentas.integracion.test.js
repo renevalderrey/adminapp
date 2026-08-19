@@ -122,8 +122,12 @@ describe('Dos cajas mandando el mismo ticket al mismo tiempo', () => {
 
     // 20 − 3. Con seis descuentos daría 2, y con el descuento fuera de la
     // transacción podría dar cualquier cosa entre 2 y 17.
-    expect(stock.available).toBe(17);
-    expect(stock.quantity).toBe(17);
+    //
+    // El `Number(…)` es de la migración 31: las columnas de cantidad son
+    // `DECIMAL(14,4)` y el driver las entrega como texto —`"17.0000"`—, así que
+    // lo que se compara es el valor y no cómo lo escribe `pg`.
+    expect(Number(stock.available)).toBe(17);
+    expect(Number(stock.quantity)).toBe(17);
 
     expect(await StockMovement.count({ where: { referencia_id: 'VENTA-PARALELA-0001' } })).toBe(1);
   });
@@ -162,8 +166,10 @@ describe('Dos cajas mandando el mismo ticket al mismo tiempo', () => {
     // puede verificar. Es el motivo escrito en `routes/sales.js`.
     for (const res of respuestas.filter((r) => r.body.yaRegistrada === true)) {
       expect(res.body.data.items).toHaveLength(1);
-      expect(res.body.data.items[0].quantity).toBe(3);
-      // DECIMAL: Postgres lo devuelve como string y así viaja en el JSON.
+      // Los dos como string, y por el mismo motivo: son columnas `DECIMAL` y lo
+      // que hay en la base viaja tal cual. `quantity` se sumó a la lista en la
+      // migración 31 (`contracts/api-endpoints.md`, §1); `total` ya era así.
+      expect(res.body.data.items[0].quantity).toBe('3.0000');
       expect(res.body.data.total).toBe('3703.68');
     }
   });
@@ -182,7 +188,7 @@ describe('El reintento de siempre: el mismo ticket, uno después del otro', () =
     const stock = await Stock.findOne({
       where: { product_id: datos.harina.id, punto_de_venta_id: datos.centroA.id },
     });
-    expect(stock.available).toBe(17);
+    expect(Number(stock.available)).toBe(17);
   });
 
   it('un reintento con el ticket MODIFICADO devuelve las líneas VIEJAS, para que el POS lo note', async () => {
@@ -196,8 +202,8 @@ describe('El reintento de siempre: el mismo ticket, uno después del otro', () =
     expect(res.status).toBe(200);
     expect(res.body.yaRegistrada).toBe(true);
     // Lo entregado fueron 4 unidades y lo registrado 3: la respuesta tiene que
-    // permitir darse cuenta.
-    expect(res.body.data.items[0].quantity).toBe(3);
+    // permitir darse cuenta. Viaja como string desde la migración 31.
+    expect(res.body.data.items[0].quantity).toBe('3.0000');
     expect(res.body.data.total).toBe('3703.68');
   });
 });
