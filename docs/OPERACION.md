@@ -241,6 +241,320 @@ mismo.** Si no coinciden, ahí sí hay algo que mirar.
 distintos con un número raro cada uno son cinco llamados y ninguna explicación
 que sirva para el siguiente.
 
+### Los stocks empiezan a mostrar decimales — la migración de cantidades (016)
+
+**No se rompió nada, y esta vez sí hay números que cambian.** Las nueve columnas
+de cantidad de `sale_items`, `stock`, `stock_movements` y `pedido_items` dejaron
+de ser `INTEGER` y son `NUMERIC(14,4)`
+(`src/migrations/20260820-cantidades-decimales.js`). Un stock puede valer 9,6, y
+la pantalla escribe `9,6`.
+
+> **Dónde corre esto, y en qué estado está.** Producción es **Render + Neon** —lo
+> confirmó el dueño del producto el 17/8/2026, y con eso se cerró el PENDIENTE 3
+> de `docs/specs/016-cantidades-decimales/spec.md`—, y contra esa base **la
+> migración ya corrió**: entró con el commit `3f02f07`, que llegó a `main` el
+> 18/8/2026 a las 23:05. Las nueve columnas son `numeric(14,4)` y `SequelizeMeta`
+> la tiene registrada, junto con `20260821-aviso-de-vencimiento-enviado`.
+>
+> **Lo de abajo no es un plan pendiente: es el procedimiento.** Se escribe acá
+> porque vuelve a hacer falta entero para la próxima base que haya que migrar —un
+> cliente nuevo, el VPS si alguna vez se usa— y para la próxima migración que
+> cambie el tipo de una columna, que es donde valen los mismos cinco pasos. **Del
+> 18/8 no hubo chequeo previo ejecutado**: lo único medido de antemano son las
+> cuentas de filas del paso **a** de más abajo, tomadas el 15/8.
+>
+> ⚠ **El VPS está documentado y no está en uso.** `docker-compose.produccion.yml`
+> y [DESPLIEGUE-HOSTINGER.md](DESPLIEGUE-HOSTINGER.md) describen un despliegue
+> entero que hoy no corre en ningún lado. Varias secciones de este runbook
+> —«Alguien borró datos por error», «Probar una restauración»— siguen escritas
+> para ese camino y afirman que Neon **no** está en producción: hoy es al revés.
+> Cuando algo hable de `/var/respaldos/favalio`, de `docker compose` o de
+> `deploy/respaldo.sh`, es del VPS y acá no aplica.
+
+**Si alguien dice que anoche vio `5.0000` donde siempre decía `5`, tiene razón.**
+El esquema migrado salió en el push del 18/8 a las 23:05 y el formateador de la
+pantalla en el siguiente, el 19/8 a las 08:52: **casi diez horas con las dos
+mitades separadas**, que es exactamente lo que el plan de la 016 prohibía —«la
+Fase 3 y la Fase 4 salen juntas o no salen»—. Cayeron de noche, así que quedó en
+cosmético. La respuesta que corresponde es «sí, se vio, y ya está arreglado», no
+«no puede ser».
+
+#### 1 · Qué estaba mal, y por qué el número nuevo es el bueno
+
+Antes de esta migración una cantidad fraccionaria **no se guardaba mal siempre de
+la misma manera**. Depende de cómo Sequelize escriba la fila, y las dos formas
+dan síntomas opuestos:
+
+| Cómo se escribe la fila | Qué pasaba con un 9,6 sobre una columna `INTEGER` |
+|---|---|
+| Como **parámetro** — `registro.update({ quantity: 9.6 })` | Postgres parsea el texto directo como entero y responde `invalid input syntax for type integer: "9.6"`. **Un 500 y un rollback**: la operación entera se caía y no quedaba nada |
+| Como **literal** dentro del SQL — `bulkCreate` | El cast de asignación redondea sin decir nada. Un `0,4` se guardaba **`0`** |
+
+El módulo de producción usa la primera (`services/productionService.js:357`), así
+que una receta con consumos fraccionarios **hacía fallar la orden entera**: no
+dejaba el stock redondeado, dejaba un módulo que no se podía usar. La segunda es
+la que se comía las líneas de venta: un `POST /api/sales` con `quantity: 0.4`
+respondía 200 y guardaba la línea en **cero**.
+
+> ⚠ El hallazgo `docs/auditoria-frente2-hallazgos.json:335` **describe mal la
+> mitad de producción**: dice que el consumo se redondea y que «se puede producir
+> infinitas veces sin que la harina baje nunca». Medido contra Postgres 16 y
+> Sequelize 6.37.8 con las columnas todavía en `INTEGER`, no era así — el detalle
+> está en el encabezado de
+> `apps/api/src/tests/integracion/cantidadesDecimales.integracion.test.js`.
+> Importa acá porque cambia la respuesta a «¿desde cuándo está mal este stock?»:
+> **donde el error saltaba no hay dato corrompido**, porque no se escribió nada;
+> donde el número se truncaba en silencio, sí lo hay.
+
+**Y lo que no se arregla.** Las cantidades que ya se guardaron mal **no se
+recuperan**. El caso concreto es la importación de planillas: hasta la 016 la
+columna cantidad pasaba por `parseInt`, que **trunca sin avisar**, así que una
+planilla con `9,6` importaba **9** y una con `0,4` importaba **0**. Ese 9 es hoy
+idéntico a un 9 que siempre fue 9: no hay forma de distinguirlos ni de
+reconstruir el original. No se intenta reparar —inventar el dato sería peor—, y
+la salida cuando un insumo viene arrastrando diferencias es la de siempre:
+contar la mercadería y hacer un ajuste de stock desde Inventario.
+
+#### 2 · El procedimiento para migrar: medir, respaldar, correr, verificar, avisar
+
+Los cinco pasos, en orden. El orden importa: el respaldo va **después** de medir,
+porque si la medición reabre el plan todavía no hay nada que respaldar; y va
+**inmediatamente antes** de correr, porque un respaldo de anteayer no cubre lo
+que se cargó ayer.
+
+**a · Medir las cuatro tablas.** Es lo que decide si el `ALTER TABLE` directo
+alcanza. `ALTER … TYPE` reescribe la tabla y toma un `ACCESS EXCLUSIVE LOCK`:
+mientras dura, **el punto de venta no puede cobrar**.
+
+```sql
+SELECT 'sale_items'       AS tabla, COUNT(*) FROM sale_items
+UNION ALL SELECT 'stock',           COUNT(*) FROM stock
+UNION ALL SELECT 'stock_movements', COUNT(*) FROM stock_movements
+UNION ALL SELECT 'pedido_items',    COUNT(*) FROM pedido_items
+UNION ALL SELECT 'products',        COUNT(*) FROM products;
+```
+
+Contra Neon, el 15/8/2026: `sale_items` **4**, `stock` **42**,
+`stock_movements` **5**, `pedido_items` **2**, `products` **477**. Sobre cuatro
+filas el `ALTER` es instantáneo: no hace falta ventana, ni columna nueva, ni
+copia en lotes.
+
+⚠ **Si `sale_items` no está en el orden de las decenas —si aparece en cientos de
+miles— este plan se reabre.** No se migra igual «a ver qué pasa»: vuelve la
+discusión de columna nueva, doble escritura y copia en lotes que la medición del
+15/8 cerró, y esa discusión es la mitad del plan técnico de la 016.
+
+**b · Un respaldo, verificado, inmediatamente antes.** Verificado quiere decir
+**restaurado**, no «el archivo está»: un respaldo que nunca se restauró es un
+archivo. En Neon el respaldo no es `deploy/respaldo.sh` —ese script es el cron
+del VPS, corre `docker compose` contra `docker-compose.produccion.yml` y deja la
+copia en el mismo disco que la base (`:29-30`)—. Lo que aplica es un `pg_dump`
+contra el mismo `DATABASE_URL` que tiene Render, restaurado en una base
+descartable y contado:
+
+```bash
+pg_dump "$DATABASE_URL" > antes-de-016.sql
+createdb comparacion && psql -d comparacion -f antes-de-016.sql
+psql -d comparacion -c "SELECT (SELECT COUNT(*) FROM empresas) AS empresas,
+                               (SELECT COUNT(*) FROM sales)    AS ventas,
+                               (SELECT MAX(date) FROM sales)   AS ultima_venta;"
+```
+
+Esa copia restaurada **es la misma que necesita el paso 4**, así que el respaldo
+se verifica y la comparación se prepara en un solo movimiento.
+
+Dos cosas que no reemplazan al dump: la retención propia de Neon —«en el plan
+gratuito es corta y no está bajo control de nadie del equipo»,
+`apps/api/scripts/backup.js:8-9`— y `npm run backup -w apps/api -- --todas`, que
+exporta a JSON por empresa y lo aclara en su propio encabezado.
+
+⚠ **La salida de emergencia es el respaldo, no el `down`.** El `down` de esta
+migración cuenta las filas fraccionarias y **se niega** si hay alguna, nombrando
+la tabla y cuántas: volver a `INTEGER` las redondearía sin avisar, que es el
+defecto que la migración vino a eliminar. O sea que deja de servir exactamente el
+día de la primera producción con consumo fraccionario, que es el día a partir del
+cual haría falta.
+
+**c · Correr, y leer el log.** En Render no hay paso aparte: el `startCommand` es
+`npm run migrate && node src/server.js` (`render.yaml`), así que las migraciones
+corren en cada arranque del servicio y, si fallan, **el servidor no levanta** —es
+preferible a levantar con el esquema a medias—. A mano, desde la raíz:
+
+```
+npm run migrate -w apps/api
+```
+
+El log dice qué hizo, y hay que leerlo:
+
+- `[cantidades] 9 columna(s) convertida(s) a NUMERIC(14,4): sale_items.quantity, …`,
+  seguido de una línea por tabla con **cuántas filas tenía al convertir**. Ese
+  número tiene que parecerse al del paso a; si no, se está migrando otra base.
+- `[cantidades] Las 9 columnas ya son NUMERIC(14,4): no se tocó nada.` — es lo
+  que sale si ya había corrido. Correrla dos veces no reescribe ninguna tabla.
+
+Si aborta, **no queda nada aplicado**: todo va en una transacción y en Postgres
+el DDL es transaccional. Los dos motivos por los que aborta están escritos en el
+mensaje —alguna columna quedó con parte decimal donde antes había enteros, o
+alguna suma se movió—, los dos significan «este cambio de tipo tocó datos», y
+ninguno se resuelve volviendo a correrla.
+
+**d · Verificar el esquema.** Es lo que ya corre el job «API — la imagen arranca
+y migra» de CI:
+
+```
+npm run verificar:esquema -w apps/api
+```
+
+No tiene que reportar divergencia. Y la comprobación directa, que es la que
+contesta la pregunta exacta:
+
+```sql
+SELECT table_name, column_name, data_type, numeric_precision, numeric_scale
+  FROM information_schema.columns
+ WHERE table_schema = 'public'
+   AND (table_name, column_name) IN (
+        ('sale_items','quantity'),
+        ('stock','quantity'), ('stock','available'), ('stock','min_stock'),
+        ('stock_movements','cantidad_anterior'), ('stock_movements','cantidad_nueva'),
+        ('stock_movements','disponible_anterior'), ('stock_movements','disponible_nuevo'),
+        ('pedido_items','cantidad'))
+ ORDER BY table_name, column_name;
+```
+
+Nueve filas, todas `numeric | 14 | 4`. `verificar-esquema.js` **no** ve la
+escala: compara `udt_name` y nada más (`:204`), así que para él `numeric(14,4)` y
+`numeric(12,4)` son la misma columna. Lo que ata la escala son los cuatro
+`modelo*.test.js` de la suite rápida, y esta consulta.
+
+**e · Comparar los diez puntos, y avisar.** Los dos, abajo. El aviso va **antes**
+de que el dueño abra la pantalla, no después de que llame.
+
+#### 3 · El aviso
+
+Va por el canal habitual, al dueño y a quien use producción y recetas. Es un
+público chico —esos módulos son de superadmin— y por eso el aviso es un mensaje y
+no un cartel adentro de la aplicación: la 016 promete que **no aparece ningún
+control, campo ni pantalla nueva** (FR-044), y un banner sería la primera
+excepción.
+
+```
+Los stocks van a mostrar decimales
+
+Desde ahora el sistema guarda las cantidades de stock con decimales.
+
+Qué vas a ver distinto:
+
+- Un insumo que se consume por peso puede quedar en 9,6, y la pantalla va a
+  decir 9,6. Hasta ahora ese número no se podía guardar.
+
+- El número nuevo es el correcto y el viejo estaba mal. Antes, según de dónde
+  viniera la cantidad, el sistema hacía dos cosas distintas y las dos malas: le
+  cortaba los decimales sin avisar —una planilla con 9,6 entraba como 9— o
+  directamente fallaba, que es lo que pasaba al registrar una producción con
+  una receta por peso.
+
+Qué NO cambia:
+
+- Ninguna venta, ningún precio, ningún importe. Cambia la cantidad, nada más.
+- Lo que se vende por unidad se sigue viendo igual: un 3 sigue siendo un 3.
+
+Y una cosa que no tiene arreglo:
+
+- Las cantidades que ya se habían guardado mal no se pueden recuperar. Si una
+  planilla traía 9,6 y el sistema anotó 9, hoy ese 9 es idéntico a un 9 que
+  siempre fue 9: no hay forma de distinguirlos ni de reconstruir el original.
+  Si algún insumo viene arrastrando diferencias, se arregla contando lo que hay
+  y haciendo un ajuste de stock desde Inventario.
+```
+
+#### 4 · Comparar los diez puntos contra una copia de los datos reales
+
+Es el criterio de éxito 2 de la spec, y el paso que no existía escrito. Los tests
+cubren cada punto por separado; lo que ninguno contesta es si **para este
+comercio, con sus productos y sus cantidades**, alguna pantalla quedó distinta.
+
+**Una base sembrada a mano no lo prueba.** La fixture tiene los valores que
+alguien eligió para que su caso se viera, y por eso justamente no tiene el
+producto con 1.234 unidades —el que rompe si el formateador agrupa los miles—, ni
+el que quedó con el disponible por encima de la cantidad, ni el que tiene el
+mínimo en cero. Los datos reales sí los tienen, y son los que hay que mirar.
+
+**Contra una copia, nunca contra producción.** Y como en Neon la migración ya
+corrió, el «antes» no se consigue esperando: se consigue **revirtiendo la copia**.
+
+1. **La copia.** Es la del paso 2b; si ya está restaurada, se reusa.
+2. **Apuntar el `DATABASE_URL` de `apps/api/.env` a la copia**, y confirmarlo
+   antes de seguir: los dos comandos de acá abajo escriben en la base que diga
+   ese archivo, y el que se equivoque le corre las migraciones a producción.
+3. **Retroceder la copia dos migraciones**, con
+   `npm run db:migrate:undo -w apps/api` dos veces:
+   - la primera deshace `20260821-aviso-de-vencimiento-enviado`, que es colateral
+     —está encima en el orden— y sobre una copia descartable no importa;
+   - la segunda es la de cantidades. **Si se niega**, ya hay filas fraccionarias
+     en la copia y el mensaje dice qué tabla y cuántas. Eso no es un problema, es
+     el dato: significa que para esas filas la promesa «nada cambió» ya no
+     aplica, y son justamente las que hay que mirar de cerca.
+4. **Levantar la aplicación** (`npm run dev` desde la raíz; que la barra del
+   navegador diga `localhost`) y **anotar los diez puntos**, uno por uno,
+   **copiando el texto de la pantalla a un archivo**. No mirándolo.
+5. **Volver a migrar la copia**: `npm run migrate -w apps/api`.
+6. **Recargar, anotar los diez otra vez en un segundo archivo, y comparar los dos
+   con un `diff`.**
+
+**Carácter por carácter, y no de vista.** La diferencia entre `1234` y `1.234` es
+un punto, y a ojo son el mismo número; leídos en castellano, uno es mil
+doscientos treinta y cuatro y el otro es uno coma doscientos treinta y cuatro. Es
+la misma trampa que `CONVENCIONES.md` describe para los importes. Por eso se
+copia el texto y se comparan dos archivos, en vez de recordar cómo se veía.
+
+Los diez puntos. Lo que se compara es el texto de la copia contra el de esa misma
+copia revertida; la columna de la derecha es la **forma** que tiene que tener, y
+si alguno aparece con la escala cruda (`5.0000`) o con punto decimal (`9.6`), ahí
+está la regresión:
+
+| # | Dónde se dibuja una cantidad | Cómo llegar | Forma correcta |
+|---|---|---|---|
+| 1 | **Ticket impreso** de una venta | Historial de ventas → una venta → Imprimir | `3 x Creatina` |
+| 2 | Baldosa del catálogo del POS | Punto de venta, bajo el nombre del producto | `5 u.` |
+| 3 | Aviso de stock del POS | Punto de venta, poner en el ticket más de lo que hay | `hay 5 en esta sucursal` |
+| 4 | Ficha del producto · disponible para vender | Inventario → abrir el producto → bloque Stock | `Disponible para vender: 10.` |
+| 5 | Ficha del producto · campo **Cantidad** | ídem, el campo de la columna «Cantidad» | `10` **adentro del campo** |
+| 6 | Reporte de inventario | Reportes → pestaña Inventario, columna de cantidad | `12` |
+| 7 | Panel del pedido online | Pedidos → abrir un pedido | `2×` |
+| 8 | Stock insuficiente **al vender** | Punto de venta, cobrar más de lo que hay | `disponible 5, requerido 8` |
+| 9 | Stock insuficiente **al transferir** | Inventario → transferir más de lo que hay | `(disponible: 0, requerido: 3)` |
+| 10 | Ficha del producto · campo **Mínimo** | ídem que el 5, el campo de al lado | `0` |
+
+**Son diez y no nueve.** La spec listaba nueve; el décimo —el campo **Mínimo** de
+la ficha, tres líneas debajo del de Cantidad— apareció leyendo el archivo, no la
+lista. Es el que se olvida, y por eso los puntos 5 y 10 se anotan por separado
+aunque estén pegados en la pantalla.
+
+Cuatro detalles que hacen perder tiempo si no están escritos:
+
+- **El punto 1 no está en una pantalla**: sale en la ventana de impresión. Se
+  imprime a PDF y se copia de ahí la línea del ítem. Es el criterio de éxito 1 de
+  la spec y es el papel que le queda al cliente, así que no se saltea.
+- **El punto 4 solo se dibuja si el disponible difiere de la cantidad.** Con
+  `available = quantity` ese renglón no existe. Hay que elegir un producto con
+  unidades comprometidas en una venta o en una producción.
+- **Los puntos 5 y 10 son `<input type="number">`, no texto.** Se leen del campo,
+  no de una etiqueta, y lo que se comprueba además es que **no estén en blanco**:
+  un `value` que el navegador no sabe leer deja el control vacío, y quien guarde
+  escribe cero encima de lo que había.
+- **Los puntos 8 y 9 son mensajes del servidor**, no pantallas: hay que provocar
+  el error. Y el caso que importa del 9 es el de stock **cero**, que es el único
+  en que ese mensaje se lee.
+
+**Y tres lugares más que conviene mirar en la misma pasada**, aunque no sean de
+los diez: el ticket **en pantalla** del POS, el resumen de movimientos de
+Inventario y el reporte de **ventas**. Ninguno de los tres se rompía con la
+migración —el primero sale del carrito del navegador, el segundo de una columna
+`JSONB` y el tercero ya venía convertido del servidor—, pero los tres se tocaron
+igual para que una cantidad se escriba en un solo lugar, y **un cambio que no era
+necesario también puede salir mal**. Con valores enteros tienen que decir
+exactamente lo mismo que antes.
+
 ### "La tienda online no se actualiza"
 
 **Dónde se mira: `/tiendanube`.** Desde el hito 7 hay una pantalla propia y es el
@@ -1145,6 +1459,13 @@ de negocio, no de la migración.
 
 Revertir la de stock tiene su propia advertencia y no es equivalente a las
 demás: ver «Identidad de sucursal en stock» acá arriba, punto 4.
+
+Revertir la de **cantidades decimales** (`20260820-cantidades-decimales`) también
+falla a propósito, y por una condición de los datos: si hay una sola fila con
+cantidad fraccionaria, volver a `INTEGER` la redondearía sin avisar. O sea que se
+niega justamente el día en que haría falta, y por eso la salida de emergencia ahí
+es el respaldo. Está entera en «Los stocks empiezan a mostrar decimales», en
+Situaciones.
 
 ### Al escalar a más de una instancia
 

@@ -462,7 +462,7 @@ desplegar la migración.**
 después y qué avisar; y existe escrito el procedimiento que hoy es el hueco más
 grande de la verificación (riesgo 3 del plan).
 
-- [ ] **T501** `docs/OPERACION.md` — sección nueva en «Situaciones», al lado de «Los
+- [x] **T501** `docs/OPERACION.md` — sección nueva en «Situaciones», al lado de «Los
       números del Panel cambiaron», con dos partes: **(a)** el procedimiento previo
       —repetir la medición de `sale_items`, `stock`, `stock_movements` y
       `pedido_items` **contra la base del VPS** (`docker-compose.produccion.yml`), no
@@ -479,7 +479,27 @@ grande de la verificación (riesgo 3 del plan).
       **este plan se reabre**. Y dice que el `down` se niega justamente cuando más
       falta haría, así que la salida de emergencia es el respaldo y no el `down`.
 
-- [ ] **T502** `docs/OPERACION.md` — el procedimiento escrito para comparar los **diez
+      > **Cuatro correcciones al enunciado, con su motivo.** (1) **La base a medir es
+      > la de Neon, no la del VPS.** El PENDIENTE 3 se cerró el 17/8/2026 con el dueño
+      > del producto confirmando que producción es **Render + Neon**; el despliegue en
+      > VPS está documentado (`docker-compose.produccion.yml`,
+      > `docs/DESPLIEGUE-HOSTINGER.md`) y **no está en uso**, así que las cifras del
+      > 15/8 son las de producción y no hay una segunda base. (2) **El procedimiento
+      > está escrito como reutilizable y no como pendiente**: la migración ya corrió
+      > contra Neon —entró con `3f02f07`, que llegó a `main` el 18/8/2026 a las 23:05—,
+      > y el documento lo dice en vez de fingir un chequeo previo que nadie ejecutó.
+      > (3) **`deploy/respaldo.sh` no aplica en Neon** —es el cron del VPS— y la nota
+      > de «la copia queda en el mismo disco que la base» está en `:29-30`, no en
+      > `:22-23`; el respaldo que sí aplica es un `pg_dump` contra el `DATABASE_URL`
+      > de Render, restaurado y contado. (4) **El aviso no dice «se redondeaba» a
+      > secas**: medido, el redondeo silencioso era del camino de `bulkCreate` (una
+      > línea de venta de 0,4 quedaba en cero) y del `parseInt` de la importación
+      > (9,6 se guardaba 9), mientras que producción escribe con parámetro bindeado y
+      > respondía `invalid input syntax for type integer` —o sea un 500, no un
+      > redondeo—. El ejemplo del dato irrecuperable es el de la planilla, que es el
+      > que efectivamente ocurrió.
+
+- [x] **T502** `docs/OPERACION.md` — el procedimiento escrito para comparar los **diez
       puntos** contra una copia de los datos reales, que hoy no existe y es la
       dependencia que sostiene el criterio de éxito 2.
       **Verificación**: la lista tiene los diez puntos con su pantalla y el valor
@@ -488,7 +508,19 @@ grande de la verificación (riesgo 3 del plan).
       Comprafit**. Que la lista esté completa se comprueba contra la tabla del plan:
       son diez, no nueve.
 
-- [ ] **T503** Cierre: correr las cuatro suites y mirar la corrida de CI.
+      > **Una corrección al enunciado.** El ejemplo del ticket impreso —«hoy
+      > `3 x Creatina`, después de migrar `3.0000 x Creatina`»— **es falso**, y se
+      > midió al implementar la Fase 4: `printInvoice.js:59` pasa todas las líneas por
+      > `normalizarLinea`, que en `comprobanteAfip.js:141` ya hacía
+      > `Number(item.quantity)`. El ticket impreso nunca iba a mostrar la escala
+      > cruda; lo que sí arregla `cantidad()` ahí es el decimal —`9.6` con punto en
+      > vez de `9,6`—. Los puntos que sí regresaban el día de la migración son el
+      > catálogo del POS, el aviso de stock de `Billing`, `PanelProducto` (los tres:
+      > disponible, cantidad y mínimo), `Reports` y `PanelDePedido`. El ticket queda
+      > igual en la lista de comparación —es un punto de dibujo— pero sin el ejemplo
+      > inventado.
+
+- [x] **T503** Cierre: correr las cuatro suites y mirar la corrida de CI.
       **Verificación**: `npm run test:api`, `npm run test:web`,
       `npm --prefix apps/api run test:integracion` y `npm run build` pasan;
       `aislamientoEmpresas.test.js`, `observabilidad.test.js`,
@@ -499,8 +531,29 @@ grande de la verificación (riesgo 3 del plan).
       `setTypeParser` global (FR-027)—; el job «API — la imagen arranca y migra» está
       en verde; y **la corrida de CI se mira después del push, no antes**.
 
+      > **Resultado, 19/8/2026.** `npm run test:api` **91 suites / 2950 tests**;
+      > `npm run test:web` **66 archivos / 1774 tests**;
+      > `npm --prefix apps/api run test:integracion` **31 suites / 454 tests** (1894 s);
+      > `npm run build` pasa. Las seis guardias nombradas van en la suite rápida y
+      > están entre esas 91 —`guardiaDelArnes.test.js` vive en `src/tests/integracion/`
+      > pero **no** termina en `.integracion.test.js`, así que la corrida rápida sí lo
+      > levanta—, y `centavoDelSaldo.integracion.test.js` está entre las 31.
+      > La corrida de CI del push de la Fase 4 (`0cfb201`, id 32249787597) terminó en
+      > **verde en los siete jobs**, incluido «API — la imagen arranca y migra»;
+      > estaba **en curso** al empezar esta fase, así que se miró después y no antes.
+      >
+      > ⚠ Dos cosas medidas que conviene saber antes de correr la suite de
+      > integración en Windows: (1) **tarda ~31 minutos** con `--runInBand`, y (2) la
+      > primera corrida dio `idempotenciaDeVentas` y `cascadaDeRecepcion` en rojo
+      > **por contención** —se corrió en paralelo con `test:web` y `npm run build`— y
+      > por el reenvío de puertos de Docker Desktop trabado, que dejó
+      > `prepararBase.js` colgado en `esperar()` sin timeout. Sola y con el
+      > contenedor reiniciado, la suite pasa entera. No hay nada que arreglar en esos
+      > dos tests, pero **no se corre la suite de integración junto con otra cosa**.
+
 **Checkpoint**: la funcionalidad está lista para desplegar con el orden del plan:
-medir el VPS, respaldar, migrar, verificar el esquema, avisar.
+medir la base de producción —Neon, no el VPS: ver la corrección de T501—,
+respaldar, migrar, verificar el esquema, comparar los diez puntos, avisar.
 
 ---
 

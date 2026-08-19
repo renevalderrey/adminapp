@@ -608,10 +608,10 @@ const PROHIBIDO = [
   // `{item.quantity}` crudo —que es exactamente el defecto que la 016 vino a
   // corregir— esta regla no lo ve, y no puede verlo: es indistinguible de
   // cualquier otra interpolación. Lo único que lo encuentra es el recorrido
-  // manual de los diez puntos contra una copia de los datos reales, que la 016
-  // deja escrito en `docs/OPERACION.md` (T502) y **todavía no existe**.
-  // Decirlo acá es la mitad que evita que alguien lea el verde de esta regla
-  // como «no queda ninguna cantidad sin formatear».
+  // manual de los diez puntos contra una copia de los datos reales, que está
+  // escrito en `docs/OPERACION.md`, en «Los stocks empiezan a mostrar
+  // decimales», punto 4. Decirlo acá es la mitad que evita que alguien lea el
+  // verde de esta regla como «no queda ninguna cantidad sin formatear».
   //
   // El patrón exige que el valor se LLAME como una cantidad —`quantity`,
   // `available`, `min_stock`, `cantidad`, `disponible`, `qty`— porque
