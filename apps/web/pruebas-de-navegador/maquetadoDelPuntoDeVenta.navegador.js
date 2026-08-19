@@ -317,8 +317,14 @@ test.describe('Las medidas del ticket', () => {
       const pie = [...document.querySelector('main aside').children].at(-1)
       const tamano = (el) => Math.round(parseFloat(getComputedStyle(el).fontSize))
 
-      const etiquetaTotal = [...pie.querySelectorAll('span')].find((s) => s.textContent === 'Total')
-      const total = etiquetaTotal?.nextElementSibling
+      // La etiqueta y el importe dejaron de ser hermanos: la etiqueta comparte
+      // un `div` en columna con «IVA 21% incluido · 6 u.», y el importe es el
+      // hermano de ESE div. Buscar el `nextElementSibling` de la etiqueta
+      // devolvía la línea de unidades —y `undefined` cuando no estaba—, que es
+      // como este test se rompió sin decir qué buscaba.
+      const etiquetaTotal = [...pie.querySelectorAll('span')]
+        .find((s) => s.textContent === 'Total a cobrar')
+      const total = etiquetaTotal?.parentElement?.nextElementSibling
 
       // Todo lo que compite con el total en el mismo bloque: el subtotal, el
       // IVA, el vuelto y el texto del botón.
@@ -327,6 +333,9 @@ test.describe('Las medidas del ticket', () => {
         .map((el) => ({ texto: el.textContent.trim().slice(0, 24), px: tamano(el) }))
 
       return {
+        // Va el texto para que un selector roto se lea como «no lo encontré» y
+        // no como «mide undefined».
+        totalTexto: total?.textContent?.trim() ?? null,
         totalPx: total && tamano(total),
         totalEsMono: total && getComputedStyle(total).fontFamily.includes('JetBrains'),
         maximoDeLosDemas: Math.max(...competidores.map((c) => c.px)),
@@ -334,11 +343,15 @@ test.describe('Las medidas del ticket', () => {
       }
     })
 
-    // 24px es lo que dice FR-021 y lo que dibuja la maqueta. Se mide el tamaño
-    // RENDERIZADO y no la clase: `text-2xl` puede quedar pisado por una regla
-    // de `index.css` o por un `font-size` heredado, y eso no lo ve ningún test
-    // de render.
-    expect(m.totalPx).toBe(24)
+    // 28px es lo que dibuja la maqueta del rediseño, y son cuatro más que los 24
+    // de FR-021 por un motivo: el bloque perdió los importes del subtotal y del
+    // IVA —se fueron al panel de emisión, que es donde se mira lo que va a
+    // ARCA—, así que el total quedó solo y puede ocupar el peso entero.
+    //
+    // Se mide el tamaño RENDERIZADO y no la clase: `text-[28px]` puede quedar
+    // pisado por una regla de `index.css` o por un `font-size` heredado, y eso
+    // no lo ve ningún test de render.
+    expect(m.totalPx, `el importe encontrado fue «${m.totalTexto}»`).toBe(28)
     expect(m.totalEsMono, 'el total tiene que ir en la monoespaciada del sistema (.num)').toBe(true)
     expect(
       m.maximoDeLosDemas,
