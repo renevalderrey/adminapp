@@ -65,8 +65,10 @@ function medir(page) {
     const zonaDelCatalogo = catalogo && conScrollVertical(catalogo)
     const zonaDelTicket = ticket && conScrollVertical(ticket)
     const buscador = document.querySelector('input[placeholder^="Escaneá"]')
+    // El botón dice QUÉ va a pasar —«Cobrar y emitir Factura C»—, así que se lo
+    // busca por la parte que no depende del comprobante elegido.
     const botonDeCobro = [...document.querySelectorAll('button')]
-      .find((b) => b.textContent.includes('Confirmar venta'))
+      .find((b) => b.textContent.includes('Cobrar y emitir'))
 
     return {
       documento: {

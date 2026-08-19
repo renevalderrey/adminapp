@@ -9,6 +9,10 @@ import {
   llevaVuelto,
   etiquetaDePago,
   precioDeLinea,
+  DESTACADOS,
+  nombreDeLista,
+  mediosALaVista,
+  mediosAgrupados,
 } from './mediosDePago'
 
 // ════════════════════════════════════════════
@@ -181,5 +185,81 @@ describe('segmentos · el nivel de precio, no la forma de pagar', () => {
     expect(Object.keys(ETIQUETAS).sort()).toEqual([
       'al', 'ef', 'qr', 'tc', 'tc1', 'tc3', 'tc3m', 'tc3n', 'tc3v', 'td', 'tr',
     ])
+  })
+})
+
+// ════════════════════════════════════════════
+//  El medio se elige UNA vez, y agrupado por la lista con la que cotiza
+//
+//  Lo que se prueba acá es una propiedad y no un dibujo: entre lo que el pie
+//  muestra y lo que esconde el desplegable tienen que estar SIEMPRE los nueve
+//  medios, sin repetir ninguno. Un medio que no está en ninguno de los dos no
+//  se puede elegir, y no falla nada: se cobra con otro.
+// ════════════════════════════════════════════
+
+describe('mediosALaVista y mediosAgrupados · entre los dos están los nueve', () => {
+  /** Todos los códigos que el control ofrece con ese medio elegido. */
+  const alcanzables = (codigo) => [
+    ...mediosALaVista(codigo).map((m) => m.codigo),
+    ...mediosAgrupados(codigo).flatMap((g) => g.medios.map((m) => m.codigo)),
+  ]
+
+  it('ningún medio queda fuera del control, sea cual sea el elegido', () => {
+    for (const medio of MEDIOS) {
+      expect(alcanzables(medio.codigo).sort()).toEqual(MEDIOS.map((m) => m.codigo).sort())
+    }
+  })
+
+  it('ninguno aparece dos veces: el elegido no se duplica en «Otros»', () => {
+    for (const medio of MEDIOS) {
+      const codigos = alcanzables(medio.codigo)
+
+      expect(codigos.length).toBe(new Set(codigos).size)
+    }
+  })
+
+  it('el elegido está SIEMPRE a la vista, aunque no sea uno de los destacados', () => {
+    // Un ticket cobrado con «Naranja 3c» no puede mostrar «Efectivo» resaltado y
+    // el medio verdadero escondido atrás de un desplegable.
+    for (const medio of MEDIOS) {
+      expect(mediosALaVista(medio.codigo).map((m) => m.codigo)).toContain(medio.codigo)
+    }
+  })
+
+  it('con un destacado elegido, a la vista quedan exactamente los cuatro', () => {
+    expect(mediosALaVista('ef').map((m) => m.codigo).sort()).toEqual([...DESTACADOS].sort())
+  })
+
+  it('un código que no existe no rompe el control ni agrega un botón fantasma', () => {
+    // `tc3` está guardado en ventas reales y NO es elegible: el control tiene
+    // que dibujarse igual, con los cuatro destacados y nada más.
+    expect(mediosALaVista('tc3').map((m) => m.codigo).sort()).toEqual([...DESTACADOS].sort())
+    expect(mediosALaVista(undefined).map((m) => m.codigo).sort()).toEqual([...DESTACADOS].sort())
+  })
+
+  it('los grupos vacíos NO se dibujan', () => {
+    // Un encabezado «Cotizan con Alianza» sin nada debajo se lee como una
+    // opción que no anda.
+    for (const medio of MEDIOS) {
+      for (const grupo of mediosAgrupados(medio.codigo)) {
+        expect(grupo.medios.length).toBeGreaterThan(0)
+      }
+    }
+  })
+
+  it('cada grupo dice la lista de sus medios, y no la de otro', () => {
+    // Es toda la explicación que el control anterior no daba: por qué una
+    // transferencia cobra el precio de efectivo.
+    for (const grupo of mediosAgrupados('ef')) {
+      for (const medio of grupo.medios) {
+        expect([medio.codigo, medio.segmento]).toEqual([medio.codigo, grupo.segmento])
+        expect(grupo.lista).toBe(nombreDeLista(medio.segmento))
+      }
+    }
+  })
+
+  it('nombreDeLista no deja un segmento desconocido sin nombre', () => {
+    expect(nombreDeLista('inventado')).toBe('Efectivo')
+    expect(nombreDeLista(undefined)).toBe('Efectivo')
   })
 })

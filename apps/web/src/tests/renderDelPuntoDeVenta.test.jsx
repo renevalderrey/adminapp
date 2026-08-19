@@ -182,6 +182,66 @@ function teclear(key, modificadores = {}) {
   })
 }
 
+/** El panel de emisión, cuando está abierto. */
+const panelDeEmision = () => document.querySelector('[data-slot="sheet-content"]')
+
+/**
+ * El circuito completo del cobro con el teclado.
+ *
+ * Con un comprobante FISCAL son dos disparos y no uno: el primero abre el panel
+ * de emisión —donde se ven los datos que ese comprobante pide y el IVA producto
+ * por producto— y el segundo emite. Pedir un CAE consume un número correlativo
+ * de ARCA que no se devuelve, así que el paso intermedio es la funcionalidad,
+ * no un accidente del render.
+ *
+ * Con un comprobante INTERNO no abre nada y alcanza con el primero: un remito
+ * no habla con ARCA.
+ */
+function cobrarConAtajo() {
+  teclear('Enter', { ctrlKey: true })
+  if (panelDeEmision()) teclear('Enter', { ctrlKey: true })
+}
+
+/**
+ * Abre el panel de emisión desde el pie de cobro, como lo hace el operador.
+ *
+ * Devuelve el `within` del panel: casi todo lo que había en el pie —el CUIT, la
+ * condición frente al IVA, el nombre del comprobante— vive ahí adentro, y el
+ * ticket de atrás sigue montado, así que buscar por `screen` encuentra dos.
+ */
+async function abrirPanelDeEmision() {
+  await userEvent.click(screen.getByRole('button', { name: /Cobrar y emitir/ }))
+  return within(panelDeEmision())
+}
+
+/**
+ * Pasa el ticket a un comprobante interno, que no habla con ARCA.
+ *
+ * Es idempotente a propósito: el comprobante se CONSERVA entre una venta y la
+ * siguiente (FR-049), así que la segunda vez el botón ya está elegido y otro
+ * clic abriría su submenú en vez de no hacer nada.
+ */
+async function elegirSinFactura() {
+  const boton = screen.getByRole('button', { name: /Sin factura/ })
+  if (boton.getAttribute('aria-pressed') === 'true') return
+  await userEvent.click(boton)
+}
+
+/**
+ * Abre el panel con un comprobante interno ya elegido.
+ *
+ * Con «sin factura» el botón grande cobra derecho —un remito no consume
+ * numeración de ARCA—, así que la puerta al panel es el submenú del propio
+ * botón: es donde se carga el nombre que se imprime en el remito.
+ */
+async function abrirDatosDelComprobanteInterno() {
+  await elegirSinFactura()
+  await userEvent.click(screen.getByRole('button', { name: /Sin factura/ }))
+
+  await userEvent.click(await screen.findByRole('menuitem', { name: /Datos del comprador/ }))
+  return within(panelDeEmision())
+}
+
 const cart = () => useStore.getState().cart
 
 let post
@@ -284,7 +344,7 @@ describe('Ctrl+Enter cobra, y una sola vez', () => {
   it('Ctrl+Enter dispara un solo POST /sales', async () => {
     await montar({ cart: [{ id: 10, name: 'Colágeno 300g', price: 1500, qty: 1, method: 'ef' }] })
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await waitFor(() => expect(postsDeVenta()).toHaveLength(1))
   })
@@ -293,7 +353,7 @@ describe('Ctrl+Enter cobra, y una sola vez', () => {
     // Escenario 2.9.
     await montar({ cart: [] })
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await new Promise((r) => setTimeout(r, 0))
     expect(post).not.toHaveBeenCalled()
@@ -371,7 +431,7 @@ describe('El foco vuelve solo a la búsqueda', () => {
     await userEvent.type(buscador(), 'creatina')
     act(() => buscador().blur())
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await waitFor(() => expect(post).toHaveBeenCalled())
     await waitFor(() => expect(document.activeElement).toBe(buscador()))
@@ -414,11 +474,18 @@ describe('El foco vuelve solo a la búsqueda', () => {
     const respuestas = []
     post.mockImplementation((url) => new Promise((resolver) => respuestas.push({ url, resolver })))
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
-    // Con comprobante fiscal aparece el campo de CUIT, y sigue editable durante
-    // el cobro: es lo que hace posible corregirlo ante un CUIT_REQUERIDO.
-    const cuit = screen.getByPlaceholderText('Opcional')
+    // El panel se lleva el foco al abrirse —es un diálogo—, así que primero se
+    // lo deja terminar y recién después se pone el cursor donde lo pondría el
+    // operador. Lo que se afirma es lo de DESPUÉS: que una respuesta que llega
+    // no se lo lleve de ahí.
+    await act(async () => { await Promise.resolve() })
+
+    // El campo de CUIT vive en el panel de emisión, y sigue EDITABLE durante el
+    // cobro: es lo que hace posible corregirlo ante un CUIT_REQUERIDO, con la
+    // venta ya registrada. Un campo que se deshabilita pierde el foco.
+    const cuit = within(panelDeEmision()).getByPlaceholderText('Sin dato: Consumidor final')
     act(() => cuit.focus())
     expect(document.activeElement).toBe(cuit)
 
@@ -494,24 +561,27 @@ describe('Esc limpia el campo antes que el ticket', () => {
     await waitFor(() => expect(document.activeElement).toBe(buscador()))
   })
 
-  it('Esc en el CUIT limpia el CUIT y NO abre la confirmación del ticket', async () => {
-    // FR-036, y es lo que faltaba de la corrida anterior: el atajo estaba
-    // definido SOLO sobre la búsqueda, así que `Esc` en el CUIT no limpiaba
-    // nada y —con la búsqueda vacía, que es el estado normal— abría la
-    // confirmación de vaciado del ticket. El hook no le pasaba el evento a la
-    // acción, así que `limpiar` no tenía cómo saber dónde estaba el foco.
+  it('Esc con el panel abierto cierra el panel y NO toca el ticket', async () => {
+    // FR-036 se mudó con el campo. El CUIT ya no está en el pie: está en el
+    // panel de emisión, que es un diálogo, y ahí `Esc` significa «cerrá esto».
+    //
+    // Lo que NO puede pasar sigue siendo lo mismo, y es lo que este test
+    // sostiene: con la búsqueda vacía —que es el estado normal— la misma tecla
+    // NO puede además abrir la confirmación de vaciar el ticket. Cerrar un panel
+    // no tira la venta que se está por cobrar.
     await montar({ cart: UNA_LINEA })
 
-    const cuit = screen.getByPlaceholderText('Opcional')
+    const panel = await abrirPanelDeEmision()
+    const cuit = panel.getByPlaceholderText('Sin dato: Consumidor final')
+
     await userEvent.type(cuit, '20304050607')
     expect(cuit).toHaveValue(20304050607)
 
     teclear('Escape')
 
-    await waitFor(() => expect(cuit).toHaveValue(null))
+    await waitFor(() => expect(panelDeEmision()).toBeNull())
     expect(screen.queryByText(/Vaciar el ticket/)).not.toBeInTheDocument()
     expect(cart()).toHaveLength(1)
-    expect(document.activeElement).toBe(buscador())
   })
 
   it('Esc en «Paga con» limpia ese campo y deja el ticket entero', async () => {
@@ -614,8 +684,8 @@ describe('El ticket dice lo que se va a cobrar, y nada más', () => {
 
     expect(screen.queryByText(/IVA 21% incluido/)).not.toBeInTheDocument()
     expect(screen.queryByText('Subtotal')).not.toBeInTheDocument()
-    // Y el total sí está: lo que no se dibuja es el desglose.
-    expect(screen.getByText('Total')).toBeInTheDocument()
+    // Y el total sí está: lo que no se nombra es el IVA.
+    expect(screen.getByText('Total a cobrar')).toBeInTheDocument()
   })
 
   it('un responsable inscripto con Factura B SÍ ve el desglose', async () => {
@@ -626,8 +696,16 @@ describe('El ticket dice lo que se va a cobrar, y nada más', () => {
       settings: { ...SETTINGS, tax_condition: 'RI' },
     })
 
+    // El pie NOMBRA el IVA —«IVA 21% incluido · 1 u.»— y los importes del
+    // desglose viven en el panel de emisión, que es donde se mira lo que se va
+    // a mandar a ARCA producto por producto.
     expect(screen.getByText(/IVA 21% incluido/)).toBeInTheDocument()
-    expect(screen.getByText('$1.000,00')).toBeInTheDocument()
+
+    const panel = await abrirPanelDeEmision()
+    const neto = panel.getByText('Neto gravado').closest('div')
+
+    expect(within(neto).getByText('$1.000,00')).toBeInTheDocument()
+    expect(panel.getByText('IVA 21% incluido')).toBeInTheDocument()
   })
 
   it('el ticket vacío nombra el atajo dentro de un <kbd>', async () => {
@@ -641,14 +719,22 @@ describe('El ticket dice lo que se va a cobrar, y nada más', () => {
     expect(tecla).toHaveTextContent('Enter')
   })
 
-  it('el selector de comprobante NO es un <select>', async () => {
-    // FR-019: un control segmentado. Con un desplegable hay que abrirlo para
-    // saber qué está elegido, y acá se emite el mismo comprobante cincuenta
-    // veces seguidas.
-    await montar()
+  it('el comprobante se elige con botones, y NO con un <select>', async () => {
+    // FR-019: controles que se leen sin abrirlos. Acá se emite el mismo
+    // comprobante cincuenta veces seguidas.
+    //
+    // En el pie la pregunta es la que importa —«¿lleva factura o no?»— con su
+    // consecuencia escrita al lado; CUÁL de los cinco comprobantes exactos se
+    // termina de elegir en el panel, con el detalle a la vista.
+    await montar({ cart: UNA_LINEA })
 
-    expect(screen.getByRole('button', { name: 'Remito' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Factura C' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Con factura/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Sin factura/ })).toBeInTheDocument()
+
+    const panel = await abrirPanelDeEmision()
+
+    expect(panel.getByRole('button', { name: /^Factura C/ })).toBeInTheDocument()
+    expect(panel.getByRole('button', { name: /^Remito/ })).toBeInTheDocument()
     expect(document.querySelector('select option[value="remito"]')).toBeNull()
   })
 
@@ -739,6 +825,10 @@ describe('El cobro sale una sola vez por disparo', () => {
     // leían `false` y salían los dos `POST`, cada uno con su propio id.
     await montar({ cart: UNA_LINEA })
 
+    // El primer disparo abre el panel de emisión; los dos que importan son los
+    // que salen DE AHÍ, en la misma tanda y sin render en el medio.
+    teclear('Enter', { ctrlKey: true })
+
     dosDisparosEnLaMismaTanda(() => {
       (document.activeElement || window).dispatchEvent(eventoDeTecla('Enter', { ctrlKey: true }))
     })
@@ -752,7 +842,8 @@ describe('El cobro sale una sola vez por disparo', () => {
     // El mismo defecto por la otra puerta: el doble clic del mouse.
     await montar({ cart: UNA_LINEA })
 
-    const boton = screen.getByRole('button', { name: /Confirmar venta/ })
+    const panel = await abrirPanelDeEmision()
+    const boton = panel.getByRole('button', { name: /Emitir Factura C/ })
 
     dosDisparosEnLaMismaTanda(() => {
       boton.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
@@ -782,7 +873,7 @@ describe('El cobro sale una sola vez por disparo', () => {
     vi.useFakeTimers()
 
     try {
-      teclear('Enter', { ctrlKey: true })
+      cobrarConAtajo()
 
       // Se dejan correr las microtareas para que `/sales` resuelva y la pantalla
       // pase a esperar el CAE.
@@ -790,7 +881,10 @@ describe('El cobro sale una sola vez por disparo', () => {
 
       // Todavía NO: el aviso desde el primer instante no significa nada.
       expect(screen.queryByText(/ARCA está tardando/)).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /Pidiendo el CAE a ARCA/ })).toBeDisabled()
+      // Los dos botones lo dicen —el del panel y el del pie que quedó atrás—,
+      // así que se piden los dos y se mira que estén deshabilitados.
+      screen.getAllByRole('button', { name: /Pidiendo el CAE a ARCA/ })
+        .forEach((boton) => expect(boton).toBeDisabled())
 
       act(() => { vi.advanceTimersByTime(5000) })
 
@@ -816,16 +910,20 @@ describe('El ticket no cambia mientras se está facturando', () => {
     // El cobro queda colgado: es el instante que hay que mirar.
     post.mockImplementation(() => new Promise(() => {}))
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
     await waitFor(() => expect(postsDeVenta()).toHaveLength(1))
 
-    const mas = screen.getByRole('button', { name: /Agregar una unidad de Colágeno 300g/ })
-    const precio = screen.getByRole('spinbutton', { name: /Precio unitario de Colágeno 300g/ })
-    const segmento = segmentosDe('Colágeno 300g').getByRole('button', { name: /^Tarjeta/ })
+    // El ticket quedó detrás del panel de emisión, que lo marca `aria-hidden`
+    // mientras está abierto: por eso las consultas piden `hidden`. Lo que se
+    // afirma es que los controles están deshabilitados, no que se vean.
+    const mas = screen.getByRole('button', { name: /Agregar una unidad de Colágeno 300g/, hidden: true })
+    const precio = screen.getByRole('spinbutton', { name: /Precio unitario de Colágeno 300g/, hidden: true })
+    const medio = within(screen.getByRole('group', { name: 'Medio de pago del ticket', hidden: true }))
+      .getByRole('button', { name: /Débito/, hidden: true })
 
     expect(mas).toBeDisabled()
     expect(precio).toBeDisabled()
-    expect(segmento).toBeDisabled()
+    expect(medio).toBeDisabled()
 
     const antes = JSON.stringify(cart())
 
@@ -852,7 +950,7 @@ describe('Entre una venta y la siguiente no se recarga el catálogo', () => {
     const alMontar = gets('/products').length
     expect(alMontar).toBe(1)
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
     await waitFor(() => expect(postsDeVenta()).toHaveLength(1))
     await new Promise((r) => setTimeout(r, 0))
 
@@ -876,7 +974,7 @@ describe('Entre una venta y la siguiente no se recarga el catálogo', () => {
 
     expect(screen.getByText('5 u.')).toBeInTheDocument()
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await waitFor(() => expect(screen.getByText('2 u.')).toBeInTheDocument())
     expect(screen.queryByText('4 u.')).not.toBeInTheDocument()
@@ -910,7 +1008,7 @@ describe('Los tres finales del cobro dejan la pantalla como corresponde', () => 
 
     cobroConAfipQueRechaza({ error: 'El CAE no pudo emitirse: 10016 comprobante ya registrado' })
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await waitFor(() => expect(cart()).toHaveLength(0))
 
@@ -930,7 +1028,7 @@ describe('Los tres finales del cobro dejan la pantalla como corresponde', () => 
       error: 'Stock insuficiente para "Colágeno 300g": disponible 0, requerido 1',
     }))
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await waitFor(() => expect(postsDeVenta()).toHaveLength(1))
     await new Promise((r) => setTimeout(r, 0))
@@ -943,15 +1041,16 @@ describe('Los tres finales del cobro dejan la pantalla como corresponde', () => 
     // seguidas. Y lo que SÍ se limpia se limpia (FR-048).
     await montar({ cart: UNA_LINEA })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Remito' }))
+    await elegirSinFactura()
     await userEvent.type(buscador(), 'colageno')
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await waitFor(() => expect(cart()).toHaveLength(0))
 
-    // Conservado.
-    expect(screen.getByRole('button', { name: 'Remito' }).className).toContain('bg-brand-soft')
+    // Conservado: sigue en «sin factura», y con el Remito adentro.
+    expect(screen.getByRole('button', { name: /Sin factura/ }))
+      .toHaveAttribute('aria-pressed', 'true')
     // Limpiado.
     expect(buscador()).toHaveValue('')
   })
@@ -966,22 +1065,26 @@ describe('Los tres finales del cobro dejan la pantalla como corresponde', () => 
       message: 'Una Factura A necesita el CUIT del comprador (11 dígitos).',
     })
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
-    const reintentar = await screen.findByRole('button', { name: /Reintentar la facturación/ })
-    expect(screen.getByText(/cargá el CUIT acá abajo/)).toBeInTheDocument()
+    // El panel NO se cierra: la venta ya está registrada y lo único que falta
+    // es el comprobante, así que el motivo de ARCA y el campo que hay que
+    // corregir quedan juntos.
+    const panel = within(await waitFor(() => {
+      const caja = panelDeEmision()
+      expect(caja).not.toBeNull()
+      return caja
+    }))
+
+    await panel.findByText(/cargá el CUIT en el panel de emisión/)
 
     // Se carga el CUIT y se reintenta SOLO la facturación.
     post.mockResolvedValue({ data: { ok: true, data: { cae: '75123456789012', voucherNumber: 41 } } })
-    await userEvent.type(screen.getByPlaceholderText('Opcional'), '20304050607')
-    await userEvent.click(reintentar)
-    // El reintento EMITE un comprobante fiscal, así que pasa por la
-    // confirmación. Lo que este test mira es lo de después: que no se registre
-    // la venta otra vez.
-    await userEvent.click(await screen.findByRole('button', { name: 'Emitir comprobante' }))
+    await userEvent.type(panel.getByPlaceholderText('Sin dato: Consumidor final'), '20304050607')
+    await userEvent.click(panel.getByRole('button', { name: /Reintentar Factura C/ }))
 
     await waitFor(() =>
-      expect(screen.queryByText(/cargá el CUIT acá abajo/)).not.toBeInTheDocument())
+      expect(screen.queryByText(/cargá el CUIT en el panel de emisión/)).not.toBeInTheDocument())
 
     expect(postsDeVenta()).toHaveLength(1)
     expect(post.mock.calls.filter(([url]) => url === '/sales/sale_1/facturar')).toHaveLength(2)
@@ -1015,7 +1118,7 @@ describe('Los tres finales del cobro dejan la pantalla como corresponde', () => 
       },
     })
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await waitFor(() => expect(cart()).toHaveLength(0))
 
@@ -1074,7 +1177,7 @@ describe('Un «ya registrada» que no coincide no se da por cobrado', () => {
 
     reintentoYaRegistrado([ITEM_REGISTRADO(1)], '1500.00')
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     expect(await screen.findByText(/se registraron 1 y el ticket lleva 2/)).toBeInTheDocument()
     expect(screen.getByText(/El total registrado es \$1\.500,00 y el del ticket \$3\.000,00/))
@@ -1095,7 +1198,7 @@ describe('Un «ya registrada» que no coincide no se da por cobrado', () => {
 
     reintentoYaRegistrado([ITEM_REGISTRADO(1)], '1500.00')
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await screen.findByText(/se registraron 1 y el ticket lleva 2/)
 
@@ -1111,7 +1214,7 @@ describe('Un «ya registrada» que no coincide no se da por cobrado', () => {
 
     reintentoYaRegistrado([ITEM_REGISTRADO(1)], '1500.00')
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await waitFor(() => expect(cart()).toHaveLength(0))
     expect(screen.queryByText(/YA estaba registrada/)).not.toBeInTheDocument()
@@ -1126,7 +1229,7 @@ describe('Un «ya registrada» que no coincide no se da por cobrado', () => {
 
     reintentoYaRegistrado([ITEM_REGISTRADO(1, 'Colágeno 300g · envase nuevo')], '1500.00')
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await userEvent.click(await screen.findByRole('button', { name: /Imprimir el comprobante/ }))
 
@@ -1159,14 +1262,14 @@ describe('Ningún final del cobro deja a la vista el comprobante de otra venta',
         : Promise.resolve({ data: { ok: true, data: { cae: '75123456789012', voucherNumber: 40 } } })
     ))
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
     expect(await screen.findByRole('button', { name: /Imprimir el comprobante 40/ })).toBeInTheDocument()
 
     // Venta 2: ticket nuevo, la venta se registra y ARCA la rechaza.
     await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
     cobroConAfipQueRechaza({ error: 'El CAE no pudo emitirse: 10016 comprobante ya registrado' })
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await screen.findByText(/quedó REGISTRADA pero sin comprobante/)
     expect(cart()).toHaveLength(0)
@@ -1187,7 +1290,7 @@ describe('Ningún final del cobro deja a la vista el comprobante de otra venta',
         : Promise.resolve({ data: { ok: true, data: { cae: '75123456789012', voucherNumber: 40 } } })
     ))
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
     await screen.findByRole('button', { name: /Imprimir el comprobante 40/ })
 
     await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
@@ -1195,7 +1298,7 @@ describe('Ningún final del cobro deja a la vista el comprobante de otra venta',
       error: 'Stock insuficiente para "Colágeno 300g": disponible 0, requerido 1',
     }))
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await waitFor(() => expect(postsDeVenta()).toHaveLength(2))
     await new Promise((r) => setTimeout(r, 0))
@@ -1219,7 +1322,7 @@ describe('Lo que no se puede hacer se dice antes de intentarlo', () => {
     // deshabilitado sin motivo es un botón roto.
     await montar({ cart: UNA_LINEA, permisos: [] })
 
-    expect(screen.getByRole('button', { name: /Confirmar venta/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Cobrar y emitir/ })).toBeDisabled()
     expect(screen.getByText(/No tenés el permiso «ventas.crear»/)).toBeInTheDocument()
   })
 
@@ -1228,7 +1331,7 @@ describe('Lo que no se puede hacer se dice antes de intentarlo', () => {
     // por el botón.
     await montar({ cart: UNA_LINEA, permisos: [] })
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await new Promise((r) => setTimeout(r, 0))
     expect(post).not.toHaveBeenCalled()
@@ -1244,72 +1347,84 @@ describe('Lo que no se puede hacer se dice antes de intentarlo', () => {
       settings: { ...SETTINGS, afip_cuit: '', afip_pv: '' },
     })
 
-    const facturaC = screen.getByRole('button', { name: 'Factura C' })
+    const conFactura = screen.getByRole('button', { name: /Con factura/ })
 
-    expect(facturaC).toBeInTheDocument()
-    expect(facturaC).toBeDisabled()
+    expect(conFactura).toBeInTheDocument()
+    expect(conFactura).toBeDisabled()
     expect(screen.getByText(/Configurá el CUIT y el punto de venta de AFIP/)).toBeInTheDocument()
 
     // Y lo que queda elegido es uno que SÍ se puede emitir: nunca un
     // comprobante deshabilitado (FR-061).
-    expect(screen.getByRole('button', { name: 'Remito' }).className).toContain('bg-brand-soft')
+    expect(screen.getByRole('button', { name: /Sin factura/ }))
+      .toHaveAttribute('aria-pressed', 'true')
   })
 })
 
 // ════════════════════════════════════════════
-//  T1128 · El segmento con el medio exacto adentro
+//  T1128 · El medio de pago, elegido UNA vez
 // ════════════════════════════════════════════
 
-/** El control de medio de pago de una línea del ticket. */
-const segmentosDe = (nombre) =>
-  within(screen.getByRole('group', { name: `Medio de pago de ${nombre}` }))
+/** El control de medio de pago del pie de cobro, que es el único que hay. */
+const medioDelTicket = () =>
+  within(screen.getByRole('group', { name: 'Medio de pago del ticket' }))
 
-describe('El segmento de pago escribe un medio que existe', () => {
-  it('elegir Tarjeta NO deja la línea con un medio que no existe', async () => {
+/** Elige un medio que no entra en el pie, desde «Otros N». */
+async function elegirMedioEscondido(etiqueta) {
+  const control = medioDelTicket()
+  await userEvent.click(control.getByRole('button', { name: /Otros \d/ }))
+  await userEvent.click(await control.findByRole('menuitem', { name: etiqueta }))
+}
+
+describe('El medio de pago se elige una vez, y escribe un código que existe', () => {
+  it('elegir Débito NO deja la línea con un medio que no existe', async () => {
     // La pantalla anterior escribía `tc3`, un código que no está en ninguna de
     // las tres listas del sistema: el historial y el archivo exportado lo
     // mostraban crudo y el panel de control lo imprimía tal cual.
     await montar({ cart: UNA_LINEA })
 
-    await userEvent.click(segmentosDe('Colágeno 300g').getByRole('button', { name: /Tarjeta/ }))
+    await userEvent.click(medioDelTicket().getByRole('button', { name: /Débito/ }))
 
-    expect(cart()[0].method).toBe('tc3v')
+    expect(cart()[0].method).toBe('td')
     expect(MEDIOS.map((m) => m.codigo)).toContain(cart()[0].method)
   })
 
-  it('el segmento activo muestra el medio exacto cuando no es el por defecto', async () => {
-    // Sin esto, una transferencia y un pago en efectivo se ven idénticos en el
-    // ticket, y el operador no tiene cómo verificar lo que está por registrar.
+  it('los medios que no entran en el pie se llegan agrupados por su lista', async () => {
+    // «¿Por qué una transferencia cobra el precio de efectivo?» era la pregunta
+    // que el control anterior no contestaba nunca: los medios estaban escondidos
+    // adentro del segmento y con qué lista cotizaba cada uno había que saberlo
+    // de memoria. Acá el encabezado del grupo lo dice.
     await montar({ cart: UNA_LINEA })
 
-    const segmentos = segmentosDe('Colágeno 300g')
+    const control = medioDelTicket()
+    await userEvent.click(control.getByRole('button', { name: /Otros 5/ }))
 
-    // El segundo clic sobre el segmento ya activo abre el medio exacto.
-    await userEvent.click(segmentos.getByRole('button', { name: /Efectivo/ }))
-    await userEvent.click(await segmentos.findByRole('menuitem', { name: 'Transferencia' }))
+    expect(await control.findByText('Cotizan con Efectivo')).toBeInTheDocument()
+    expect(control.getByText('Cotizan con Tarjeta')).toBeInTheDocument()
+    expect(control.getByRole('menuitem', { name: 'Créd. 1 pago' })).toBeInTheDocument()
 
-    expect(cart()[0].method).toBe('tr')
-    expect(segmentos.getByRole('button', { name: /Transf\./ })).toBeInTheDocument()
-    expect(segmentos.queryByRole('button', { name: /^Efectivo/ })).not.toBeInTheDocument()
+    await userEvent.click(control.getByRole('menuitem', { name: 'Visa 3c' }))
+
+    expect(cart()[0].method).toBe('tc3v')
+    // Y el elegido pasa a estar A LA VISTA, aunque no sea uno de los cuatro
+    // destacados: un ticket cobrado con Visa no puede mostrar «Efectivo»
+    // resaltado y el medio verdadero escondido atrás de un desplegable.
+    expect(medioDelTicket().getByRole('button', { name: /Visa/ }))
+      .toHaveAttribute('aria-pressed', 'true')
   })
 })
 
 // ════════════════════════════════════════════
-//  T1129 · El medio del ticket, heredado
+//  T1129 · El medio vale para el ticket entero
 // ════════════════════════════════════════════
 
-/** El control de medio de pago del pie de cobro. */
-const segmentosDelTicket = () =>
-  within(screen.getByRole('group', { name: 'Medio de pago del ticket' }))
-
-describe('Las líneas nuevas heredan el medio del ticket', () => {
+describe('El medio del pie es el del ticket entero', () => {
   it('una línea nueva NO nace en efectivo cuando el ticket va con tarjeta', async () => {
-    // Un ticket de ocho productos pagado con tarjeta exigía ocho clics en
-    // «Tarjeta», y el precio de las líneas que se olvidaran quedaba mal, porque
-    // cada nivel tiene otro precio (decisión 3 de la spec).
+    // Un ticket de ocho productos pagado con tarjeta exigía ocho clics, y el
+    // precio de las líneas que se olvidaran quedaba mal, porque cada nivel tiene
+    // otro precio (decisión 3 de la spec).
     await montar({ productos: [COLAGENO] })
 
-    await userEvent.click(segmentosDelTicket().getByRole('button', { name: /Tarjeta/ }))
+    await elegirMedioEscondido('Visa 3c')
     await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
 
     expect(cart()[0].method).toBe('tc3v')
@@ -1319,23 +1434,67 @@ describe('Las líneas nuevas heredan el medio del ticket', () => {
     // La venta también se registra con el medio del ticket y no con el de la
     // primera línea: con nueve medios, más tickets quedan mixtos y el servidor
     // cae al declarado.
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
     await waitFor(() => expect(postsDeVenta()).toHaveLength(1))
     expect(postsDeVenta()[0][1].payment_method).toBe('tc3v')
   })
 
-  it('cambiar el medio de una línea NO cambia el del ticket ni el de las demás', async () => {
+  it('cambiar el medio REPRECIA las líneas que ya estaban', async () => {
+    // El defecto que el rediseño cierra. El control del pie solo alcanzaba a las
+    // líneas NUEVAS: con ocho productos ya cargados, pasar a tarjeta las dejaba
+    // a las ocho cotizando al precio de efectivo. Y no lo veía nadie, porque el
+    // total tampoco decía con qué lista estaba calculado.
     await montar({ productos: [COLAGENO, CREATINA] })
 
     await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
     await userEvent.click(screen.getByRole('button', { name: /Agregar Creatina 300g al ticket/ }))
 
-    await userEvent.click(segmentosDe('Colágeno 300g').getByRole('button', { name: /Alianza/ }))
+    await elegirMedioEscondido('Alianza')
 
-    expect(cart().find((l) => l.id === 10).method).toBe('al')
-    expect(cart().find((l) => l.id === 11).method).toBe('ef')
-    expect(segmentosDelTicket().getByRole('button', { name: /^Efectivo/ }))
-      .toHaveAttribute('aria-pressed', 'true')
+    for (const linea of cart()) {
+      expect(linea.method).toBe('al')
+      expect(linea.price).toBe(linea.base_alliance)
+    }
+  })
+
+  it('un precio puesto a mano NO vuelve al de lista por cambiar el medio', async () => {
+    // Se acordó un precio con el cliente y tocar «Alianza» no puede deshacerlo
+    // sin avisar. Para volver al de lista está la franja ámbar de la línea.
+    await montar({ productos: [COLAGENO] })
+
+    await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: /Precio unitario de Colágeno 300g/ }),
+      { target: { value: '18000' } }
+    )
+
+    await elegirMedioEscondido('Alianza')
+
+    expect(cart()[0].method).toBe('al')
+    expect(cart()[0].price).toBe(18000)
+  })
+
+  it('la excepción se ve, y dice cuánto sería de lista', async () => {
+    // «a mano» a secas no decía de cuánto se venía, y sin el precio de lista al
+    // lado nadie puede juzgar si el precio negociado está bien.
+    await montar({ productos: [COLAGENO] })
+
+    await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
+
+    const deLista = cart()[0].price
+
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: /Precio unitario de Colágeno 300g/ }),
+      { target: { value: '18000' } }
+    )
+
+    expect(screen.getByText(/Precio puesto a mano/).textContent)
+      .toContain(deLista.toLocaleString('es-AR', { maximumFractionDigits: 0 }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'volver al de lista' }))
+
+    expect(cart()[0].precio_manual).toBe(false)
+    expect(cart()[0].price).toBe(deLista)
   })
 })
 
@@ -1343,41 +1502,26 @@ describe('Las líneas nuevas heredan el medio del ticket', () => {
 //  T1130 · El vuelto, solo con billetes de por medio
 // ════════════════════════════════════════════
 
-/** Cambia el medio exacto de una línea desde el popover del segmento. */
-async function elegirMedioDeLinea(nombre, segmento, medio) {
-  const segmentos = segmentosDe(nombre)
-  await userEvent.click(segmentos.getByRole('button', { name: segmento }))
-  await userEvent.click(await segmentos.findByRole('menuitem', { name: medio }))
-}
-
 describe('El vuelto aparece solo cuando hay billetes', () => {
   it('una transferencia NO muestra el bloque de vuelto', async () => {
-    // La decisión 1 de la spec entera está acá: el segmento decide el PRECIO y
-    // la bandera decide el VUELTO. Una transferencia cotiza como efectivo y no
-    // da vuelto, y contarla como billetes es lo que rompía el arqueo de caja.
+    // La decisión 1 de la spec entera está acá: el medio decide con qué LISTA
+    // cotiza y la bandera decide el VUELTO. Una transferencia cotiza como
+    // efectivo y no da vuelto, y contarla como billetes es lo que rompía el
+    // arqueo de caja.
     //
     // Lo que este test protege es la CADENA completa: que el control escriba
     // `tr` —y no `ef`, como hacía la pantalla anterior, donde una transferencia
     // se registraba como efectivo— y que el bloque desaparezca en consecuencia.
-    // La regla suelta la cubre `utils/mediosDePago.test.js`, recorriendo
-    // `MEDIOS` entero.
     //
-    // ⚠ Lo que este test NO prueba, y el comentario que estaba acá afirmaba que
-    // sí: que la pantalla use `llevaVuelto` y no `i.method === 'ef'`. Pasar el
-    // cambio de medio por la pantalla **no distingue las dos expresiones**. Hoy
-    // `ef` es el único medio con `vuelto: true`, así que `llevaVuelto(c)` y
-    // `c === 'ef'` dan lo mismo para los once códigos del sistema, vengan de
-    // donde vengan. Sembrar el carrito a mano tampoco cambia eso.
-    //
-    // La mutación `cart.some((i) => i.method === 'ef')` dejaba este test en
-    // verde. El que la pone en rojo está en T1134 —«Quién decide si hay vuelto
-    // es la bandera del medio»— y para eso dobla `llevaVuelto`, que es el único
-    // experimento capaz de separar las dos.
+    // ⚠ Lo que este test NO prueba: que la pantalla use `llevaVuelto` y no
+    // `i.method === 'ef'`. Hoy `ef` es el único medio con `vuelto: true`, así que
+    // las dos expresiones son indistinguibles por datos. El que las separa está
+    // en T1134, y para eso dobla `llevaVuelto`.
     await montar({ cart: [{ id: 10, name: 'Colágeno 300g', price: 1500, qty: 1, method: 'ef' }] })
 
     expect(screen.getByPlaceholderText('0')).toBeInTheDocument()
 
-    await elegirMedioDeLinea('Colágeno 300g', /^Efectivo/, 'Transferencia')
+    await userEvent.click(medioDelTicket().getByRole('button', { name: /Transf\./ }))
 
     expect(cart()[0].method).toBe('tr')
     await waitFor(() => expect(screen.queryByPlaceholderText('0')).not.toBeInTheDocument())
@@ -1392,10 +1536,10 @@ describe('El vuelto aparece solo cuando hay billetes', () => {
     await userEvent.type(screen.getByPlaceholderText('0'), '50000')
     expect(screen.getByPlaceholderText('0')).toHaveValue(50000)
 
-    await elegirMedioDeLinea('Colágeno 300g', /^Efectivo/, 'Transferencia')
+    await userEvent.click(medioDelTicket().getByRole('button', { name: /Transf\./ }))
     await waitFor(() => expect(screen.queryByPlaceholderText('0')).not.toBeInTheDocument())
 
-    await elegirMedioDeLinea('Colágeno 300g', /^Transf\./, 'Efectivo')
+    await userEvent.click(medioDelTicket().getByRole('button', { name: /Efectivo/ }))
 
     const campo = await screen.findByPlaceholderText('0')
     expect(campo).toHaveValue(null)
@@ -1481,7 +1625,7 @@ describe('El ticket no promete lo que no hay', () => {
       data: { ok: true, data: { id: 'sale_1', total: '1500.00' }, warnings: [aviso], stock: [] },
     })
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await waitFor(() => expect(cart()).toHaveLength(0))
     expect(screen.getByText(aviso)).toBeInTheDocument()
@@ -1506,13 +1650,17 @@ describe('Un comprobante interno no habla con ARCA', () => {
     // devolver sin una nota de crédito.
     await montar({ cart: UNA_LINEA })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Remito' }))
+    await elegirSinFactura()
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await waitFor(() => expect(postsDeVenta()).toHaveLength(1))
     await new Promise((r) => setTimeout(r, 0))
 
+    // Y ni siquiera abrió el panel: un remito no consume numeración de ARCA, y
+    // agregarle un paso al camino rápido es cobrarle a las cuarenta ventas del
+    // día el cuidado que necesitan las diez fiscales.
+    expect(panelDeEmision()).toBeNull()
     expect(post.mock.calls.filter(([url]) => String(url).includes('/facturar'))).toHaveLength(0)
     expect(post).toHaveBeenCalledTimes(1)
   })
@@ -1524,29 +1672,41 @@ describe('Lo que se limpia al terminar una venta se limpia de verdad', () => {
     // `clearCustomer()` de `limpiarDespuesDeCobrar`. El CUIT del cliente
     // anterior en la factura del siguiente es un comprobante mal declarado, y
     // deshacerlo exige una nota de crédito.
-    await montar({ cart: UNA_LINEA })
+    await montar({ cart: UNA_LINEA, productos: [COLAGENO] })
 
-    await userEvent.type(screen.getByLabelText('CUIT / DNI'), '20304050607')
-    expect(screen.getByLabelText('CUIT / DNI')).toHaveValue(20304050607)
+    const panel = await abrirPanelDeEmision()
+    const cuit = panel.getByLabelText(/CUIT \/ DNI/)
 
-    teclear('Enter', { ctrlKey: true })
+    await userEvent.type(cuit, '20304050607')
+    expect(cuit).toHaveValue(20304050607)
 
+    await userEvent.click(panel.getByRole('button', { name: /Emitir Factura C/ }))
     await waitFor(() => expect(cart()).toHaveLength(0))
-    expect(screen.getByLabelText('CUIT / DNI')).toHaveValue(null)
+
+    // Ticket nuevo: el panel vuelve a abrirse en blanco.
+    await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
+    const siguiente = await abrirPanelDeEmision()
+
+    expect(siguiente.getByLabelText(/CUIT \/ DNI/)).toHaveValue(null)
   })
 
   it('el nombre del cliente tampoco', async () => {
     // La otra mitad: con un comprobante interno el campo es el nombre libre, y
     // es lo que se imprime en el remito del cliente que viene después.
-    await montar({ cart: UNA_LINEA })
+    await montar({ cart: UNA_LINEA, productos: [COLAGENO] })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Remito' }))
-    await userEvent.type(screen.getByPlaceholderText('Consumidor final'), 'Pérez')
+    const panel = await abrirDatosDelComprobanteInterno()
+    await userEvent.type(panel.getByPlaceholderText('Consumidor final'), 'Pérez')
 
-    teclear('Enter', { ctrlKey: true })
-
+    await userEvent.click(panel.getByRole('button', { name: /Emitir Remito/ }))
     await waitFor(() => expect(cart()).toHaveLength(0))
-    expect(screen.getByPlaceholderText('Consumidor final')).toHaveValue('')
+
+    expect(postsDeVenta()[0][1].customer_name).toBe('Pérez')
+
+    await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
+    const siguiente = await abrirDatosDelComprobanteInterno()
+
+    expect(siguiente.getByPlaceholderText('Consumidor final')).toHaveValue('')
   })
 
   it('la FICHA de cliente tampoco: la venta siguiente no va a su cuenta corriente', async () => {
@@ -1561,42 +1721,65 @@ describe('Lo que se limpia al terminar una venta se limpia de verdad', () => {
 
     await montar({ cart: UNA_LINEA, productos: [COLAGENO], superadmin: true })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Remito' }))
-    await userEvent.type(screen.getByPlaceholderText('Buscar ficha de cliente…'), 'Pér')
-    await userEvent.click(await screen.findByRole('button', { name: /Pérez/ }))
+    const panel = await abrirDatosDelComprobanteInterno()
+    await userEvent.type(panel.getByPlaceholderText('Buscar ficha de cliente…'), 'Pér')
+    await userEvent.click(await panel.findByRole('button', { name: /Pérez/ }))
 
-    teclear('Enter', { ctrlKey: true })
+    await userEvent.click(panel.getByRole('button', { name: /Emitir Remito/ }))
     await waitFor(() => expect(cart()).toHaveLength(0))
 
     expect(postsDeVenta()[0][1].customer_id).toBe(7)
 
     // Ticket nuevo, otro cliente: sin ficha.
     await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
 
     await waitFor(() => expect(postsDeVenta()).toHaveLength(2))
     expect(postsDeVenta()[1][1].customer_id).toBeUndefined()
   })
 })
 
-describe('El bloque fiscal y el campo Cliente son excluyentes', () => {
-  it('con Remito no hay CUIT ni Condición IVA, y sí el nombre del cliente', async () => {
-    // FR-023. Mutación: `{true ? (` en `TicketDelPos.jsx`. Con los dos bloques
-    // a la vez, el operador carga el nombre en un campo que el remito no usa —o
-    // el CUIT en uno que el comprobante interno no manda— y el dato se pierde
-    // sin que nada falle.
-    await montar()
+describe('Cada comprobante pide los datos que usa, y lo dice', () => {
+  it('un Remito no manda CUIT ni condición: los dos campos quedan inertes', async () => {
+    // FR-023. El defecto que esto cierra es que el operador cargue el CUIT en un
+    // comprobante que no lo manda —o el nombre en uno que no lo imprime— y el
+    // dato se pierda sin que nada falle. Deshabilitados y no ausentes: un campo
+    // que desaparece deja al operador preguntándose si lo escribió mal.
+    await montar({ cart: UNA_LINEA })
 
-    // El inicial de un monotributista es Factura C: bloque fiscal.
-    expect(screen.getByLabelText('CUIT / DNI')).toBeInTheDocument()
-    expect(screen.getByLabelText('Condición IVA')).toBeInTheDocument()
-    expect(screen.queryByPlaceholderText('Consumidor final')).not.toBeInTheDocument()
+    // El inicial de un monotributista es Factura C: comprobante fiscal.
+    const panel = await abrirPanelDeEmision()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Remito' }))
+    expect(panel.getByLabelText(/CUIT \/ DNI/)).toBeEnabled()
+    expect(panel.getByLabelText('Condición frente al IVA')).toBeEnabled()
 
-    expect(screen.queryByLabelText('CUIT / DNI')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Condición IVA')).not.toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Consumidor final')).toBeInTheDocument()
+    await userEvent.click(panel.getByRole('button', { name: /^Remito/ }))
+
+    expect(panel.getByLabelText(/CUIT \/ DNI/)).toBeDisabled()
+    expect(panel.getByLabelText('Condición frente al IVA')).toBeDisabled()
+    // El nombre sirve para los cinco: es lo que se imprime.
+    expect(panel.getByPlaceholderText('Consumidor final')).toBeEnabled()
+    expect(panel.getByText(/no viajan a ARCA y no discriminan IVA/)).toBeInTheDocument()
+  })
+
+  it('una Factura A exige el CUIT ANTES de registrar la venta', async () => {
+    // El servidor lo rechaza con `CUIT_REQUERIDO`, pero recién DESPUÉS de que la
+    // venta quedó asentada: la operación existe, el cliente está enfrente y lo
+    // que falta es un dato. Decirlo acá cuesta un renglón.
+    await montar({ cart: UNA_LINEA, settings: { ...SETTINGS, tax_condition: 'RI' } })
+
+    const panel = await abrirPanelDeEmision()
+    await userEvent.click(panel.getByRole('button', { name: /^Factura A/ }))
+
+    expect(panel.getByText(/necesita el CUIT del comprador/)).toBeInTheDocument()
+    expect(panel.getByRole('button', { name: /Emitir Factura A/ })).toBeDisabled()
+    // Y la condición queda fija: ARCA no acepta una Factura A a consumidor final.
+    expect(panel.getByLabelText('Condición frente al IVA')).toBeDisabled()
+
+    await userEvent.type(panel.getByPlaceholderText('11 dígitos'), '20304050607')
+
+    expect(panel.getByRole('button', { name: /Emitir Factura A/ })).toBeEnabled()
+    expect(post).not.toHaveBeenCalled()
   })
 })
 
@@ -1628,7 +1811,7 @@ describe('El comprobante para imprimir vive hasta que empieza el ticket siguient
         : Promise.resolve({ data: { ok: true, data: { cae: '75123456789012', voucherNumber: 40 } } })
     ))
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
     await screen.findByRole('button', { name: /Imprimir el comprobante 40/ })
 
     await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
@@ -1645,7 +1828,7 @@ describe('Los atajos están escritos donde se usan', () => {
     // ser una función que existe.
     await montar({ cart: UNA_LINEA })
 
-    const boton = screen.getByRole('button', { name: /Confirmar venta/ })
+    const boton = screen.getByRole('button', { name: /Cobrar y emitir/ })
     const tecla = boton.querySelector('kbd')
 
     expect(tecla).not.toBeNull()
@@ -1667,10 +1850,10 @@ describe('El encabezado del ticket dice cuántos ítems lleva', () => {
 
     const encabezado = screen.getByRole('heading', { name: 'Ticket' }).parentElement
 
-    // DOS líneas, no cinco unidades: el chip cuenta líneas, que es lo que dice
-    // el vocabulario de la spec. Confundir las dos cosas es lo que hace que
-    // nadie lo mire.
-    expect(within(encabezado).getByText('2')).toBeInTheDocument()
+    // DOS líneas y CINCO unidades, cada cosa con su palabra. El chip decía solo
+    // «2», y «2» a secas se lee como dos unidades: con cinco frascos sobre el
+    // mostrador y un ticket que dice 2, lo que falta no se nota.
+    expect(within(encabezado).getByText('2 ítems · 5 u.')).toBeInTheDocument()
   })
 })
 
@@ -1691,7 +1874,7 @@ describe('Los filtros del catálogo sobreviven a la venta', () => {
     expect(screen.queryByText('Colágeno 300g')).not.toBeInTheDocument()
     expect(screen.queryByText('Barrita 30g')).not.toBeInTheDocument()
 
-    teclear('Enter', { ctrlKey: true })
+    cobrarConAtajo()
     await waitFor(() => expect(cart()).toHaveLength(0))
 
     // El catálogo sigue filtrado igual: ni la categoría ni el conmutador se
@@ -1770,23 +1953,23 @@ describe('Las dos medidas que la maqueta fija, tal como están declaradas', () =
 })
 
 // ════════════════════════════════════════════
-//  El reintento de facturación pide confirmación
+//  Emitir es el único acto irreversible de la pantalla
 //
-//  «Reintentar la facturación» NO es «reintentar la venta»: la venta ya está
-//  registrada y lo único que hace ese botón es emitir el comprobante ante
-//  ARCA. Un comprobante emitido consume numeración correlativa y para darlo de
-//  baja hace falta una nota de crédito, que es un proyecto que no existe.
+//  Pedir un CAE consume numeración correlativa de ARCA y para darlo de baja
+//  hace falta una nota de crédito, que es un proyecto que no existe. Antes eso
+//  salía derecho del botón «Confirmar venta», sin mostrar qué líneas llevaba ni
+//  qué datos del comprador iban.
 //
-//  Es el mismo criterio con el que este hito sacó «Emitir Factura de Prueba»
-//  del pie de cobro: la diferencia es que aquel botón se fue y éste tiene que
-//  quedarse, así que lo que se agrega es la pregunta.
+//  Ahora hay un paso: el panel de emisión. El panel ES la confirmación —dice el
+//  ambiente, dice que consume un número, muestra el detalle y el botón nombra el
+//  comprobante y el importe—, así que el diálogo encima queda SOLO para
+//  producción, que es donde el comprobante tiene validez fiscal. Encimarlo en
+//  homologación es el mecanismo por el que la advertencia deja de leerse.
 //
-//  ⚠ El `confirm` de `Esc` —vaciar el ticket— ya existía y es de otra cosa. Un
-//  archivo con dos confirmaciones distintas es exactamente donde alguien lee
-//  «acá ya se confirma» y da el caso por cubierto.
+//  ⚠ El `confirm` de `Esc` —vaciar el ticket— ya existía y es de otra cosa.
 // ════════════════════════════════════════════
 
-/** Deja el POS con una venta registrada y un CUIT_REQUERIDO pendiente. */
+/** Deja el POS con una venta registrada, sin comprobante, y el panel abierto. */
 async function conUnReintentoPendiente(opciones = {}) {
   await montar({ cart: UNA_LINEA, ...opciones })
 
@@ -1795,67 +1978,137 @@ async function conUnReintentoPendiente(opciones = {}) {
     message: 'Una Factura A necesita el CUIT del comprador (11 dígitos).',
   })
 
-  teclear('Enter', { ctrlKey: true })
+  cobrarConAtajo()
 
-  return screen.findByRole('button', { name: /Reintentar la facturación/ })
+  return within(await waitFor(() => {
+    const caja = panelDeEmision()
+    expect(caja).not.toBeNull()
+    return caja
+  }))
 }
 
 /** Los pedidos que EMITEN un comprobante ante ARCA. */
 const emisiones = () => post.mock.calls.filter(([url]) => String(url).includes('/facturar'))
 
-describe('El reintento de facturación no emite de un clic', () => {
-  it('apretar el botón NO manda el pedido hasta confirmar', async () => {
-    const reintentar = await conUnReintentoPendiente()
+describe('El panel es el paso previo, y en producción además pregunta', () => {
+  it('el panel NO se cierra cuando ARCA rechaza: el motivo y el reintento quedan juntos', async () => {
+    // Antes el rechazo mandaba al historial de ventas: otra pantalla, con el
+    // cliente enfrente, para pedir el comprobante de una venta que ya está
+    // registrada. Lo que falta casi siempre es un dato del comprador, y está acá.
+    const panel = await conUnReintentoPendiente()
 
-    // El del cobro, que ARCA rechazó. Es la línea base.
+    expect(panel.getByText(/necesita el CUIT del comprador/)).toBeInTheDocument()
+    expect(panel.getByRole('button', { name: /Reintentar Factura C/ })).toBeInTheDocument()
+    // El ticket se vació igual: la operación existe y dejarlo cargado invita a
+    // cobrarla de nuevo (FR-052).
+    expect(cart()).toHaveLength(0)
+  })
+
+  it('un aviso sin cerrar NO secuestra el cobro del ticket siguiente', async () => {
+    // El aviso de una venta que quedó sin comprobante es FIJO: se cierra a mano,
+    // y el operador puede seguir atendiendo con el aviso todavía en pantalla.
+    //
+    // Con el panel sabiendo solo «estoy abierto», el cobro siguiente miraba ese
+    // aviso, mostraba el detalle de la venta VIEJA y reintentaba ESA emisión: el
+    // ticket nuevo no se registraba y quien apretó creía que sí. Por eso el
+    // estado guarda PARA QUÉ está abierto el panel y no si lo está.
+    await conUnReintentoPendiente({ productos: [COLAGENO] })
+
+    // Se cierra el panel sin resolver nada; el aviso queda fijo en el ticket.
+    teclear('Escape')
+    await waitFor(() => expect(panelDeEmision()).toBeNull())
+
+    const registradas = postsDeVenta().length
+
+    // Ticket nuevo, con el aviso de la venta anterior todavía a la vista.
+    await userEvent.click(screen.getByRole('button', { name: /Agregar Colágeno 300g al ticket/ }))
+    expect(screen.getByText(/necesita el CUIT del comprador/)).toBeInTheDocument()
+
+    post.mockResolvedValue({
+      data: { ok: true, data: { id: 'sale_2', total: '1500.00', date: '2026-08-04' }, warnings: [], stock: [] },
+    })
+
+    const nuevo = await abrirPanelDeEmision()
+
+    // El panel habla del TICKET, no de la venta vieja: ni el motivo de ARCA ni
+    // el botón de reintentar.
+    expect(nuevo.queryByText(/necesita el CUIT del comprador/)).not.toBeInTheDocument()
+    expect(nuevo.queryByRole('button', { name: /Reintentar/ })).not.toBeInTheDocument()
+
+    await userEvent.click(nuevo.getByRole('button', { name: /Emitir Factura C/ }))
+
+    // Y lo que sale es un `POST /sales` de verdad: la venta nueva se registra.
+    await waitFor(() => expect(postsDeVenta().length).toBe(registradas + 1))
+  })
+
+  it('en homologación el reintento emite sin un diálogo encima', async () => {
+    // El panel ya dijo el ambiente y lo que va a pasar. Una segunda pregunta
+    // donde no pasa nada es lo que hace que la de producción no se lea.
+    const panel = await conUnReintentoPendiente()
+
+    expect(emisiones()).toHaveLength(1)
+    post.mockResolvedValue({ data: { ok: true, data: { cae: '75123456789012', voucherNumber: 41 } } })
+
+    await userEvent.click(panel.getByRole('button', { name: /Reintentar Factura C/ }))
+
+    await waitFor(() => expect(emisiones()).toHaveLength(2))
+    expect(emisiones()[1][0]).toBe('/sales/sale_1/facturar')
+    expect(screen.queryByRole('button', { name: 'Emitir comprobante' })).not.toBeInTheDocument()
+  })
+
+  it('en producción NO manda el pedido hasta confirmar', async () => {
+    const panel = await conUnReintentoPendiente({
+      settings: { ...SETTINGS, afip_environment: 'production' },
+    })
+
     expect(emisiones()).toHaveLength(1)
 
-    await userEvent.click(reintentar)
+    await userEvent.click(panel.getByRole('button', { name: /Reintentar Factura C/ }))
 
     expect(await screen.findByRole('button', { name: 'Emitir comprobante' })).toBeInTheDocument()
     expect(emisiones()).toHaveLength(1)
   })
 
-  it('cancelar no emite nada', async () => {
-    const reintentar = await conUnReintentoPendiente()
+  it('cancelar no emite nada, y la venta sin comprobante sigue ahí', async () => {
+    const panel = await conUnReintentoPendiente({
+      settings: { ...SETTINGS, afip_environment: 'production' },
+    })
 
-    await userEvent.click(reintentar)
+    await userEvent.click(panel.getByRole('button', { name: /Reintentar Factura C/ }))
     await userEvent.click(await screen.findByRole('button', { name: 'Cancelar' }))
 
     await new Promise((seguir) => setTimeout(seguir, 0))
     expect(emisiones()).toHaveLength(1)
-
-    // Y el aviso sigue ahí: cancelar no resuelve la venta sin comprobante, la
-    // deja donde estaba.
-    expect(screen.getByText(/cargá el CUIT acá abajo/)).toBeInTheDocument()
+    expect(screen.getByText(/necesita el CUIT del comprador/)).toBeInTheDocument()
   })
 
   it('confirmar sí emite', async () => {
     // La otra mitad: una confirmación que no deja emitir deja la venta
     // registrada y sin comprobante para siempre.
-    const reintentar = await conUnReintentoPendiente()
+    const panel = await conUnReintentoPendiente({
+      settings: { ...SETTINGS, afip_environment: 'production' },
+    })
 
     post.mockResolvedValue({ data: { ok: true, data: { cae: '75123456789012', voucherNumber: 41 } } })
 
-    await userEvent.click(reintentar)
+    await userEvent.click(panel.getByRole('button', { name: /Reintentar Factura C/ }))
     await userEvent.click(await screen.findByRole('button', { name: 'Emitir comprobante' }))
 
     await waitFor(() => expect(emisiones()).toHaveLength(2))
     expect(emisiones()[1][0]).toBe('/sales/sale_1/facturar')
   })
 
-  it('la confirmación dice qué comprobante y que el ambiente es PRODUCCIÓN', async () => {
+  it('la confirmación de producción dice qué comprobante y contra qué ambiente', async () => {
     // «¿Confirmar?» a secas no le da a nadie con qué decidir. Los dos datos que
-    // deciden son cuál es el comprobante y contra qué ambiente sale: en
-    // producción el número correlativo no se devuelve.
-    const reintentar = await conUnReintentoPendiente({
+    // deciden son cuál es el comprobante y contra qué ambiente sale.
+    const panel = await conUnReintentoPendiente({
       settings: { ...SETTINGS, afip_environment: 'production' },
     })
 
-    await userEvent.click(reintentar)
+    await userEvent.click(panel.getByRole('button', { name: /Reintentar Factura C/ }))
 
-    // El diálogo de confirmación, no el ticket: se busca por el rol.
-    const texto = (await screen.findByRole('dialog')).textContent
+    const texto = (await screen.findByRole('button', { name: 'Emitir comprobante' }))
+      .closest('[role="dialog"]').textContent
 
     // Monotributo emite Factura C, que es el tipo que viaja en el pedido.
     expect(texto).toContain('Factura C')
@@ -1863,20 +2116,87 @@ describe('El reintento de facturación no emite de un clic', () => {
     expect(texto).toContain('nota de crédito')
   })
 
-  it('en homologación lo dice, y dice que el comprobante no vale', async () => {
-    // La diferencia entre los dos ambientes es lo que decide si el clic va. Con
-    // un solo texto para los dos, el aviso más grave del sistema se lee igual
-    // cuando no pasa nada, y entonces deja de leerse.
-    const reintentar = await conUnReintentoPendiente({
-      settings: { ...SETTINGS, afip_environment: 'homologation' },
+  it('el panel dice el ambiente, y en producción no lo dice igual que en pruebas', async () => {
+    // ⚠ El valor guardado es `'production'`, en inglés (`afipAuth.js`). Estaba
+    // comparado contra `'produccion'` en las dos pantallas que emiten, así que
+    // la condición daba `false` SIEMPRE: el ambiente irreversible era justo el
+    // que no avisaba.
+    await montar({ cart: UNA_LINEA, settings: { ...SETTINGS, afip_environment: 'production' } })
+
+    const enProduccion = await abrirPanelDeEmision()
+
+    expect(enProduccion.getByText('Producción')).toBeInTheDocument()
+    expect(enProduccion.getAllByText(/consume un número correlativo/).length).toBeGreaterThan(0)
+
+    cleanup()
+
+    await montar({ cart: UNA_LINEA, settings: { ...SETTINGS, afip_environment: 'homologation' } })
+
+    const enPruebas = await abrirPanelDeEmision()
+
+    expect(enPruebas.getByText('Homologación')).toBeInTheDocument()
+    expect(enPruebas.getByText(/no tiene validez fiscal/)).toBeInTheDocument()
+  })
+})
+
+describe('El panel muestra lo que se va a facturar antes de mandarlo', () => {
+  it('el detalle va producto por producto, con su subtotal', async () => {
+    await montar({
+      cart: [
+        { id: 10, name: 'Colágeno 300g', price: 1500, qty: 2, method: 'ef' },
+        { id: 11, name: 'Creatina 300g', price: 4000, qty: 1, method: 'ef' },
+      ],
     })
 
-    await userEvent.click(reintentar)
+    const panel = await abrirPanelDeEmision()
 
-    const texto = (await screen.findByRole('dialog')).textContent
+    expect(panel.getByText('2 ítems · 3 unidades')).toBeInTheDocument()
+    // El subtotal de la línea, que es precio × cantidad y no el precio suelto.
+    expect(panel.getByText('$3.000,00')).toBeInTheDocument()
+    expect(panel.getByRole('button', { name: /Emitir Factura C · \$7\.000,00/ })).toBeInTheDocument()
+  })
 
-    expect(texto).toContain('HOMOLOGACIÓN')
-    expect(texto).toContain('NO tiene validez fiscal')
-    expect(texto).not.toContain('PRODUCCIÓN')
+  it('una Factura C NO inventa una columna de IVA', async () => {
+    // La maqueta dibuja «Neto u. · IVA 21%» en el panel de una Factura C, y es
+    // un error del dibujo: una Factura C no discrimina IVA —el servidor le manda
+    // `ImpIVA: 0`— y mostrarle esas columnas a un monotributista es decirle que
+    // cobró algo que no cobró. Es el mismo criterio que sostiene `desglosarIva`.
+    await montar({ cart: UNA_LINEA })
+
+    const panel = await abrirPanelDeEmision()
+
+    expect(panel.queryByText(/IVA 21%/)).not.toBeInTheDocument()
+    expect(panel.getByText(/no discrimina IVA/)).toBeInTheDocument()
+  })
+})
+
+describe('Cobrar ahora y facturar después es una salida explícita', () => {
+  it('registra la venta y NO pide ningún CAE', async () => {
+    // Pasaba igual —la venta quedaba registrada y sin comprobante cuando ARCA
+    // rechazaba—, pero solo por error: no había forma de elegirlo a propósito
+    // cuando el cliente no espera o ARCA está caído.
+    await montar({ cart: UNA_LINEA })
+
+    await userEvent.click(screen.getByRole('button', { name: /Cobrar ahora y facturar después/ }))
+
+    await waitFor(() => expect(postsDeVenta()).toHaveLength(1))
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(post.mock.calls.filter(([url]) => String(url).includes('/facturar'))).toHaveLength(0)
+    // Y NO se marca como remito: el comprobante todavía no se decidió, y
+    // escribirle «REMITO» la haría figurar en el historial como si ya tuviera
+    // uno — que es justo lo que hay que poder buscar después para facturarla.
+    expect(postsDeVenta()[0][1].notes).toBe('')
+    // Tampoco se ofrece imprimir: no hay comprobante que entregar.
+    expect(screen.queryByRole('button', { name: /Imprimir el comprobante/ })).not.toBeInTheDocument()
+  })
+
+  it('con un comprobante interno la salida no existe: no hay nada que postergar', async () => {
+    await montar({ cart: UNA_LINEA })
+
+    await elegirSinFactura()
+
+    expect(screen.queryByRole('button', { name: /Cobrar ahora y facturar después/ }))
+      .not.toBeInTheDocument()
   })
 })

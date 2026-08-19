@@ -162,3 +162,86 @@ export function precioDeLinea(codigo, linea = {}) {
   // precio de efectivo a una línea regalada.
   return Number.isFinite(precio) ? precio : linea.base_cash
 }
+
+// ════════════════════════════════════════════
+//  El medio se elige UNA vez, y agrupado por la lista con la que cotiza
+//
+//  El control anterior mostraba tres botones —«Efectivo · Tarjeta · Alianza»—
+//  en CADA línea del ticket y otra vez en el pie, y los nueve medios reales
+//  vivían escondidos adentro de un segundo clic. Eran dos preguntas distintas
+//  dibujadas con el mismo control: el segmento decide el PRECIO, el medio
+//  decide CÓMO ENTRA LA PLATA.
+//
+//  El rediseño se queda con una sola pregunta —«cómo cobra»— y la contesta con
+//  el medio real. El nivel de precio deja de ser algo que se elige: sale del
+//  medio, y se DICE («cotiza con la lista efectivo») en vez de pedirse.
+// ════════════════════════════════════════════
+
+/**
+ * Los cuatro medios que el pie muestra sin abrir nada.
+ *
+ * No son «los primeros de `MEDIOS`»: son los cuatro con los que se cobra casi
+ * siempre en un mostrador. El orden lo fija la maqueta y NO el orden interno de
+ * `MEDIOS`, que está ordenado por segmento.
+ *
+ * Los otros cinco no desaparecen: se llegan por «Otros 5», agrupados bajo la
+ * lista con la que cotizan. Ese agrupamiento es el que contesta la pregunta que
+ * el control viejo dejaba abierta —por qué una transferencia cobra el precio de
+ * efectivo—: está escrita arriba del grupo.
+ */
+export const DESTACADOS = ['ef', 'td', 'tr', 'qr']
+
+/** Cómo se lee una lista de precios cuando hay que nombrarla en pantalla. */
+const NOMBRE_DE_LISTA = {
+  efectivo: 'Efectivo',
+  tarjeta: 'Tarjeta',
+  alianza: 'Alianza',
+}
+
+/**
+ * El nombre de la lista con la que cotiza un segmento.
+ *
+ * Se usa en dos lugares que tienen que decir lo mismo: el encabezado del pie
+ * («cotiza con la lista efectivo») y los grupos de «Otros N».
+ */
+export function nombreDeLista(segmento) {
+  return NOMBRE_DE_LISTA[segmento] || NOMBRE_DE_LISTA.efectivo
+}
+
+/** El medio completo de un código, o `undefined` si no es uno de los nueve. */
+export function medioDe(codigo) {
+  return POR_CODIGO[codigo]
+}
+
+/**
+ * Los medios que el pie dibuja como botón, dado el que está elegido.
+ *
+ * El elegido va SIEMPRE, aunque no sea uno de los cuatro destacados: un ticket
+ * cobrado con «Naranja 3c» no puede mostrar «Efectivo» resaltado y el medio
+ * verdadero escondido atrás de un desplegable. Es el mismo defecto que la
+ * etiqueta corta venía a tapar en el control anterior, resuelto de raíz.
+ */
+export function mediosALaVista(codigo) {
+  const visibles = new Set(DESTACADOS)
+  if (POR_CODIGO[codigo]) visibles.add(codigo)
+  return MEDIOS.filter((m) => visibles.has(m.codigo))
+}
+
+/**
+ * Los que quedan fuera de la vista, agrupados por la lista con la que cotizan.
+ *
+ * Devuelve `[{ segmento, lista, medios }]` y omite los grupos vacíos: un
+ * encabezado «Cotizan con Tarjeta» sin nada debajo se lee como una opción que
+ * no anda.
+ */
+export function mediosAgrupados(codigo) {
+  const aLaVista = new Set(mediosALaVista(codigo).map((m) => m.codigo))
+
+  return SEGMENTOS
+    .map((segmento) => ({
+      segmento,
+      lista: nombreDeLista(segmento),
+      medios: mediosDelSegmento(segmento).filter((m) => !aLaVista.has(m.codigo)),
+    }))
+    .filter((grupo) => grupo.medios.length > 0)
+}

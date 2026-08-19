@@ -469,11 +469,17 @@ describe('el id es del ticket, no del disparo del cobro', () => {
 
     render(React.createElement(Billing))
 
-    // El botón se llamaba «Registrar Venta» antes de la reescritura de T1122.
-    const boton = screen.getByRole('button', { name: /Confirmar venta/i })
+    // El botón del pie ABRE el panel de emisión: pedir un CAE consume un número
+    // correlativo de ARCA, y eso no sale de un clic a ciegas. Los dos intentos
+    // que este test mira salen del botón del panel, que es el que emite.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Cobrar y emitir/i }))
+    })
 
-    await act(async () => { fireEvent.click(boton) })
-    await act(async () => { fireEvent.click(boton) })
+    const emitir = screen.getByRole('button', { name: /Emitir Factura C/i })
+
+    await act(async () => { fireEvent.click(emitir) })
+    await act(async () => { fireEvent.click(emitir) })
 
     const cuerpos = post.mock.calls
       .filter(([url]) => url === '/sales')

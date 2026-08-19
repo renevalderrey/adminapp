@@ -188,6 +188,10 @@ describe('El rojo se reserva para lo que no se puede deshacer', () => {
 
     expect(donde).toEqual([
       'components/EstadoDeTiendanube.jsx', // desvincular: borra el acceso y el catálogo
+      // emitir en PRODUCCIÓN: consume un número correlativo de ARCA que no se
+      // devuelve, y darlo de baja pide una nota de crédito que no existe todavía.
+      // En homologación no hay diálogo: el panel de emisión ya dice el ambiente.
+      'pages/Billing.jsx',
       'pages/Orders.jsx',                  // borrar proveedor y borrar movimientos: es plata
       'pages/Settings.jsx',                // pasar a producción y desvincular AFIP
     ])

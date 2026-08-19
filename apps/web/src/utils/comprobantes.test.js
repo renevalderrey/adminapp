@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { comprobantesDisponibles, comprobanteInicial, desglosarIva } from './comprobantes'
+import {
+  comprobantesDisponibles,
+  comprobanteInicial,
+  desglosarIva,
+  datosDelComprador,
+  detalleDeEmision,
+  esFiscal,
+  motivoParaNoEmitir,
+  nombreDeComprobante,
+} from './comprobantes'
 
 // ════════════════════════════════════════════
 //  Lo que muestra el selector tiene que ser lo que se emite
@@ -132,5 +141,139 @@ describe('desglosarIva · a quién se le muestra una línea de IVA', () => {
     for (const total of [undefined, null, '', 'x', NaN]) {
       expect(desglosarIva({ total, condicionFiscal: 'RI', comprobante: 'afip_b' })).toBeNull()
     }
+  })
+})
+
+// ════════════════════════════════════════════
+//  Lo que el panel de emisión decide antes de hablar con ARCA
+//
+//  Los dos bloques son irreversibles por motivos distintos: emitir consume un
+//  número correlativo que no se devuelve, y mostrar un IVA que el comprobante
+//  no discrimina le dice al monotributista que cobró algo que no cobró.
+// ════════════════════════════════════════════
+
+describe('datosDelComprador · qué pide cada comprobante', () => {
+  it('una Factura A exige el CUIT y NO deja elegir la condición', () => {
+    const pedido = datosDelComprador('afip_a')
+
+    expect(pedido.cuitObligatorio).toBe(true)
+    expect(pedido.condicionFija).toBe('1')
+    expect(pedido.pideCondicion).toBe(false)
+  })
+
+  it('una Factura B o C dejan el CUIT opcional y la condición abierta', () => {
+    for (const comprobante of ['afip_b', 'afip_c']) {
+      const pedido = datosDelComprador(comprobante)
+
+      expect([comprobante, pedido.cuitObligatorio]).toEqual([comprobante, false])
+      expect([comprobante, pedido.condicionFija]).toEqual([comprobante, null])
+      expect([comprobante, pedido.pideCondicion]).toEqual([comprobante, true])
+    }
+  })
+
+  it('los internos no son fiscales y lo dicen', () => {
+    for (const comprobante of ['remito', 'recibo_x']) {
+      expect([comprobante, datosDelComprador(comprobante).fiscal]).toEqual([comprobante, false])
+      expect([comprobante, esFiscal(comprobante)]).toEqual([comprobante, false])
+    }
+  })
+
+  it('cada comprobante tiene su nota, y ninguna queda vacía', () => {
+    for (const comprobante of ['afip_a', 'afip_b', 'afip_c', 'remito', 'recibo_x']) {
+      expect(datosDelComprador(comprobante).nota.length).toBeGreaterThan(20)
+    }
+  })
+})
+
+describe('motivoParaNoEmitir · el rechazo del servidor, dicho antes', () => {
+  it('una Factura A sin CUIT no se puede emitir, y el motivo lo dice', () => {
+    expect(motivoParaNoEmitir({ comprobante: 'afip_a', cuit: '' }))
+      .toMatch(/11 dígitos/)
+  })
+
+  it('acepta el CUIT con guiones: lo que cuenta son los dígitos', () => {
+    // Es lo que hace el servidor (`String(...).replace(/\D/g, '')`), y una
+    // pantalla más estricta que la API rechaza ventas que la API aceptaría.
+    expect(motivoParaNoEmitir({ comprobante: 'afip_a', cuit: '20-30405060-7' })).toBeNull()
+  })
+
+  it('diez dígitos NO alcanzan', () => {
+    expect(motivoParaNoEmitir({ comprobante: 'afip_a', cuit: '2030405060' })).not.toBeNull()
+  })
+
+  it('los otros cuatro comprobantes no exigen nada', () => {
+    for (const comprobante of ['afip_b', 'afip_c', 'remito', 'recibo_x']) {
+      expect([comprobante, motivoParaNoEmitir({ comprobante, cuit: '' })])
+        .toEqual([comprobante, null])
+    }
+  })
+})
+
+describe('detalleDeEmision · lo que se factura, producto por producto', () => {
+  const LINEAS = [
+    { id: 1, name: 'Whey 1kg', price: 38900, qty: 2 },
+    { id: 2, name: 'Barra 46g', price: 2300, qty: 3 },
+  ]
+
+  it('el total y las unidades salen de las líneas', () => {
+    const detalle = detalleDeEmision({
+      lineas: LINEAS,
+      condicionFiscal: 'Monotributo',
+      comprobante: 'afip_c',
+    })
+
+    expect(detalle.total).toBe(84700)
+    expect(detalle.unidades).toBe(5)
+    expect(detalle.filas.map((f) => f.subtotal)).toEqual([77800, 6900])
+  })
+
+  it('una Factura C NO trae columnas de IVA', () => {
+    // La maqueta las dibuja y es un error del dibujo: el servidor le manda
+    // `ImpIVA: 0`. Es `null` y no 0 a propósito — un cero se lee como «IVA
+    // cero», que es una afirmación fiscal.
+    const detalle = detalleDeEmision({
+      lineas: LINEAS,
+      condicionFiscal: 'Monotributo',
+      comprobante: 'afip_c',
+    })
+
+    expect(detalle.desglose).toBeNull()
+    expect(detalle.filas.map((f) => f.neto)).toEqual([null, null])
+    expect(detalle.filas.map((f) => f.iva)).toEqual([null, null])
+  })
+
+  it('un RI con Factura B sí las trae, y el desglose cierra contra el total', () => {
+    const detalle = detalleDeEmision({
+      lineas: LINEAS,
+      condicionFiscal: 'RI',
+      comprobante: 'afip_b',
+    })
+
+    expect(detalle.desglose.alicuota).toBe(21)
+    expect(Math.round((detalle.desglose.neto + detalle.desglose.iva) * 100) / 100)
+      .toBe(detalle.total)
+    for (const fila of detalle.filas) {
+      expect([fila.nombre, fila.neto > 0 && fila.iva > 0]).toEqual([fila.nombre, true])
+    }
+  })
+
+  it('un ticket vacío no devuelve NaN', () => {
+    const detalle = detalleDeEmision({ lineas: [], condicionFiscal: 'RI', comprobante: 'afip_b' })
+
+    expect(detalle.total).toBe(0)
+    expect(detalle.unidades).toBe(0)
+    expect(detalle.filas).toEqual([])
+  })
+})
+
+describe('nombreDeComprobante · el botón dice qué va a pasar', () => {
+  it('los cinco tienen nombre', () => {
+    expect(['afip_a', 'afip_b', 'afip_c', 'remito', 'recibo_x'].map(nombreDeComprobante))
+      .toEqual(['Factura A', 'Factura B', 'Factura C', 'Remito', 'Recibo X'])
+  })
+
+  it('uno desconocido NO se imprime crudo adentro del botón', () => {
+    expect(nombreDeComprobante('inventado')).toBe('el comprobante')
+    expect(nombreDeComprobante(undefined)).toBe('el comprobante')
   })
 })

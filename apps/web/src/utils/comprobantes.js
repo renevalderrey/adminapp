@@ -113,3 +113,183 @@ export function desglosarIva({ total, condicionFiscal, comprobante } = {}) {
 
   return { neto, iva, alicuota: 21 }
 }
+
+// ════════════════════════════════════════════
+//  Lo que el panel de emisión necesita saber
+//
+//  El pie de cobro preguntaba TODO siempre: condición frente al IVA, CUIT y
+//  nombre estaban en pantalla aunque el comprobante elegido no los usara, y
+//  cuáles de esos tres eran obligatorios no lo decía nadie —lo descubría el
+//  servidor, después de registrar la venta, con `CUIT_REQUERIDO`—.
+//
+//  Acá se contesta antes: qué pide CADA comprobante, y qué queda fijo.
+// ════════════════════════════════════════════
+
+/**
+ * Los comprobantes fiscales, que son los que viajan a ARCA.
+ *
+ * Se pregunta por el prefijo y no por una lista aparte: el valor lo arma
+ * `comprobantesDisponibles` acá mismo, y una segunda lista se separa de la
+ * primera el día que aparezca la nota de crédito.
+ */
+export function esFiscal(comprobante) {
+  return typeof comprobante === 'string' && comprobante.startsWith('afip_')
+}
+
+/** Cómo se lee un comprobante cuando hay que nombrarlo adentro de una frase. */
+const NOMBRES = {
+  afip_a: 'Factura A',
+  afip_b: 'Factura B',
+  afip_c: 'Factura C',
+  remito: 'Remito',
+  recibo_x: 'Recibo X',
+}
+
+/**
+ * El nombre del comprobante, para el botón que dice qué va a pasar.
+ *
+ * El botón de cobrar decía «Confirmar venta» para los cinco. Ahora dice «Cobrar
+ * y emitir Factura C», que es la única forma de que quien aprieta sepa si esto
+ * consume numeración de ARCA o imprime un papel interno.
+ */
+export function nombreDeComprobante(comprobante) {
+  return NOMBRES[comprobante] || 'el comprobante'
+}
+
+/**
+ * A partir de qué monto ARCA pide identificar al comprador en una venta a
+ * consumidor final.
+ *
+ * ⚠ Es INFORMATIVO y nada más: ni esta pantalla ni el servidor lo exigen, y el
+ * número lo mueve el organismo cada tanto. Se muestra para que el operador
+ * sepa por qué le conviene pedir el DNI en una venta grande, no para frenarlo
+ * —frenar una venta con un umbral desactualizado es peor que emitirla—.
+ *
+ * Lo único que SÍ se exige es el CUIT de una Factura A, y lo exige el servidor
+ * (`routes/sales.js`, `CUIT_REQUERIDO`).
+ */
+export const UMBRAL_DE_IDENTIFICACION = 344000
+
+/**
+ * Qué datos del comprador pide cada comprobante.
+ *
+ * `condicionFija` no es «el valor inicial»: es que el comprobante NO admite
+ * otra. Una Factura A se emite a un Responsable Inscripto y punto; dejar el
+ * selector abierto ahí es ofrecer una combinación que ARCA rechaza.
+ *
+ * @returns {{fiscal: boolean, condicionFija: string|null, cuitObligatorio:
+ *   boolean, pideCondicion: boolean, nota: string}}
+ */
+export function datosDelComprador(comprobante) {
+  if (comprobante === 'afip_a') {
+    return {
+      fiscal: true,
+      condicionFija: '1',
+      cuitObligatorio: true,
+      pideCondicion: false,
+      nota: 'Una Factura A se emite a un Responsable Inscripto: el CUIT es obligatorio '
+        + 'y la condición queda fija. Sin el CUIT, ARCA la rechaza.',
+    }
+  }
+
+  if (esFiscal(comprobante)) {
+    return {
+      fiscal: true,
+      condicionFija: null,
+      cuitObligatorio: false,
+      pideCondicion: true,
+      nota: 'Sin CUIT ni DNI el comprobante sale a Consumidor final, que es lo normal en '
+        + 'el mostrador.',
+    }
+  }
+
+  return {
+    fiscal: false,
+    condicionFija: null,
+    cuitObligatorio: false,
+    pideCondicion: false,
+    nota: 'Un Remito o un Recibo X no viajan a ARCA y no discriminan IVA: alcanza con el '
+      + 'nombre, y es opcional.',
+  }
+}
+
+/**
+ * Por qué el botón de emitir NO se puede apretar, o `null` si sí se puede.
+ *
+ * Un botón deshabilitado sin motivo es un botón roto (FR-024). El único caso
+ * real es el CUIT de la Factura A, y se dice acá y no después del rechazo del
+ * servidor.
+ */
+export function motivoParaNoEmitir({ comprobante, cuit } = {}) {
+  const { cuitObligatorio } = datosDelComprador(comprobante)
+  if (!cuitObligatorio) return null
+
+  const digitos = String(cuit || '').replace(/\D/g, '')
+  if (digitos.length === 11) return null
+
+  return 'Una Factura A necesita el CUIT del comprador, con sus 11 dígitos.'
+}
+
+/**
+ * El detalle producto por producto que se ve ANTES de mandarlo a ARCA.
+ *
+ * ── Por qué las columnas de IVA no están siempre ──
+ *
+ * La maqueta dibuja «Neto u. · IVA 21% · Subtotal» en el panel de una **Factura
+ * C**, y eso es un error del dibujo: una Factura C NO discrimina IVA —el
+ * servidor le manda `ImpIVA: 0` (`afipService.js`)— y mostrarle a un
+ * monotributista una columna de IVA es decirle que cobró algo que no cobró. Es
+ * el mismo criterio que ya sostiene `desglosarIva`, y se mantiene: las columnas
+ * aparecen solo cuando el comprobante discrimina de verdad.
+ *
+ * Lo que SÍ está siempre es el detalle: producto, cantidad, precio unitario y
+ * subtotal. Eso es lo que el panel viene a resolver —ver qué se factura antes
+ * de consumir un número correlativo—, y no depende de la alícuota.
+ *
+ * La cuenta por línea es la MISMA que la del total (`desglosarIva`): el precio
+ * es IVA incluido, el neto sale de dividir por 1,21 y el IVA es la diferencia.
+ * Los netos por línea se suman y el IVA total es `total − neto`, y no la suma
+ * de los IVA de cada línea: sumar redondeos de a un centavo deja el pie del
+ * comprobante sin cerrar contra el total que se cobra.
+ *
+ * @param {object} opciones
+ * @param {Array<{id, name, qty, price}>} opciones.lineas Las del ticket.
+ * @param {string} opciones.condicionFiscal De la empresa.
+ * @param {string} opciones.comprobante El elegido.
+ */
+export function detalleDeEmision({ lineas = [], condicionFiscal, comprobante } = {}) {
+  const total = lineas.reduce((suma, l) => suma + Number(l.price || 0) * Number(l.qty || 0), 0)
+
+  const desglose = desglosarIva({
+    total: parseFloat(total.toFixed(2)),
+    condicionFiscal,
+    comprobante,
+  })
+
+  const filas = lineas.map((l) => {
+    const cantidad = Number(l.qty || 0)
+    const unitario = Number(l.price || 0)
+    const subtotal = parseFloat((unitario * cantidad).toFixed(2))
+
+    return {
+      id: l.id,
+      nombre: l.name,
+      cantidad,
+      unitario,
+      subtotal,
+      // `null` y no 0: un cero se lee como «IVA cero», que es una afirmación
+      // fiscal. Lo que pasa acá es que este comprobante no discrimina.
+      neto: desglose ? parseFloat((unitario / (1 + desglose.alicuota / 100)).toFixed(2)) : null,
+      iva: desglose
+        ? parseFloat((subtotal - (unitario / (1 + desglose.alicuota / 100)) * cantidad).toFixed(2))
+        : null,
+    }
+  })
+
+  return {
+    filas,
+    total: parseFloat(total.toFixed(2)),
+    unidades: lineas.reduce((suma, l) => suma + Number(l.qty || 0), 0),
+    desglose,
+  }
+}

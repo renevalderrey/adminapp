@@ -203,7 +203,8 @@ const NOMBRES = [
   'components/MarcoDePantalla.jsx',
   'components/pos/CatalogoDelPos.jsx',
   'components/pos/TicketDelPos.jsx',
-  'components/pos/SegmentoDePago.jsx',
+  'components/pos/MedioDePago.jsx',
+  'components/pos/PanelDeEmision.jsx',
   'pages/Orders.jsx',
   'pages/PurchaseOrders.jsx',
   'components/PanelOrdenDeCompra.jsx',
@@ -495,7 +496,10 @@ describe('La guardia mira los archivos que dice mirar', () => {
     // saque un archivo para que la guardia deje de molestar.
     // 32 → 38 en el hito 10: las seis pantallas de la venta online. Ancla 9 de
     // `docs/specs/015-catalogo-de-ventas-online/tasks.md`.
-    expect(ARCHIVOS).toHaveLength(38)
+    // 38 → 39 con el rediseño del punto de venta: `SegmentoDePago.jsx` se fue
+    // —el medio se elige una sola vez— y entraron `MedioDePago.jsx` y
+    // `PanelDeEmision.jsx`.
+    expect(ARCHIVOS).toHaveLength(39)
 
     // Primero los que faltan, y con su propio texto: un archivo que todavía no
     // se escribió es una tarea pendiente y se lee distinto de un color fuera
@@ -972,12 +976,13 @@ describe('La recepción es UN solo componente, usado por las dos pantallas', () 
 describe('Los componentes del punto de venta no tienen su propio estado global', () => {
   const archivos = jsxDeLaCarpeta('components/pos')
 
-  it('la carpeta components/pos tiene los tres componentes', () => {
+  it('la carpeta components/pos tiene los cuatro componentes', () => {
     // Si la carpeta se vacía o se renombra, `it.each` de abajo no corre ninguna
     // vez y la guardia pasa por no tener nada que mirar.
     expect(archivos.map((a) => a.nombre).sort()).toEqual([
       'components/pos/CatalogoDelPos.jsx',
-      'components/pos/SegmentoDePago.jsx',
+      'components/pos/MedioDePago.jsx',
+      'components/pos/PanelDeEmision.jsx',
       'components/pos/TicketDelPos.jsx',
     ])
   })

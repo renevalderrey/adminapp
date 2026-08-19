@@ -10,14 +10,23 @@ import { useAtajosDelPos } from '@/hooks/useAtajosDelPos'
 import { ATRIBUTO_BUSCADOR, ATRIBUTO_CAMPO, campoLimpiable } from '@/utils/atajosDelPos'
 import { buscarEnCatalogo } from '@/utils/busquedaDelPos'
 import { calcularVuelto, sugerenciasDeVuelto } from '@/utils/vuelto'
-import { llevaVuelto } from '@/utils/mediosDePago'
+import { llevaVuelto, precioDeLinea } from '@/utils/mediosDePago'
 import { comparacionDelReintento } from '@/utils/reintentoDeVenta'
-import { comprobantesDisponibles, comprobanteInicial, desglosarIva } from '@/utils/comprobantes'
+import {
+  comprobantesDisponibles,
+  comprobanteInicial,
+  desglosarIva,
+  detalleDeEmision,
+  esFiscal,
+  motivoParaNoEmitir,
+  nombreDeComprobante,
+} from '@/utils/comprobantes'
 import { filaDeStock } from '@/utils/inventario'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { usePermission } from '@/hooks/usePermission'
 import CatalogoDelPos from '@/components/pos/CatalogoDelPos'
 import TicketDelPos from '@/components/pos/TicketDelPos'
+import PanelDeEmision from '@/components/pos/PanelDeEmision'
 import { nombreDeRuta } from '@/components/navegacion'
 
 // ════════════════════════════════════════════
@@ -61,11 +70,21 @@ const CATEGORIAS = [
  * Se arma desde el error de `POST /sales/:id/facturar` y se distingue
  * `CUIT_REQUERIDO` **por el código y no por el texto** (`sales.js:887-893`):
  * el texto es para el operador y puede cambiar mañana; el código es el
- * contrato. Ese caso es el único reintentable desde acá, porque lo único que
- * falta es un dato del pie de cobro.
+ * contrato. Ese caso se nombra aparte porque el dato que falta se carga en el
+ * panel de emisión y el reintento sale de ahí mismo.
  *
  * El mensaje de AFIP va **tal cual** (FR-051): traducirlo pierde el código de
  * ARCA, que es lo que se busca cuando hay que llamar por teléfono.
+ *
+ * ── Por qué ahora TODOS son reintentables ──
+ *
+ * `reintentable` valía `true` solo para `CUIT_REQUERIDO`, y el resto mandaba al
+ * historial de ventas. Pero lo que quedó pendiente es siempre lo mismo —una
+ * venta registrada sin comprobante— y `POST /sales/:id/facturar` la resuelve en
+ * los dos casos: mira `sale.afip_cae` antes de llamar a ARCA, así que reintentar
+ * una que ya salió devuelve el CAE que tiene en vez de consumir otro número.
+ * Mandar a otra pantalla a quien tiene el cliente enfrente era el costo de una
+ * distinción que el servidor no hace.
  */
 function avisoDeRechazoDeAfip(error, pendiente) {
   const respuesta = error?.response?.data || {}
@@ -74,11 +93,12 @@ function avisoDeRechazoDeAfip(error, pendiente) {
 
   return {
     ...pendiente,
-    reintentable: cuitRequerido,
+    reintentable: true,
     mensaje: cuitRequerido
-      ? `${deAfip} La venta ya quedó registrada: cargá el CUIT acá abajo y reintentá solo la facturación.`
+      ? `${deAfip} La venta ya quedó registrada: cargá el CUIT en el panel de emisión y `
+        + 'reintentá solo la facturación.'
       : `La venta quedó REGISTRADA pero sin comprobante. AFIP respondió: «${deAfip}». `
-        + 'Reintentá la facturación desde el historial de ventas.',
+        + 'Reintentá la emisión, o dejala pendiente y facturala desde el historial de ventas.',
   }
 }
 
@@ -256,8 +276,48 @@ const Billing = () => {
    */
   const [medioDelTicket, setMedioDelTicket] = useState('ef')
 
+  /**
+   * El medio se elige UNA vez y vale para el ticket entero.
+   *
+   * Antes cada línea llevaba su propio control y el del pie solo alcanzaba a
+   * las líneas NUEVAS: cambiar a tarjeta con ocho productos ya cargados dejaba
+   * las ocho cotizando al precio de efectivo, y la diferencia no la veía nadie
+   * porque el total tampoco decía con qué lista estaba calculado.
+   *
+   * `updateCartMethod` respeta los precios puestos a mano —lo resuelve
+   * `precioDeLinea`—, así que una línea negociada no vuelve al de lista por
+   * cambiar el medio.
+   */
+  const elegirMedioDelTicket = (codigo) => {
+    setMedioDelTicket(codigo)
+    for (const linea of cart) updateCartMethod(linea.id, codigo)
+  }
+
   /** Si la espera del CAE ya pasó el umbral y hay que explicar la demora. */
   const [arcaDemora, setArcaDemora] = useState(false)
+
+  /**
+   * Para qué está abierto el panel de emisión: `null`, `'cobro'` o `'reintento'`.
+   *
+   * El panel es el paso previo al único acto irreversible de la pantalla: pedir
+   * un comprobante fiscal consume un número correlativo de ARCA que no se
+   * devuelve. Antes ese pedido salía directo del botón «Confirmar venta», sin
+   * mostrar qué líneas llevaba, con qué IVA, ni qué datos del comprador iban.
+   *
+   * Un comprobante interno NO abre nada: un remito no consume numeración y no
+   * viaja a ningún lado, así que agregarle un paso al camino rápido es cobrarle
+   * a las cuarenta ventas del día el cuidado que necesitan las diez fiscales.
+   *
+   * ── Por qué es el PARA QUÉ y no un booleano ──
+   *
+   * Un `true/false` no alcanza para distinguir dos operaciones que abren la
+   * misma pantalla y hacen cosas opuestas. Con el aviso de una venta anterior
+   * sin comprobante todavía en el ticket —el operador no lo cerró, siguió
+   * atendiendo—, un panel que solo sabe «estoy abierto» mira ese aviso, muestra
+   * el detalle de LA VENTA VIEJA y su botón reintenta ESA emisión: el ticket
+   * nuevo que hay en pantalla no se registra, y quien apretó cree que sí.
+   */
+  const [panelDeEmision, setPanelDeEmision] = useState(null)
 
   /**
    * La venta que quedó registrada y sin comprobante, si la hay.
@@ -544,7 +604,7 @@ const Billing = () => {
     Array.isArray(venta.items) ? venta.items : lineasEnPantalla
   )
 
-  const comprobanteImpreso = (venta, afipData, lineasEnPantalla) => {
+  const comprobanteImpreso = (venta, afipData, lineasEnPantalla, tipo = docType) => {
     const lineas = lineasDelComprobante(venta, lineasEnPantalla)
 
     if (afipData) {
@@ -573,7 +633,7 @@ const Billing = () => {
     return {
       voucherNumber: venta.id,
       pointOfSale: 0,
-      typeStr: docType === 'remito' ? 'REMITO' : 'RECIBO X',
+      typeStr: tipo === 'remito' ? 'REMITO' : 'RECIBO X',
       items: lineas,
       total: parseFloat(venta.total),
       customer: customerName || 'Consumidor Final',
@@ -588,7 +648,20 @@ const Billing = () => {
     }
   }
 
-  const handleRegisterSale = async () => {
+  /**
+   * Registra la venta y, si corresponde, pide el CAE.
+   *
+   * @param {object} opciones
+   * @param {boolean} opciones.facturar `false` es «cobrar ahora y facturar
+   *   después»: la venta se registra y NO se pide ningún comprobante. Queda
+   *   pendiente, y se factura desde el historial. Es una salida explícita y no
+   *   un accidente — pasaba igual cuando ARCA rechazaba, pero solo por error.
+   * @param {string} opciones.comprobante El que se emite, cuando NO es el que
+   *   está elegido en el pie. Lo usa «Cobrar sin factura» del panel: `setDocType`
+   *   recién se ve en el render siguiente, así que leer el estado acá registraría
+   *   la venta con el comprobante viejo — o sea, pediría el CAE igual.
+   */
+  const handleRegisterSale = async ({ facturar = true, comprobante } = {}) => {
     if (cart.length === 0) return
 
     // La mitad que el `disabled` NO cubre: `Ctrl+Enter` no pasa por el botón
@@ -600,7 +673,13 @@ const Billing = () => {
     // comentario de `cobroEnCurso`.
     if (cobroEnCurso.current) return
 
-    const isAfip = docType.startsWith('afip_')
+    const tipo = comprobante || docType
+    const isAfip = esFiscal(tipo) && facturar
+    // Una venta que se deja pendiente NO es un remito: el comprobante todavía
+    // no se decidió. Escribirle «REMITO» en `notes` la haría figurar en el
+    // historial como si ya tuviera uno, que es justo lo que hay que poder
+    // buscar después para facturarla.
+    const quedaPendiente = esFiscal(tipo) && !facturar
     const lineasCobradas = [...cart]
     let avisarDemoraDeArca = null
 
@@ -664,7 +743,7 @@ const Billing = () => {
         // Metido ahí, el nombre no lo encuentra ninguna búsqueda del historial
         // y la columna Cliente no lo puede leer: la venta figuraba como
         // «Consumidor final» aunque el operador hubiera escrito el nombre.
-        notes: isAfip ? '' : (docType === 'remito' ? 'REMITO' : 'RECIBO X'),
+        notes: (isAfip || quedaPendiente) ? '' : (tipo === 'remito' ? 'REMITO' : 'RECIBO X'),
         // Se manda siempre, haya ficha o no. El backend lo recorta y lo guarda.
         customer_name: customerName || null,
       }
@@ -713,6 +792,12 @@ const Billing = () => {
         })
 
         if (!coincide) {
+          // El panel SÍ se cierra acá, al revés que en el rechazo de ARCA: esto
+          // no es «falta el comprobante», es «lo que quedó asentado no es lo que
+          // hay en pantalla». No hay nada que reintentar desde el panel, y el
+          // ticket sigue cargado — que es donde está la evidencia de lo que se
+          // estaba por cobrar.
+          setPanelDeEmision(null)
           setAvisoDeCobro({
             reintentable: false,
             mensaje: `La venta ${venta.id} YA estaba registrada, y con OTRO contenido: `
@@ -742,7 +827,7 @@ const Billing = () => {
           type: venta.afip_type,
         }
       } else if (isAfip) {
-        const vType = docType === 'afip_a' ? 1 : docType === 'afip_b' ? 6 : 11
+        const vType = tipo === 'afip_a' ? 1 : tipo === 'afip_b' ? 6 : 11
 
         // Registrar la venta y pedir el CAE son DOS esperas distintas, y la
         // segunda puede durar 30 s (`afipService.js:26`). El botón lo dice
@@ -764,25 +849,42 @@ const Billing = () => {
           //
           // Y el ticket SE VACÍA igual (FR-052): la operación existe, y dejarlo
           // cargado invita a cobrarla de nuevo.
+          //
+          // El panel NO se cierra: la venta ya está registrada y lo único que
+          // falta es el comprobante, así que el reintento queda donde están los
+          // campos que hay que corregir. El aviso fijo del ticket existe para
+          // cuando el operador cierra el panel y sigue con otra cosa.
           setAvisoDeCobro(avisoDeRechazoDeAfip(errAfip, {
             ventaId: venta.id,
             tipo: vType,
             lineas: lineasCobradas,
             total: venta.total,
           }))
+          // El panel pasa de «estoy cobrando» a «estoy reintentando ESTA venta»:
+          // el ticket se vacía y lo que queda a la vista es lo que se registró.
+          setPanelDeEmision('reintento')
           limpiarDespuesDeCobrar()
           return
         }
       }
 
       // ── 3. Comprobante para imprimir ──
-      setLastInvoice(comprobanteImpreso(venta, isAfip ? afipData : null, lineasCobradas))
+      //
+      // Una venta que quedó pendiente a propósito NO tiene ninguno: ofrecer
+      // «Imprimir» ahí entregaría un papel que dice REMITO por una operación
+      // que todavía va a llevar factura.
+      if (!quedaPendiente) {
+        setLastInvoice(comprobanteImpreso(venta, isAfip ? afipData : null, lineasCobradas, tipo))
+      }
 
       toast.success(isAfip
         ? `Factura ${afipData.voucherNumber} registrada. CAE: ${afipData.cae}`
-        : 'Venta registrada con éxito')
+        : quedaPendiente
+          ? `Venta ${venta.id} registrada SIN comprobante. Facturala desde el historial de ventas.`
+          : 'Venta registrada con éxito')
 
       // ── Final (a): éxito ──
+      setPanelDeEmision(null)
       limpiarDespuesDeCobrar()
     } catch (err) {
       // ── Final (c): la API rechazó y NO registró nada ──
@@ -835,28 +937,36 @@ const Billing = () => {
     if (!pendiente?.reintentable) return
     if (cobroEnCurso.current) return
 
-    // ── El clic que emitía un comprobante fiscal real sin preguntar nada ──
+    // ── La confirmación quedó SOLO para producción ──
     //
-    // Este botón NO es «reintentar la venta»: la venta ya está registrada. Lo
-    // único que hace es emitir el comprobante ante ARCA, y eso consume un
-    // número correlativo que no se devuelve.
+    // El panel de emisión ya es una pantalla de confirmación: dice el ambiente,
+    // dice que emitir consume un número correlativo, muestra el detalle que se
+    // factura y el botón nombra el comprobante y el importe. Encimar un diálogo
+    // en homologación es el mecanismo por el que la advertencia deja de leerse
+    // —el mismo que `ConfirmDialog` documenta—.
     //
+    // En producción sí: ahí el comprobante tiene validez fiscal y el número no
+    // se devuelve.
+    //
+    // ⚠ El valor guardado es `'production'`, en inglés (`afipAuth.js:52`).
+    // Estaba comparado contra `'produccion'`, así que la condición daba `false`
+    // SIEMPRE y el ambiente irreversible era justo el que no avisaba.
+    const enProduccion = settings.afip_environment === 'production'
+
     // Va ANTES de tomar el cerrojo: si se tomara primero, un «Cancelar» tendría
     // que acordarse de soltarlo, y el día que alguien agregue un `return` en el
     // medio el POS deja de cobrar con el botón habilitado.
-    const confirmado = await confirm(
-      textoDeConfirmacionDeEmision({
-        comprobante: NOMBRE_DEL_COMPROBANTE[pendiente.tipo] || 'un comprobante fiscal',
-        ambiente: settings.afip_environment,
-      }),
-      // El rojo aparece SOLO en producción, que es donde el acto es
-      // irreversible: consume numeración correlativa de AFIP y no se puede
-      // borrar desde acá. En homologación no pasa nada, y pintarlo de rojo
-      // igual es exactamente lo que hace que el rojo deje de significar algo.
-      { verbo: 'Emitir comprobante', destructivo: settings.afip_environment === 'produccion' }
-    )
+    if (enProduccion) {
+      const confirmado = await confirm(
+        textoDeConfirmacionDeEmision({
+          comprobante: NOMBRE_DEL_COMPROBANTE[pendiente.tipo] || 'un comprobante fiscal',
+          ambiente: settings.afip_environment,
+        }),
+        { verbo: 'Emitir comprobante', destructivo: true }
+      )
 
-    if (!confirmado) return
+      if (!confirmado) return
+    }
 
     let avisarDemoraDeArca = null
 
@@ -870,6 +980,7 @@ const Billing = () => {
       const afipData = res.data.data
 
       setAvisoDeCobro(null)
+      setPanelDeEmision(null)
       setLastInvoice(comprobanteImpreso(
         { id: pendiente.ventaId, total: pendiente.total },
         afipData,
@@ -969,6 +1080,18 @@ const Billing = () => {
     //
     // El hook le pasa el evento a la acción justamente para esto: sin él, la
     // pantalla no tiene forma de saber dónde estaba el foco.
+    // ── Con el panel de emisión abierto, `Esc` es del panel ──
+    //
+    // El panel es un diálogo y `Esc` lo cierra, que es lo que espera cualquiera.
+    // Sin esta guardia, la misma tecla haría además lo de la pantalla de atrás
+    // —y con la búsqueda vacía, que es el estado normal, eso es abrir la
+    // confirmación de vaciar el ticket—: cerrar un panel no puede tirar la venta
+    // que se está por cobrar.
+    if (panelDeEmision) {
+      setPanelDeEmision(null)
+      return
+    }
+
     const campo = campoLimpiable(evento)
 
     if (campo) {
@@ -1016,10 +1139,86 @@ const Billing = () => {
     precioDeLinea: (linea) => updateCartPrice(Number(linea), ''),
   }
 
+  /** Si lo elegido en el pie es un comprobante fiscal, o sea si va a ARCA. */
+  const conFactura = esFiscal(docType)
+
+  /**
+   * Las líneas ya resueltas que dibuja el ticket.
+   *
+   * El componente recibe datos y no el carrito crudo, igual que el catálogo: la
+   * marca sale del producto —el carrito guarda solo el nombre— y el precio de
+   * lista se calcula acá porque es lo que la franja ámbar compara contra el
+   * precio puesto a mano. Sin ese número, «a mano» no le dice a nadie si el
+   * precio negociado está bien o está mal.
+   */
+  const lineasDelTicket = useMemo(() => cart.map((linea) => ({
+    ...linea,
+    marca: (products || []).find((p) => p.id === linea.id)?.brand?.name || null,
+    precioDeLista: linea.precio_manual
+      ? precioDeLinea(linea.method, { ...linea, precio_manual: false })
+      : null,
+  })), [cart, products])
+
+  /**
+   * El detalle que muestra el panel.
+   *
+   * Sale del ticket mientras hay ticket, y de la venta que quedó pendiente
+   * cuando ARCA rechazó: ahí el carrito ya se vació —la venta existe (FR-052)—
+   * y lo que hay que ver para reintentar son las líneas que SE REGISTRARON, no
+   * las que quedaron en pantalla.
+   *
+   * La condición es el MODO del panel y no «¿hay un aviso?»: un aviso sin
+   * cerrar convive con el ticket siguiente, y ahí lo que se está por cobrar es
+   * el ticket.
+   */
+  const reintentando = panelDeEmision === 'reintento' && avisoDeCobro?.reintentable === true
+
+  const detalleParaEmitir = useMemo(() => detalleDeEmision({
+    lineas: reintentando ? avisoDeCobro.lineas : cart,
+    condicionFiscal: settings.tax_condition,
+    comprobante: docType,
+  }), [reintentando, avisoDeCobro, cart, settings.tax_condition, docType])
+
+  /** Por qué no se puede emitir todavía. `null` cuando sí se puede. */
+  const motivoDeEmision = motivoParaNoEmitir({ comprobante: docType, cuit: customerDoc })
+
+  /**
+   * Lo que hace el botón grande del pie.
+   *
+   * Con factura abre el panel; sin factura cobra derecho. La diferencia no es
+   * estética: pedir un comprobante fiscal consume un número correlativo de ARCA
+   * que no se devuelve, y un remito no consume nada.
+   */
+  const iniciarCobro = () => {
+    if (cart.length === 0 || !puedeCobrar || cobroEnCurso.current) return
+    if (conFactura) { setPanelDeEmision('cobro'); return }
+    handleRegisterSale()
+  }
+
+  /** El botón de emitir del panel: emite, o reintenta lo que ARCA rechazó. */
+  const emitirDesdeElPanel = () => {
+    if (motivoDeEmision) return undefined
+    if (reintentando) return reintentarFacturacion()
+    return handleRegisterSale()
+  }
+
+  /**
+   * Qué hace `Ctrl+Enter`, que es el mismo botón que el operador ve.
+   *
+   * El atajo NO puede saltearse el panel: si emitiera directo, la mitad rápida
+   * del teclado mandaría a ARCA un comprobante que la mitad del mouse muestra
+   * antes. Con el panel abierto, la misma combinación emite — que es lo que
+   * dice el `kbd` de ese botón.
+   */
+  const cobrarConElAtajo = () => {
+    if (panelDeEmision) return emitirDesdeElPanel()
+    return iniciarCobro()
+  }
+
   useAtajosDelPos({
     enfocarBusqueda,
     agregarPrimero,
-    cobrar: handleRegisterSale,
+    cobrar: cobrarConElAtajo,
     limpiar,
   })
 
@@ -1117,13 +1316,12 @@ const Billing = () => {
         />
 
         <TicketDelPos
-          lineas={cart}
+          lineas={lineasDelTicket}
           onCantidad={updateCartQty}
           onQuitar={removeFromCart}
           onPrecio={updateCartPrice}
-          onMedio={updateCartMethod}
           medioDelTicket={medioDelTicket}
-          onMedioDelTicket={setMedioDelTicket}
+          onMedioDelTicket={elegirMedioDelTicket}
           onVaciar={vaciarConConfirmacion}
           comprobantes={comprobantes}
           comprobante={docType}
@@ -1136,28 +1334,25 @@ const Billing = () => {
           sugerencias={sugerencias}
           vuelto={vuelto}
           falta={falta}
-          condicionIva={customerVatCondition}
-          onCondicionIva={setCustomerVatCondition}
-          cuit={customerDoc}
-          onCuit={setCustomerDoc}
-          nombreCliente={customerName}
-          onNombreCliente={setCustomerName}
-          buscadorDeClientes={buscadorDeClientes}
-          onCobrar={handleRegisterSale}
+          onCobrar={iniciarCobro}
+          onFacturarDespues={() => handleRegisterSale({ facturar: false })}
+          onAbrirDatos={() => setPanelDeEmision('cobro')}
           // El botón dice EN QUÉ PASO está y no «Procesando…»: registrar la
           // venta tarda lo que tarda la red y pedir el CAE puede tardar 30 s, y
           // el operador que no sabe cuál de las dos está esperando aprieta de
-          // nuevo (FR-045).
+          // nuevo (FR-045). Y en reposo dice QUÉ va a pasar —«Cobrar y emitir
+          // Factura C»—, que es lo único que distingue consumir un número de
+          // ARCA de imprimir un papel interno.
           textoDeCobro={
             pasoDelCobro === 'registrando' ? 'Registrando la venta…'
               : pasoDelCobro === 'facturando' ? 'Pidiendo el CAE a ARCA…'
-                : 'Confirmar venta'
+                : `Cobrar y emitir ${nombreDeComprobante(docType)}`
           }
           cobroHabilitado={cart.length > 0 && !cobrando && puedeCobrar}
           motivoDeCobro={puedeCobrar
             ? null
             : 'No tenés el permiso «ventas.crear». Pedíselo a quien administra el equipo.'}
-          avisoDeEspera={arcaDemora
+          avisoDeEspera={arcaDemora && !panelDeEmision
             ? 'ARCA está tardando. La venta ya quedó registrada: no vuelvas a apretar.'
             : null}
           // FR-046: lo que se está facturando no puede cambiar mientras se
@@ -1168,11 +1363,63 @@ const Billing = () => {
           comprobanteParaImprimir={lastInvoice}
           onImprimir={() => printInvoice(lastInvoice)}
           avisosDeStock={[...excesosDeStock, ...avisosDelServidor]}
-          avisoDeCobro={avisoDeCobro}
-          onReintentarFacturacion={reintentarFacturacion}
+          // Mientras el panel está abierto el aviso vive ADENTRO del panel, con
+          // el reintento y los campos que hay que corregir. Dibujarlo en los dos
+          // lados pone el mismo texto dos veces en pantalla y deja al operador
+          // eligiendo entre dos botones que hacen lo mismo.
+          avisoDeCobro={panelDeEmision ? null : avisoDeCobro}
+          // El reintento ABRE el panel en vez de emitir de una: lo que ARCA
+          // rechazó casi siempre es un dato del comprador, y el panel es donde
+          // se corrige y donde está el detalle que se va a mandar.
+          onReintentarFacturacion={() => setPanelDeEmision('reintento')}
           onCerrarAviso={() => setAvisoDeCobro(null)}
         />
       </div>
+
+      {/* ── El paso previo al único acto irreversible de la pantalla ──
+          Se dibuja siempre y se abre solo; `Sheet` resuelve Esc, el clic en el
+          overlay y la trampa de foco. */}
+      <PanelDeEmision
+        abierto={panelDeEmision !== null}
+        onCerrar={() => setPanelDeEmision(null)}
+        comprobantes={comprobantes}
+        comprobante={docType}
+        onComprobante={setDocType}
+        condicionIva={customerVatCondition}
+        onCondicionIva={setCustomerVatCondition}
+        cuit={customerDoc}
+        onCuit={setCustomerDoc}
+        nombreCliente={customerName}
+        onNombreCliente={setCustomerName}
+        buscadorDeClientes={buscadorDeClientes}
+        detalle={detalleParaEmitir}
+        medio={medioDelTicket}
+        hayVuelto={hayEfectivo}
+        vuelto={vuelto}
+        falta={falta}
+        ambiente={settings.afip_environment}
+        onEmitir={emitirDesdeElPanel}
+        // «Cobrar sin factura» manda el comprobante EXPLÍCITO y no espera a que
+        // `setDocType` se vea: el estado se lee un render tarde, y leerlo acá
+        // registraría la venta con el fiscal todavía puesto — o sea, pidiendo
+        // el CAE que este botón viene justamente a evitar.
+        onCobrarSinFactura={() => {
+          setDocType('remito')
+          setPanelDeEmision(null)
+          handleRegisterSale({ comprobante: 'remito' })
+        }}
+        procesando={cobrando}
+        textoDeEmision={
+          pasoDelCobro === 'registrando' ? 'Registrando la venta…'
+            : pasoDelCobro === 'facturando' ? 'Pidiendo el CAE a ARCA…'
+              : ''
+        }
+        motivoDeEmision={motivoDeEmision}
+        avisoDeEspera={arcaDemora
+          ? 'ARCA está tardando. La venta ya quedó registrada: no vuelvas a apretar.'
+          : null}
+        rechazoDeArca={reintentando ? avisoDeCobro.mensaje : null}
+      />
     </div>
   )
 }

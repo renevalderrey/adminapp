@@ -600,7 +600,13 @@ const InvoicesList = () => {
       }),
       // Ver Billing.jsx: el rojo se reserva para producción, donde emitir es
       // irreversible.
-      { verbo: 'Emitir comprobante', destructivo: settings.afip_environment === 'produccion' }
+      //
+      // ⚠ El valor guardado es `'production'`, en inglés (`afipAuth.js:52`).
+      // Estaba comparado contra `'produccion'`, así que la condición daba
+      // `false` SIEMPRE: el único ambiente donde el comprobante tiene validez
+      // fiscal y el número correlativo no se devuelve era justo el que se
+      // anunciaba con el botón común.
+      { verbo: 'Emitir comprobante', destructivo: settings.afip_environment === 'production' }
     )
 
     if (!confirmado) return
