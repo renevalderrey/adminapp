@@ -145,7 +145,13 @@ app.use(cors({
     cb(null, false);
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  // ⚠ `PATCH` tiene que estar acá o el navegador **no manda el request**: el
+  // preflight contesta un `Access-Control-Allow-Methods` sin PATCH y el browser
+  // corta antes de salir. El síntoma es un error de red en Inventario al
+  // publicar en lote (`PATCH /api/products/publicables`) y al cambiar el estado
+  // de un pedido, con la API sana y sin una sola línea en el log del servidor.
+  // Y no se ve con curl ni con supertest: ninguno de los dos hace preflight.
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   // ⚠ `X-Sesion-Id` tiene que estar acá o el navegador **no la manda**: una
   // cabecera que no figura en `allowedHeaders` hace fallar el preflight y el
   // request ni sale. El síntoma sería un 401 SESION_REQUERIDA en cada pantalla

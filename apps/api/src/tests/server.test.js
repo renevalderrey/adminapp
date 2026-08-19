@@ -41,6 +41,27 @@ describe('CORS', () => {
 
     expect(res.headers['access-control-allow-origin']).toBeUndefined();
   });
+
+  // ── Por qué se prueba el preflight y no el PATCH ──
+  //
+  // Un método que falta en `methods` no rompe ninguna prueba de la ruta: ni
+  // supertest ni curl hacen preflight, así que `PATCH /api/products/publicables`
+  // contesta perfecto en verde mientras el navegador ni siquiera lo manda. El
+  // único lugar donde el agujero se ve es la respuesta al OPTIONS.
+  //
+  // Se recorren los métodos que el router usa de verdad: agregar un
+  // `router.patch` nuevo con la lista corta vuelve a romper la pantalla igual.
+  it.each(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])(
+    'el preflight permite %s',
+    async (metodo) => {
+      const res = await request(app)
+        .options('/api/products/publicables')
+        .set('Origin', 'http://localhost:5173')
+        .set('Access-Control-Request-Method', metodo);
+
+      expect(res.headers['access-control-allow-methods']).toContain(metodo);
+    }
+  );
 });
 
 describe('Cabeceras de seguridad', () => {
