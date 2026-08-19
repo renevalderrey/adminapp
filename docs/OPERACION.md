@@ -797,33 +797,65 @@ hay que llamar.
 
 ### Alguien borró datos por error
 
-⚠ **Esto cambió con el pase al VPS, y es el peor lugar del runbook para
-enterarse tarde.** Acá decía que la vía real de recuperación era la restauración
-por punto en el tiempo de Neon. **Neon no está en el camino de producción**: no
-hay historial continuo, no hay «volver a las 14:32». Lo único que existe es la
-copia que dejó el cron, y la más nueva puede tener hasta 24 horas.
+⚠⚠ **Leé esto antes de correr nada: este runbook estuvo mal y podía hacerte
+perder el tiempo en el peor momento.** Decía que «Neon no está en el camino de
+producción» y te mandaba a `ls /var/respaldos/favalio/`. Es al revés.
+**Producción es Render + Neon** —confirmado el 17/8/2026, y verificado: una
+migración desplegada aparece en esa base a los pocos minutos—. El VPS
+(`docker-compose.produccion.yml`, `DESPLIEGUE-HOSTINGER.md`) está documentado y
+**no está en uso**.
 
-1. **No sigas escribiendo.** Cada minuto de operación normal es trabajo que la
-   restauración va a pisar. Si el borrado fue grande, avisá y frená.
-2. **Mirá qué copias hay**, que es lo que fija hasta dónde se puede volver:
+Consecuencia directa, y hay que decirla sin adornos:
+
+- `deploy/respaldo.sh` vuelca la base **del VPS** (`docker compose -f
+  docker-compose.produccion.yml`, `:38`). Contra la producción real **no corre
+  ni corrió nunca**.
+- `/var/respaldos/favalio/` **no existe**. Los pasos que mandaban ahí no se
+  pueden ejecutar.
+- O sea: **hoy no hay ningún respaldo automático de la base de producción.**
+
+**Lo que sí existe, verificado el 19/8/2026:**
+
+1. **`npm run backup`, que funciona contra Neon.** Se conecta por `DATABASE_URL`
+   como cualquier script del proyecto:
 
    ```bash
-   ls -lh /var/respaldos/favalio/
+   cd apps/api
+   DATABASE_URL="<el connection string de Neon>"      node scripts/backup.js --todas --salida ~/respaldos-favalio
    ```
 
-   Están las de los últimos **14 días** (`DIAS_A_CONSERVAR`): los `.sql.gz` de
-   la base y los `favalio-imagenes-*.tar.gz` del volumen de fotos.
-3. **Restaurá sobre una base descartable primero, nunca encima de la buena.** El
-   procedimiento está en «Probar una restauración». Recién con la copia montada
-   al lado se puede ver qué se perdió y sacar sólo eso.
-4. **Si el respaldo de anoche no alcanza**, `npm run backup -w apps/api -- --empresa=<id>`
-   exporta a JSON lo que hay **ahora**: no recupera lo borrado, pero congela el
-   resto antes de tocar nada.
+   Un JSON por empresa con todas sus tablas. **No incluye** el certificado ni la
+   clave de AFIP, a propósito (ver el encabezado del script). Corrido ese día:
+   cuatro empresas, 588 registros.
 
-> Por eso el cron importa, y por eso hay que sacar las copias del VPS: un
-> respaldo que vive en el mismo disco que la base no cubre el caso en que se
-> pierde el disco. `npm run backup -w apps/api -- --todas` exporta todas las
-> empresas a JSON y es la red de arriba de ésa.
+2. **La retención propia de Neon.** El encabezado de `scripts/backup.js` avisa
+   que en el plan gratuito «es corta y no está bajo control de nadie del
+   equipo». **No está verificado cuánta es ni si el proyecto tiene restauración
+   por punto en el tiempo habilitada**: hay que mirarlo en el panel de Neon
+   antes de contar con ella, no en medio de una emergencia.
+
+**Si acaba de pasar:**
+
+1. **No sigas escribiendo.** Cada minuto de operación normal es trabajo que una
+   restauración va a pisar. Si el borrado fue grande, avisá y frená.
+2. **Congelá lo que queda, ahora mismo**, antes de tocar nada: el `npm run
+   backup` de arriba. No recupera lo borrado, pero evita perder también el
+   resto mientras se resuelve.
+3. **Mirá en el panel de Neon** si el proyecto tiene historial y hasta qué
+   fecha. Es la única vía que puede devolver lo borrado; el JSON no lo hace.
+4. **Restaurá sobre una base descartable primero, nunca encima de la buena.**
+   Neon permite crear una rama desde un punto anterior: eso deja la copia al
+   lado y la buena intacta, que es exactamente lo que hace falta para ver qué
+   se perdió y sacar sólo eso.
+
+> **La deuda, escrita para que no se pierda:** falta un respaldo **programado**
+> de la base de producción. `npm run backup` existe pero nadie lo dispara, y su
+> propio encabezado aclara que un `pg_dump` sigue siendo lo correcto para
+> recuperación ante desastre. El molde para automatizarlo ya está en el
+> repositorio: `.github/workflows/tareas-diarias.yml` es un cron de GitHub
+> Actions con sus secretos. ⚠ Antes de copiarlo hay que decidir **dónde queda
+> la copia**: un dump de producción tiene datos de clientes y no puede terminar
+> en un artefacto de CI sin pensarlo.
 
 ### Un cliente pide sus datos
 
@@ -1510,41 +1542,49 @@ que en cualquier otro lado.
 
 Un respaldo que nunca se restauró no es un respaldo.
 
-**La base.** En el VPS no hay historial continuo ni «volver a las 14:32»: lo
-único que existe es el `.sql.gz` que dejó el cron de `deploy/respaldo.sh`, y el
-más nuevo puede tener hasta 24 horas. Se restaura **sobre una base descartable**,
-nunca encima de la buena — con la copia montada al lado se puede comparar y
-sacar sólo lo que falta.
+**La base.** ⚠ Lo que había acá era el procedimiento del **VPS**
+(`/var/respaldos/favalio`, `docker compose`), y **no se puede ejecutar**:
+producción es Render + Neon y ese cron nunca corrió contra ella. Ver «Alguien
+borró datos por error», que explica el estado real.
+
+Hoy el simulacro tiene dos mitades, y conviene hacer las dos:
+
+**a · El export JSON, que es lo que existe y funciona.** Verificado el
+19/8/2026: cuatro empresas, 588 registros.
 
 ```bash
-# 1 · Qué copias hay. Son las de los últimos 14 días.
-ls -lh /var/respaldos/favalio/
-
-# 2 · Una base vacía al lado, en el mismo Postgres.
-COMPOSE="docker compose -f /opt/favalio/docker-compose.produccion.yml"
-$COMPOSE exec -T postgres createdb -U favalio favalio_prueba
-
-# 3 · Volcar la copia adentro. -T porque no hay TTY.
-gunzip -c /var/respaldos/favalio/favalio-2026-08-09-0315.sql.gz \
-  | $COMPOSE exec -T postgres psql -U favalio -d favalio_prueba
-
-# 4 · Que los datos estén.
-$COMPOSE exec -T postgres psql -U favalio -d favalio_prueba -c \
-  "SELECT (SELECT COUNT(*) FROM empresas) AS empresas,
-          (SELECT COUNT(*) FROM sales)    AS ventas,
-          (SELECT MAX(date) FROM sales)   AS ultima_venta;"
-
-# 5 · Cuando terminaste.
-$COMPOSE exec -T postgres dropdb -U favalio favalio_prueba
+cd apps/api
+DATABASE_URL="<connection string de Neon>"   node scripts/backup.js --todas --salida ~/respaldos-favalio
 ```
 
-Esto no interrumpe nada: es otra base en el mismo servidor. **Anotar la fecha en
-que se probó** — es lo único que convierte el respaldo en respaldo.
+Restaurarlo **no es automático**: el JSON sirve para leer, comparar y reponer a
+mano lo que falte. Eso es una limitación real y hay que saberla **antes** de
+necesitarla, no durante.
 
-⚠ Y **las copias tienen que salir del VPS**. Un respaldo que vive en el mismo
-disco que la base no cubre el caso en que se pierde el disco, que es el caso
-para el que existe. Sirve `rclone` a cualquier nube, o un `scp` programado desde
-otra máquina.
+**b · El historial de Neon, que hay que ir a mirar.** Es la única vía que
+devuelve la base a un momento anterior. El simulacro es entrar al panel del
+proyecto y contestar tres preguntas, anotando la respuesta acá:
+
+1. ¿Cuánta retención de historial tiene el proyecto? (En el plan gratuito es
+   corta — el encabezado de `scripts/backup.js` avisa que «no está bajo control
+   de nadie del equipo».)
+2. ¿Se puede crear una rama desde un punto en el tiempo? Es el equivalente de
+   «restaurar al lado sin tocar la buena», que es como hay que hacerlo siempre.
+3. ¿A qué base apunta `DATABASE_URL` en Render, para no restaurar sobre la
+   equivocada?
+
+**Ninguna de las tres está contestada hoy**, y ése es exactamente el motivo por
+el que este simulacro figura sin tildar en el checklist.
+
+**Anotar la fecha en que se probó** — es lo único que convierte el respaldo en
+respaldo.
+
+⚠ Y **la copia tiene que salir de donde vive la base**. Un respaldo guardado
+junto a lo que respalda no cubre el caso para el que existe: que se pierda el
+lugar. Con Neon eso significa que la retención del propio Neon **no alcanza
+sola** —si se pierde el acceso al proyecto, se pierden las dos cosas a la vez—,
+y que el export JSON tiene que terminar en otro lado: una nube personal, un
+disco aparte, lo que sea que no dependa de la misma cuenta.
 
 ### Restaurar las imágenes
 
