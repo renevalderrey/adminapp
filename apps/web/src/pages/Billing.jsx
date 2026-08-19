@@ -5,7 +5,7 @@ import useStore from '@/store/useStore'
 import Fuse from 'fuse.js'
 import api, { getCustomers, nuevoIdDeVenta } from '@/services/api'
 import { printInvoice } from '@/utils/printInvoice'
-import { fechaDeComprobante } from '@/utils/formato'
+import { cantidad, fechaDeComprobante } from '@/utils/formato'
 import { useAtajosDelPos } from '@/hooks/useAtajosDelPos'
 import { ATRIBUTO_BUSCADOR, ATRIBUTO_CAMPO, campoLimpiable } from '@/utils/atajosDelPos'
 import { buscarEnCatalogo } from '@/utils/busquedaDelPos'
@@ -525,7 +525,10 @@ const Billing = () => {
     const disponible = disponibleDe(producto)
     if (linea.qty <= disponible) return []
 
-    return [`«${linea.name}»: hay ${disponible} en esta sucursal y el ticket lleva ${linea.qty}.`]
+    // `disponible` sale de `stock.available`, que con la columna en
+    // `NUMERIC(14,4)` llega como TEXTO con la escala puesta: sin `cantidad()`
+    // este aviso decía «hay 5.0000 en esta sucursal».
+    return [`«${linea.name}»: hay ${cantidad(disponible)} en esta sucursal y el ticket lleva ${linea.qty}.`]
   }), [cart, products, pvId])
 
   const handleCustomerSearch = async (query) => {

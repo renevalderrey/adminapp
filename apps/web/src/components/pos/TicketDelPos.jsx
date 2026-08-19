@@ -3,6 +3,7 @@ import { ChevronDown, HandCoins, Minus, Pencil, Plus, ShoppingCart, Trash2, X } 
 import { cn } from '@/lib/utils'
 import MedioDePago, { ListaQueCotiza } from '@/components/pos/MedioDePago'
 import { ATRIBUTO_CAMPO, ATRIBUTO_LINEA } from '@/utils/atajosDelPos'
+import { cantidad } from '@/utils/formato'
 
 // ════════════════════════════════════════════
 //  FAVALIO · Punto de venta, la columna derecha
@@ -261,7 +262,13 @@ export default function TicketDelPos({
                   >
                     <Minus className="h-3.5 w-3.5" />
                   </button>
-                  <span className="num w-[34px] text-center text-sm font-semibold">{linea.qty}</span>
+                  {/* `qty` sale del carrito del navegador y NO de una columna
+                      `DECIMAL`, así que acá no hay ninguna regresión del día de
+                      la migración: pasa por `cantidad()` porque un 9,6 escrito
+                      «9.6» se lee nueve mil seiscientos —en es-AR el punto es el
+                      separador de miles—. Con enteros escribe exactamente lo
+                      mismo que hoy. */}
+                  <span className="num w-[34px] text-center text-sm font-semibold">{cantidad(linea.qty)}</span>
                   <button
                     type="button"
                     onClick={() => onCantidad?.(linea.id, linea.qty + 1)}

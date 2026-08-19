@@ -1,5 +1,6 @@
 import { Search, Plus, Package, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { cantidad } from '@/utils/formato'
 
 // ════════════════════════════════════════════
 //  FAVALIO · Punto de venta, la columna izquierda
@@ -196,8 +197,13 @@ export default function CatalogoDelPos({
                   <span className="text-border-2">·</span>
                   <span className="num">{oGuion(fila.sku)}</span>
                   <span className="text-border-2">·</span>
+                  {/* El disponible pasa por `cantidad()` porque llega como
+                      TEXTO desde las dos puntas —`GET /api/products` y el
+                      arreglo `stock` de `POST /api/sales`, que la pantalla
+                      escribe tal cual en el catálogo—: con la columna en
+                      `NUMERIC(14,4)` esta baldosa decía «5.0000 u.». */}
                   <span className={cn('num font-medium', fila.agotado ? 'text-danger' : 'text-fg-2')}>
-                    {fila.disponible} u.
+                    {cantidad(fila.disponible)} u.
                   </span>
                 </span>
               </div>

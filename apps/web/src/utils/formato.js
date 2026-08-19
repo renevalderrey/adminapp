@@ -68,12 +68,55 @@
  * es la forma de que no exista una llamada que fije el mínimo y se olvide el
  * máximo, que es exactamente el defecto que traían `Reports.jsx` y
  * `Dashboard.jsx`.
+ *
+ * ── El cuarto parámetro, y por qué existe (016) ──
+ *
+ * `toLocaleString('es-AR')` **agrupa los miles**: `enEsAr(1234, 0, 3)` devuelve
+ * «1.234». Para un importe eso es lo correcto y por eso el valor por defecto es
+ * `true`. Para una CANTIDAD no: hoy el stock de cuatro cifras se dibuja `1234`
+ * —es un `{item.quantity}` crudo— y la 016 promete que después de migrar la
+ * columna a `NUMERIC(14,4)` la pantalla se ve carácter por carácter como antes.
+ * Con la agrupación puesta, el formateador que vino a que nada cambiara le
+ * cambiaría el número a todo stock de cuatro cifras o más.
+ *
+ * Se agrega acá y no llamando a `toLocaleString` con las opciones sueltas
+ * porque los dos extremos tienen que seguir siendo obligatorios: ese es el
+ * defecto que este archivo vino a cerrar (ver el encabezado).
  */
-function enEsAr(n, minimos, maximos) {
+function enEsAr(n, minimos, maximos, agrupa = true) {
   return Number(n || 0).toLocaleString('es-AR', {
     minimumFractionDigits: minimos,
     maximumFractionDigits: maximos,
+    useGrouping: agrupa,
   })
+}
+
+/**
+ * Una CANTIDAD de stock, de venta o de pedido: `12`, `9,6`, `0,251`, `1234`.
+ *
+ * Es la única función de cantidades de la web, y no es `pesos` con otro
+ * formato. Tres diferencias, cada una con su motivo:
+ *
+ *  · **Sin ceros de relleno**: `9,6` y no `9,600`. En un ticket, «3,000 ×
+ *    Creatina» se ve distinto de lo que Comprafit imprime hoy, y que nada se
+ *    vea distinto es lo único que la 016 promete.
+ *  · **Máximo tres decimales**: es lo que la columna `NUMERIC(14,4)` puede
+ *    traer sin que el papel se llene de precisión que nadie cargó.
+ *  · **Sin separador de miles**: hoy un stock de 1234 se dibuja `1234`, y
+ *    agrupar los miles de las cantidades puede ser una buena idea pero no la
+ *    decide una migración que promete que nada cambia.
+ *
+ * `Number.isFinite` corta antes de `enEsAr` a propósito: `enEsAr('tres', 0, 3)`
+ * devuelve literalmente la cadena «NaN», y un «NaN» en la celda que dice «5 u.»
+ * se lee como un error de carga. El cero es la lectura honesta porque la
+ * columna es `NOT NULL DEFAULT 0` — la diferencia con `importeOGuion`, que sí
+ * dibuja un guión, es que allá el campo puede no venir.
+ */
+export function cantidad(n) {
+  const numero = Number(n)
+  if (!Number.isFinite(numero)) return '0'
+
+  return enEsAr(numero, 0, 3, false)
 }
 
 /**

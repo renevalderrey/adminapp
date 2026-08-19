@@ -1,5 +1,6 @@
 import QRCode from 'qrcode';
 import { urlDelQr, nombreComprobante, normalizarLinea } from './comprobanteAfip';
+import { cantidad } from '@/utils/formato';
 
 // ════════════════════════════════════════════
 //  Comprobante impreso
@@ -43,6 +44,18 @@ export const printInvoice = async (data) => {
     ? 'Comprobante interno'
     : `Nro: ${String(data.pointOfSale).padStart(5, '0')} - ${String(data.voucherNumber).padStart(8, '0')}`;
 
+  // ── Por qué la cantidad de cada línea pasa por `cantidad()` (016) ──
+  //
+  // Es el papel que le queda al cliente y el criterio de éxito 1 de la spec:
+  // después de migrar `sale_items.quantity` a `NUMERIC(14,4)`, `pg` la devuelve
+  // como texto con la escala puesta —`"3.0000"`—.
+  //
+  // ⚠ `normalizarLinea` ya hace `Number(item.quantity)`, así que ese `"3.0000"`
+  // llega acá como el número 3 y el ticket diría «3 x Creatina» igual. Lo que
+  // esta corrección agrega es lo otro: una cantidad FRACCIONARIA —la que deja
+  // producción— se imprimía «9.6 x Harina», con punto, y en es-AR el punto es
+  // el separador de MILES. Por eso el caso que distingue la corrección es el
+  // decimal y no el entero, y así está escrito en el test.
   const lineas = (data.items || []).map(normalizarLinea);
 
   // ── QR de ARCA ──
@@ -122,7 +135,7 @@ export const printInvoice = async (data) => {
         <div>
           ${lineas.map((l) => `
             <div class="item">
-              <span>${l.cantidad} x ${escapar(l.nombre)}</span>
+              <span>${cantidad(l.cantidad)} x ${escapar(l.nombre)}</span>
               <span>$${pesos(l.subtotal)}</span>
             </div>
           `).join('')}

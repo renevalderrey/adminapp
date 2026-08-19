@@ -11,7 +11,7 @@ import { descargarInventario } from '@/utils/exportarInventario'
 import { imprimirInventario } from '@/utils/impresionInventario'
 // `pesos` y `pesosRedondos` estaban escritos acá. Los dos se mudaron: el
 // valorizado sin centavos es una diferencia deliberada y conservó su nombre.
-import { pesos, pesosRedondos } from '@/utils/formato'
+import { cantidad, pesos, pesosRedondos } from '@/utils/formato'
 import { TablaGrid, Encabezado, Fila, BotonDeFila } from '@/components/TablaGrid'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import {
@@ -141,10 +141,19 @@ function nombreDeSucursalDeTransferencia(puntoDeVenta, textoViejo) {
   return puntoDeVenta?.name || textoViejo || '—'
 }
 
-/** «Colágeno ×2 · Whey ×1». */
+/**
+ * «Colágeno ×2 · Whey ×1».
+ *
+ * La cantidad pasa por `cantidad()` aunque NO venga de una columna `DECIMAL`:
+ * sale de `StockTransfer.items`, que es `JSONB` y guarda lo que se transfirió.
+ * O sea que acá no hay regresión del día de la migración (FR-034a) — entra por
+ * el separador decimal: una transferencia de 9,6 kg se escribía «×9.6», y en
+ * es-AR el punto es el separador de MILES. Con enteros dice exactamente lo
+ * mismo que hoy.
+ */
 function resumenDeItems(items) {
   if (!Array.isArray(items) || items.length === 0) return 'Sin ítems'
-  return items.map((i) => `${i.product_name} ×${i.quantity}`).join(' · ')
+  return items.map((i) => `${i.product_name} ×${cantidad(i.quantity)}`).join(' · ')
 }
 
 const Inventory = () => {
@@ -1271,6 +1280,13 @@ const Inventory = () => {
                       // una transferencia hay que saber cuál de las dos es
                       // (FR-067).
                       const entry = filaDeStock(p, col.id)
+                      // ⚠ Esta `cantidad` es un NÚMERO y tapa a la función
+                      // `cantidad` que este archivo importa de `utils/formato`
+                      // (016). Adentro de este bloque, `cantidad(...)` no
+                      // formatea nada: es una llamada a un número. Queda
+                      // anotado y no renombrado porque la celda la dibuja
+                      // `unidades()`, que es otra decisión —esa columna SÍ
+                      // agrupa los miles— y cambiarla no es de esta spec.
                       const cantidad = Number(entry?.quantity) || 0
                       const minimo = Number(entry?.min_stock) || 0
 

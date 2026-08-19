@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import api from '@/services/api'
 import { mensajeDeError } from '@/utils/erroresDeApi'
-import { pesos } from '@/utils/formato'
+import { cantidad, pesos } from '@/utils/formato'
 import { usePermission } from '@/hooks/usePermission'
 import { useConfirmDialog } from '@/components/ConfirmDialog'
 import { faltaElPermiso } from '@/utils/permisos'
@@ -226,7 +226,12 @@ export default function PanelDePedido({ pedidoId, alCerrar, alCambiarEstado, alF
                     className="flex items-baseline justify-between gap-3 border-b border-border px-3.5 py-2.5 text-[13px] last:border-b-0"
                   >
                     <span className="min-w-0">
-                      <span className="text-fg-3">{l.cantidad}× </span>
+                      {/* `pedido_items.cantidad` también migró a
+                          `NUMERIC(14,4)`: sin el formateador este renglón
+                          decía «2.0000×». Que hoy la tienda pública solo
+                          venda por unidad (`carrito.js` hace `Math.floor`)
+                          no cambia nada: la columna migra igual. */}
+                      <span className="text-fg-3">{cantidad(l.cantidad)}× </span>
                       {l.nombre}
                     </span>
                     <span className="flex-none tabular-nums">{`$${pesos(l.subtotal)}`}</span>

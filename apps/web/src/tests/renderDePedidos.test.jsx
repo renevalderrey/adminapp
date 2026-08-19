@@ -72,22 +72,28 @@ const DETALLE = {
 /** Todo lo que salió por la red, en orden. */
 let pedidosDeRed = []
 
-function respuestasDe(bandeja) {
+function respuestasDe(bandeja, detalle = DETALLE) {
   return (url, config) => {
     pedidosDeRed.push({ url, params: config?.params })
 
     if (url === '/pedidos') return Promise.resolve({ data: { ok: true, data: bandeja } })
     if (url === '/catalogos') return Promise.resolve({ data: { ok: true, data: CATALOGOS } })
-    if (/^\/pedidos\//.test(url)) return Promise.resolve({ data: { ok: true, data: DETALLE } })
+    if (/^\/pedidos\//.test(url)) return Promise.resolve({ data: { ok: true, data: detalle } })
 
     return Promise.resolve({ data: { ok: true, data: [] } })
   }
 }
 
-async function montar({ bandeja = BANDEJA, permisos = ['pedidos.ver', 'pedidos.gestionar', 'catalogo.ver'] } = {}) {
+async function montar({
+  bandeja = BANDEJA,
+  permisos = ['pedidos.ver', 'pedidos.gestionar', 'catalogo.ver'],
+  // El detalle es parámetro porque `pedido_items.cantidad` migró a
+  // `NUMERIC(14,4)` y hay que poder sembrar la cantidad como la manda la API.
+  detalle = DETALLE,
+} = {}) {
   useStore.setState({ permisos, empresaActiva: { id: 1, name: 'Comprafit', puntosDeVenta: [] } })
 
-  vi.spyOn(api, 'get').mockImplementation(respuestasDe(bandeja))
+  vi.spyOn(api, 'get').mockImplementation(respuestasDe(bandeja, detalle))
 
   let utilidades
   await act(async () => { utilidades = render(<Pedidos />) })
@@ -313,6 +319,48 @@ describe('el panel lateral', () => {
     await act(async () => {})
 
     expect(patch).toHaveBeenCalledWith('/pedidos/aaaa-1/estado', { estado: 'en_preparacion' })
+  })
+})
+
+// ════════════════════════════════════════════
+//  016 · La cantidad de la línea, con la columna ya migrada
+//
+//  `pedido_items.cantidad` pasó a `NUMERIC(14,4)` y `pg` entrega un `NUMERIC`
+//  como TEXTO con la escala puesta: `GET /api/pedidos/:id` contesta `"2.0000"`.
+//  El renglón del detalle la escribía cruda, así que decía «2.0000×».
+//
+//  Que hoy nadie escriba decimales ahí —`apps/tienda` hace `Math.floor` y la
+//  tienda pública sigue vendiendo por unidad— no cambia nada: la columna migra
+//  igual y el punto se rompe igual.
+// ════════════════════════════════════════════
+
+describe('la cantidad del detalle se escribe como antes de migrar', () => {
+  /** El detalle con la cantidad tal cual la manda la API. */
+  const conCantidad = (valor) => ({
+    ...DETALLE,
+    lineas: [{ id: 1, nombre: 'Whey Protein Isolate 1kg', cantidad: valor, precio_unitario: 38868, subtotal: 38868 }],
+  })
+
+  async function abrirDetalle(detalle) {
+    await montar({ detalle })
+    await act(async () => { fireEvent.click(document.querySelector('[data-pedido="1042"]')) })
+    await act(async () => {})
+
+    return document.querySelector('[data-linea="1"]').textContent
+  }
+
+  it('NO dibuja «2.0000×»', async () => {
+    const texto = await abrirDetalle(conCantidad('2.0000'))
+
+    expect(texto).toContain('2×')
+    expect(texto).not.toContain('2.0000')
+  })
+
+  it('y una cantidad fraccionaria lleva coma: «9,6×» y no «9.6×»', async () => {
+    const texto = await abrirDetalle(conCantidad('9.6000'))
+
+    expect(texto).toContain('9,6×')
+    expect(texto).not.toContain('9.6')
   })
 })
 

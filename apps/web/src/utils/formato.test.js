@@ -6,6 +6,7 @@ import {
   pesos,
   pesosRedondos,
   pesosDeLista,
+  cantidad,
   importeOGuion,
   importeAbreviado,
   fechaCorta,
@@ -154,6 +155,100 @@ describe('importeAbreviado: los indicadores del panel', () => {
 
   it('sin dato escribe «-»', () => {
     expect(importeAbreviado(undefined)).toBe('-')
+  })
+})
+
+// ════════════════════════════════════════════
+//  `cantidad`: el formateador de la 016, y lo que promete es que NADA cambie
+//
+//  Las columnas de cantidad pasaron de `INTEGER` a `NUMERIC(14,4)`, y el driver
+//  de Postgres entrega un `NUMERIC` **como texto con la escala puesta**: un
+//  stock de 12 vuelve `"12.0000"` y una línea de venta de 3, `"3.0000"`. Los
+//  diez lugares donde una cantidad se dibuja lo escribían crudo, así que sin
+//  esta función el ticket que le queda al cliente diría «3.0000 x Creatina».
+//
+//  Por eso los casos de acá son de igualdad exacta contra el string: lo que se
+//  verifica no es que el número esté bien, es que se **escriba** igual que
+//  antes de migrar.
+// ════════════════════════════════════════════
+
+describe('cantidad: un entero se escribe sin decimales, venga como venga', () => {
+  it('NO escribe «12.0000»: el número, el string de la API y el float dan los tres «12»', () => {
+    // Los tres llegan de verdad: `12` del carrito del navegador, `'12.0000'` de
+    // la columna migrada y `12.0` de un `parseFloat` de la API.
+    expect(cantidad(12)).toBe('12')
+    expect(cantidad('12.0000')).toBe('12')
+    expect(cantidad(12.0)).toBe('12')
+  })
+
+  it('el cero de la columna se escribe «0» y no «0,000»', () => {
+    expect(cantidad('0.0000')).toBe('0')
+    expect(cantidad(0)).toBe('0')
+  })
+})
+
+describe('cantidad: una fracción va con coma y sin ceros de relleno', () => {
+  it('9,6 se escribe «9,6» y NO «9,600»', () => {
+    // El relleno fijo se descartó justamente acá: «3,000 × Creatina» en el
+    // ticket se ve distinto de lo que Comprafit imprime hoy.
+    expect(cantidad(9.6)).toBe('9,6')
+    expect(cantidad('9.6000')).toBe('9,6')
+    expect(cantidad(9.6)).not.toBe('9,600')
+  })
+
+  it('la coma es el separador decimal, no el punto', () => {
+    // Es el motivo por el que también entran los tres puntos que ya devolvían
+    // un `number`: sin la función escribirían «9.6», y en es-AR el punto es el
+    // separador de MILES.
+    expect(cantidad(9.6)).not.toBe('9.6')
+    expect(cantidad(0.25)).toBe('0,25')
+  })
+
+  it('más de tres decimales se redondean al tercero', () => {
+    expect(cantidad(0.2505)).toBe('0,251')
+  })
+})
+
+describe('cantidad NO agrupa los miles, y eso es el punto', () => {
+  it('un stock de 1234 sigue escribiéndose «1234» y no «1.234»', () => {
+    // ⚠ El caso que hace falta el cuarto parámetro de `enEsAr`. En `es-AR`,
+    // `toLocaleString` agrupa: sin apagarlo, el formateador que vino a que nada
+    // cambiara le cambiaría el número a TODO stock de cuatro cifras o más, que
+    // es exactamente lo que la 016 promete que no pasa.
+    expect(cantidad(1234)).toBe('1234')
+    expect(cantidad(1234)).not.toBe('1.234')
+    expect(cantidad(1250)).toBe('1250')
+    expect(cantidad('12345.0000')).toBe('12345')
+  })
+
+  it('y los importes SÍ siguen agrupando: el cuarto parámetro no se les aplicó de rebote', () => {
+    // Las cinco funciones de plata llaman a `enEsAr` con tres argumentos y el
+    // valor por defecto las deja como estaban. Sin este caso, alguien podría
+    // apagar la agrupación en la función compartida y dejar «$1234,00».
+    expect(pesos(1234)).toBe('1.234,00')
+    expect(pesosRedondos(1234567.89)).toBe('1.234.568')
+    expect(pesosDeLista(1200)).toBe('1.200')
+    expect(importeOGuion(1234)).toBe('$1.234,00')
+  })
+})
+
+describe('cantidad nunca deja llegar NaN ni undefined a la pantalla', () => {
+  it('lo ilegible se escribe «0» y NO «NaN»', () => {
+    // `enEsAr('tres', 0, 3)` devuelve literalmente la cadena «NaN» —medido—, y
+    // un «NaN» en la celda que dice «5 u.» se lee como un error de carga y manda
+    // a revisar datos que están bien. El cero es la lectura honesta: la columna
+    // es NOT NULL con DEFAULT 0.
+    for (const roto of [null, undefined, '', NaN, 'tres', {}]) {
+      expect(cantidad(roto)).toBe('0')
+    }
+  })
+
+  it('el guión de importeOGuion NO se copia acá, y es deliberado', () => {
+    // Estas celdas dicen «5 u.» y «hay 5 en esta sucursal»: un guión ahí se lee
+    // como un problema de maquetado. La diferencia con `importeOGuion` es que
+    // allá el campo puede no venir.
+    expect(cantidad(undefined)).not.toBe('-')
+    expect(cantidad(undefined)).not.toBe('—')
   })
 })
 
@@ -497,6 +592,36 @@ const PROHIBIDO = [
     que: 'el formateo en línea de un importe o una fecha',
     patron: /\.toLocaleString\(|\.toLocaleDateString\(|new Intl\.NumberFormat\(/,
   },
+  // ── La sexta: una CANTIDAD formateada a mano (016) ──
+  //
+  // Las cinco de arriba son de plata y de fechas. Ésta es de cantidades, que
+  // hasta la 016 no tenían función compartida: cada pantalla escribía el número
+  // como le parecía —o lo dibujaba crudo—, y por eso la migración de las
+  // columnas a `NUMERIC(14,4)` rompía DIEZ lugares a la vez.
+  //
+  // Ahora existe `cantidad()` y esta regla es lo que evita que la unificación
+  // dure un sprint: sin ella, la próxima pantalla escribe
+  // `Number(fila.quantity).toFixed(0)` y nadie se entera hasta que alguien mira
+  // un ticket con «3.0000 x Creatina».
+  //
+  // ⚠ **Busca formateo escrito a mano, NO ausencia de formateo.** Un
+  // `{item.quantity}` crudo —que es exactamente el defecto que la 016 vino a
+  // corregir— esta regla no lo ve, y no puede verlo: es indistinguible de
+  // cualquier otra interpolación. Lo único que lo encuentra es el recorrido
+  // manual de los diez puntos contra una copia de los datos reales, que la 016
+  // deja escrito en `docs/OPERACION.md` (T502) y **todavía no existe**.
+  // Decirlo acá es la mitad que evita que alguien lea el verde de esta regla
+  // como «no queda ninguna cantidad sin formatear».
+  //
+  // El patrón exige que el valor se LLAME como una cantidad —`quantity`,
+  // `available`, `min_stock`, `cantidad`, `disponible`, `qty`— porque
+  // `.toFixed(1)` a secas también lo usan un porcentaje
+  // (`TarjetaDeIndicador.jsx`) y el tamaño de un archivo en KB
+  // (`ImportWizard.jsx`), que no son cantidades y no van por acá.
+  {
+    que: 'una cantidad formateada a mano en la pantalla',
+    patron: /\b(?:quantity|available|min_stock|cantidad|disponible|qty)\w*\s*\)*\s*\.\s*(?:toFixed|toLocaleString)\s*\(/i,
+  },
 ]
 
 /**
@@ -524,7 +649,11 @@ const PROHIBIDO = [
 const PENDIENTES = [
   ['pages/CashFlow.jsx', 'formatCurrency propio, idéntico a los otros tres; fuera del alcance de este cambio'],
   ['pages/Customers.jsx', 'ídem CashFlow'],
-  ['pages/Production.jsx', 'ídem CashFlow'],
+  // Además del `formatCurrency`, formatea a mano TRES cantidades
+  // —`quantity_produced` dos veces y `quantity_used`— con `parseFloat(…).toFixed(…)`.
+  // Las ve la sexta regla; el módulo es de superadmin y no está entre los diez
+  // puntos de la 016, así que queda anotado y no corregido.
+  ['pages/Production.jsx', 'ídem CashFlow, y tres cantidades formateadas a mano'],
   ['pages/Taxes.jsx', 'ídem CashFlow'],
   ['components/BloqueDeDocumentos.jsx', 'tercera copia de `hoy()`, la misma corrección del bug de UTC'],
   ['components/pos/CatalogoDelPos.jsx', '`pesos` sin centavos, del punto de venta; la pantalla la tiene otro frente'],
@@ -760,6 +889,81 @@ describe('la guardia ve el formateo en línea, que es por donde se le escapaba',
   })
 })
 
+// ════════════════════════════════════════════
+//  La sexta regla, contra su propia muestra (016)
+//
+//  Hoy el repositorio no tiene ninguna infracción de esta regla fuera de
+//  `pages/Production.jsx`, que está excusado. O sea que «no encontró nada» y
+//  «no está mirando nada» se leen igual, y la muestra es lo único que separa
+//  las dos lecturas.
+//
+//  La forma de la muestra mala es la que tenían los diez puntos de la 016 antes
+//  de existir `cantidad()`: ninguna función declarada, ningún `toLocaleString`
+//  —así que las cinco reglas anteriores pasan en verde sobre ella— y el número
+//  formateado a mano adentro del JSX.
+// ════════════════════════════════════════════
+
+const MUESTRA_DE_CANTIDAD_MALA = `
+export default function Baldosa({ fila }) {
+  return (
+    <span className="num">
+      {Number(fila.quantity).toFixed(0)} u. · mínimo {parseFloat(fila.min_stock).toFixed(2)}
+    </span>
+  )
+}
+`
+
+const MUESTRA_DE_CANTIDAD_BUENA = `
+import { cantidad } from '@/utils/formato'
+
+export default function Baldosa({ fila }) {
+  return (
+    <span className="num">
+      {cantidad(fila.quantity)} u. · mínimo {cantidad(fila.min_stock)}
+    </span>
+  )
+}
+`
+
+describe('la guardia ve una cantidad formateada a mano', () => {
+  it('un Number(fila.quantity).toFixed(0) adentro del JSX no esquiva la guardia', () => {
+    expect(reglasQueInfringe(MUESTRA_DE_CANTIDAD_MALA)).toEqual([
+      'una cantidad formateada a mano en la pantalla',
+    ])
+  })
+
+  it('las cinco reglas viejas NO ven esa muestra: por eso hacía falta la sexta', () => {
+    // La mitad que explica por qué la regla existe. La quinta mira
+    // `toLocaleString`/`toLocaleDateString` y esta muestra usa `toFixed`, que
+    // es exactamente por donde se escapaba el formateo de cantidades.
+    const viejas = PROHIBIDO.slice(0, 5)
+
+    expect(viejas.filter(({ patron }) => patron.test(MUESTRA_DE_CANTIDAD_MALA))).toEqual([])
+  })
+
+  it('la muestra que usa `cantidad()` no da ningún hallazgo', () => {
+    // Nadie convive con una guardia que no se puede poner en verde: sin este
+    // caso, la regla podría estar fallando siempre y sería tan inútil como no
+    // fallar nunca.
+    expect(reglasQueInfringe(MUESTRA_DE_CANTIDAD_BUENA)).toEqual([])
+  })
+
+  it('un porcentaje y un tamaño de archivo con toFixed NO son hallazgos', () => {
+    // El contra-caso, y no es hipotético: `TarjetaDeIndicador.jsx` escribe
+    // `Number(variacion).toFixed(1)` para un porcentaje e `ImportWizard.jsx`
+    // arma los KB de un archivo igual. Ninguno de los dos es una cantidad de
+    // stock, y una regla que los marcara obligaría a excusar dos archivos que
+    // no deben nada — que es como una lista de deuda se convierte en una lista
+    // de permisos.
+    const otros = `
+      const variacion = Number(datos.variacion).toFixed(1)
+      const kb = (bytes / 1024).toFixed(1)
+    `
+
+    expect(reglasQueInfringe(otros)).toEqual([])
+  })
+})
+
 /**
  * Quién tiene que importar qué de `utils/formato`.
  *
@@ -767,10 +971,30 @@ describe('la guardia ve el formateo en línea, que es por donde se le escapaba',
  * sin formatear nada —o formateando a mano— también pasaría.
  */
 const IMPORTAN = [
-  ['pages/Reports.jsx', ['importeOGuion']],
+  // ── Los diez puntos donde se dibuja una CANTIDAD (016) ──
+  //
+  // Es la mitad que evita «borré la copia y dejé de mostrar el número», y acá
+  // pesa más que en el resto de la lista: la sexta regla busca formateo escrito
+  // a mano, así que **borrar el `cantidad(...)` y dejar la interpolación cruda
+  // no lo ve nadie** — y esa interpolación cruda es literalmente el defecto que
+  // la 016 vino a corregir. Estas ocho entradas son lo único que lo atrapa.
+  //
+  // Ocho archivos para diez puntos: `Reports.jsx` tiene dos —el reporte de
+  // ventas y el de inventario— y `PanelProducto.jsx` tiene tres, de los cuales
+  // dos son `<input type="number">` que NO pasan por el formateador y se
+  // normalizan con `Number(...)` en el origen.
+  ['pages/Reports.jsx', ['cantidad', 'importeOGuion']],
+  ['pages/Billing.jsx', ['cantidad']],
+  ['pages/Inventory.jsx', ['cantidad', 'pesos', 'pesosRedondos']],
+  ['components/pos/CatalogoDelPos.jsx', ['cantidad']],
+  ['components/pos/TicketDelPos.jsx', ['cantidad']],
+  ['components/PanelDePedido.jsx', ['cantidad', 'pesos']],
+  // El comprobante impreso: el criterio de éxito 1 de la 016 y el papel que le
+  // queda al cliente.
+  ['utils/printInvoice.js', ['cantidad']],
+
   ['pages/Dashboard.jsx', ['importeAbreviado', 'importeOGuion']],
   ['pages/Comparador.jsx', ['pesosDeLista']],
-  ['pages/Inventory.jsx', ['pesos', 'pesosRedondos']],
   ['pages/InvoicesList.jsx', ['pesos']],
   // El vencimiento del certificado y la fecha de la verificación. Sin esta
   // entrada, borrar el `toLocaleDateString` y dejar de mostrar la fecha también
@@ -784,7 +1008,7 @@ const IMPORTAN = [
   ['pages/Orders.jsx', ['pesos', 'fechaCorta', 'fechaDeHoy']],
   ['pages/PurchaseOrders.jsx', ['pesos', 'fechaCorta', 'fechaDeHoy']],
   ['components/HistorialDeCostos.jsx', ['pesos', 'fechaCortaDeMomento']],
-  ['components/PanelProducto.jsx', ['pesos']],
+  ['components/PanelProducto.jsx', ['cantidad', 'pesos']],
   ['components/PanelVenta.jsx', ['pesos', 'fechaCorta']],
   ['utils/impresionInventario.js', ['pesos']],
 ]

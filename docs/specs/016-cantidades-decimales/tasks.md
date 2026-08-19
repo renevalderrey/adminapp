@@ -350,7 +350,7 @@ de la migración, y ese es el criterio que gobierna la spec entera. Contra la ba
 hoy esta fase también es un no-op: `cantidad(12)` es `'12'`, que es lo que se dibuja
 ahora.
 
-- [ ] **T401** `apps/web/src/utils/formato.js` — `enEsAr(n, minimos, maximos)` gana un
+- [x] **T401** `apps/web/src/utils/formato.js` — `enEsAr(n, minimos, maximos)` gana un
       cuarto parámetro `agrupa = true`, y nace `export function cantidad(n)`
       construida sobre ella (FR-030: nada de `toLocaleString` suelto). Las cinco
       funciones de plata siguen llamándola con tres argumentos. Casos en
@@ -365,7 +365,7 @@ ahora.
       da `'1.234'` y rompe US4 para todo stock de cuatro cifras. Ese caso se pone en
       rojo si alguien saca el cuarto parámetro.
 
-- [ ] **T402** `apps/web/src/utils/printInvoice.js:125` — `${cantidad(l.cantidad)} x …`.
+- [x] **T402** `apps/web/src/utils/printInvoice.js:125` — `${cantidad(l.cantidad)} x …`.
       Es **el criterio de éxito 1**. *(Depende de T401.)*
       **Verificación**: un test que espía `window.open`, captura lo que se escribe con
       `document.write` y, partiendo de una línea con `quantity: '3.0000'` —lo que
@@ -373,7 +373,7 @@ ahora.
       **`3 x Creatina`** y **no** `3.0000 x Creatina`. El nombre del test lleva escrito
       el caso: `it('NO imprime «3.0000 x Creatina»')` (FR-037).
 
-- [ ] **T403** [P] `apps/web/src/components/pos/CatalogoDelPos.jsx:200` —
+- [x] **T403** [P] `apps/web/src/components/pos/CatalogoDelPos.jsx:200` —
       `{cantidad(fila.disponible)} u.`. *(Depende de T401.)*
       **Verificación**: test de render con el disponible en `'5.0000'` que afirma la
       baldosa en **`5 u.`**. La fuente del string son las dos puntas —`GET /api/products`
@@ -381,12 +381,12 @@ ahora.
       escribe tal cual en el catálogo del navegador—, así que el caso se siembra con
       un string y no con un número.
 
-- [ ] **T404** [P] `apps/web/src/pages/Billing.jsx:468` —
+- [x] **T404** [P] `apps/web/src/pages/Billing.jsx:468` —
       `hay ${cantidad(disponible)} en esta sucursal`. *(Depende de T401.)*
       **Verificación**: test de render con el disponible en `'5.0000'` que afirma
       **`hay 5 en esta sucursal`**.
 
-- [ ] **T405** `apps/web/src/components/PanelProducto.jsx` — dos cambios distintos y
+- [x] **T405** `apps/web/src/components/PanelProducto.jsx` — dos cambios distintos y
       el motivo escrito al lado de cada uno: `:1173` pasa por
       `{cantidad(guardada?.available)}`, y `:310-314` carga `quantity`, `available` y
       `min_stock` con `Number(...)`, que es lo que arregla los puntos 5 y **10** (los
@@ -399,7 +399,7 @@ ahora.
       `10.0000` **ni vacío**, y el de mínimo vale **`0`**. Los dos inputs se afirman
       por separado: `min_stock` es el punto que la spec no tenía y el que se olvida.
 
-- [ ] **T406** `apps/web/src/components/PanelProducto.jsx:1156` y `:1163` — los dos
+- [x] **T406** `apps/web/src/components/PanelProducto.jsx:1156` y `:1163` — los dos
       `<input type="number">` pasan de `step="1"` a **`step="0.001"`**. Es una
       reparación, no una funcionalidad: después de migrar, producción puede dejar un
       stock en 9,6, el navegador marca ese valor como inválido contra `step="1"` y el
@@ -412,7 +412,7 @@ ahora.
       `DECIMALES_DE_UNA_LINEA_DE_VENTA` va a tomar en la 017, y eso se anota en el
       comentario.
 
-- [ ] **T407** [P] `apps/web/src/pages/Reports.jsx:345` y `:232` —
+- [x] **T407** [P] `apps/web/src/pages/Reports.jsx:345` y `:232` —
       `{cantidad(item.quantity)}` en los dos. *(Depende de T401.)*
       **Verificación**: `:345` es el punto 6 —el reporte de inventario, que
       `routes/reports.js:95` devuelve crudo— y con `'12.0000'` tiene que decir **`12`**.
@@ -421,14 +421,14 @@ ahora.
       con punto en vez de `9,6`. El motivo va escrito al lado de cada uno para que
       nadie los confunda.
 
-- [ ] **T408** [P] `apps/web/src/components/PanelDePedido.jsx:229` —
+- [x] **T408** [P] `apps/web/src/components/PanelDePedido.jsx:229` —
       `{cantidad(l.cantidad)}×`. *(Depende de T401.)*
       **Verificación**: test de render con `cantidad: '2.0000'` que afirma **`2×`**.
       Nada escribe decimales en `pedido_items` —`apps/tienda/src/carrito.js:55` hace
       `Math.floor` y la tienda pública sigue vendiendo por unidad (H5)—, pero la
       columna migra igual y el punto rompe igual.
 
-- [ ] **T409** [P] `apps/web/src/components/pos/TicketDelPos.jsx:219` y
+- [x] **T409** [P] `apps/web/src/components/pos/TicketDelPos.jsx:219` y
       `apps/web/src/pages/Inventory.jsx:147` — los dos por `cantidad(...)`, **con el
       motivo escrito al lado**: ninguno viene de una columna `DECIMAL` —el ticket sale
       del carrito del navegador y el resumen de transferencias sale de
@@ -437,7 +437,7 @@ ahora.
       **Verificación**: los dos siguen mostrando **exactamente lo mismo** que hoy con
       valores enteros (US4.11), y con `9.6` escriben `9,6` y no `9.6`.
 
-- [ ] **T410** `apps/web/src/utils/formato.test.js` — sexta regla de la guardia que ya
+- [x] **T410** `apps/web/src/utils/formato.test.js` — sexta regla de la guardia que ya
       recorre `pages/` y `components/`: un formateo de cantidad escrito a mano adentro
       de una pantalla. Y las entradas nuevas en `IMPORTAN` (`:769-791`), que es la
       mitad que evita «borré la copia y dejé de mostrar el número».

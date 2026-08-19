@@ -490,6 +490,29 @@ describe('El contador de transferencias dice cuántas hay, no cuántas entraron'
     expect(pie.textContent).toContain('200')
   })
 
+  it('el resumen de ítems NO escribe «×2.0000», y una fracción va con coma', async () => {
+    // 016 · FR-034a. `StockTransfer.items` es `JSONB`, así que acá no hay
+    // regresión del día de la migración: la cantidad se guarda como se
+    // transfirió. Entra por el separador decimal —«×9.6» se lee nueve mil
+    // seiscientos en es-AR— y con enteros dice exactamente lo mismo que hoy.
+    await abrirHistorial({
+      data: [{
+        ...TRANSFERENCIA,
+        items: [
+          { product_name: 'Colágeno', quantity: 2 },
+          { product_name: 'Harina', quantity: 9.6 },
+        ],
+      }],
+      total: 1,
+    })
+
+    const resumen = within(seccion()).getByText(/Colágeno/).textContent
+
+    expect(resumen).toContain('Colágeno ×2')
+    expect(resumen).toContain('Harina ×9,6')
+    expect(resumen).not.toContain('9.6')
+  })
+
   it('cuando NO está cortada, no aparece ninguna franja', async () => {
     // El contra-caso: un pie permanente es ruido, y el ruido permanente es cómo
     // un aviso deja de leerse.

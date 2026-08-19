@@ -33,7 +33,7 @@ import PageHeader from '@/components/PageHeader'
 // El `formatCurrency` que estaba acá fijaba `minimumFractionDigits: 2` y no el
 // máximo, cuyo valor por defecto es 3: la columna «Costo» de un producto
 // costeado a 1234.567 mostraba «$1.234,567» al lado de otro con «$1.200,00».
-import { importeOGuion } from '@/utils/formato'
+import { cantidad, importeOGuion } from '@/utils/formato'
 
 const TABS = [
   { id: 'sales', label: 'Ventas' },
@@ -229,7 +229,12 @@ const Reports = () => {
                           <TableCell className="text-xs">{item.date}</TableCell>
                           <TableCell className="text-xs font-mono">{item.sale_id}</TableCell>
                           <TableCell className="text-sm">{item.product_name}</TableCell>
-                          <TableCell className="text-right font-mono text-sm">{item.quantity}</TableCell>
+                          {/* FR-034a, y NO una regresión del día de la migración:
+                              `routes/reports.js:39` ya hace `parseFloat`, así que
+                              acá llega un número. Entra igual porque hoy dibujaría
+                              «9.6» con punto, y en es-AR el punto es el separador
+                              de MILES. */}
+                          <TableCell className="text-right font-mono text-sm">{cantidad(item.quantity)}</TableCell>
                           <TableCell className="text-right font-mono text-sm">{importeOGuion(item.unit_price)}</TableCell>
                           <TableCell className="text-right font-mono text-sm">{importeOGuion(item.cost)}</TableCell>
                           <TableCell className={`text-right font-mono text-sm font-medium ${item.margin >= 0 ? 'text-ok' : 'text-destructive'}`}>
@@ -342,7 +347,11 @@ const Reports = () => {
                           <TableCell className="font-medium">{item.product_name}</TableCell>
                           <TableCell className="text-xs text-muted-foreground">{item.sku}</TableCell>
                           <TableCell className="text-xs capitalize">{item.location}</TableCell>
-                          <TableCell className="text-right font-mono">{item.quantity}</TableCell>
+                          {/* Éste SÍ es la regresión: `routes/reports.js:95`
+                              devuelve `stock.quantity` CRUDA, así que con la
+                              columna en `NUMERIC(14,4)` esta celda decía
+                              «12.0000». */}
+                          <TableCell className="text-right font-mono">{cantidad(item.quantity)}</TableCell>
                           <TableCell className="text-right font-mono">{importeOGuion(item.cost)}</TableCell>
                           <TableCell className="text-right font-mono font-medium">{importeOGuion(item.total_value)}</TableCell>
                         </TableRow>

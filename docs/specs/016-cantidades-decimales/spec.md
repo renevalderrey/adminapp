@@ -298,8 +298,22 @@ puesta, así que los nueve puntos de arriba cambian con la base tal como está h
 
 Consecuencia: **el formateador no es «la capa de presentación de la 017»**. Es
 parte inseparable de 016 y tiene que entrar en el mismo despliegue que la
-migración. Separarlos deja a Comprafit imprimiendo `3.0000 x Creatina` en el
-intervalo entre los dos.
+migración.
+
+⚠ **Corrección, medida al implementar la Fase 4: el ejemplo del ticket impreso
+estaba MAL elegido.** Esta spec decía que separar las dos fases dejaba a
+Comprafit imprimiendo `3.0000 x Creatina`. No es cierto:
+`utils/printInvoice.js:59` pasa **todos** los items por `normalizarLinea`, que
+en `comprobanteAfip.js:141` ya hace `Number(item.quantity ?? item.qty ?? 0)`.
+Ese `"3.0000"` llega al ticket como el número `3` con y sin el formateador, así
+que el ticket impreso **ya estaba cubierto** y no es una regresión del día de la
+migración. Su tarea es FR-034a, no FR-037.
+
+El hallazgo H1 **sigue en pie**: los otros puntos sí regresan, y está verificado
+por mutación —revertir `cantidad()` en `CatalogoDelPos` pone tres casos en rojo,
+y el aviso de stock de `Billing` pasaba a decir «hay 5.0000 en esta sucursal»—.
+Lo que cae es el ejemplo, no la conclusión. Se deja anotado porque el criterio
+de éxito 1 se apoyaba justamente en el punto que ya estaba cubierto.
 
 ### H2 · «Ya usa `parseFloat`» tapó cuatro sitios rotos
 

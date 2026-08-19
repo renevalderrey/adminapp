@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import api from '@/services/api'
 import { calcularPrecios } from '@favalio/precios'
 import { cuerposDeStockAlCrear, unidadesComprometidas } from '@/utils/inventario'
-import { pesos } from '@/utils/formato'
+import { cantidad, pesos } from '@/utils/formato'
 import { mensajeDeError } from '@/utils/erroresDeApi'
 import { usePermission } from '@/hooks/usePermission'
 import HistorialDeCostos from '@/components/HistorialDeCostos'
@@ -307,11 +307,21 @@ export default function PanelProducto({
         punto_de_venta_id: sucursal.id,
         nombre: sucursal.name,
         inactiva: sucursal.is_active === false,
-        quantity: existente?.quantity ?? 0,
+        // ── Por qué los tres van por `Number(...)` (016) ──
+        //
+        // Con las columnas en `NUMERIC(14,4)`, `pg` las entrega como TEXTO con
+        // la escala puesta: `"10.0000"`. `quantity` y `min_stock` están atados
+        // a un `<input type="number">`, y ahí el string se dibuja tal cual —el
+        // campo mostraría «10.0000» en vez de «10»—. Se normaliza acá, en el
+        // origen, y NO con el formateador de `utils/formato`: un `value="9,6"`
+        // en un control numérico lo deja **en blanco** —el navegador descarta
+        // todo lo que no parsee como número de punto flotante— y quien guarde
+        // escribiría cero.
+        quantity: Number(existente?.quantity ?? 0),
         // `available` es de solo lectura: lo mueve el servidor con el mismo
         // delta que `quantity`. Editarlo a mano es como se desincronizan.
-        available: existente?.available ?? 0,
-        min_stock: existente?.min_stock ?? 0,
+        available: Number(existente?.available ?? 0),
+        min_stock: Number(existente?.min_stock ?? 0),
       }
     })
 
@@ -1152,15 +1162,30 @@ export default function PanelProducto({
                             {fila.nombre}
                             {fila.inactiva && <span className="text-fg-3"> (inactiva)</span>}
                           </span>
+                          {/* ── Por qué el paso es 0,001 y no 1 (016) ──
+
+                              Las columnas de cantidad son `NUMERIC(14,4)` y
+                              producción puede dejar un stock en 9,6. Contra
+                              `step="1"` el navegador marca ese valor como
+                              inválido (`stepMismatch`), y entonces el panel
+                              muestra un número que él mismo considera
+                              inválido: el formulario no guarda y no dice por
+                              qué. Es una reparación, no una funcionalidad
+                              nueva — no aparece ningún control ni ningún campo
+                              (FR-044).
+
+                              Los tres decimales son los mismos que
+                              `DECIMALES_DE_UNA_LINEA_DE_VENTA` va a tomar en la
+                              017, que es la que abre la venta por fracción. */}
                           <input
-                            type="number" min="0" step="1"
+                            type="number" min="0" step="0.001"
                             className={`${CAMPO} num h-8 text-right`}
                             value={fila.quantity}
                             disabled={!puedeEditarStock}
                             onChange={(e) => cambiarStock(i, 'quantity', e.target.value)}
                           />
                           <input
-                            type="number" min="0" step="1"
+                            type="number" min="0" step="0.001"
                             className={`${CAMPO} num h-8 text-right`}
                             value={fila.min_stock}
                             disabled={!puedeEditarStock}
@@ -1170,7 +1195,9 @@ export default function PanelProducto({
 
                         {reservadas !== 0 && (
                           <p className="mt-1.5 text-[11.5px] text-fg-3">
-                            Disponible para vender: <span className="num">{guardada?.available ?? 0}</span>.
+                            {/* Este SÍ pasa por el formateador: es texto, no
+                                un campo editable. Sin él decía «10.0000». */}
+                            Disponible para vender: <span className="num">{cantidad(guardada?.available)}</span>.
                             {reservadas > 0
                               ? ` Hay ${reservadas} unidad${reservadas === 1 ? '' : 'es'} comprometida${reservadas === 1 ? '' : 's'} en ventas o producción.`
                               : ' El disponible quedó por encima de la cantidad física: hay que revisarlo.'}

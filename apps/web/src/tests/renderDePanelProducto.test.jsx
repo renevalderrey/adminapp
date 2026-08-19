@@ -261,6 +261,143 @@ describe('Las unidades comprometidas salen de la fila guardada, no del teclado',
 })
 
 // ════════════════════════════════════════════
+//  016 · Las cantidades después de migrar la columna
+//
+//  `stock.quantity`, `stock.available` y `stock.min_stock` pasaron a
+//  `NUMERIC(14,4)` y `pg` las entrega como TEXTO con la escala puesta: una fila
+//  de diez llega `{ quantity: '10.0000', available: '10.0000',
+//  min_stock: '0.0000' }`.
+//
+//  ⚠ **Los tres puntos de este panel NO se arreglan igual.** El texto del
+//  disponible pasa por el formateador; los dos `<input type="number">` NO: un
+//  `value="9,6"` en un control numérico deja el campo **en blanco** —el
+//  navegador descarta lo que no parsee como número de punto flotante— y quien
+//  guardara escribiría cero. Ésos se normalizan en el origen con `Number(...)`.
+//
+//  Y los dos inputs se afirman por separado a propósito: `min_stock` es el
+//  décimo punto, el que la spec no tenía listado, y es el que se olvida.
+// ════════════════════════════════════════════
+
+describe('Las cantidades que llegan como texto se dibujan como antes de migrar', () => {
+  /** La fila tal cual la manda la API con las columnas ya en `NUMERIC(14,4)`. */
+  const MIGRADO = {
+    id: 5,
+    name: 'Colágeno',
+    cost: '1000',
+    stock: [{ id: 50, punto_de_venta_id: 1, quantity: '10.0000', available: '8.0000', min_stock: '0.0000' }],
+  }
+
+  it('el campo de cantidad vale 10, y NO «10.0000» ni queda vacío', async () => {
+    await montar({ producto: MIGRADO })
+
+    const { cantidad } = renglonDeStock('Centro')
+
+    // `toHaveValue(10)` sobre un `spinbutton` compara el número: con
+    // `'10.0000'` el control conserva el string y esto se pone en rojo.
+    expect(cantidad).toHaveValue(10)
+    expect(cantidad.value).toBe('10')
+  })
+
+  it('el campo de MÍNIMO vale 0, y no «0.0000»', async () => {
+    // El punto que la spec no listaba: es el gemelo tres líneas más abajo, y
+    // migra igual.
+    await montar({ producto: MIGRADO })
+
+    const { minimo } = renglonDeStock('Centro')
+
+    expect(minimo).toHaveValue(0)
+    expect(minimo.value).toBe('0')
+  })
+
+  it('el texto del disponible dice 8 y NO «8.0000»', async () => {
+    // Se siembra 10 físicas y 8 disponibles porque el renglón solo dibuja esta
+    // frase cuando hay unidades comprometidas: con 10/10 el `<p>` no existe y
+    // el caso no verificaría nada.
+    await montar({ producto: MIGRADO })
+
+    const { bloque } = renglonDeStock('Centro')
+    const texto = within(bloque).getByText(/Disponible para vender/).textContent
+
+    expect(texto).toContain('Disponible para vender: 8.')
+    expect(texto).not.toContain('8.0000')
+  })
+
+  it('y un disponible fraccionario se escribe «9,6» y no «9.6»', async () => {
+    // ⚠ Es el caso que aísla el formateador de este punto, y hace falta.
+    //
+    // La frase se arma sobre `original.stock[i]`, que es la fila YA normalizada
+    // con `Number(...)`: por eso el caso de arriba —`'8.0000'`— pasa igual con
+    // el formateador puesto o sacado, y solo se pone en rojo si se revierten
+    // las dos mitades a la vez, que es como estaba el código antes de la 016.
+    // Lo único que distingue al formateador solo es el separador decimal.
+    const fraccionario = {
+      ...MIGRADO,
+      stock: [{ id: 50, punto_de_venta_id: 1, quantity: '10.0000', available: '9.6000', min_stock: '0.0000' }],
+    }
+
+    await montar({ producto: fraccionario })
+
+    const { bloque } = renglonDeStock('Centro')
+    const texto = within(bloque).getByText(/Disponible para vender/).textContent
+
+    expect(texto).toContain('Disponible para vender: 9,6.')
+    expect(texto).not.toContain('9.6')
+  })
+
+  it('un stock FRACCIONARIO no traba el formulario: el campo no queda inválido', async () => {
+    // Después de migrar, producción deja stocks en 9,6. Contra `step="1"` el
+    // navegador marca ese valor como `stepMismatch` y el panel muestra un
+    // número que él mismo considera inválido: no guarda y no dice por qué.
+    const fraccionario = {
+      ...MIGRADO,
+      stock: [{ id: 50, punto_de_venta_id: 1, quantity: '9.6000', available: '9.6000', min_stock: '0.5000' }],
+    }
+
+    await montar({ producto: fraccionario })
+
+    const { cantidad, minimo } = renglonDeStock('Centro')
+
+    expect(cantidad).toHaveValue(9.6)
+    expect(cantidad.validity.stepMismatch).toBe(false)
+    expect(cantidad.validity.valid).toBe(true)
+
+    expect(minimo).toHaveValue(0.5)
+    expect(minimo.validity.stepMismatch).toBe(false)
+    expect(minimo.validity.valid).toBe(true)
+  })
+
+  it('y una cantidad fraccionaria TIPEADA tampoco queda inválida al guardar', async () => {
+    // La otra mitad del mismo defecto: no alcanza con que el valor que llega
+    // del servidor sea válido, porque el operador corrige el stock a mano. Con
+    // `step="1"`, escribir 8,2 deja el campo en `stepMismatch` y el formulario
+    // se traba sin decir por qué.
+    const fraccionario = {
+      ...MIGRADO,
+      stock: [{ id: 50, punto_de_venta_id: 1, quantity: '9.6000', available: '9.6000', min_stock: '0.5000' }],
+    }
+
+    const usuario = userEvent.setup()
+    await montar({ producto: fraccionario })
+
+    const { cantidad } = renglonDeStock('Centro')
+
+    await usuario.clear(cantidad)
+    await usuario.type(cantidad, '8.2')
+
+    expect(cantidad.validity.stepMismatch).toBe(false)
+    expect(cantidad.validity.valid).toBe(true)
+
+    await usuario.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    // Y el `PUT` de la fila salió con el número, no con un cero ni con un NaN:
+    // ése era el otro final posible del campo en blanco.
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith('/stock/50', { quantity: 8.2, min_stock: 0.5 })
+    })
+  })
+})
+
+// ════════════════════════════════════════════
 //  Lo que solo se ve renderizando: los permisos
 // ════════════════════════════════════════════
 
